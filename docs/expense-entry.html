@@ -1,0 +1,1390 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b5a42">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="費用入力">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="manifest" href="expense-entry.webmanifest">
+<link rel="icon" href="icon-32.png" type="image/png" sizes="32x32">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>費用入力 | 旅行</title>
+<style>
+  :root {
+    --ink: #111916;
+    --muted: #66716b;
+    --line: #dfe4e0;
+    --line-strong: #c3ccc5;
+    --paper: #ffffff;
+    --wash: #f7f9f7;
+    --green: #0b5a42;
+    --green-soft: #e7f1ec;
+    --blue: #22719d;
+    --red: #cf4f3d;
+  }
+
+  * { box-sizing: border-box; }
+
+  html {
+    background: #fff;
+    overflow-y: scroll;
+    scrollbar-gutter: stable;
+  }
+
+  body {
+    margin: 0;
+    background: #fff;
+    color: var(--ink);
+    font-family: "Avenir Next", "Hiragino Sans", "Yu Gothic", Meiryo, sans-serif;
+    line-height: 1.5;
+  }
+
+  a { color: inherit; }
+
+  .expense-app {
+    width: min(720px, 100%);
+    min-height: 100svh;
+    margin: 0 auto;
+    border-inline: 1px solid var(--line-strong);
+    background: var(--paper);
+  }
+
+  .expense-head {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 12px;
+    align-items: center;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--line);
+    background: rgba(255, 255, 255, .96);
+    backdrop-filter: blur(16px);
+  }
+
+  .expense-title {
+    min-width: 0;
+  }
+
+  .expense-title h1 {
+    margin: 0;
+    font-size: 24px;
+    line-height: 1.1;
+    letter-spacing: 0;
+  }
+
+  .expense-title span {
+    display: block;
+    margin-top: 4px;
+    overflow: hidden;
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 720;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .expense-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+
+  .profile-button,
+  .expense-link {
+    display: grid;
+    place-items: center;
+    min-height: 38px;
+    padding: 0 11px;
+    border: 1px solid rgba(11, 90, 66, .36);
+    color: var(--green);
+    font-size: 13px;
+    font-weight: 850;
+    text-decoration: none;
+    white-space: nowrap;
+  }
+
+  .profile-button {
+    appearance: none;
+    -webkit-appearance: none;
+    background: var(--green);
+    color: #fff;
+    font: inherit;
+    cursor: pointer;
+  }
+
+  .expense-main {
+    display: grid;
+    gap: 14px;
+    padding: 14px 16px 24px;
+  }
+
+  .expense-loading,
+  .expense-error {
+    padding: 12px;
+    border: 1px solid var(--line);
+    background: var(--wash);
+    color: var(--muted);
+    font-size: 13px;
+    font-weight: 650;
+  }
+
+  .expense-error {
+    border-color: rgba(207, 79, 61, .35);
+    background: #fff7f5;
+    color: var(--red);
+  }
+
+  .expense-panel {
+    display: grid;
+    gap: 12px;
+  }
+
+  .expense-form {
+    display: grid;
+    gap: 12px;
+  }
+
+  .expense-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 9px;
+  }
+
+  .expense-field {
+    display: grid;
+    gap: 5px;
+    min-width: 0;
+  }
+
+  .expense-field.wide {
+    grid-column: 1 / -1;
+  }
+
+  .expense-field span,
+  .split-label {
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 720;
+  }
+
+  .required-mark {
+    color: var(--red);
+    font-weight: 900;
+  }
+
+  .expense-field input,
+  .expense-field select,
+  .expense-field textarea {
+    width: 100%;
+    max-width: 100%;
+    inline-size: 100%;
+    max-inline-size: 100%;
+    min-width: 0;
+    min-inline-size: 0;
+    min-height: 44px;
+    border: 1px solid var(--line-strong);
+    border-radius: 0;
+    background: #fff;
+    color: var(--ink);
+    font: inherit;
+    font-size: 16px;
+    font-weight: 520;
+  }
+
+  .expense-field input,
+  .expense-field select {
+    padding: 8px 10px;
+  }
+
+  .expense-field input[type="date"] {
+    display: block;
+    appearance: none;
+    -webkit-appearance: none;
+  }
+
+  .expense-field input[type="date"]::-webkit-date-and-time-value {
+    min-width: 0;
+    text-align: left;
+  }
+
+  .expense-field input[type="date"]::-webkit-calendar-picker-indicator {
+    margin: 0;
+  }
+
+  .expense-field textarea {
+    min-height: 68px;
+    padding: 9px 10px;
+    resize: vertical;
+  }
+
+  .photo-field {
+    display: grid;
+    gap: 8px;
+    padding: 10px;
+    border: 1px solid var(--line);
+    background: #fbfcfb;
+  }
+
+  .photo-field input[type="file"] {
+    min-height: 0;
+    border: 0;
+    background: transparent;
+    padding: 0;
+    font-size: 13px;
+  }
+
+  .split {
+    display: grid;
+    gap: 7px;
+  }
+
+  .segments {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1px;
+    border: 1px solid var(--line-strong);
+    background: var(--line-strong);
+  }
+
+  .segment {
+    display: grid;
+    min-width: 0;
+    min-height: 42px;
+    background: #fff;
+    cursor: pointer;
+  }
+
+  .segment input,
+  .pick input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .segment span {
+    display: grid;
+    place-items: center;
+    padding: 8px;
+    color: var(--muted);
+    font-size: 13px;
+    font-weight: 720;
+    line-height: 1.25;
+    text-align: center;
+  }
+
+  .segment input:checked + span {
+    background: var(--green);
+    color: #fff;
+  }
+
+  .split-detail {
+    display: none;
+    gap: 8px;
+    padding: 10px;
+    border: 1px solid var(--line);
+    background: #fbfcfb;
+  }
+
+  .split-detail.is-visible {
+    display: grid;
+  }
+
+  .participant-picks,
+  .individual-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .pick {
+    display: grid;
+    min-width: 0;
+    cursor: pointer;
+  }
+
+  .pick span {
+    display: grid;
+    place-items: center;
+    min-height: 38px;
+    border: 1px solid var(--line-strong);
+    background: #fff;
+    color: var(--ink);
+    font-size: 13px;
+    font-weight: 720;
+  }
+
+  .pick input:checked + span {
+    border-color: var(--green);
+    background: var(--green-soft);
+    color: var(--green);
+  }
+
+  .share-total {
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 720;
+  }
+
+  .expense-submit {
+    position: sticky;
+    bottom: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px;
+    align-items: center;
+    margin-inline: -16px;
+    padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+    border-top: 1px solid var(--line);
+    background: rgba(255, 255, 255, .96);
+    backdrop-filter: blur(16px);
+  }
+
+  .expense-status {
+    min-width: 0;
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 720;
+  }
+
+  .expense-status.is-error {
+    color: var(--red);
+  }
+
+  .expense-status.is-ok {
+    color: var(--green);
+  }
+
+  .expense-submit button {
+    min-width: 112px;
+    min-height: 44px;
+    border: 1px solid var(--green);
+    border-radius: 0;
+    background: var(--green);
+    color: #fff;
+    padding: 0 18px;
+    font: inherit;
+    font-size: 15px;
+    font-weight: 760;
+    cursor: pointer;
+  }
+
+  .expense-submit button:disabled {
+    border-color: var(--line-strong);
+    background: var(--line);
+    color: var(--muted);
+    cursor: wait;
+  }
+
+  .auth {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    display: grid;
+    place-items: center;
+    padding: 18px;
+    background: rgba(255, 255, 255, .96);
+  }
+
+  .auth-box {
+    width: min(420px, 100%);
+    border: 1px solid var(--line-strong);
+    background: #fff;
+  }
+
+  .auth-box h2 {
+    margin: 0;
+    padding: 16px 18px 12px;
+    border-bottom: 1px solid var(--line);
+    font-size: 18px;
+    font-weight: 720;
+  }
+
+  .auth-body {
+    display: grid;
+    gap: 12px;
+    padding: 16px 18px 18px;
+  }
+
+  .auth-body p {
+    margin: 0;
+    color: var(--muted);
+    font-size: 13px;
+  }
+
+  .auth-body label {
+    display: grid;
+    gap: 6px;
+    font-size: 13px;
+    font-weight: 650;
+  }
+
+  .auth-body input {
+    width: 100%;
+    min-height: 48px;
+    border: 2px solid var(--green);
+    background: #f8fbf9;
+    color: var(--ink);
+    padding: 10px 12px;
+    font: inherit;
+    font-size: 16px;
+    outline: none;
+  }
+
+  .auth-body button {
+    min-height: 48px;
+    border: 1px solid var(--green);
+    background: var(--green);
+    color: #fff;
+    font: inherit;
+    font-size: 15px;
+    font-weight: 720;
+    cursor: pointer;
+  }
+
+  .auth-error {
+    min-height: 18px;
+    color: var(--red);
+    font-size: 12px;
+    font-weight: 720;
+  }
+
+  .identity-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 9998;
+    display: grid;
+    place-items: center;
+    padding: 18px;
+    background:
+      linear-gradient(135deg, rgba(17, 25, 22, .16), rgba(11, 90, 66, .28)),
+      rgba(247, 249, 247, .84);
+    backdrop-filter: blur(16px);
+  }
+
+  .identity-card {
+    width: min(460px, 100%);
+    border: 1px solid rgba(11, 90, 66, .28);
+    background: #fff;
+    box-shadow: 0 24px 80px rgba(17, 25, 22, .18);
+  }
+
+  .identity-card header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 14px;
+    align-items: start;
+    padding: 20px 20px 14px;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .identity-card h2 {
+    margin: 0;
+    font-size: 22px;
+    line-height: 1.15;
+    font-weight: 720;
+  }
+
+  .identity-card p {
+    margin: 7px 0 0;
+    color: var(--muted);
+    font-size: 13px;
+  }
+
+  .identity-mark {
+    display: grid;
+    place-items: center;
+    width: 42px;
+    height: 42px;
+    border: 1px solid rgba(11, 90, 66, .28);
+    background: var(--green-soft);
+    color: var(--green);
+    font-size: 18px;
+    font-weight: 850;
+  }
+
+  .identity-body {
+    display: grid;
+    gap: 14px;
+    padding: 16px 20px 20px;
+  }
+
+  .identity-field {
+    display: grid;
+    gap: 6px;
+  }
+
+  .identity-field span {
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 760;
+  }
+
+  .identity-field select {
+    width: 100%;
+    min-height: 46px;
+    border: 1px solid var(--line-strong);
+    background: #fff;
+    color: var(--ink);
+    padding: 8px 10px;
+    font: inherit;
+    font-size: 16px;
+  }
+
+  .identity-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    gap: 10px;
+    align-items: center;
+  }
+
+  .identity-note {
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 620;
+  }
+
+  .identity-actions button {
+    min-height: 42px;
+    border: 1px solid var(--green);
+    background: var(--green);
+    color: #fff;
+    padding: 0 14px;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 760;
+    cursor: pointer;
+  }
+
+  .identity-actions button.secondary {
+    border-color: var(--line-strong);
+    background: #fff;
+    color: var(--ink);
+  }
+
+  @media (max-width: 560px) {
+    .expense-app {
+      border-inline: 0;
+    }
+
+    .expense-head {
+      padding-inline: 14px;
+    }
+
+    .expense-actions {
+      gap: 6px;
+    }
+
+    .profile-button,
+    .expense-link {
+      min-height: 36px;
+      padding-inline: 9px;
+      font-size: 12px;
+    }
+
+    .expense-main {
+      padding-inline: 14px;
+    }
+
+    .expense-grid,
+    .participant-picks,
+    .individual-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .segments {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .expense-submit {
+      margin-inline: -14px;
+      padding-inline: 14px;
+    }
+
+    .identity-actions {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>
+</head>
+<body>
+<div class="expense-app" id="expenseApp">
+  <header class="expense-head">
+    <div class="expense-title">
+      <h1>費用入力</h1>
+      <span data-meta>旅行</span>
+    </div>
+    <div class="expense-actions">
+      <button class="profile-button" type="button" data-profile-button>本人設定</button>
+      <a class="expense-link" href="index.html">ダッシュボード</a>
+    </div>
+  </header>
+
+  <main class="expense-main">
+    <div class="expense-loading" data-loading hidden>読み込み中...</div>
+    <div data-error></div>
+    <section class="expense-panel" data-expense-entry></section>
+  </main>
+</div>
+
+<script src="trip-config.js"></script>
+<script>
+  (function () {
+    function mergeConfig(base, override) {
+      const result = { ...(base || {}) };
+      Object.keys(override || {}).forEach((key) => {
+        const value = override[key];
+        const current = result[key];
+        if (value && typeof value === "object" && !Array.isArray(value) &&
+            current && typeof current === "object" && !Array.isArray(current)) {
+          result[key] = mergeConfig(current, value);
+        } else if (value !== undefined) {
+          result[key] = value;
+        }
+      });
+      return result;
+    }
+
+    function safeTripSlug(value) {
+      return String(value || "")
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "") || "trip";
+    }
+
+    function normalizeTripConfig(config) {
+      const next = config || {};
+      next.tripTitle = next.tripTitle || "旅行";
+      next.tripSlug = safeTripSlug(next.tripSlug || next.slug || next.tripTitle);
+      next.auth = next.auth || {};
+      next.profile = next.profile || {};
+      next.expenseCache = next.expenseCache || {};
+      if (!next.auth.storageKey) next.auth.storageKey = `trip-dashboard-auth-${next.tripSlug}`;
+      if (!next.profile.storageKey) next.profile.storageKey = `trip-dashboard-profile-${next.tripSlug}`;
+      if (!next.expenseCache.storageKey) next.expenseCache.storageKey = `trip-dashboard-expense-entry-${next.tripSlug}`;
+      return next;
+    }
+
+    function applyDocumentTripTitle(title) {
+      const tripTitle = title || "旅行";
+      document.title = `費用入力 | ${tripTitle}`;
+      const appleTitle = document.querySelector('meta[name="apple-mobile-web-app-title"]');
+      if (appleTitle) appleTitle.setAttribute("content", "費用入力");
+    }
+
+    const DEFAULT_CONFIG = {
+      tripSlug: "trip-template",
+      tripTitle: "旅行",
+      appsScriptUrl: "",
+      todayOverride: "",
+      defaultParticipants: ["参加者A", "参加者B"],
+      currencies: ["JPY", "USD", "EUR", "KRW", "TWD", "CNY", "THB", "SGD", "AUD", "GBP"],
+      auth: {
+        enabled: true,
+        mode: "appsScript",
+        passwordHash: "",
+        storageKey: "",
+        rememberDays: 14
+      },
+      profile: {
+        storageKey: ""
+      },
+      expenseCache: {
+        storageKey: ""
+      }
+    };
+    const CONFIG = normalizeTripConfig(mergeConfig(DEFAULT_CONFIG, window.TRIP_CONFIG || {}));
+    applyDocumentTripTitle(CONFIG.tripTitle);
+
+    const FALLBACK_PARTICIPANTS = CONFIG.defaultParticipants || ["参加者A", "参加者B"];
+    const root = document.getElementById("expenseApp");
+    const qs = (selector) => root.querySelector(selector);
+    const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (ch) => ({
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#39;"
+    })[ch]);
+
+    let state = { data: null, participants: FALLBACK_PARTICIPANTS };
+
+    function callAppsScript(params) {
+      return new Promise((resolve, reject) => {
+        if (!CONFIG.appsScriptUrl) {
+          reject(new Error("appsScriptUrl が未設定です"));
+          return;
+        }
+        const callback = "__tripExpenseCallback_" + Math.random().toString(36).slice(2);
+        const script = document.createElement("script");
+        const query = new URLSearchParams({ ...params, callback, cachebust: Date.now() });
+        window[callback] = (response) => {
+          delete window[callback];
+          script.remove();
+          if (!response || response.ok === false) {
+            reject(new Error(response && response.error ? response.error : "Apps Script API error"));
+            return;
+          }
+          resolve(response);
+        };
+        script.onerror = () => {
+          delete window[callback];
+          script.remove();
+          reject(new Error("Apps Script APIを読み込めませんでした"));
+        };
+        script.async = true;
+        script.src = CONFIG.appsScriptUrl + (CONFIG.appsScriptUrl.includes("?") ? "&" : "?") + query.toString();
+        document.head.appendChild(script);
+      });
+    }
+
+    function postAppsScript(params) {
+      return new Promise((resolve, reject) => {
+        if (!CONFIG.appsScriptUrl) {
+          reject(new Error("appsScriptUrl が未設定です"));
+          return;
+        }
+        const uploadId = "receipt-" + Date.now() + "-" + Math.random().toString(36).slice(2);
+        const iframeName = "receiptUploadFrame_" + uploadId.replace(/[^A-Za-z0-9_]/g, "_");
+        const iframe = document.createElement("iframe");
+        const form = document.createElement("form");
+        const cleanup = () => {
+          window.removeEventListener("message", onMessage);
+          form.remove();
+          iframe.remove();
+        };
+        const timer = setTimeout(() => {
+          cleanup();
+          reject(new Error("写真アップロードがタイムアウトしました"));
+        }, 60000);
+        const onMessage = (event) => {
+          const data = event.data || {};
+          if (data.source !== "trip-expense-receipt-upload" || data.uploadId !== uploadId) return;
+          clearTimeout(timer);
+          cleanup();
+          const response = data.response || {};
+          if (response.ok === false) {
+            reject(new Error(response.error || "写真アップロードに失敗しました"));
+            return;
+          }
+          resolve(response);
+        };
+
+        iframe.name = iframeName;
+        iframe.hidden = true;
+        form.hidden = true;
+        form.method = "POST";
+        form.action = CONFIG.appsScriptUrl;
+        form.target = iframeName;
+
+        Object.entries({ ...params, uploadId }).forEach(([key, value]) => {
+          const input = document.createElement("input");
+          input.type = "hidden";
+          input.name = key;
+          input.value = value == null ? "" : String(value);
+          form.appendChild(input);
+        });
+
+        window.addEventListener("message", onMessage);
+        document.body.appendChild(iframe);
+        document.body.appendChild(form);
+        form.submit();
+      });
+    }
+
+    function fileAsDataUrl(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ""));
+        reader.onerror = () => reject(new Error("写真を読み込めませんでした"));
+        reader.readAsDataURL(file);
+      });
+    }
+
+    function imageFromDataUrl(dataUrl) {
+      return new Promise((resolve, reject) => {
+        const image = new Image();
+        image.onload = () => resolve(image);
+        image.onerror = () => reject(new Error("写真を処理できませんでした"));
+        image.src = dataUrl;
+      });
+    }
+
+    async function prepareReceiptPhoto(file) {
+      const originalDataUrl = await fileAsDataUrl(file);
+      if (!/^image\//.test(file.type || "")) {
+        throw new Error("画像ファイルを選択してください");
+      }
+
+      try {
+        const image = await imageFromDataUrl(originalDataUrl);
+        const maxSize = 1600;
+        const scale = Math.min(1, maxSize / Math.max(image.naturalWidth || image.width, image.naturalHeight || image.height));
+        const width = Math.max(1, Math.round((image.naturalWidth || image.width) * scale));
+        const height = Math.max(1, Math.round((image.naturalHeight || image.height) * scale));
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const context = canvas.getContext("2d");
+        context.drawImage(image, 0, 0, width, height);
+        const dataUrl = canvas.toDataURL("image/jpeg", .78);
+        return {
+          fileName: String(file.name || "receipt.jpg").replace(/\.[^.]+$/, "") + ".jpg",
+          mimeType: "image/jpeg",
+          data: dataUrl.split(",")[1] || ""
+        };
+      } catch (_) {
+        return {
+          fileName: file.name || "receipt.jpg",
+          mimeType: file.type || "image/jpeg",
+          data: originalDataUrl.split(",")[1] || ""
+        };
+      }
+    }
+
+    async function uploadReceiptPhoto(file) {
+      const prepared = await prepareReceiptPhoto(file);
+      if (!prepared.data) throw new Error("写真データがありません");
+      if (prepared.data.length > 7000000) {
+        throw new Error("写真サイズが大きすぎます。小さめの画像で再試行してください");
+      }
+      return postAppsScript({
+        action: "receiptUpload",
+        token: getAuthToken(),
+        fileName: prepared.fileName,
+        mimeType: prepared.mimeType,
+        data: prepared.data
+      });
+    }
+
+    async function sha256Hex(text) {
+      const bytes = new TextEncoder().encode(text);
+      const digest = await crypto.subtle.digest("SHA-256", bytes);
+      return Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+    }
+
+    function hasAuthSession() {
+      if (!CONFIG.auth.enabled) return true;
+      try {
+        const session = JSON.parse(localStorage.getItem(CONFIG.auth.storageKey) || "{}");
+        return session && session.expiresAt && Date.now() < session.expiresAt && session.token;
+      } catch (_) {
+        return false;
+      }
+    }
+
+    function getAuthToken() {
+      try {
+        const session = JSON.parse(localStorage.getItem(CONFIG.auth.storageKey) || "{}");
+        return session && session.expiresAt && Date.now() < session.expiresAt ? session.token || "" : "";
+      } catch (_) {
+        return "";
+      }
+    }
+
+    function saveAuthSession(token, expiresAt) {
+      const days = Number(CONFIG.auth.rememberDays || 1);
+      localStorage.setItem(CONFIG.auth.storageKey, JSON.stringify({
+        ok: true,
+        token: token || "",
+        expiresAt: expiresAt || Date.now() + days * 24 * 60 * 60 * 1000
+      }));
+    }
+
+    function clearAuthSession() {
+      localStorage.removeItem(CONFIG.auth.storageKey);
+    }
+
+    function readProfile() {
+      try {
+        const profile = JSON.parse(localStorage.getItem(CONFIG.profile.storageKey) || "{}");
+        return profile && profile.name ? profile : null;
+      } catch (_) {
+        return null;
+      }
+    }
+
+    function saveProfile(name) {
+      localStorage.setItem(CONFIG.profile.storageKey, JSON.stringify({
+        name,
+        savedAt: new Date().toISOString()
+      }));
+    }
+
+    function profileInitial(name) {
+      return String(name || "?").trim().slice(0, 1) || "?";
+    }
+
+    function updateProfileButton() {
+      const button = qs("[data-profile-button]");
+      if (!button) return;
+      const profile = readProfile();
+      button.textContent = profile && profile.name ? profile.name : "本人設定";
+      button.setAttribute("aria-label", profile && profile.name ? `本人設定を変更: ${profile.name}` : "本人設定");
+    }
+
+    function applyProfileDefaults(form, participants) {
+      const name = currentProfileName(participants);
+      if (!name || !form || !form.elements.payer) return;
+      form.elements.payer.value = name;
+    }
+
+    function showIdentityModal(required) {
+      return new Promise((resolve) => {
+        const existing = document.querySelector(".identity-modal");
+        if (existing) existing.remove();
+
+        const participants = state.participants && state.participants.length ? state.participants : FALLBACK_PARTICIPANTS;
+        const savedName = currentProfileName(participants);
+        const options = participants.map((name) =>
+          `<option value="${escapeHtml(name)}" ${name === savedName ? "selected" : ""}>${escapeHtml(name)}</option>`
+        ).join("");
+        const modal = document.createElement("div");
+        modal.className = "identity-modal";
+        modal.innerHTML = `
+          <form class="identity-card" role="dialog" aria-modal="true" aria-labelledby="identityTitle">
+            <header>
+              <div>
+                <h2 id="identityTitle">あなたは誰ですか</h2>
+                <p>この端末に保存して、支払者の初期値に使います。</p>
+              </div>
+              <div class="identity-mark" data-identity-mark>${escapeHtml(profileInitial(savedName))}</div>
+            </header>
+            <div class="identity-body">
+              <label class="identity-field">
+                <span>本人として使う名前</span>
+                <select name="profileName" required>
+                  <option value="">選択してください</option>
+                  ${options}
+                </select>
+              </label>
+              <div class="identity-actions">
+                <span class="identity-note">ブラウザのローカルストレージに保存されます。</span>
+                <button type="submit">登録する</button>
+                ${required ? "" : `<button class="secondary" type="button" data-identity-close>閉じる</button>`}
+              </div>
+            </div>
+          </form>`;
+        document.body.appendChild(modal);
+
+        const form = modal.querySelector("form");
+        const select = modal.querySelector("select");
+        const mark = modal.querySelector("[data-identity-mark]");
+        const close = modal.querySelector("[data-identity-close]");
+        select.focus();
+        select.addEventListener("change", () => {
+          mark.textContent = profileInitial(select.value);
+        });
+        if (close) {
+          close.addEventListener("click", () => {
+            modal.remove();
+            resolve(false);
+          });
+        }
+        form.addEventListener("submit", (event) => {
+          event.preventDefault();
+          const name = select.value;
+          if (!name) {
+            select.focus();
+            return;
+          }
+          saveProfile(name);
+          modal.remove();
+          updateProfileButton();
+          applyProfileDefaults(qs("[data-expense-form-native]"), participants);
+          resolve(true);
+        });
+      });
+    }
+
+    async function requestIdentityIfNeeded() {
+      updateProfileButton();
+      const participants = state.participants && state.participants.length ? state.participants : FALLBACK_PARTICIPANTS;
+      if (!currentProfileName(participants)) {
+        await showIdentityModal(true);
+      }
+    }
+
+    function readExpenseCache() {
+      try {
+        const cache = JSON.parse(localStorage.getItem(CONFIG.expenseCache.storageKey) || "{}");
+        return cache && Array.isArray(cache.participants) && cache.participants.length ? cache : null;
+      } catch (_) {
+        return null;
+      }
+    }
+
+    function saveExpenseCache(data) {
+      const participants = expenseParticipants(data);
+      if (!participants.length) return;
+      localStorage.setItem(CONFIG.expenseCache.storageKey, JSON.stringify({
+        participants,
+        tripTitle: data && data.trip && data.trip.title || qs("[data-meta]").textContent || CONFIG.tripTitle || "旅行",
+        savedAt: new Date().toISOString()
+      }));
+    }
+
+    function currentProfileName(participants) {
+      const profile = readProfile();
+      if (!profile || !profile.name) return "";
+      if (!participants || !participants.length) return profile.name;
+      return participants.includes(profile.name) ? profile.name : "";
+    }
+
+    function requestPassword() {
+      return new Promise((resolve) => {
+        if (!CONFIG.auth.enabled || hasAuthSession()) {
+          resolve(true);
+          return;
+        }
+
+        const gate = document.createElement("div");
+        gate.className = "auth";
+        gate.innerHTML = `
+          <form class="auth-box">
+            <h2>費用入力を開く</h2>
+            <div class="auth-body">
+              <p>共有されたパスワードを入力してください。</p>
+              <label>
+                パスワード
+                <input type="password" autocomplete="current-password" autofocus aria-label="パスワード" placeholder="パスワードを入力">
+              </label>
+              <button type="submit">開く</button>
+              <div class="auth-error" aria-live="polite"></div>
+            </div>
+          </form>`;
+        document.body.appendChild(gate);
+
+        const form = gate.querySelector("form");
+        const input = gate.querySelector("input");
+        const error = gate.querySelector(".auth-error");
+        form.addEventListener("submit", async (event) => {
+          event.preventDefault();
+          try {
+            const passwordHash = await sha256Hex(input.value || "");
+            const response = await callAppsScript({ action: "auth", passwordHash });
+            saveAuthSession(response.token, response.expiresAt);
+            gate.remove();
+            resolve(true);
+          } catch (apiError) {
+            input.value = "";
+            input.focus();
+            error.textContent = apiError.message || "認証に失敗しました。";
+          }
+        });
+      });
+    }
+
+    function todayISO() {
+      if (CONFIG.todayOverride) return CONFIG.todayOverride;
+      const now = new Date();
+      const y = now.getFullYear();
+      const m = String(now.getMonth() + 1).padStart(2, "0");
+      const d = String(now.getDate()).padStart(2, "0");
+      return `${y}-${m}-${d}`;
+    }
+
+    function formatYen(value) {
+      const n = Number(value || 0);
+      return "¥" + Math.round(n).toLocaleString("ja-JP");
+    }
+
+    function numberValue(value) {
+      const n = Number(String(value || "").replace(/[^\d.-]/g, ""));
+      return Number.isFinite(n) ? n : 0;
+    }
+
+    function expenseParticipants(data) {
+      const fromData = (data && data.participants || [])
+        .map((member) => typeof member === "string" ? member : member && (member.name || member.displayName || member["表示名"]))
+        .filter(Boolean);
+      if (fromData.length) return fromData;
+      const fromMembers = String(data && data.trip && data.trip.members || "")
+        .split(/\s*\/\s*|、|,|\n/)
+        .map((name) => name.trim())
+        .filter((name) => name && !/\d+人|共有メンバー/.test(name));
+      return fromMembers.length ? fromMembers : FALLBACK_PARTICIPANTS;
+    }
+
+    function expenseCurrencies(data) {
+      const fromLocalInfo = (data && data.localInfo || [])
+        .map((row) => row && (row.currencyCode || row.currency || row["通貨コード"]))
+        .filter(Boolean);
+      return Array.from(new Set(["JPY"].concat(CONFIG.currencies || [], fromLocalInfo)))
+        .map((code) => String(code || "").trim().toUpperCase())
+        .filter(Boolean);
+    }
+
+    function setStatus(message, type) {
+      const status = qs("[data-expense-status]");
+      if (!status) return;
+      status.textContent = message || "";
+      status.classList.toggle("is-error", type === "error");
+      status.classList.toggle("is-ok", type === "ok");
+    }
+
+    function isAuthError(error) {
+      const message = String(error && error.message ? error.message : error || "");
+      return /auth|token|password|Authentication|Invalid token|Token expired|認証|権限|Password/i.test(message);
+    }
+
+    function renderExpenseEntry(data) {
+      const participants = expenseParticipants(data);
+      state.participants = participants;
+      if (data && data.trip && data.trip.title) qs("[data-meta]").textContent = data.trip.title;
+      const profileName = currentProfileName(participants);
+      const currencyOptions = expenseCurrencies(data).map((code) => `<option>${escapeHtml(code)}</option>`).join("");
+      const payerOptions = participants.map((name) =>
+        `<option value="${escapeHtml(name)}" ${name === profileName ? "selected" : ""}>${escapeHtml(name)}</option>`
+      ).join("");
+      const targetPicks = participants.map((name) => `
+        <label class="pick">
+          <input type="checkbox" name="targets" value="${escapeHtml(name)}" checked>
+          <span>${escapeHtml(name)}</span>
+        </label>`).join("");
+      const shareInputs = participants.map((name) => `
+        <label class="expense-field">
+          <span>${escapeHtml(name)}</span>
+          <input type="number" name="share-${escapeHtml(name)}" data-share-name="${escapeHtml(name)}" min="0" step="1" inputmode="numeric" placeholder="0">
+        </label>`).join("");
+
+      qs("[data-expense-entry]").innerHTML = `
+        <form class="expense-form" data-expense-form-native>
+          <div class="expense-grid">
+            <label class="expense-field wide">
+              <span>内容 <b class="required-mark" aria-label="必須">*</b></span>
+              <input type="text" name="title" required placeholder="例: タクシー">
+            </label>
+            <label class="expense-field">
+              <span>支払金額 <b class="required-mark" aria-label="必須">*</b></span>
+              <input type="number" name="amount" required min="1" step="1" inputmode="decimal" placeholder="12000">
+            </label>
+            <label class="expense-field">
+              <span>通貨 <b class="required-mark" aria-label="必須">*</b></span>
+              <select name="currency" required>${currencyOptions}</select>
+            </label>
+            <label class="expense-field">
+              <span>支払者 <b class="required-mark" aria-label="必須">*</b></span>
+              <select name="payer" required>${payerOptions}</select>
+            </label>
+            <label class="expense-field">
+              <span>支払日 <b class="required-mark" aria-label="必須">*</b></span>
+              <input type="date" name="paidDate" required>
+            </label>
+            <label class="expense-field">
+              <span>カテゴリ <b class="required-mark" aria-label="必須">*</b></span>
+              <select name="category" required>
+                <option>食費</option>
+                <option>交通</option>
+                <option>宿泊</option>
+                <option>観光</option>
+                <option>通信</option>
+                <option>その他</option>
+              </select>
+            </label>
+            <label class="expense-field">
+              <span>支払方法</span>
+              <select name="paymentMethod">
+                <option>カード</option>
+                <option>現金</option>
+                <option>送金</option>
+                <option>その他</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="split">
+            <span class="split-label">精算方法 <b class="required-mark" aria-label="必須">*</b></span>
+            <div class="segments">
+              <label class="segment"><input type="radio" name="splitMode" value="全員で等分" required checked><span>全員で等分</span></label>
+              <label class="segment"><input type="radio" name="splitMode" value="選んだ人だけで等分" required><span>選んだ人だけ</span></label>
+              <label class="segment"><input type="radio" name="splitMode" value="個別金額を入力" required><span>個別金額</span></label>
+              <label class="segment"><input type="radio" name="splitMode" value="精算不要" required><span>精算不要</span></label>
+            </div>
+          </div>
+
+          <div class="split-detail" data-selected-detail>
+            <span class="split-label">割り勘する人</span>
+            <div class="participant-picks">${targetPicks}</div>
+          </div>
+
+          <div class="split-detail" data-individual-detail>
+            <span class="split-label">各自の負担額</span>
+            <div class="individual-grid">${shareInputs}</div>
+            <div class="share-total" data-share-total>合計 ¥0</div>
+          </div>
+
+          <div class="expense-grid">
+            <label class="expense-field wide photo-field">
+              <span>レシート写真</span>
+              <input type="file" name="receiptPhoto" accept="image/*" capture="environment">
+            </label>
+            <label class="expense-field wide">
+              <span>メモ</span>
+              <textarea name="note" placeholder="任意。為替メモや補足があれば入力"></textarea>
+            </label>
+          </div>
+
+          <div class="expense-submit">
+            <div class="expense-status" data-expense-status aria-live="polite"></div>
+            <button type="submit">保存</button>
+          </div>
+        </form>`;
+
+      const form = qs("[data-expense-form-native]");
+      form.elements.paidDate.value = todayISO();
+      applyProfileDefaults(form, participants);
+      setupExpenseEntryHandlers(form, participants);
+      if (profileName) requestAnimationFrame(() => form.elements.title.focus());
+    }
+
+    function setupExpenseEntryHandlers(form, participants) {
+      const selectedDetail = form.querySelector("[data-selected-detail]");
+      const individualDetail = form.querySelector("[data-individual-detail]");
+      const totalNode = form.querySelector("[data-share-total]");
+      const button = form.querySelector("button[type='submit']");
+      const amountInput = form.elements.amount;
+
+      const activeMode = () => form.elements.splitMode.value;
+      const formatInputAmount = (value) => {
+        const currency = form.elements.currency.value || "JPY";
+        if (currency === "JPY") return formatYen(value);
+        return `${currency} ${Math.round(value * 100) / 100}`;
+      };
+      const shareInputFor = (name) => Array.from(form.querySelectorAll("[data-share-name]"))
+        .find((input) => input.dataset.shareName === name);
+      const individualTotal = () => participants.reduce((sum, name) => {
+        const input = shareInputFor(name);
+        return sum + numberValue(input && input.value);
+      }, 0);
+      const updateShareTotal = () => {
+        const total = individualTotal();
+        const amount = numberValue(amountInput.value);
+        const message = amount ? `合計 ${formatInputAmount(total)} / 支払額 ${formatInputAmount(amount)}` : `合計 ${formatInputAmount(total)}`;
+        totalNode.textContent = message;
+        totalNode.style.color = /個別金額/.test(activeMode()) && amount && Math.abs(total - amount) > 1 ? "var(--red)" : "var(--muted)";
+      };
+      const updateMode = () => {
+        const mode = activeMode();
+        selectedDetail.classList.toggle("is-visible", /選んだ人だけ/.test(mode));
+        individualDetail.classList.toggle("is-visible", /個別金額/.test(mode));
+        updateShareTotal();
+      };
+
+      form.addEventListener("change", (event) => {
+        if (event.target.name === "payer") saveProfile(event.target.value);
+        if (event.target.name === "splitMode") updateMode();
+        updateShareTotal();
+      });
+      form.addEventListener("input", updateShareTotal);
+      updateMode();
+
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const mode = activeMode();
+        const targets = Array.from(form.querySelectorAll("input[name='targets']:checked")).map((input) => input.value);
+        const individual = {};
+        participants.forEach((name) => {
+          const input = shareInputFor(name);
+          const amount = numberValue(input && input.value);
+          if (amount) individual[name] = amount;
+        });
+        const amount = numberValue(form.elements.amount.value);
+
+        if (/選んだ人だけ/.test(mode) && !targets.length) {
+          setStatus("割り勘する人を1人以上選んでください。", "error");
+          return;
+        }
+        if (/個別金額/.test(mode)) {
+          const total = individualTotal();
+          if (!total) {
+            setStatus("個別金額を入力してください。", "error");
+            return;
+          }
+          if (Math.abs(total - amount) > 1) {
+            setStatus("個別金額の合計が支払額と一致していません。", "error");
+            return;
+          }
+        }
+
+        button.disabled = true;
+        setStatus("保存中...", "");
+        try {
+          saveProfile(form.elements.payer.value);
+          const photo = form.elements.receiptPhoto && form.elements.receiptPhoto.files
+            ? form.elements.receiptPhoto.files[0]
+            : null;
+          let receiptUrl = "";
+          if (photo) {
+            setStatus("写真アップロード中...", "");
+            const upload = await uploadReceiptPhoto(photo);
+            receiptUrl = upload.url || "";
+            setStatus("保存中...", "");
+          }
+          const response = await callAppsScript({
+            action: "expense",
+            token: getAuthToken(),
+            paidDate: form.elements.paidDate.value,
+            payer: form.elements.payer.value,
+            category: form.elements.category.value,
+            title: form.elements.title.value,
+            amount: form.elements.amount.value,
+            currency: form.elements.currency.value,
+            splitMode: mode,
+            targets: JSON.stringify(targets),
+            individual: JSON.stringify(individual),
+            paymentMethod: form.elements.paymentMethod.value,
+            receiptUrl,
+            note: form.elements.note.value
+          });
+          if (response.data) {
+            state.data = response.data;
+            saveExpenseCache(response.data);
+          }
+          const payer = form.elements.payer.value;
+          const paidDate = form.elements.paidDate.value;
+          const category = form.elements.category.value;
+          const currency = form.elements.currency.value;
+          const paymentMethod = form.elements.paymentMethod.value;
+          form.reset();
+          form.elements.payer.value = payer;
+          form.elements.paidDate.value = paidDate || todayISO();
+          form.elements.category.value = category || "食費";
+          form.elements.currency.value = currency || "JPY";
+          form.elements.paymentMethod.value = paymentMethod || "カード";
+          form.querySelectorAll("input[name='targets']").forEach((input) => { input.checked = true; });
+          updateMode();
+          setStatus("保存しました。続けて入力できます。", "ok");
+          form.elements.title.focus();
+        } catch (error) {
+          if (isAuthError(error)) clearAuthSession();
+          setStatus(error.message || "保存に失敗しました。", "error");
+        } finally {
+          button.disabled = false;
+        }
+      });
+    }
+
+    async function init() {
+      await requestPassword();
+      const cache = readExpenseCache();
+      qs("[data-meta]").textContent = cache && cache.tripTitle ? cache.tripTitle : (CONFIG.tripTitle || "旅行");
+      updateProfileButton();
+      qs("[data-profile-button]").addEventListener("click", () => {
+        showIdentityModal(false);
+      });
+      renderExpenseEntry(cache ? { participants: cache.participants, trip: { title: cache.tripTitle } } : {});
+      await requestIdentityIfNeeded();
+    }
+
+    init();
+  })();
+</script>
+</body>
+</html>

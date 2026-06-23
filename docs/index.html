@@ -1,0 +1,3891 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b5a42">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="旅行ダッシュボード">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="manifest" href="site.webmanifest">
+<link rel="icon" href="icon-32.png" type="image/png" sizes="32x32">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>旅行ダッシュボード</title>
+<style>
+  html {
+    overflow-y: scroll;
+    scrollbar-gutter: stable;
+    background: #fff;
+  }
+
+  body {
+    margin: 0;
+    background: #fff;
+  }
+
+  .trip-live {
+    --ink: #111916;
+    --muted: #66716b;
+    --line: #dfe4e0;
+    --line-strong: #c3ccc5;
+    --paper: #ffffff;
+    --wash: #f7f9f7;
+    --green: #0b5a42;
+    --green-soft: #e7f1ec;
+    --blue: #22719d;
+    --amber: #b87418;
+    --red: #cf4f3d;
+    --violet: #6246a6;
+    color: var(--ink);
+    max-width: 1180px;
+    margin: 0 auto;
+    border: 1px solid var(--line-strong);
+    background: var(--paper);
+    font-family: "Avenir Next", "Hiragino Sans", "Yu Gothic", Meiryo, sans-serif;
+    line-height: 1.55;
+  }
+
+  .trip-live * { box-sizing: border-box; }
+  .trip-live a { color: inherit; }
+
+  .tl-loading {
+    position: fixed;
+    inset: 0;
+    z-index: 9000;
+    display: none;
+    place-items: center;
+    padding: 24px;
+    background:
+      linear-gradient(180deg, rgba(231, 241, 236, .92), rgba(255, 255, 255, .98)),
+      #fff;
+  }
+
+  .trip-live.is-loading .tl-loading {
+    display: grid;
+  }
+
+  .tl-loading-card {
+    display: grid;
+    justify-items: center;
+    gap: 14px;
+    color: var(--green);
+    text-align: center;
+  }
+
+  .tl-loading-plane {
+    width: 54px;
+    height: 54px;
+    animation: tl-plane 1.05s ease-in-out infinite;
+  }
+
+  .tl-loading-card b {
+    color: var(--ink);
+    font-size: 17px;
+    font-weight: 680;
+  }
+
+  .tl-loading-card span {
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 620;
+  }
+
+  @keyframes tl-plane {
+    0%, 100% { transform: translate3d(-4px, 3px, 0) rotate(-8deg); opacity: .72; }
+    50% { transform: translate3d(5px, -4px, 0) rotate(4deg); opacity: 1; }
+  }
+
+  .tl-auth {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    display: grid;
+    place-items: center;
+    padding: 18px;
+    background: rgba(255, 255, 255, .96);
+  }
+
+  .tl-auth,
+  .tl-auth * {
+    box-sizing: border-box;
+  }
+
+  .tl-auth-box {
+    width: min(420px, 100%);
+    border: 1px solid var(--line-strong, #c3ccc5);
+    background: #fff;
+  }
+
+  .tl-auth-box h2 {
+    margin: 0;
+    padding: 16px 18px 12px;
+    border-bottom: 1px solid var(--line, #dfe4e0);
+    font-size: 18px;
+    font-weight: 720;
+    letter-spacing: 0;
+  }
+
+  .tl-auth-body {
+    display: grid;
+    gap: 12px;
+    padding: 16px 18px 18px;
+  }
+
+  .tl-auth-body p {
+    margin: 0;
+    color: var(--muted, #66716b);
+    font-size: 13px;
+  }
+
+  .tl-auth-body label {
+    display: grid;
+    gap: 6px;
+    color: var(--ink, #111916);
+    font-size: 13px;
+    font-weight: 640;
+  }
+
+  .tl-auth-body input {
+    width: 100%;
+    min-height: 48px;
+    border: 2px solid var(--green, #0b5a42);
+    background: #f8fbf9;
+    color: var(--ink, #111916);
+    padding: 10px 12px;
+    font: inherit;
+    font-size: 16px;
+    outline: none;
+  }
+
+  .tl-auth-body input:focus {
+    border-color: var(--ink, #111916);
+    background: #fff;
+    box-shadow: 0 0 0 3px rgba(11, 90, 66, .16);
+  }
+
+  .tl-auth-body button {
+    appearance: none;
+    -webkit-appearance: none;
+    min-height: 48px;
+    border: 1px solid var(--green, #0b5a42);
+    background-color: var(--green, #0b5a42);
+    color: #fff;
+    font: inherit;
+    font-size: 15px;
+    font-weight: 640;
+    cursor: pointer;
+  }
+
+  .tl-auth-body button:focus-visible {
+    outline: 3px solid rgba(11, 90, 66, .25);
+    outline-offset: 2px;
+  }
+
+  .tl-auth-error {
+    min-height: 18px;
+    color: var(--red, #cf4f3d);
+    font-size: 12px;
+    font-weight: 620;
+  }
+
+  .tl-identity-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 9998;
+    display: grid;
+    place-items: center;
+    padding: 18px;
+    background:
+      linear-gradient(135deg, rgba(17, 25, 22, .16), rgba(11, 90, 66, .28)),
+      rgba(247, 249, 247, .84);
+    backdrop-filter: blur(16px);
+  }
+
+  .tl-identity-card {
+    width: min(460px, 100%);
+    border: 1px solid rgba(11, 90, 66, .28);
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, .98), rgba(247, 249, 247, .98));
+    box-shadow: 0 24px 80px rgba(17, 25, 22, .18);
+  }
+
+  .tl-identity-card header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 14px;
+    align-items: start;
+    padding: 20px 20px 14px;
+    border-bottom: 1px solid var(--line, #dfe4e0);
+  }
+
+  .tl-identity-card h2 {
+    margin: 0;
+    font-size: 22px;
+    font-weight: 720;
+    line-height: 1.3;
+    letter-spacing: 0;
+  }
+
+  .tl-identity-card p {
+    margin: 6px 0 0;
+    color: var(--muted, #66716b);
+    font-size: 13px;
+  }
+
+  .tl-identity-mark {
+    display: grid;
+    place-items: center;
+    width: 46px;
+    height: 46px;
+    border: 1px solid rgba(11, 90, 66, .32);
+    background: var(--green-soft, #e7f1ec);
+    color: var(--green, #0b5a42);
+    font-size: 16px;
+    font-weight: 760;
+  }
+
+  .tl-identity-body {
+    display: grid;
+    gap: 14px;
+    padding: 18px 20px 20px;
+  }
+
+  .tl-identity-field {
+    display: grid;
+    gap: 7px;
+  }
+
+  .tl-identity-field span {
+    color: var(--muted, #66716b);
+    font-size: 12px;
+    font-weight: 640;
+  }
+
+  .tl-identity-field select {
+    width: 100%;
+    min-height: 50px;
+    border: 2px solid var(--green, #0b5a42);
+    background: #fff;
+    color: var(--ink, #111916);
+    padding: 10px 12px;
+    font: inherit;
+    font-size: 16px;
+    outline: none;
+  }
+
+  .tl-identity-field select:focus {
+    border-color: var(--ink, #111916);
+    box-shadow: 0 0 0 3px rgba(11, 90, 66, .16);
+  }
+
+  .tl-identity-actions {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    gap: 10px;
+    align-items: center;
+  }
+
+  .tl-identity-note {
+    color: var(--muted, #66716b);
+    font-size: 12px;
+    font-weight: 560;
+  }
+
+  .tl-identity-actions button,
+  .tl-persona-button {
+    appearance: none;
+    -webkit-appearance: none;
+    border: 1px solid var(--green, #0b5a42);
+    font: inherit;
+    cursor: pointer;
+  }
+
+  .tl-identity-actions button {
+    min-height: 42px;
+    background-color: var(--green, #0b5a42);
+    color: #fff;
+    padding: 0 18px;
+    font-size: 13px;
+    font-weight: 680;
+  }
+
+  .tl-identity-actions button.secondary {
+    background-color: #fff;
+    color: var(--green, #0b5a42);
+  }
+
+  .tl-persona-button {
+    justify-self: end;
+    min-height: 32px;
+    background-color: var(--green-soft, #e7f1ec);
+    color: var(--green, #0b5a42);
+    padding: 5px 10px;
+    font-size: 12px;
+    font-weight: 720;
+  }
+
+  .tl-persona-button:hover,
+  .tl-persona-button:focus-visible {
+    background-color: #fff;
+  }
+
+  .tl-head {
+    display: block;
+    padding: 22px 24px;
+    border-bottom: 1px solid var(--line);
+    background:
+      linear-gradient(90deg, rgba(11, 90, 66, .05), transparent 42%),
+      #fff;
+  }
+
+  .tl-kicker {
+    margin: 0 0 3px;
+    color: var(--green);
+    font-size: 12px;
+    font-weight: 900;
+    letter-spacing: .13em;
+    text-transform: uppercase;
+  }
+
+  .tl-title {
+    margin: 0;
+    overflow-wrap: anywhere;
+    font-size: clamp(25px, 4.2vw, 43px);
+    font-weight: 950;
+    letter-spacing: 0;
+    line-height: 1.08;
+  }
+
+  .tl-sub {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+    margin-top: 8px;
+    color: var(--muted);
+    font-size: 13px;
+    font-weight: 750;
+  }
+
+  .tl-source {
+    display: contents;
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 750;
+  }
+
+  .tl-source b {
+    color: var(--green);
+    font-size: 13px;
+  }
+
+  .tl-actions {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(78px, 1fr));
+    border-bottom: 1px solid var(--line);
+  }
+
+  .tl-action {
+    display: grid;
+    place-items: center;
+    min-height: 50px;
+    padding: 10px;
+    border-right: 1px solid var(--line);
+    background: #fff;
+    color: var(--ink);
+    font: inherit;
+    font-size: 14px;
+    font-weight: 850;
+    text-align: center;
+    cursor: pointer;
+  }
+
+  .tl-action:last-child { border-right: 0; }
+  .tl-action:hover { background: var(--wash); }
+  .tl-action[aria-selected="true"] { background: var(--green); color: #fff; }
+
+  .trip-live[data-section-view="plan"] [data-section-target]:not([data-section-target~="plan"]),
+  .trip-live[data-section-view="map"] [data-section-target]:not([data-section-target~="map"]),
+  .trip-live[data-section-view="money"] [data-section-target]:not([data-section-target~="money"]),
+  .trip-live[data-section-view="links"] [data-section-target]:not([data-section-target~="links"]) {
+    display: none;
+  }
+
+  .trip-live[data-section-view="plan"] .tl-card-grid,
+  .trip-live[data-section-view="money"] .tl-card-grid,
+  .trip-live[data-section-view="links"] .tl-card-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .tl-days {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(116px, 1fr);
+    overflow-x: auto;
+    border-bottom: 1px solid var(--line);
+    background: #fff;
+  }
+
+  .trip-live[data-section-view="money"] .tl-days,
+  .trip-live[data-section-view="links"] .tl-days {
+    display: none;
+  }
+
+  .tl-day {
+    appearance: none;
+    min-height: 78px;
+    padding: 11px 10px;
+    border: 0;
+    border-right: 1px solid var(--line);
+    background: #fff;
+    color: var(--ink);
+    cursor: pointer;
+    text-align: center;
+  }
+
+  .tl-day[aria-selected="true"] {
+    background: var(--green);
+    color: #fff;
+  }
+
+  .tl-day b,
+  .tl-day small {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .tl-day b { font-size: 13px; line-height: 1.25; }
+  .tl-day small { margin-top: 4px; font-size: 11px; opacity: .75; }
+
+  .tl-main {
+    display: grid;
+    grid-template-columns: minmax(0, 1.08fr) minmax(344px, .92fr);
+    gap: 18px;
+    padding: 18px;
+    background:
+      linear-gradient(90deg, rgba(17, 25, 22, .025) 1px, transparent 1px),
+      linear-gradient(0deg, rgba(17, 25, 22, .025) 1px, transparent 1px),
+      #fff;
+    background-size: 28px 28px;
+  }
+
+  .tl-panel {
+    min-width: 0;
+    border: 1px solid var(--line);
+    background: #fff;
+  }
+
+  .tl-map-panel {
+    grid-column: 1 / -1;
+  }
+
+  .tl-panel-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    align-items: baseline;
+    min-height: 47px;
+    padding: 12px 14px 10px;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .tl-panel-head h2 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 950;
+    letter-spacing: 0;
+  }
+
+  .tl-panel-head span,
+  .tl-panel-head a {
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 850;
+    text-align: right;
+    text-decoration: none;
+    white-space: nowrap;
+  }
+
+  .tl-map {
+    position: relative;
+    min-height: 260px;
+    max-height: 430px;
+    aspect-ratio: 21 / 8;
+    overflow: hidden;
+    background:
+      linear-gradient(90deg, rgba(11, 90, 66, .04) 1px, transparent 1px),
+      linear-gradient(0deg, rgba(11, 90, 66, .035) 1px, transparent 1px),
+      linear-gradient(120deg, rgba(34, 113, 157, .08), transparent 46%),
+      #f8faf8;
+    background-size: 34px 34px, 34px 34px, auto, auto;
+  }
+
+  .tl-map-land {
+    position: absolute;
+    inset: 38px 34px 58px;
+    border: 1px solid rgba(11, 90, 66, .08);
+    background: linear-gradient(140deg, rgba(255, 255, 255, .96), rgba(227, 235, 229, .88));
+    clip-path: polygon(5% 42%, 22% 28%, 45% 30%, 66% 20%, 90% 36%, 82% 63%, 60% 70%, 42% 62%, 22% 74%, 12% 56%);
+  }
+
+  .tl-map-iframe {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    width: 100%;
+    height: 100%;
+    border: 0;
+  }
+
+  .tl-map.has-embed .tl-map-land,
+  .tl-map.has-embed .tl-route-svg,
+  .tl-map.has-embed .tl-pin {
+    display: none;
+  }
+
+  .tl-map.has-leaflet .tl-map-land,
+  .tl-map.has-leaflet .tl-route-svg,
+  .tl-map.has-leaflet .tl-pin {
+    display: none;
+  }
+
+  .tl-leaflet-map {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    background: #eef3ef;
+  }
+
+  .tl-leaflet-map .leaflet-control-attribution {
+    font-size: 10px;
+  }
+
+  .tl-map-marker {
+    display: grid;
+    grid-template-columns: 34px;
+    align-items: center;
+  }
+
+  .tl-map-marker.is-active {
+    grid-template-columns: 42px;
+  }
+
+  .tl-map-marker.is-route-stop {
+    grid-template-columns: 38px;
+  }
+
+  .tl-map-marker-num {
+    display: grid;
+    place-items: center;
+    width: 34px;
+    height: 20px;
+    border: 2px solid #fff;
+    background: #6d7b74;
+    color: #fff;
+    font-size: 9px;
+    font-weight: 600;
+    line-height: 1;
+  }
+
+  .tl-map-marker.is-active .tl-map-marker-num {
+    width: 42px;
+    height: 24px;
+    background: var(--red);
+    font-size: 10px;
+  }
+
+  .tl-map-marker.is-route-stop .tl-map-marker-num {
+    width: 38px;
+    height: 22px;
+    background: var(--green);
+    font-size: 9px;
+  }
+
+  .tl-route-svg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+  }
+
+  .tl-route-svg polyline {
+    fill: none;
+    stroke: rgba(11, 90, 66, .82);
+    stroke-width: 3;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-dasharray: 7 7;
+  }
+
+  .tl-pin {
+    position: absolute;
+    z-index: 2;
+    display: grid;
+    grid-template-columns: 30px minmax(0, max-content);
+    gap: 7px;
+    align-items: center;
+    max-width: 190px;
+    transform: translate(-50%, -50%);
+    text-decoration: none;
+  }
+
+  .tl-pin-num {
+    display: grid;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    border: 2px solid #fff;
+    background: var(--green);
+    color: #fff;
+    font-size: 13px;
+    font-weight: 950;
+  }
+
+  .tl-pin.is-active .tl-pin-num {
+    background: var(--red);
+  }
+
+  .tl-pin-name {
+    max-width: 136px;
+    overflow: hidden;
+    padding: 5px 8px;
+    border: 1px solid var(--line);
+    background: rgba(255, 255, 255, .92);
+    font-size: 12px;
+    font-weight: 900;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .tl-map-status {
+    position: absolute;
+    left: 14px;
+    right: 14px;
+    bottom: 14px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px;
+    align-items: center;
+    padding: 10px 12px;
+    border: 1px solid var(--line);
+    background: rgba(255, 255, 255, .94);
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 850;
+  }
+
+  .tl-map-status b { color: var(--ink); }
+  .tl-map-status a { color: var(--green); text-decoration: none; white-space: nowrap; }
+
+  .tl-timeline {
+    padding: 14px 14px 12px;
+  }
+
+  .tl-day-title {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    align-items: baseline;
+    margin-bottom: 13px;
+  }
+
+  .tl-day-title h2 {
+    margin: 0;
+    font-size: 20px;
+    letter-spacing: 0;
+    line-height: 1.22;
+  }
+
+  .tl-day-title h2 span {
+    display: block;
+  }
+
+  .tl-day-heading-meta {
+    margin-top: 2px;
+  }
+
+  .tl-day-title > span {
+    color: var(--amber);
+    font-size: 12px;
+    font-weight: 900;
+    white-space: nowrap;
+  }
+
+  .tl-item {
+    display: grid;
+    grid-template-columns: 60px 14px minmax(0, 1fr) auto;
+    gap: 7px;
+    min-width: 0;
+    padding: 0 0 13px;
+  }
+
+  .tl-time {
+    color: var(--ink);
+    font-size: 13px;
+    font-weight: 900;
+    line-height: 1.25;
+    overflow-wrap: anywhere;
+    padding-top: 2px;
+    text-align: right;
+  }
+
+  .tl-rail {
+    position: relative;
+    display: flex;
+    justify-content: center;
+  }
+
+  .tl-rail:before {
+    content: "";
+    position: absolute;
+    top: 10px;
+    bottom: -10px;
+    width: 2px;
+    background: rgba(11, 90, 66, .25);
+  }
+
+  .tl-item:last-child .tl-rail:before { display: none; }
+
+  .tl-dot {
+    position: relative;
+    z-index: 1;
+    width: 8px;
+    height: 8px;
+    margin-top: 6px;
+    background: var(--green);
+  }
+
+  .tl-plan { min-width: 0; }
+
+  .tl-plan-line {
+    display: flex;
+    gap: 7px;
+    align-items: center;
+    min-width: 0;
+  }
+
+  .tl-chip {
+    display: inline-flex;
+    align-items: center;
+    min-width: 38px;
+    min-height: 22px;
+    padding: 3px 7px;
+    color: #fff;
+    font-size: 11px;
+    font-weight: 950;
+    white-space: nowrap;
+  }
+
+  .tl-chip.move { background: var(--blue); }
+  .tl-chip.food { background: var(--amber); }
+  .tl-chip.sight { background: var(--green); }
+  .tl-chip.stay { background: var(--red); }
+  .tl-chip.todo { background: #68746e; }
+  .tl-chip.form { background: var(--violet); }
+
+  .tl-plan h3 {
+    min-width: 0;
+    margin: 0;
+    overflow: hidden;
+    font-size: 15px;
+    font-weight: 900;
+    letter-spacing: 0;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .tl-note {
+    margin: 3px 0 0;
+    color: var(--muted);
+    font-size: 12px;
+  }
+
+  .tl-needed {
+    margin: 4px 0 0;
+    color: var(--ink);
+    font-size: 12px;
+    font-weight: 850;
+  }
+
+  .tl-maplink {
+    align-self: start;
+    color: var(--green);
+    font-size: 12px;
+    font-weight: 900;
+    text-decoration: none;
+    white-space: nowrap;
+  }
+
+  .tl-card-grid {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(260px, .95fr) minmax(260px, .95fr) minmax(260px, .95fr);
+    gap: 14px;
+  }
+
+  .tl-box {
+    min-width: 0;
+    border: 1px solid var(--line);
+    background: #fff;
+  }
+
+  .tl-box h2 {
+    margin: 0;
+    padding: 12px 14px 10px;
+    border-bottom: 1px solid var(--line);
+    font-size: 16px;
+    font-weight: 950;
+    letter-spacing: 0;
+  }
+
+  .tl-upcoming {
+    display: grid;
+  }
+
+  .tl-upcoming-row {
+    display: grid;
+    grid-template-columns: 76px minmax(0, 1fr) auto;
+    gap: 8px;
+    align-items: center;
+    min-height: 48px;
+    padding: 8px 14px;
+    border-bottom: 1px solid var(--line);
+    text-decoration: none;
+  }
+
+  .tl-upcoming-row:last-child { border-bottom: 0; }
+  .tl-upcoming-date { color: var(--muted); font-size: 12px; font-weight: 850; }
+  .tl-upcoming-title { min-width: 0; overflow: hidden; font-size: 13px; font-weight: 900; text-overflow: ellipsis; white-space: nowrap; }
+  .tl-upcoming-arrow { color: var(--muted); font-size: 15px; }
+
+  .tl-upcoming-items {
+    grid-column: 1 / -1;
+    display: grid;
+    gap: 6px;
+    padding-top: 3px;
+  }
+
+  .trip-live[data-section-view="home"] .tl-upcoming-items {
+    display: none;
+  }
+
+  .trip-live[data-section-view="plan"] .tl-upcoming-row {
+    align-items: start;
+    min-height: 0;
+    padding-top: 10px;
+    padding-bottom: 10px;
+  }
+
+  .tl-upcoming-item {
+    display: grid;
+    grid-template-columns: 62px minmax(0, 1fr);
+    gap: 8px;
+    min-width: 0;
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.35;
+  }
+
+  .tl-upcoming-time {
+    color: var(--ink);
+    font-weight: 620;
+  }
+
+  .tl-upcoming-text {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .tl-settle {
+    padding: 13px 14px 14px;
+  }
+
+  .tl-money {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+  }
+
+  .tl-money strong { font-size: 30px; line-height: 1; }
+  .tl-money span { color: var(--muted); font-size: 13px; font-weight: 900; }
+
+  .tl-progress {
+    height: 8px;
+    margin: 10px 0 12px;
+    background: #e7ece8;
+  }
+
+  .tl-progress span {
+    display: block;
+    height: 100%;
+    width: var(--value);
+    background: var(--green);
+  }
+
+  .tl-money-detail {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    color: var(--muted);
+    font-size: 12px;
+  }
+
+  .tl-money-detail b {
+    display: block;
+    color: var(--ink);
+    font-size: 15px;
+  }
+
+  .tl-transfer-list {
+    display: grid;
+    gap: 7px;
+    margin-top: 13px;
+    padding-top: 12px;
+    border-top: 1px solid var(--line);
+  }
+
+  .tl-transfer-list h3 {
+    margin: 0;
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 900;
+  }
+
+  .tl-transfer-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    gap: 8px;
+    align-items: center;
+    min-height: 38px;
+    padding: 7px 8px;
+    border: 1px solid var(--line);
+    background: #fff;
+    font-size: 13px;
+    font-weight: 850;
+  }
+
+  .tl-transfer-row b {
+    color: var(--green);
+    font-size: 15px;
+  }
+
+  .tl-transfer-row small {
+    grid-column: 1 / -1;
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 560;
+  }
+
+  .tl-transfer-row button {
+    min-height: 30px;
+    border: 1px solid var(--green);
+    background: var(--green);
+    color: #fff;
+    padding: 0 9px;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 640;
+    cursor: pointer;
+  }
+
+  .tl-transfer-row button:disabled {
+    border-color: var(--line-strong);
+    background: var(--line);
+    color: var(--muted);
+    cursor: wait;
+  }
+
+  .tl-buttons {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 8px;
+    margin-top: 13px;
+  }
+
+  .tl-button {
+    display: grid;
+    place-items: center;
+    min-height: 38px;
+    border: 1px solid rgba(11, 90, 66, .36);
+    background: #fff;
+    color: var(--green);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 950;
+    text-align: center;
+    text-decoration: none;
+    cursor: pointer;
+  }
+
+  .tl-button.primary {
+    background: var(--green);
+    color: #fff;
+  }
+
+  .tl-expense-details {
+    display: none;
+    margin-top: 12px;
+    border: 1px solid var(--line);
+    background: #fff;
+  }
+
+  .tl-expense-details.is-visible {
+    display: block;
+  }
+
+  .tl-expense-details-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    align-items: baseline;
+    padding: 10px 11px;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .tl-expense-details-head b {
+    font-size: 13px;
+    font-weight: 760;
+  }
+
+  .tl-expense-details-head span {
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 620;
+  }
+
+  .tl-expense-table-wrap {
+    overflow-x: auto;
+  }
+
+  .tl-expense-table {
+    width: 100%;
+    min-width: 680px;
+    border-collapse: collapse;
+    font-size: 12px;
+  }
+
+  .tl-expense-table th,
+  .tl-expense-table td {
+    padding: 8px 9px;
+    border-bottom: 1px solid var(--line);
+    text-align: left;
+    vertical-align: top;
+  }
+
+  .tl-expense-table th {
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 760;
+    white-space: nowrap;
+  }
+
+  .tl-expense-table td {
+    font-weight: 560;
+  }
+
+  .tl-expense-table td:last-child,
+  .tl-expense-table th:last-child {
+    text-align: right;
+    white-space: nowrap;
+  }
+
+  .tl-expense-empty {
+    padding: 12px;
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 620;
+  }
+
+  .tl-expense-entry {
+    display: grid;
+    gap: 12px;
+    margin-top: 15px;
+    padding-top: 14px;
+    border-top: 1px solid var(--line);
+  }
+
+  .tl-expense-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .tl-expense-head b {
+    font-size: 14px;
+    font-weight: 720;
+  }
+
+  .tl-expense-head span {
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 620;
+  }
+
+  .tl-expense-head a {
+    color: var(--green);
+    font-size: 12px;
+    font-weight: 760;
+    text-decoration: none;
+    white-space: nowrap;
+  }
+
+  .tl-expense-form {
+    display: grid;
+    gap: 10px;
+  }
+
+  .tl-expense-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 9px;
+  }
+
+  .tl-field {
+    display: grid;
+    gap: 5px;
+    min-width: 0;
+  }
+
+  .tl-field.wide {
+    grid-column: 1 / -1;
+  }
+
+  .tl-field span,
+  .tl-split-label {
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 620;
+  }
+
+  .tl-required-mark {
+    color: var(--red);
+    font-weight: 900;
+  }
+
+  .tl-field input,
+  .tl-field select,
+  .tl-field textarea {
+    width: 100%;
+    min-width: 0;
+    min-height: 38px;
+    border: 1px solid var(--line-strong);
+    background: #fff;
+    color: var(--ink);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 520;
+  }
+
+  .tl-field input,
+  .tl-field select {
+    padding: 7px 9px;
+  }
+
+  .tl-field textarea {
+    min-height: 64px;
+    padding: 8px 9px;
+    resize: vertical;
+  }
+
+  .tl-photo-field {
+    padding: 10px;
+    border: 1px solid var(--line);
+    background: #fbfcfb;
+  }
+
+  .tl-photo-field input[type="file"] {
+    min-height: 0;
+    border: 0;
+    background: transparent;
+    padding: 0;
+    font-size: 13px;
+  }
+
+  .tl-split {
+    display: grid;
+    gap: 7px;
+  }
+
+  .tl-segments {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1px;
+    border: 1px solid var(--line-strong);
+    background: var(--line-strong);
+  }
+
+  .tl-segment {
+    display: grid;
+    min-width: 0;
+    min-height: 38px;
+    background: #fff;
+    cursor: pointer;
+  }
+
+  .tl-segment input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .tl-segment span {
+    display: grid;
+    place-items: center;
+    padding: 7px 8px;
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 620;
+    line-height: 1.25;
+    text-align: center;
+  }
+
+  .tl-segment input:checked + span {
+    background: var(--green);
+    color: #fff;
+  }
+
+  .tl-split-detail {
+    display: none;
+    gap: 8px;
+    padding: 10px;
+    border: 1px solid var(--line);
+    background: #fbfcfb;
+  }
+
+  .tl-split-detail.is-visible {
+    display: grid;
+  }
+
+  .tl-participant-picks {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 7px;
+  }
+
+  .tl-pick {
+    display: grid;
+    min-width: 0;
+    cursor: pointer;
+  }
+
+  .tl-pick input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .tl-pick span {
+    display: grid;
+    place-items: center;
+    min-height: 34px;
+    border: 1px solid var(--line-strong);
+    background: #fff;
+    color: var(--ink);
+    font-size: 12px;
+    font-weight: 620;
+  }
+
+  .tl-pick input:checked + span {
+    border-color: var(--green);
+    background: var(--green-soft);
+    color: var(--green);
+  }
+
+  .tl-individual-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .tl-share-total {
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 620;
+  }
+
+  .tl-expense-submit {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px;
+    align-items: center;
+  }
+
+  .tl-expense-submit button {
+    min-height: 40px;
+    border: 1px solid var(--green);
+    background: var(--green);
+    color: #fff;
+    padding: 0 18px;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 620;
+    cursor: pointer;
+  }
+
+  .tl-expense-submit button:disabled {
+    border-color: var(--line-strong);
+    background: var(--line);
+    color: var(--muted);
+    cursor: wait;
+  }
+
+  .tl-expense-status {
+    min-width: 0;
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 620;
+  }
+
+  .tl-expense-status.is-error {
+    color: var(--red);
+  }
+
+  .tl-expense-status.is-ok {
+    color: var(--green);
+  }
+
+  .tl-docs {
+    display: grid;
+  }
+
+  .tl-doc {
+    display: grid;
+    grid-template-columns: 30px minmax(0, 1fr) auto;
+    gap: 8px;
+    align-items: center;
+    min-height: 46px;
+    padding: 8px 14px;
+    border-bottom: 1px solid var(--line);
+    text-decoration: none;
+  }
+
+  .tl-doc:last-child { border-bottom: 0; }
+  .tl-doc-icon { display: grid; place-items: center; width: 28px; height: 28px; background: var(--green-soft); color: var(--green); font-size: 12px; font-weight: 950; }
+  .tl-doc b { min-width: 0; overflow: hidden; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+  .tl-doc span:last-child { color: var(--muted); font-weight: 950; }
+
+  .tl-checks {
+    display: grid;
+    gap: 7px;
+    padding: 11px 14px 13px;
+    border-top: 1px solid var(--line);
+  }
+
+  .tl-checks label {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 8px;
+    align-items: center;
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 750;
+  }
+
+  .tl-checks input {
+    width: 15px;
+    height: 15px;
+    accent-color: var(--green);
+  }
+
+  .tl-local-info {
+    grid-column: 1 / -1;
+  }
+
+  .tl-local-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .tl-local-card {
+    display: grid;
+    gap: 10px;
+    min-width: 0;
+    padding: 13px 14px 14px;
+    border-right: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+  }
+
+  .tl-local-card:nth-child(3n) { border-right: 0; }
+
+  .tl-local-top {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px;
+    align-items: start;
+  }
+
+  .tl-local-country {
+    min-width: 0;
+    font-size: 15px;
+    font-weight: 950;
+  }
+
+  .tl-local-currency {
+    color: var(--green);
+    font-size: 12px;
+    font-weight: 950;
+    text-align: right;
+  }
+
+  .tl-local-meta {
+    display: grid;
+    gap: 6px;
+  }
+
+  .tl-local-meta div {
+    display: grid;
+    gap: 2px;
+  }
+
+  .tl-local-meta dt {
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 850;
+  }
+
+  .tl-local-meta dd {
+    margin: 0;
+    color: var(--ink);
+    font-size: 12px;
+    font-weight: 620;
+  }
+
+  .tl-local-note {
+    margin: 0;
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 620;
+  }
+
+  .tl-photo-body {
+    display: grid;
+    gap: 10px;
+    padding: 13px 14px 14px;
+  }
+
+  .tl-photo-art {
+    min-height: 122px;
+    border: 1px solid var(--line);
+    background:
+      linear-gradient(155deg, transparent 48%, rgba(255, 255, 255, .86) 49% 51%, transparent 52%),
+      linear-gradient(160deg, #2f6b89 0 32%, #b9cbbf 33% 46%, #bf7044 47% 62%, #e7c57d 63% 100%);
+  }
+
+  .tl-photo-body b,
+  .tl-photo-body span {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .tl-photo-body b { font-size: 14px; }
+  .tl-photo-body span { color: var(--muted); font-size: 12px; }
+
+  .tl-foot {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 12px;
+    padding: 11px 18px;
+    border-top: 1px solid var(--line);
+    background: var(--wash);
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 800;
+  }
+
+  .tl-foot a {
+    color: var(--green);
+    text-decoration: none;
+  }
+
+  .tl-error {
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--line);
+    background: #fff7ed;
+    color: #8a3d0d;
+    font-size: 13px;
+    font-weight: 850;
+  }
+
+  .tl-mobile-nav {
+    display: none;
+  }
+
+  .tl-title { font-weight: 680; }
+  .tl-kicker,
+  .tl-source b,
+  .tl-day b,
+  .tl-panel-head h2,
+  .tl-day-title h2,
+  .tl-box h2,
+  .tl-money strong {
+    font-weight: 640;
+  }
+
+  .tl-action,
+  .tl-sub,
+  .tl-source,
+  .tl-panel-head span,
+  .tl-panel-head a,
+  .tl-pin-name,
+  .tl-map-status,
+  .tl-time,
+  .tl-plan h3,
+  .tl-maplink,
+  .tl-upcoming-date,
+  .tl-upcoming-title,
+  .tl-money span,
+  .tl-button,
+  .tl-doc b,
+  .tl-doc-icon,
+  .tl-doc span:last-child,
+  .tl-checks label,
+  .tl-foot,
+  .tl-error {
+    font-weight: 560;
+  }
+
+  .tl-chip,
+  .tl-pin-num {
+    font-weight: 620;
+  }
+
+  @media (max-width: 960px) {
+    .tl-main { grid-template-columns: 1fr; }
+    .tl-card-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .tl-local-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .tl-local-card:nth-child(3n) { border-right: 1px solid var(--line); }
+    .tl-local-card:nth-child(2n) { border-right: 0; }
+  }
+
+  @media (max-width: 620px) {
+    .trip-live {
+      max-width: none;
+      min-height: 100vh;
+      min-height: 100dvh;
+      border: 0;
+      padding-bottom: calc(68px + env(safe-area-inset-bottom));
+    }
+
+    .trip-live.is-mobile-responsive [data-mobile-view]:not(.is-mobile-active) {
+      display: none;
+    }
+
+    .tl-head {
+      position: sticky;
+      top: 0;
+      z-index: 40;
+      gap: 12px;
+      padding: 13px 16px 10px;
+      background: rgba(255, 255, 255, .95);
+      backdrop-filter: blur(16px);
+    }
+    .tl-kicker { display: none; }
+    .tl-title { font-size: 24px; line-height: 1; }
+    .tl-sub { gap: 8px 10px; font-size: 11px; }
+    .tl-actions { display: none; }
+    .tl-action { min-height: 54px; padding: 8px 7px; }
+    .tl-days {
+      grid-auto-columns: 82px;
+      position: sticky;
+      top: var(--tl-head-height, 86px);
+      z-index: 35;
+      border-top: 0;
+      scrollbar-width: none;
+    }
+    .tl-days::-webkit-scrollbar { display: none; }
+    .tl-day { min-height: 62px; padding: 8px 7px; text-align: left; }
+    .tl-day b { font-size: 12px; }
+    .tl-main {
+      display: block;
+      padding: 0 0 12px;
+      background-size: 28px 28px;
+    }
+    .tl-panel,
+    .tl-box {
+      margin: 0 0 12px;
+      border-right: 0;
+      border-left: 0;
+    }
+    .tl-panel-head {
+      min-height: 48px;
+      padding: 12px 16px 10px;
+    }
+    .tl-map {
+      min-height: 0;
+      max-height: 260px;
+      aspect-ratio: 16 / 9;
+    }
+    .trip-live[data-mobile-view="map"] .tl-map {
+      min-height: calc(100dvh - 230px);
+      max-height: none;
+      aspect-ratio: auto;
+    }
+    .tl-pin { grid-template-columns: 28px; }
+    .tl-pin-name { display: none; }
+    .tl-map-status { grid-template-columns: 1fr; }
+    .tl-timeline { padding: 0 16px 4px; }
+    .tl-day-title { padding: 14px 0 10px; }
+    .tl-day-title h2 { font-size: 21px; }
+    .tl-item { grid-template-columns: 58px 12px minmax(0, 1fr); gap: 6px; padding: 12px 0; }
+    .tl-maplink { grid-column: 3; }
+    .tl-card-grid { display: block; }
+    .tl-local-grid { display: block; }
+    .tl-local-card,
+    .tl-local-card:nth-child(2n),
+    .tl-local-card:nth-child(3n) {
+      border-right: 0;
+    }
+    .tl-buttons { grid-template-columns: 1fr; }
+    .tl-expense-grid,
+    .tl-individual-grid,
+    .tl-expense-submit {
+      grid-template-columns: 1fr;
+    }
+    .tl-participant-picks,
+    .tl-segments {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .tl-foot { grid-template-columns: 1fr; padding: 11px 12px; }
+    .tl-mobile-nav {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 80;
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 0;
+      padding: 7px 8px calc(7px + env(safe-area-inset-bottom));
+      border-top: 1px solid var(--line-strong);
+      background: rgba(255, 255, 255, .95);
+      backdrop-filter: blur(18px);
+    }
+    .tl-mobile-nav button {
+      display: grid;
+      place-items: center;
+      min-width: 0;
+      height: 46px;
+      border: 0;
+      background: transparent;
+      color: var(--muted);
+      font: inherit;
+      font-size: 12px;
+      font-weight: 560;
+    }
+    .tl-mobile-nav button[aria-selected="true"] {
+      background: var(--green);
+      color: #fff;
+    }
+  }
+</style>
+</head>
+<body>
+
+<div class="trip-live is-loading" id="tripLive">
+  <div class="tl-loading" data-loading aria-live="polite" aria-busy="true">
+    <div class="tl-loading-card">
+      <svg class="tl-loading-plane" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2Z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <b>読み込み中</b>
+      <span data-loading-label>最新データを取得しています</span>
+    </div>
+  </div>
+  <header class="tl-head">
+    <div class="tl-titlewrap">
+      <p class="tl-kicker">Shared Travel Dashboard</p>
+      <h1 class="tl-title" data-title>旅行ダッシュボード</h1>
+      <div class="tl-sub">
+        <span data-dates></span>
+        <span class="tl-source">
+          <b data-sync-label>最終同期: 準備中</b>
+          <button class="tl-persona-button" type="button" data-profile-button>本人設定</button>
+        </span>
+      </div>
+    </div>
+  </header>
+
+  <nav class="tl-actions" data-actions aria-label="主要リンク"></nav>
+  <nav class="tl-days" data-days aria-label="日別旅程"></nav>
+
+  <main class="tl-main">
+    <section class="tl-panel tl-map-panel" data-mobile-view="home map" data-section-target="home map">
+      <div class="tl-panel-head">
+        <h2>地図・ルート</h2>
+        <a data-my-maps href="#" target="_blank" rel="noopener">Google My Mapsで開く ↗</a>
+      </div>
+      <div class="tl-map" data-map>
+        <div class="tl-map-land" aria-hidden="true"></div>
+        <svg class="tl-route-svg" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+          <polyline data-route points=""></polyline>
+        </svg>
+        <div class="tl-map-status">
+          <span data-location-caption></span>
+          <a data-directions href="#" target="_blank" rel="noopener">Google Mapsで経路 ↗</a>
+        </div>
+      </div>
+    </section>
+
+    <section class="tl-panel" data-mobile-view="home plan" data-section-target="home plan">
+      <div class="tl-timeline">
+        <div class="tl-day-title">
+          <h2 data-day-title>今日の予定</h2>
+          <span data-weather></span>
+        </div>
+        <div data-timeline></div>
+      </div>
+    </section>
+
+    <section class="tl-card-grid" data-section-target="home plan money links">
+      <article class="tl-box" data-mobile-view="home plan" data-section-target="home plan">
+        <h2>予定一覧</h2>
+        <div class="tl-upcoming" data-upcoming></div>
+      </article>
+
+      <article class="tl-box" data-mobile-view="home money" data-section-target="home money">
+        <h2>費用</h2>
+        <div class="tl-settle">
+          <div class="tl-money"><strong data-paid></strong><span data-progress-label></span></div>
+          <div class="tl-progress"><span data-progress></span></div>
+          <div class="tl-money-detail">
+            <div>最大立替<b data-your-paid></b></div>
+            <div>精算額<b data-your-due></b></div>
+          </div>
+          <div class="tl-transfer-list" data-transfers></div>
+          <div class="tl-buttons">
+            <button class="tl-button primary" type="button" data-expense-detail-toggle aria-expanded="false">費用明細を見る</button>
+          </div>
+          <div class="tl-expense-details" data-expense-details></div>
+          <div class="tl-expense-entry" data-expense-entry></div>
+        </div>
+      </article>
+
+      <article class="tl-box" data-mobile-view="home links" data-section-target="home links">
+        <h2>リンク・チェック</h2>
+        <div class="tl-docs" data-docs></div>
+        <div class="tl-checks" data-checks></div>
+      </article>
+
+      <article class="tl-box" data-mobile-view="home links" data-section-target="home links">
+        <h2>写真アルバム</h2>
+        <div class="tl-photo-body">
+          <a class="tl-photo-art" data-photo-link href="#" target="_blank" rel="noopener" aria-label="写真アルバム"></a>
+          <div><b data-photo-title></b><span data-photo-meta></span></div>
+          <a class="tl-button" data-photo-button href="#" target="_blank" rel="noopener">写真アルバムを開く</a>
+        </div>
+      </article>
+
+      <article class="tl-box tl-local-info" data-mobile-view="home links" data-section-target="home links">
+        <h2>国別 お金・移動</h2>
+        <div class="tl-local-grid" data-local-info></div>
+      </article>
+    </section>
+  </main>
+
+  <footer class="tl-foot">
+    <span data-note></span>
+    <span><a href="expense-entry.html">費用入力</a> / <a href="itinerary-editor.html">行程編集</a> / <span data-updated></span></span>
+  </footer>
+
+  <nav class="tl-mobile-nav" aria-label="スマホ用ナビゲーション">
+    <button type="button" data-mobile-nav="home" aria-selected="true">ホーム</button>
+    <button type="button" data-mobile-nav="map" aria-selected="false">地図</button>
+    <button type="button" data-mobile-nav="plan" aria-selected="false">日程</button>
+    <button type="button" data-mobile-nav="money" aria-selected="false">費用</button>
+    <button type="button" data-mobile-nav="links" aria-selected="false">リンク</button>
+  </nav>
+</div>
+
+<script src="trip-config.js"></script>
+<script>
+  (function () {
+    function mergeConfig(base, override) {
+      const result = { ...(base || {}) };
+      Object.keys(override || {}).forEach((key) => {
+        const value = override[key];
+        const current = result[key];
+        if (value && typeof value === "object" && !Array.isArray(value) &&
+            current && typeof current === "object" && !Array.isArray(current)) {
+          result[key] = mergeConfig(current, value);
+        } else if (value !== undefined) {
+          result[key] = value;
+        }
+      });
+      return result;
+    }
+
+    function safeTripSlug(value) {
+      return String(value || "")
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "") || "trip";
+    }
+
+    function normalizeTripConfig(config) {
+      const next = config || {};
+      next.tripTitle = next.tripTitle || "旅行";
+      next.tripSlug = safeTripSlug(next.tripSlug || next.slug || next.tripTitle);
+      next.auth = next.auth || {};
+      next.profile = next.profile || {};
+      next.expenseCache = next.expenseCache || {};
+      next.sheets = next.sheets || {};
+      next.ranges = next.ranges || {};
+      next.mapDefaults = next.mapDefaults || {};
+      if (!next.auth.storageKey) next.auth.storageKey = `trip-dashboard-auth-${next.tripSlug}`;
+      if (!next.profile.storageKey) next.profile.storageKey = `trip-dashboard-profile-${next.tripSlug}`;
+      if (!next.expenseCache.storageKey) next.expenseCache.storageKey = `trip-dashboard-expense-entry-${next.tripSlug}`;
+      if (!next.sheets.tripItinerary && next.sheets.southAmericaItinerary) next.sheets.tripItinerary = next.sheets.southAmericaItinerary;
+      if (!next.sheets.southAmericaItinerary && next.sheets.tripItinerary) next.sheets.southAmericaItinerary = next.sheets.tripItinerary;
+      if (!next.ranges.tripItinerary && next.ranges.southAmericaItinerary) next.ranges.tripItinerary = next.ranges.southAmericaItinerary;
+      if (!next.ranges.southAmericaItinerary && next.ranges.tripItinerary) next.ranges.southAmericaItinerary = next.ranges.tripItinerary;
+      return next;
+    }
+
+    function applyDocumentTripTitle(title) {
+      const tripTitle = title || "旅行";
+      document.title = `${tripTitle}ダッシュボード`;
+      const appleTitle = document.querySelector('meta[name="apple-mobile-web-app-title"]');
+      if (appleTitle) appleTitle.setAttribute("content", tripTitle);
+    }
+
+    const DEFAULT_CONFIG = {
+      mode: "sample", // "sample" | "googleSheets" | "appsScript"
+      tripSlug: "trip-template",
+      tripTitle: "旅行",
+      spreadsheetId: "",
+      schema: "trip", // "standard" | "trip" | "southAmerica"
+      defaultParticipants: ["参加者A", "参加者B"],
+      currencies: ["JPY", "USD", "EUR", "KRW", "TWD", "CNY", "THB", "SGD", "AUD", "GBP"],
+      sheets: {
+        basicInfo: "基本情報",
+        itinerary: "Itinerary",
+        links: "Links",
+        tripLinks: "リンク管理",
+        settlement: "Settlement",
+        checklist: "Checklist",
+        tripChecklist: "チェックリスト",
+        tripItinerary: "行程表",
+        southAmericaItinerary: "行程表",
+        reservations: "予約管理",
+        budget: "予算",
+        localInfo: "現地実用情報"
+      },
+      ranges: {
+        basicInfo: "A1:D",
+        tripItinerary: "A2:X",
+        southAmericaItinerary: "A2:X",
+        tripLinks: "A1:G",
+        tripChecklist: "A1:F",
+        reservations: "A1:I",
+        budget: "A1:F",
+        localInfo: "A1:O"
+      },
+      linkOverrides: {
+        itinerary: "",
+        maps: "",
+        expenseSheet: "",
+        photos: ""
+      },
+      mapEmbed: {
+        // "leaflet": 実地図+日別ルート / "abstract": 内蔵の見取り図 / "myMaps": Google My Maps iframe / "mapsEmbedApi": Maps Embed API directions
+        mode: "leaflet",
+        myMapsEmbedUrl: "",
+        mapsEmbedApiKey: ""
+      },
+      appsScriptUrl: "",
+      todayOverride: "", // 例: "2026-09-12"。空なら閲覧日の予定を探します。
+      refreshMinutes: 3,
+      refreshOnFocus: true,
+      minRefreshSeconds: 90,
+      auth: {
+        enabled: true,
+        mode: "appsScript", // "local" | "appsScript"
+        // SHA-256 hex of the password. Generate with: node tools/hash-password.js "your password"
+        passwordHash: "",
+        storageKey: "",
+        rememberDays: 14
+      },
+      profile: {
+        storageKey: ""
+      },
+      expenseCache: {
+        storageKey: ""
+      },
+      mapDefaults: {
+        center: [35.6812, 139.7671],
+        zoom: 5,
+        activeRadiusKm: 300,
+        overviewRadiusKm: 800
+      }
+    };
+    const CONFIG = normalizeTripConfig(mergeConfig(DEFAULT_CONFIG, window.TRIP_CONFIG || {}));
+    applyDocumentTripTitle(CONFIG.tripTitle);
+
+    const SAMPLE = {
+      trip: {
+        title: CONFIG.tripTitle || "サンプル旅行",
+        dates: "2027/3/10 - 3/12",
+        members: "参加者A / 参加者B",
+        note: "共有メモ: 予約番号や住所などの詳細はスプレッドシート側で管理してください。"
+      },
+      links: [
+        { key: "itinerary", label: "旅程", icon: "旅", url: "https://docs.google.com/spreadsheets/", caption: "Google Sheets" },
+        { key: "maps", label: "My Maps", icon: "地", url: "https://www.google.com/maps/d/", caption: "Google My Maps" },
+        { key: "expenseSheet", label: "費用", icon: "￥", url: "https://docs.google.com/spreadsheets/", caption: "Google Sheets" },
+        { key: "photos", label: "写真", icon: "写", url: "https://photos.google.com/", caption: "Google Photos" },
+        { key: "packing", label: "持ち物リスト", icon: "荷", url: "https://docs.google.com/spreadsheets/", caption: "Google Sheets" }
+      ],
+      settlement: {
+        paid: "¥3,200",
+        paidLabel: "精算額",
+        expenseTotal: "¥28,400",
+        progress: 50,
+        yourPaid: "¥14,200",
+        yourDue: "¥3,200",
+        transfers: [
+          { from: "参加者B", to: "参加者A", amount: 3200, amountLabel: "¥3,200" }
+        ],
+        rateDetails: [
+          { date: "2027-03-10", payer: "参加者A", title: "夕食", currency: "JPY", amount: "¥8,000", rateDate: "2027-03-10", rate: 1, converted: "¥8,000" },
+          { date: "2027-03-11", payer: "参加者B", title: "タクシー", currency: "USD", amount: "USD 35", rateDate: "2027-03-11", rate: 150, converted: "¥5,250" }
+        ],
+        expenseDetails: [
+          { date: "2027-03-10", payer: "参加者A", category: "食費", title: "夕食", mode: "全員で等分", amountLabel: "¥8,000", convertedLabel: "¥8,000", myShareLabel: "¥4,000", targetNames: ["参加者A", "参加者B"], shares: [{ name: "参加者A", amount: 4000, amountLabel: "¥4,000" }] },
+          { date: "2027-03-11", payer: "参加者B", category: "交通", title: "タクシー", mode: "選んだ人だけで等分", amountLabel: "USD 35", convertedLabel: "¥5,250", myShareLabel: "¥2,625", targetNames: ["参加者A", "参加者B"], shares: [{ name: "参加者A", amount: 2625, amountLabel: "¥2,625" }] }
+        ],
+        rateWarnings: [],
+        baseCurrency: "JPY",
+        photoTitle: "旅行アルバム",
+        photoMeta: "Google Photos"
+      },
+      checklist: [
+        { label: "交通と宿の予約状況確認", done: true },
+        { label: "保険と緊急連絡先の確認", done: false },
+        { label: "モバイル通信の設定", done: false },
+        { label: "荷物の最終確認", done: false }
+      ],
+      localInfo: [
+        { country: "日本", currencyCode: "JPY", currencyName: "円", approxRate: "1 JPY = ¥1", rateUpdatedAt: "", feeFreeAtm: "必要に応じて記入", atmBest: "", atmFee: "", atmNote: "", rideBest: "タクシーアプリ", rideAlt: "公共交通", paymentNote: "国内旅行では原則JPYで入力" },
+        { country: "海外渡航先", currencyCode: "USD", currencyName: "現地通貨", approxRate: "為替レートシートで管理", rateUpdatedAt: "", feeFreeAtm: "現地で確認", atmBest: "", atmFee: "", atmNote: "DCCは原則拒否", rideBest: "", rideAlt: "", paymentNote: "カードと少額現金を併用" }
+      ],
+      itinerary: [
+        { date: "2027-03-10", day: "Day 1", area: "東京", time: "10:00", type: "move", typeLabel: "移動", title: "集合", place: "東京駅", note: "集合場所を確認。", lat: 35.6812, lng: 139.7671, mapQuery: "東京駅", weather: "" },
+        { date: "2027-03-10", day: "Day 1", area: "京都", time: "13:00", type: "move", typeLabel: "移動", title: "京都へ移動", place: "京都駅", note: "新幹線または航空券を確認。", lat: 34.9858, lng: 135.7588, mapQuery: "京都駅", weather: "" },
+        { date: "2027-03-10", day: "Day 1", area: "京都", time: "18:30", type: "food", typeLabel: "食事", title: "夕食", place: "京都市内", note: "予約名を確認。", lat: 35.0116, lng: 135.7681, mapQuery: "京都市", weather: "" },
+        { date: "2027-03-11", day: "Day 2", area: "京都", time: "09:30", type: "sight", typeLabel: "観光", title: "市内観光", place: "京都市内", note: "混雑状況を見て順番を調整。", lat: 35.0116, lng: 135.7681, mapQuery: "京都市 観光", weather: "" }
+      ]
+    };
+
+    const root = document.getElementById("tripLive");
+    const qs = (selector) => root.querySelector(selector);
+    const qsa = (selector) => Array.from(root.querySelectorAll(selector));
+    const setText = (selector, value) => { qs(selector).textContent = value || ""; };
+    const setHtml = (selector, value) => { qs(selector).innerHTML = value || ""; };
+    const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (ch) => ({
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#39;"
+    })[ch]);
+    const mapsSearch = (query) => "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(query || "");
+    const valueByKeys = (row, keys) => {
+      for (const key of keys) {
+        if (row[key] !== undefined && row[key] !== "") return row[key];
+      }
+      return "";
+    };
+    const numberOrNaN = (value) => {
+      if (value === "" || value === null || value === undefined) return NaN;
+      const n = Number(value);
+      return Number.isFinite(n) ? n : NaN;
+    };
+    const PLACE_COORDS = {
+      "成田": { lat: 35.7720, lng: 140.3929 },
+      "成田空港": { lat: 35.7720, lng: 140.3929 },
+      "NRT": { lat: 35.7720, lng: 140.3929 },
+      "東京": { lat: 35.6812, lng: 139.7671 },
+      "東京駅": { lat: 35.6812, lng: 139.7671 },
+      "羽田": { lat: 35.5494, lng: 139.7798 },
+      "羽田空港": { lat: 35.5494, lng: 139.7798 },
+      "HND": { lat: 35.5494, lng: 139.7798 },
+      "京都": { lat: 35.0116, lng: 135.7681 },
+      "京都駅": { lat: 34.9858, lng: 135.7588 },
+      "大阪": { lat: 34.6937, lng: 135.5023 },
+      "新大阪": { lat: 34.7335, lng: 135.5002 },
+      "札幌": { lat: 43.0618, lng: 141.3545 },
+      "福岡": { lat: 33.5902, lng: 130.4017 },
+      "那覇": { lat: 26.2124, lng: 127.6792 },
+      "台北": { lat: 25.0330, lng: 121.5654 },
+      "ソウル": { lat: 37.5665, lng: 126.9780 },
+      "バンコク": { lat: 13.7563, lng: 100.5018 },
+      "サンフランシスコ": { lat: 37.7749, lng: -122.4194 },
+      "SFO": { lat: 37.6213, lng: -122.3790 },
+      "リマ": { lat: -12.0464, lng: -77.0428 },
+      "Lima": { lat: -12.0464, lng: -77.0428 },
+      "クスコ": { lat: -13.5319, lng: -71.9675 },
+      "Cusco": { lat: -13.5319, lng: -71.9675 },
+      "マチュピチュ方面": { lat: -13.1631, lng: -72.5450 },
+      "マチュピチュ村": { lat: -13.1547, lng: -72.5254 },
+      "アグアスカリエンテス": { lat: -13.1547, lng: -72.5254 },
+      "マチュピチュ": { lat: -13.1631, lng: -72.5450 },
+      "プエルトマルドナド": { lat: -12.5933, lng: -69.1891 },
+      "PMD": { lat: -12.5933, lng: -69.1891 },
+      "プーノ": { lat: -15.8402, lng: -70.0219 },
+      "ラパス": { lat: -16.4897, lng: -68.1193 },
+      "ウユニ": { lat: -20.4597, lng: -66.8250 },
+      "ビジャソン": { lat: -22.0866, lng: -65.5942 },
+      "ラキアカ": { lat: -22.1024, lng: -65.5920 },
+      "ビジャソン/ラキアカ": { lat: -22.0960, lng: -65.5930 },
+      "サルタ": { lat: -24.7821, lng: -65.4232 },
+      "イグアス": { lat: -25.5163, lng: -54.5854 },
+      "プエルトイグアス": { lat: -25.5972, lng: -54.5786 },
+      "FozdoIguacu/IGU": { lat: -25.6003, lng: -54.4850 },
+      "FozdoIguacuIGU": { lat: -25.6003, lng: -54.4850 },
+      "IGU": { lat: -25.6003, lng: -54.4850 },
+      "Yguazu": { lat: -25.4610, lng: -55.0000 },
+      "ColoniaYguazu": { lat: -25.4610, lng: -55.0000 },
+      "サンパウロ": { lat: -23.5558, lng: -46.6396 },
+      "サントス": { lat: -23.9608, lng: -46.3336 },
+      "リオデジャネイロ": { lat: -22.9068, lng: -43.1729 },
+      "モンテビデオ": { lat: -34.9011, lng: -56.1645 },
+      "ブエノスアイレス": { lat: -34.6037, lng: -58.3816 }
+    };
+    const normalizePlaceName = (name) => String(name || "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/\s+/g, "")
+      .replace(/・/g, "")
+      .replace(/方面$/, "方面")
+      .replace(/^移動中$/, "");
+    const coordsFor = (name) => PLACE_COORDS[normalizePlaceName(name)] || null;
+    const mapsDir = (places) => {
+      const clean = places.map((p) => p.mapQuery || p.place).filter(Boolean);
+      if (clean.length < 2) return mapsSearch(clean[0] || "");
+      const origin = clean[0];
+      const destination = clean[clean.length - 1];
+      const waypoints = clean.slice(1, -1).join("|");
+      return "https://www.google.com/maps/dir/?api=1&origin=" + encodeURIComponent(origin) +
+        "&destination=" + encodeURIComponent(destination) +
+        (waypoints ? "&waypoints=" + encodeURIComponent(waypoints) : "");
+    };
+    const mapsEmbedDirections = (places) => {
+      const clean = places.map((p) => p.mapQuery || p.place).filter(Boolean);
+      if (!CONFIG.mapEmbed.mapsEmbedApiKey || clean.length < 2) return "";
+      const origin = clean[0];
+      const destination = clean[clean.length - 1];
+      const waypoints = clean.slice(1, -1).join("|");
+      return "https://www.google.com/maps/embed/v1/directions?key=" + encodeURIComponent(CONFIG.mapEmbed.mapsEmbedApiKey) +
+        "&origin=" + encodeURIComponent(origin) +
+        "&destination=" + encodeURIComponent(destination) +
+        (waypoints ? "&waypoints=" + encodeURIComponent(waypoints) : "") +
+        "&mode=transit";
+    };
+
+    let state = { data: SAMPLE, days: [], active: 0, source: "sample" };
+    let mobileView = "home";
+    let leafletState = { loading: null, map: null, layer: null, followActive: true };
+    let expenseDetailsOpen = false;
+    let syncInFlight = null;
+    let lastSyncAt = 0;
+
+    function callAppsScript(params) {
+      return new Promise((resolve, reject) => {
+        if (!CONFIG.appsScriptUrl) {
+          reject(new Error("appsScriptUrl が未設定です"));
+          return;
+        }
+        const callback = "__tripAppsScriptCallback_" + Math.random().toString(36).slice(2);
+        const script = document.createElement("script");
+        const query = new URLSearchParams({ ...params, callback, cachebust: Date.now() });
+        window[callback] = (response) => {
+          delete window[callback];
+          script.remove();
+          if (!response || response.ok === false) {
+            reject(new Error(response && response.error ? response.error : "Apps Script API error"));
+            return;
+          }
+          resolve(response);
+        };
+        script.onerror = () => {
+          delete window[callback];
+          script.remove();
+          reject(new Error("Apps Script APIを読み込めませんでした"));
+        };
+        script.async = true;
+        script.src = CONFIG.appsScriptUrl + (CONFIG.appsScriptUrl.includes("?") ? "&" : "?") + query.toString();
+        document.head.appendChild(script);
+      });
+    }
+
+    function postAppsScript(params) {
+      return new Promise((resolve, reject) => {
+        if (!CONFIG.appsScriptUrl) {
+          reject(new Error("appsScriptUrl が未設定です"));
+          return;
+        }
+        const uploadId = "receipt-" + Date.now() + "-" + Math.random().toString(36).slice(2);
+        const iframeName = "receiptUploadFrame_" + uploadId.replace(/[^A-Za-z0-9_]/g, "_");
+        const iframe = document.createElement("iframe");
+        const form = document.createElement("form");
+        const cleanup = () => {
+          window.removeEventListener("message", onMessage);
+          form.remove();
+          iframe.remove();
+        };
+        const timer = setTimeout(() => {
+          cleanup();
+          reject(new Error("写真アップロードがタイムアウトしました"));
+        }, 60000);
+        const onMessage = (event) => {
+          const data = event.data || {};
+          if (data.source !== "trip-expense-receipt-upload" || data.uploadId !== uploadId) return;
+          clearTimeout(timer);
+          cleanup();
+          const response = data.response || {};
+          if (response.ok === false) {
+            reject(new Error(response.error || "写真アップロードに失敗しました"));
+            return;
+          }
+          resolve(response);
+        };
+
+        iframe.name = iframeName;
+        iframe.hidden = true;
+        form.hidden = true;
+        form.method = "POST";
+        form.action = CONFIG.appsScriptUrl;
+        form.target = iframeName;
+
+        Object.entries({ ...params, uploadId }).forEach(([key, value]) => {
+          const input = document.createElement("input");
+          input.type = "hidden";
+          input.name = key;
+          input.value = value == null ? "" : String(value);
+          form.appendChild(input);
+        });
+
+        window.addEventListener("message", onMessage);
+        document.body.appendChild(iframe);
+        document.body.appendChild(form);
+        form.submit();
+      });
+    }
+
+    function fileAsDataUrl(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ""));
+        reader.onerror = () => reject(new Error("写真を読み込めませんでした"));
+        reader.readAsDataURL(file);
+      });
+    }
+
+    function imageFromDataUrl(dataUrl) {
+      return new Promise((resolve, reject) => {
+        const image = new Image();
+        image.onload = () => resolve(image);
+        image.onerror = () => reject(new Error("写真を処理できませんでした"));
+        image.src = dataUrl;
+      });
+    }
+
+    async function prepareReceiptPhoto(file) {
+      const originalDataUrl = await fileAsDataUrl(file);
+      if (!/^image\//.test(file.type || "")) {
+        throw new Error("画像ファイルを選択してください");
+      }
+
+      try {
+        const image = await imageFromDataUrl(originalDataUrl);
+        const maxSize = 1600;
+        const scale = Math.min(1, maxSize / Math.max(image.naturalWidth || image.width, image.naturalHeight || image.height));
+        const width = Math.max(1, Math.round((image.naturalWidth || image.width) * scale));
+        const height = Math.max(1, Math.round((image.naturalHeight || image.height) * scale));
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const context = canvas.getContext("2d");
+        context.drawImage(image, 0, 0, width, height);
+        const dataUrl = canvas.toDataURL("image/jpeg", .78);
+        return {
+          fileName: String(file.name || "receipt.jpg").replace(/\.[^.]+$/, "") + ".jpg",
+          mimeType: "image/jpeg",
+          data: dataUrl.split(",")[1] || ""
+        };
+      } catch (_) {
+        return {
+          fileName: file.name || "receipt.jpg",
+          mimeType: file.type || "image/jpeg",
+          data: originalDataUrl.split(",")[1] || ""
+        };
+      }
+    }
+
+    async function uploadReceiptPhoto(file) {
+      const prepared = await prepareReceiptPhoto(file);
+      if (!prepared.data) throw new Error("写真データがありません");
+      if (prepared.data.length > 7000000) {
+        throw new Error("写真サイズが大きすぎます。小さめの画像で再試行してください");
+      }
+      return postAppsScript({
+        action: "receiptUpload",
+        token: getAuthToken(),
+        fileName: prepared.fileName,
+        mimeType: prepared.mimeType,
+        data: prepared.data
+      });
+    }
+
+    function renderData(data, source) {
+      const previousDate = state.days[state.active] && state.days[state.active].date;
+      state.data = data || SAMPLE;
+      state.source = source || CONFIG.mode;
+      state.days = groupDays(state.data.itinerary || []);
+      const sameDayIndex = previousDate ? state.days.findIndex((day) => day.date === previousDate) : -1;
+      state.active = sameDayIndex >= 0 ? sameDayIndex : chooseActive(state.days);
+      renderBase();
+      renderActive();
+      applyMobileView(mobileView);
+    }
+
+    function setLoading(isLoading, label) {
+      root.classList.toggle("is-loading", Boolean(isLoading));
+      const loading = qs("[data-loading]");
+      const loadingLabel = qs("[data-loading-label]");
+      if (loading) loading.setAttribute("aria-busy", String(Boolean(isLoading)));
+      if (loadingLabel && label) loadingLabel.textContent = label;
+    }
+
+    async function sha256Hex(text) {
+      const bytes = new TextEncoder().encode(text);
+      const digest = await crypto.subtle.digest("SHA-256", bytes);
+      return Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+    }
+
+    function hasAuthSession() {
+      if (!CONFIG.auth.enabled) return true;
+      try {
+        const raw = localStorage.getItem(CONFIG.auth.storageKey);
+        if (!raw) return false;
+        const session = JSON.parse(raw);
+        return session && session.expiresAt && Date.now() < session.expiresAt && (CONFIG.auth.mode !== "appsScript" || session.token);
+      } catch (_) {
+        return false;
+      }
+    }
+
+    function getAuthToken() {
+      try {
+        const session = JSON.parse(localStorage.getItem(CONFIG.auth.storageKey) || "{}");
+        return session && session.expiresAt && Date.now() < session.expiresAt ? session.token || "" : "";
+      } catch (_) {
+        return "";
+      }
+    }
+
+    function saveAuthSession(token, expiresAt) {
+      const days = Number(CONFIG.auth.rememberDays || 1);
+      localStorage.setItem(CONFIG.auth.storageKey, JSON.stringify({
+        ok: true,
+        token: token || "",
+        expiresAt: expiresAt || Date.now() + days * 24 * 60 * 60 * 1000
+      }));
+    }
+
+    function clearAuthSession() {
+      localStorage.removeItem(CONFIG.auth.storageKey);
+    }
+
+    function readProfile() {
+      try {
+        const profile = JSON.parse(localStorage.getItem(CONFIG.profile.storageKey) || "{}");
+        return profile && profile.name ? profile : null;
+      } catch (_) {
+        return null;
+      }
+    }
+
+    function saveProfile(name) {
+      localStorage.setItem(CONFIG.profile.storageKey, JSON.stringify({
+        name,
+        savedAt: new Date().toISOString()
+      }));
+    }
+
+    function saveExpenseEntryCache(data) {
+      const participants = expenseParticipants(data || SAMPLE);
+      if (!participants.length) return;
+      localStorage.setItem(CONFIG.expenseCache.storageKey, JSON.stringify({
+        participants,
+        tripTitle: data && data.trip && data.trip.title || CONFIG.tripTitle || "旅行",
+        savedAt: new Date().toISOString()
+      }));
+    }
+
+    function currentProfileName(participants) {
+      const profile = readProfile();
+      if (!profile || !profile.name) return "";
+      if (!participants || !participants.length) return profile.name;
+      return participants.includes(profile.name) ? profile.name : "";
+    }
+
+    function profileInitial(name) {
+      return String(name || "?").trim().slice(0, 1) || "?";
+    }
+
+    function updateProfileButton() {
+      const button = qs("[data-profile-button]");
+      if (!button) return;
+      const profile = readProfile();
+      button.textContent = profile && profile.name ? profile.name : "本人設定";
+      button.setAttribute("aria-label", profile && profile.name ? `本人設定を変更: ${profile.name}` : "本人設定");
+    }
+
+    function applyProfileDefaults(form, participants) {
+      const name = currentProfileName(participants);
+      if (!name || !form || !form.elements.payer) return;
+      form.elements.payer.value = name;
+    }
+
+    function showIdentityModal(required) {
+      return new Promise((resolve) => {
+        const existing = document.querySelector(".tl-identity-modal");
+        if (existing) existing.remove();
+
+        const participants = expenseParticipants(state.data || SAMPLE);
+        const savedName = currentProfileName(participants);
+        const options = participants.map((name) =>
+          `<option value="${escapeHtml(name)}" ${name === savedName ? "selected" : ""}>${escapeHtml(name)}</option>`
+        ).join("");
+        const modal = document.createElement("div");
+        modal.className = "tl-identity-modal";
+        modal.innerHTML = `
+          <form class="tl-identity-card" role="dialog" aria-modal="true" aria-labelledby="identityTitle">
+            <header>
+              <div>
+                <h2 id="identityTitle">あなたは誰ですか</h2>
+                <p>この端末に保存して、支払者などの初期値に使います。</p>
+              </div>
+              <div class="tl-identity-mark" data-identity-mark>${escapeHtml(profileInitial(savedName))}</div>
+            </header>
+            <div class="tl-identity-body">
+              <label class="tl-identity-field">
+                <span>本人として使う名前</span>
+                <select name="profileName" required>
+                  <option value="">選択してください</option>
+                  ${options}
+                </select>
+              </label>
+              <div class="tl-identity-actions">
+                <span class="tl-identity-note">ブラウザのローカルストレージにだけ保存されます。</span>
+                <button type="submit">登録する</button>
+                ${required ? "" : `<button class="secondary" type="button" data-identity-close>閉じる</button>`}
+              </div>
+            </div>
+          </form>`;
+        document.body.appendChild(modal);
+
+        const form = modal.querySelector("form");
+        const select = modal.querySelector("select");
+        const mark = modal.querySelector("[data-identity-mark]");
+        const close = modal.querySelector("[data-identity-close]");
+        select.focus();
+        select.addEventListener("change", () => {
+          mark.textContent = profileInitial(select.value);
+        });
+        if (close) {
+          close.addEventListener("click", () => {
+            modal.remove();
+            resolve(false);
+          });
+        }
+        form.addEventListener("submit", (event) => {
+          event.preventDefault();
+          const name = select.value;
+          if (!name) {
+            select.focus();
+            return;
+          }
+          saveProfile(name);
+          modal.remove();
+          updateProfileButton();
+          const expenseForm = qs("[data-expense-form-native]");
+          applyProfileDefaults(expenseForm, participants);
+          renderBase();
+          renderActive();
+          resolve(true);
+        });
+      });
+    }
+
+    async function requestIdentityIfNeeded() {
+      updateProfileButton();
+      const participants = expenseParticipants(state.data || SAMPLE);
+      if (!currentProfileName(participants)) {
+        await showIdentityModal(true);
+      }
+    }
+
+    function requestPassword() {
+      return new Promise((resolve) => {
+        if (!CONFIG.auth.enabled || hasAuthSession()) {
+          resolve(true);
+          return;
+        }
+
+        const gate = document.createElement("div");
+        gate.className = "tl-auth";
+        gate.innerHTML = `
+          <form class="tl-auth-box">
+            <h2>旅行ページを開く</h2>
+            <div class="tl-auth-body">
+              <p>共有されたパスワードを入力してください。</p>
+              <label>
+                パスワード
+                <input type="password" autocomplete="current-password" autofocus aria-label="パスワード" placeholder="パスワードを入力">
+              </label>
+              <button type="submit">送信</button>
+              <div class="tl-auth-error" aria-live="polite"></div>
+            </div>
+          </form>`;
+        document.body.appendChild(gate);
+
+        const form = gate.querySelector("form");
+        const input = gate.querySelector("input");
+        const error = gate.querySelector(".tl-auth-error");
+        form.addEventListener("submit", async (event) => {
+          event.preventDefault();
+          const value = input.value || "";
+          if (CONFIG.auth.mode === "appsScript") {
+            try {
+              const passwordHash = await sha256Hex(value);
+              const response = await callAppsScript({ action: "auth", passwordHash });
+              saveAuthSession(response.token, response.expiresAt);
+              gate.remove();
+              resolve(true);
+            } catch (apiError) {
+              input.value = "";
+              input.focus();
+              error.textContent = apiError.message || "認証に失敗しました。";
+            }
+            return;
+          }
+          if (!CONFIG.auth.passwordHash) {
+            error.textContent = "passwordHash が未設定です。";
+            return;
+          }
+          const hash = await sha256Hex(value);
+          if (hash === CONFIG.auth.passwordHash) {
+            saveAuthSession();
+            gate.remove();
+            resolve(true);
+          } else {
+            input.value = "";
+            input.focus();
+            error.textContent = "パスワードが違います。";
+          }
+        });
+      });
+    }
+
+    function todayISO() {
+      if (CONFIG.todayOverride) return CONFIG.todayOverride;
+      const now = new Date();
+      const y = now.getFullYear();
+      const m = String(now.getMonth() + 1).padStart(2, "0");
+      const d = String(now.getDate()).padStart(2, "0");
+      return `${y}-${m}-${d}`;
+    }
+
+    function normalizeDate(value) {
+      if (!value) return "";
+      if (value instanceof Date) return value.toISOString().slice(0, 10);
+      const text = String(value).trim().replace(/\//g, "-");
+      const match = text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+      if (!match) return text;
+      return `${match[1]}-${match[2].padStart(2, "0")}-${match[3].padStart(2, "0")}`;
+    }
+
+    function formatHeaderDate(value) {
+      const normalized = normalizeDate(value);
+      const match = normalized.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      return match ? `${match[1]}/${match[2]}/${match[3]}` : normalized;
+    }
+
+    function formatHeaderDateRange(value) {
+      return String(value || "")
+        .split(/\s+-\s+/)
+        .map(formatHeaderDate)
+        .filter(Boolean)
+        .join(" - ");
+    }
+
+    function groupDays(itinerary) {
+      const map = new Map();
+      itinerary
+        .map((item) => ({ ...item, date: normalizeDate(item.date), lat: numberOrNaN(item.lat), lng: numberOrNaN(item.lng) }))
+        .forEach((item) => {
+          const key = item.date || "undated";
+          if (!map.has(key)) {
+            map.set(key, { date: key, day: item.day || "", area: item.area || item.place || "", weather: item.weather || "", items: [] });
+          }
+          const day = map.get(key);
+          day.items.push(item);
+          day.day = day.day || item.day || "";
+          day.area = day.area || item.area || item.place || "";
+          day.weather = day.weather || item.weather || "";
+        });
+      return Array.from(map.values());
+    }
+
+    function chooseActive(days) {
+      const today = todayISO();
+      let index = days.findIndex((day) => day.date === today);
+      if (index >= 0) return index;
+      index = days.findIndex((day) => day.date > today);
+      return index >= 0 ? index : Math.max(0, days.length - 1);
+    }
+
+    function linkByKey(key) {
+      return state.data.links.find((link) => link.key === key) || {};
+    }
+
+    function uniquePlaces(items) {
+      const seen = new Set();
+      return items.filter((item) => {
+        const key = item.mapQuery || item.place || item.title;
+        if (!key || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+    }
+
+    function projectPlaces(items) {
+      const places = uniquePlaces(items);
+      const withLatLng = places.filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lng));
+      if (withLatLng.length >= 2) {
+        const lats = withLatLng.map((p) => p.lat);
+        const lngs = withLatLng.map((p) => p.lng);
+        const minLat = Math.min(...lats), maxLat = Math.max(...lats);
+        const minLng = Math.min(...lngs), maxLng = Math.max(...lngs);
+        const latSpan = maxLat - minLat || 1;
+        const lngSpan = maxLng - minLng || 1;
+        return places.map((p, index) => ({
+          ...p,
+          x: Number.isFinite(p.lng) ? 10 + ((p.lng - minLng) / lngSpan) * 80 : 15 + index * 16,
+          y: Number.isFinite(p.lat) ? 82 - ((p.lat - minLat) / latSpan) * 64 : 50
+        }));
+      }
+      return places.map((p, index) => ({ ...p, x: 12 + index * (76 / Math.max(1, places.length - 1)), y: index % 2 ? 42 : 58 }));
+    }
+
+    function shortDate(date) {
+      return String(date || "").replace(/^\d{4}-0?/, "").replace("-", "/");
+    }
+
+    function compactDateRange(dates) {
+      const cleanDates = Array.from(new Set((dates || []).filter(Boolean))).sort();
+      if (!cleanDates.length) return "";
+      const first = shortDate(cleanDates[0]);
+      const last = shortDate(cleanDates[cleanDates.length - 1]);
+      return first === last ? first : `${first}-${last}`;
+    }
+
+    function itineraryRoutePoints() {
+      const points = [];
+      const pushPoint = (item, day, dayIndex, lat, lng, place, role) => {
+        const nextLat = Number(lat);
+        const nextLng = Number(lng);
+        if (!Number.isFinite(nextLat) || !Number.isFinite(nextLng)) return;
+        const previous = points[points.length - 1];
+        const sameAsPrevious = previous && Math.abs(previous.lat - nextLat) < .0001 && Math.abs(previous.lng - nextLng) < .0001;
+        if (sameAsPrevious && previous.dayIndex === dayIndex) return;
+        points.push({
+          ...item,
+          role,
+          dayIndex,
+          dayLabel: item.day || day.day || `Day ${dayIndex + 1}`,
+          date: item.date || day.date,
+          area: item.area || day.area,
+          place: place || item.place || item.area || item.title,
+          lat: nextLat,
+          lng: nextLng
+        });
+      };
+
+      state.days.forEach((day, dayIndex) => {
+        day.items.forEach((item) => {
+          if (Number.isFinite(item.originLat) && Number.isFinite(item.originLng) && Number.isFinite(item.destinationLat) && Number.isFinite(item.destinationLng)) {
+            pushPoint(item, day, dayIndex, item.originLat, item.originLng, item.origin, "origin");
+            pushPoint(item, day, dayIndex, item.destinationLat, item.destinationLng, item.destination || item.place, "destination");
+            return;
+          }
+          pushPoint(item, day, dayIndex, item.lat, item.lng, item.place || item.area, "stay");
+        });
+      });
+      return points;
+    }
+
+    function loadLeaflet() {
+      if (window.L) return Promise.resolve();
+      if (leafletState.loading) return leafletState.loading;
+      leafletState.loading = new Promise((resolve, reject) => {
+        const css = document.createElement("link");
+        css.rel = "stylesheet";
+        css.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
+        document.head.appendChild(css);
+
+        const script = document.createElement("script");
+        script.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
+        script.onload = resolve;
+        script.onerror = () => {
+          leafletState.loading = null;
+          reject(new Error("Leafletを読み込めませんでした"));
+        };
+        document.head.appendChild(script);
+      });
+      return leafletState.loading;
+    }
+
+    function applyMobileView(view) {
+      mobileView = view || mobileView || "home";
+      if (mobileView === "map") leafletState.followActive = true;
+      root.dataset.sectionView = mobileView;
+      root.dataset.mobileView = mobileView;
+      root.classList.add("is-mobile-responsive");
+      syncStickyOffsets();
+      qsa("[data-mobile-view]").forEach((node) => {
+        const views = String(node.dataset.mobileView || "").split(/\s+/);
+        node.classList.toggle("is-mobile-active", mobileView === "home" || views.includes(mobileView));
+      });
+      qsa("[data-section-nav]").forEach((button) => {
+        button.setAttribute("aria-selected", String(button.dataset.sectionNav === mobileView));
+      });
+      qsa("[data-mobile-nav]").forEach((button) => {
+        button.setAttribute("aria-selected", String(button.dataset.mobileNav === mobileView));
+      });
+      if (mobileView === "home" || mobileView === "map") {
+        setTimeout(() => {
+          if (leafletState.map) leafletState.map.invalidateSize();
+          if (mobileView === "map" && state.days.length && !leafletState.map) renderActive();
+        }, 80);
+      }
+    }
+
+    function syncStickyOffsets() {
+      const head = qs(".tl-head");
+      if (!head) return;
+      root.style.setProperty("--tl-head-height", `${Math.ceil(head.getBoundingClientRect().height)}px`);
+    }
+
+    function rowsFromGviz(response) {
+      if (!response || !response.table) return [];
+      const labels = response.table.cols.map((col, index) => col.label || col.id || `col${index}`);
+      return response.table.rows.map((row) => {
+        const obj = {};
+        labels.forEach((label, index) => {
+          const cell = row.c[index];
+          obj[label] = cell ? (cell.f || cell.v || "") : "";
+        });
+        return obj;
+      });
+    }
+
+    function parseYen(value) {
+      const n = Number(String(value || "").replace(/[^\d.-]/g, ""));
+      return Number.isFinite(n) ? n : 0;
+    }
+
+    function formatYen(value) {
+      return value ? "¥" + Math.round(value).toLocaleString("ja-JP") : "未入力";
+    }
+
+    function renderTransfers(settlement) {
+      const mount = qs("[data-transfers]");
+      if (!mount) return;
+      const transfers = settlement.transfers || [];
+      if (!transfers.length) {
+        mount.innerHTML = `<h3>精算する金額</h3><div class="tl-transfer-row"><span>現時点で精算する支払いはありません</span><b>¥0</b></div><div class="tl-expense-status" data-settlement-status aria-live="polite"></div>`;
+        return;
+      }
+      mount.innerHTML = `<h3>精算する金額</h3>` + transfers.map((transfer) =>
+        `<div class="tl-transfer-row">
+          <span>${escapeHtml(transfer.from)} → ${escapeHtml(transfer.to)}</span>
+          <b>${escapeHtml(transfer.amountLabel || "")}</b>
+          <button type="button" data-settlement-complete data-from="${escapeHtml(transfer.from)}" data-to="${escapeHtml(transfer.to)}" data-amount="${Number(transfer.amount || 0)}">精算完了</button>
+          ${transfer.completedLabel ? `<small>完了済み ${escapeHtml(transfer.completedLabel)} を差し引き済み</small>` : ""}
+        </div>`
+      ).join("") + `<div class="tl-expense-status" data-settlement-status aria-live="polite"></div>`;
+      setupSettlementCompleteHandlers(mount);
+    }
+
+    function setupSettlementCompleteHandlers(mount) {
+      const status = mount.querySelector("[data-settlement-status]");
+      mount.querySelectorAll("[data-settlement-complete]").forEach((button) => {
+        button.addEventListener("click", async () => {
+          const from = button.dataset.from || "";
+          const to = button.dataset.to || "";
+          const amount = Number(button.dataset.amount || 0);
+          if (!from || !to || !amount) return;
+          button.disabled = true;
+          if (status) status.textContent = `${from} → ${to} を精算完了にしています...`;
+          try {
+            const response = await callAppsScript({
+              action: "settlementComplete",
+              token: getAuthToken(),
+              from,
+              to,
+              amount,
+              note: `サイト上で${from}から${to}への精算完了`
+            });
+            if (response.data) {
+              state.data = response.data;
+              state.days = groupDays(state.data.itinerary || []);
+            }
+            renderBase();
+            renderActive();
+            const nextStatus = qs("[data-settlement-status]");
+            if (nextStatus) {
+              nextStatus.textContent = `${from} → ${to} を精算完了にしました。`;
+              nextStatus.classList.add("is-ok");
+            }
+          } catch (error) {
+            if (isAuthError(error)) clearAuthSession();
+            if (status) {
+              status.textContent = error.message || "精算完了の登録に失敗しました。";
+              status.classList.add("is-error");
+            }
+          } finally {
+            button.disabled = false;
+          }
+        });
+      });
+    }
+
+    function selectedExpenseTotal(settlement) {
+      const profileName = currentProfileName(expenseParticipants(state.data || SAMPLE));
+      const byPerson = settlement.expenseByPerson || {};
+      const personExpense = profileName ? byPerson[profileName] : null;
+      if (personExpense) {
+        return {
+          amountLabel: personExpense.amountLabel || formatYen(personExpense.amount),
+          label: `${profileName}の費用合計`
+        };
+      }
+      return {
+        amountLabel: settlement.expenseTotal || "¥0",
+        label: "費用総額"
+      };
+    }
+
+    function renderExpenseDetails(settlement) {
+      const mount = qs("[data-expense-details]");
+      const button = qs("[data-expense-detail-toggle]");
+      if (!mount || !button) return;
+
+      const participants = expenseParticipants(state.data || SAMPLE);
+      const profileName = currentProfileName(participants);
+      const details = settlement.expenseDetails || [];
+      const related = profileName ? details.filter((detail) => {
+        const shares = detail.shares || [];
+        const targetNames = detail.targetNames || [];
+        return targetNames.includes(profileName) ||
+          shares.some((share) => share.name === profileName && Number(share.amount || 0) > 0);
+      }) : [];
+
+      button.textContent = expenseDetailsOpen ? "費用明細を閉じる" : "費用明細を見る";
+      button.setAttribute("aria-expanded", String(expenseDetailsOpen));
+      mount.classList.toggle("is-visible", expenseDetailsOpen);
+
+      button.onclick = () => {
+        expenseDetailsOpen = !expenseDetailsOpen;
+        renderExpenseDetails(settlement);
+      };
+
+      if (!expenseDetailsOpen) {
+        mount.innerHTML = "";
+        return;
+      }
+
+      if (!profileName) {
+        mount.innerHTML = `<div class="tl-expense-empty">本人設定を登録すると、自分に関連する費用明細を表示できます。</div>`;
+        return;
+      }
+
+      if (!related.length) {
+        mount.innerHTML = `<div class="tl-expense-empty">${escapeHtml(profileName)}に関連する費用はまだありません。</div>`;
+        return;
+      }
+
+      const shareFor = (detail) => {
+        const share = (detail.shares || []).find((item) => item.name === profileName);
+        if (share) return share.amountLabel || formatYen(share.amount);
+        if (detail.myShareLabel) return detail.myShareLabel;
+        return "-";
+      };
+      const roleFor = (detail) => {
+        const isPayer = detail.payer === profileName;
+        const hasShare = (detail.shares || []).some((item) => item.name === profileName && Number(item.amount || 0) > 0) ||
+          (detail.targetNames || []).includes(profileName);
+        if (isPayer && hasShare) return "支払・負担";
+        if (isPayer) return "立替のみ";
+        return "負担";
+      };
+
+      mount.innerHTML = `
+        <div class="tl-expense-details-head">
+          <b>${escapeHtml(profileName)}に関連する費用</b>
+          <span>${related.length}件</span>
+        </div>
+        <div class="tl-expense-table-wrap">
+          <table class="tl-expense-table">
+            <thead>
+              <tr>
+                <th>日付</th>
+                <th>内容</th>
+                <th>支払者</th>
+                <th>区分</th>
+                <th>精算範囲</th>
+                <th>支払額</th>
+                <th>自分の負担</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${related.map((detail) => `
+                <tr>
+                  <td>${escapeHtml(detail.date || "")}</td>
+                  <td>${escapeHtml(detail.title || "立替")}${detail.category ? `<br><small>${escapeHtml(detail.category)}</small>` : ""}</td>
+                  <td>${escapeHtml(detail.payer || "")}</td>
+                  <td>${escapeHtml(roleFor(detail))}</td>
+                  <td>${escapeHtml(detail.mode || "")}</td>
+                  <td>${escapeHtml(detail.convertedLabel || detail.amountLabel || "")}${detail.amountLabel && detail.convertedLabel && detail.amountLabel !== detail.convertedLabel ? `<br><small>${escapeHtml(detail.amountLabel)}</small>` : ""}</td>
+                  <td>${escapeHtml(shareFor(detail))}</td>
+                </tr>
+              `).join("")}
+            </tbody>
+          </table>
+        </div>`;
+    }
+
+    function expenseParticipants(data) {
+      const fromData = (data.participants || [])
+        .map((member) => member && (member.name || member.displayName || member["表示名"]))
+        .filter(Boolean);
+      if (fromData.length) return fromData;
+      const fromMembers = String(data.trip && data.trip.members || "")
+        .split(/\s*\/\s*|、|,|\n/)
+        .map((name) => name.trim())
+        .filter((name) => name && !/\d+人|共有メンバー/.test(name));
+      return fromMembers.length ? fromMembers : (CONFIG.defaultParticipants || ["参加者A", "参加者B"]);
+    }
+
+    function expenseCurrencies(data) {
+      const fromLocalInfo = (data.localInfo || [])
+        .map((row) => row && (row.currencyCode || row.currency || row["通貨コード"]))
+        .filter(Boolean);
+      return Array.from(new Set(["JPY"].concat(CONFIG.currencies || [], fromLocalInfo)))
+        .map((code) => String(code || "").trim().toUpperCase())
+        .filter(Boolean);
+    }
+
+    function renderExpenseEntry(data) {
+      const mount = qs("[data-expense-entry]");
+      if (!mount) return;
+      const existingForm = mount.querySelector("[data-expense-form-native]");
+      if (existingForm && existingForm.dataset.dirty === "true") return;
+      const participants = expenseParticipants(data);
+      const currencyOptions = expenseCurrencies(data).map((code) => `<option>${escapeHtml(code)}</option>`).join("");
+      const profileName = currentProfileName(participants);
+      const payerOptions = participants.map((name) => `<option value="${escapeHtml(name)}" ${name === profileName ? "selected" : ""}>${escapeHtml(name)}</option>`).join("");
+      const targetPicks = participants.map((name) => `
+        <label class="tl-pick">
+          <input type="checkbox" name="targets" value="${escapeHtml(name)}" checked>
+          <span>${escapeHtml(name)}</span>
+        </label>`).join("");
+      const shareInputs = participants.map((name) => `
+        <label class="tl-field">
+          <span>${escapeHtml(name)}</span>
+          <input type="number" name="share-${escapeHtml(name)}" data-share-name="${escapeHtml(name)}" min="0" step="1" inputmode="numeric" placeholder="0">
+        </label>`).join("");
+
+      mount.innerHTML = `
+        <div class="tl-expense-head">
+          <b>ページ内で立替入力</b>
+          <a href="expense-entry.html">入力専用ページを開く</a>
+        </div>
+        <form class="tl-expense-form" data-expense-form-native>
+          <div class="tl-expense-grid">
+            <label class="tl-field">
+              <span>支払日 <b class="tl-required-mark" aria-label="必須">*</b></span>
+              <input type="date" name="paidDate" required>
+            </label>
+            <label class="tl-field">
+              <span>支払者 <b class="tl-required-mark" aria-label="必須">*</b></span>
+              <select name="payer" required>${payerOptions}</select>
+            </label>
+            <label class="tl-field">
+              <span>カテゴリ <b class="tl-required-mark" aria-label="必須">*</b></span>
+              <select name="category" required>
+                <option>食費</option>
+                <option>交通</option>
+                <option>宿泊</option>
+                <option>観光</option>
+                <option>通信</option>
+                <option>その他</option>
+              </select>
+            </label>
+            <label class="tl-field">
+              <span>通貨 <b class="tl-required-mark" aria-label="必須">*</b></span>
+              <select name="currency" required>${currencyOptions}</select>
+            </label>
+            <label class="tl-field wide">
+              <span>内容 <b class="tl-required-mark" aria-label="必須">*</b></span>
+              <input type="text" name="title" required placeholder="例: 空港からホテルまでのタクシー">
+            </label>
+            <label class="tl-field wide">
+              <span>金額 <b class="tl-required-mark" aria-label="必須">*</b></span>
+              <input type="number" name="amount" required min="1" step="1" inputmode="decimal" placeholder="例: 12000">
+            </label>
+          </div>
+
+          <div class="tl-split">
+            <span class="tl-split-label">精算方法 <b class="tl-required-mark" aria-label="必須">*</b></span>
+            <div class="tl-segments">
+              <label class="tl-segment"><input type="radio" name="splitMode" value="全員で等分" required checked><span>全員で等分</span></label>
+              <label class="tl-segment"><input type="radio" name="splitMode" value="選んだ人だけで等分" required><span>選んだ人だけ</span></label>
+              <label class="tl-segment"><input type="radio" name="splitMode" value="個別金額を入力" required><span>個別金額</span></label>
+              <label class="tl-segment"><input type="radio" name="splitMode" value="精算不要" required><span>精算不要</span></label>
+            </div>
+          </div>
+
+          <div class="tl-split-detail" data-selected-detail>
+            <span class="tl-split-label">割り勘する人</span>
+            <div class="tl-participant-picks">${targetPicks}</div>
+          </div>
+
+          <div class="tl-split-detail" data-individual-detail>
+            <span class="tl-split-label">各自の負担額</span>
+            <div class="tl-individual-grid">${shareInputs}</div>
+            <div class="tl-share-total" data-share-total>合計 ¥0</div>
+          </div>
+
+          <div class="tl-expense-grid">
+            <label class="tl-field">
+              <span>支払方法</span>
+              <select name="paymentMethod">
+                <option>カード</option>
+                <option>現金</option>
+                <option>送金</option>
+                <option>その他</option>
+              </select>
+            </label>
+            <label class="tl-field tl-photo-field">
+              <span>レシート写真</span>
+              <input type="file" name="receiptPhoto" accept="image/*" capture="environment">
+            </label>
+            <label class="tl-field wide">
+              <span>メモ</span>
+              <textarea name="note" placeholder="任意。為替メモや補足があれば入力"></textarea>
+            </label>
+          </div>
+
+          <div class="tl-expense-submit">
+            <div class="tl-expense-status" data-expense-status aria-live="polite"></div>
+            <button type="submit">保存</button>
+          </div>
+        </form>`;
+
+      const form = mount.querySelector("[data-expense-form-native]");
+      form.elements.paidDate.value = todayISO();
+      applyProfileDefaults(form, participants);
+      setupExpenseEntryHandlers(form, participants);
+    }
+
+    function setupExpenseEntryHandlers(form, participants) {
+      const selectedDetail = form.querySelector("[data-selected-detail]");
+      const individualDetail = form.querySelector("[data-individual-detail]");
+      const status = form.querySelector("[data-expense-status]");
+      const totalNode = form.querySelector("[data-share-total]");
+      const button = form.querySelector("button[type='submit']");
+      const amountInput = form.elements.amount;
+
+      const setStatus = (message, type) => {
+        status.textContent = message || "";
+        status.classList.toggle("is-error", type === "error");
+        status.classList.toggle("is-ok", type === "ok");
+      };
+
+      const activeMode = () => form.elements.splitMode.value;
+      const numberValue = (value) => {
+        const n = Number(String(value || "").replace(/[^\d.-]/g, ""));
+        return Number.isFinite(n) ? n : 0;
+      };
+      const formatInputAmount = (value) => {
+        const currency = form.elements.currency.value || "JPY";
+        if (currency === "JPY") return formatYen(value);
+        return `${currency} ${Math.round(value * 100) / 100}`;
+      };
+      const shareInputFor = (name) => Array.from(form.querySelectorAll("[data-share-name]"))
+        .find((input) => input.dataset.shareName === name);
+      const individualTotal = () => participants.reduce((sum, name) => {
+        const input = shareInputFor(name);
+        return sum + numberValue(input && input.value);
+      }, 0);
+
+      const updateMode = () => {
+        const mode = activeMode();
+        selectedDetail.classList.toggle("is-visible", /選んだ人だけ/.test(mode));
+        individualDetail.classList.toggle("is-visible", /個別金額/.test(mode));
+        updateShareTotal();
+      };
+
+      const updateShareTotal = () => {
+        const total = individualTotal();
+        const amount = numberValue(amountInput.value);
+        const message = amount ? `合計 ${formatInputAmount(total)} / 支払額 ${formatInputAmount(amount)}` : `合計 ${formatInputAmount(total)}`;
+        totalNode.textContent = message;
+        totalNode.style.color = /個別金額/.test(activeMode()) && amount && Math.abs(total - amount) > 1 ? "var(--red)" : "var(--muted)";
+      };
+
+      form.addEventListener("change", (event) => {
+        form.dataset.dirty = "true";
+        if (event.target.name === "splitMode") updateMode();
+        updateShareTotal();
+      });
+      form.addEventListener("input", () => {
+        form.dataset.dirty = "true";
+        updateShareTotal();
+      });
+      updateMode();
+
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const mode = activeMode();
+        const targets = Array.from(form.querySelectorAll("input[name='targets']:checked")).map((input) => input.value);
+        const individual = {};
+        participants.forEach((name) => {
+          const input = shareInputFor(name);
+          const amount = numberValue(input && input.value);
+          if (amount) individual[name] = amount;
+        });
+        const amount = numberValue(form.elements.amount.value);
+
+        if (/選んだ人だけ/.test(mode) && !targets.length) {
+          setStatus("割り勘する人を1人以上選んでください。", "error");
+          return;
+        }
+        if (/個別金額/.test(mode)) {
+          const total = individualTotal();
+          if (!total) {
+            setStatus("個別金額を入力してください。", "error");
+            return;
+          }
+          if (Math.abs(total - amount) > 1) {
+            setStatus("個別金額の合計が支払額と一致していません。", "error");
+            return;
+          }
+        }
+
+        button.disabled = true;
+        setStatus("保存中...", "");
+        try {
+          const photo = form.elements.receiptPhoto && form.elements.receiptPhoto.files
+            ? form.elements.receiptPhoto.files[0]
+            : null;
+          let receiptUrl = "";
+          if (photo) {
+            setStatus("写真アップロード中...", "");
+            const upload = await uploadReceiptPhoto(photo);
+            receiptUrl = upload.url || "";
+            setStatus("保存中...", "");
+          }
+          const response = await callAppsScript({
+            action: "expense",
+            token: getAuthToken(),
+            paidDate: form.elements.paidDate.value,
+            payer: form.elements.payer.value,
+            category: form.elements.category.value,
+            title: form.elements.title.value,
+            amount: form.elements.amount.value,
+            currency: form.elements.currency.value,
+            splitMode: mode,
+            targets: JSON.stringify(targets),
+            individual: JSON.stringify(individual),
+            paymentMethod: form.elements.paymentMethod.value,
+            receiptUrl,
+            note: form.elements.note.value
+          });
+          if (response.data) {
+            state.data = response.data;
+            state.days = groupDays(state.data.itinerary || []);
+          }
+          form.reset();
+          form.dataset.dirty = "false";
+          form.elements.paidDate.value = todayISO();
+          applyProfileDefaults(form, participants);
+          form.querySelectorAll("input[name='targets']").forEach((input) => { input.checked = true; });
+          updateMode();
+          renderBase();
+          renderActive();
+          const nextStatus = qs("[data-expense-status]");
+          if (nextStatus) {
+            nextStatus.textContent = "保存しました。費用を更新済みです。";
+            nextStatus.classList.add("is-ok");
+          }
+        } catch (error) {
+          if (isAuthError(error)) clearAuthSession();
+          setStatus(error.message || "保存に失敗しました。", "error");
+        } finally {
+          button.disabled = false;
+        }
+      });
+    }
+
+    function makeSheetUrl(sheetName) {
+      return "https://docs.google.com/spreadsheets/d/" + CONFIG.spreadsheetId + "/edit#gid=0&range=" + encodeURIComponent(sheetName + "!A1");
+    }
+
+    function buildBasicInfo(rows) {
+      const info = {};
+      (rows || []).forEach((row) => {
+        const key = valueByKeys(row, ["key", "キー"]);
+        if (!key) return;
+        const visible = String(valueByKeys(row, ["公開ページに表示", "表示", "enabled"]) || "TRUE").toUpperCase() !== "FALSE";
+        if (!visible) return;
+        info[key] = valueByKeys(row, ["value", "値"]);
+      });
+      return info;
+    }
+
+    function buildTripLinks(linkRows, fallbackLinks, basicInfo) {
+      const rows = (linkRows || [])
+        .filter((row) => String(valueByKeys(row, ["enabled", "有効", "公開ページに表示"]) || "TRUE").toUpperCase() !== "FALSE")
+        .filter((row) => valueByKeys(row, ["key"]) || valueByKeys(row, ["label", "表示名"]));
+      if (!rows.length) return fallbackLinks;
+      return rows.map((row) => {
+        const key = valueByKeys(row, ["key"]);
+        let url = valueByKeys(row, ["url", "URL"]);
+        if (key === "maps" && basicInfo.myMapsUrl) url = basicInfo.myMapsUrl;
+        if (key === "photos" && basicInfo.photosUrl) url = basicInfo.photosUrl;
+        return {
+          key,
+          label: valueByKeys(row, ["label", "表示名"]) || key,
+          icon: valueByKeys(row, ["icon", "アイコン"]) || "↗",
+          url,
+          caption: valueByKeys(row, ["caption", "説明"]) || ""
+        };
+      });
+    }
+
+    function buildTripChecklist(rows) {
+      return (rows || [])
+        .filter((row) => String(valueByKeys(row, ["有効", "enabled"]) || "TRUE").toUpperCase() !== "FALSE")
+        .map((row) => ({
+          label: valueByKeys(row, ["項目", "label", "チェック項目"]) || "",
+          done: valueByKeys(row, ["完了", "done"]) || false
+        }))
+        .filter((row) => row.label);
+    }
+
+    function buildTripSheetData(itineraryRows, reservationRows, budgetRows, basicInfoRows, linkRows, checklistRows) {
+      const basicInfo = buildBasicInfo(basicInfoRows);
+      const tripSheetName = CONFIG.sheets.tripItinerary || CONFIG.sheets.southAmericaItinerary;
+      const sheetUrl = makeSheetUrl(tripSheetName);
+      const link = (key, fallback) => CONFIG.linkOverrides[key] || fallback || "";
+      const itinerary = itineraryRows
+        .filter((row) => row["日付"] && row["Day"])
+        .filter((row) => String(valueByKeys(row, ["公開ページに表示", "表示", "enabled"]) || "TRUE").toUpperCase() !== "FALSE")
+        .map((row) => {
+          const origin = valueByKeys(row, ["移動元", "出発地"]) || "";
+          const destination = valueByKeys(row, ["移動先", "到着地"]) || "";
+          const city = valueByKeys(row, ["都市", "宿泊地", "エリア"]) || destination || origin || "";
+          const purpose = valueByKeys(row, ["主目的", "目的"]) || "予定";
+          const displayTime = valueByKeys(row, ["表示時刻", "時刻", "開始時刻", "出発時刻", "集合時刻"]);
+          const displayPlace = valueByKeys(row, ["表示場所", "場所", "集合場所"]) || destination || city || origin;
+          const displayTitle = valueByKeys(row, ["表示タイトル", "タイトル", "予定名"]);
+          const displayNote = valueByKeys(row, ["表示メモ", "当日メモ", "メモ"]);
+          const needed = valueByKeys(row, ["必要情報", "当日必要情報", "持ち物/注意", "確認事項"]);
+          const weather = valueByKeys(row, ["天気", "気温", "weather"]);
+          const moving = origin && destination;
+          const type = valueByKeys(row, ["type", "種別"]) || (moving ? "move" : (purpose === "宿泊" ? "stay" : (purpose === "休養" ? "todo" : "sight")));
+          const title = displayTitle || (moving ? `${origin} → ${destination}` : `${city} / ${purpose}`);
+          const noteParts = displayNote ? [displayNote] : [
+            row["移動手段"],
+            row["所要時間"],
+            row["予約状況"],
+            row["確定度"],
+            row["メモ"]
+          ];
+          const rowLat = numberOrNaN(valueByKeys(row, ["lat", "緯度"]));
+          const rowLng = numberOrNaN(valueByKeys(row, ["lng", "経度"]));
+          const coords = Number.isFinite(rowLat) && Number.isFinite(rowLng) ? { lat: rowLat, lng: rowLng } : coordsFor(displayPlace);
+          const originCoords = coordsFor(origin);
+          const destinationCoords = coordsFor(destination || city);
+          return {
+            date: normalizeDate(row["日付"]),
+            day: row["Day"] || row["day"],
+            area: city,
+            time: displayTime,
+            type,
+            typeLabel: valueByKeys(row, ["表示ラベル", "ラベル"]) || (moving ? "移動" : purpose),
+            title,
+            place: displayPlace,
+            note: noteParts.filter(Boolean).join(" / "),
+            needed,
+            origin,
+            destination,
+            originLat: originCoords ? originCoords.lat : NaN,
+            originLng: originCoords ? originCoords.lng : NaN,
+            destinationLat: destinationCoords ? destinationCoords.lat : NaN,
+            destinationLng: destinationCoords ? destinationCoords.lng : NaN,
+            lat: coords ? coords.lat : NaN,
+            lng: coords ? coords.lng : NaN,
+            mapQuery: valueByKeys(row, ["地図検索", "mapQuery"]) || displayPlace,
+            weather
+          };
+        });
+
+      const fallbackLinks = [
+        { key: "itinerary", label: "旅程", icon: "旅", url: link("itinerary", sheetUrl), caption: "Google Sheets" },
+        { key: "maps", label: "My Maps", icon: "地", url: link("maps", basicInfo.myMapsUrl || "https://www.google.com/maps/d/"), caption: "Google My Maps" },
+        { key: "expenseSheet", label: "費用", icon: "￥", url: link("expenseSheet", makeSheetUrl(CONFIG.sheets.budget)), caption: "Google Sheets" },
+        { key: "photos", label: "写真", icon: "写", url: link("photos", basicInfo.photosUrl || "https://photos.google.com/"), caption: "Google Photos" },
+        { key: "reservations", label: "予約管理", icon: "予", url: makeSheetUrl(CONFIG.sheets.reservations), caption: "Google Sheets" },
+        { key: "budget", label: "予算", icon: "￥", url: makeSheetUrl(CONFIG.sheets.budget), caption: "Google Sheets" }
+      ];
+      const checklist = buildTripChecklist(checklistRows);
+
+      return {
+        trip: {
+          title: basicInfo.tripTitle || CONFIG.tripTitle || "旅行",
+          dates: basicInfo.dateStart && basicInfo.dateEnd ? `${normalizeDate(basicInfo.dateStart)} - ${normalizeDate(basicInfo.dateEnd)}` : (itinerary[0] && itinerary[itinerary.length - 1] ? `${itinerary[0].date} - ${itinerary[itinerary.length - 1].date}` : ""),
+          members: basicInfo.members || "共有メンバー",
+          note: basicInfo.dashboardNote ? `共有メモ: ${basicInfo.dashboardNote}` : "共有メモ: 詳細な予約番号や宿泊先住所は公開ページに載せず、スプレッドシート側で管理してください。"
+        },
+        links: buildTripLinks(linkRows, fallbackLinks, basicInfo),
+        settlement: {
+          paid: formatYen(0),
+          paidLabel: "精算額",
+          expenseTotal: "¥0",
+          expenseByPerson: {},
+          progress: 0,
+          yourPaid: "-",
+          yourDue: "精算不要",
+          photoTitle: basicInfo.photoTitle || `${CONFIG.tripTitle || "旅行"}アルバム`,
+          photoMeta: "Google Photos"
+        },
+        checklist: checklist.length ? checklist : [
+          { label: "航空券・宿の予約状況確認", done: false },
+          { label: "保険と緊急連絡先の確認", done: false },
+          { label: "パスポート・ビザ・入国条件の確認（海外のみ）", done: false },
+          { label: "現地通信手段の確認", done: false }
+        ],
+        itinerary
+      };
+    }
+
+    function buildLocalInfo(rows) {
+      return (rows || [])
+        .filter((row) => String(valueByKeys(row, ["有効", "enabled"]) || "TRUE").toUpperCase() !== "FALSE")
+        .filter((row) => valueByKeys(row, ["国", "country"]))
+        .map((row) => ({
+          country: valueByKeys(row, ["国", "country"]),
+          currencyCode: valueByKeys(row, ["通貨コード", "currencyCode", "currency"]),
+          currencyName: valueByKeys(row, ["通貨名", "currencyName"]),
+          approxRate: valueByKeys(row, ["概算円レート", "rateToJpy", "円換算レート"]),
+          rateUpdatedAt: valueByKeys(row, ["レート更新日", "rateUpdatedAt", "更新日"]),
+          feeFreeAtm: valueByKeys(row, ["手数料無料ATM候補", "無料ATM候補", "feeFreeAtm"]),
+          atmBest: valueByKeys(row, ["ATMおすすめ", "atmBest"]),
+          atmFee: valueByKeys(row, ["ATM手数料目安", "atmFee"]),
+          atmNote: valueByKeys(row, ["避けたい/注意", "注意", "atmNote"]),
+          rideBest: valueByKeys(row, ["配車おすすめ", "rideBest"]),
+          rideAlt: valueByKeys(row, ["代替アプリ", "rideAlt"]),
+          paymentNote: valueByKeys(row, ["支払いメモ", "paymentNote"]),
+          source: valueByKeys(row, ["情報ソース", "source"]),
+          order: Number(valueByKeys(row, ["表示順", "order"]) || 999)
+        }))
+        .sort((a, b) => a.order - b.order || String(a.country).localeCompare(String(b.country), "ja"));
+    }
+
+    function loadGvizSheet(spreadsheetId, sheetName, range) {
+      return new Promise((resolve, reject) => {
+        const callback = "__tripSheetCallback_" + Math.random().toString(36).slice(2);
+        window[callback] = (response) => {
+          delete window[callback];
+          script.remove();
+          if (response.status && response.status !== "ok") {
+            reject(new Error(response.errors && response.errors[0] ? response.errors[0].detailed_message : "Google Sheets response error"));
+            return;
+          }
+          resolve(rowsFromGviz(response));
+        };
+        const script = document.createElement("script");
+        const tqx = "out:json;responseHandler:" + callback;
+        script.src = "https://docs.google.com/spreadsheets/d/" + encodeURIComponent(spreadsheetId) +
+          "/gviz/tq?tqx=" + encodeURIComponent(tqx) +
+          "&sheet=" + encodeURIComponent(sheetName) +
+          (range ? "&range=" + encodeURIComponent(range) : "") +
+          "&cachebust=" + Date.now();
+        script.onerror = () => {
+          delete window[callback];
+          script.remove();
+          reject(new Error("Google Sheetsを読み込めませんでした"));
+        };
+        document.head.appendChild(script);
+      });
+    }
+
+    async function loadData() {
+      if (CONFIG.mode === "googleSheets" && CONFIG.spreadsheetId) {
+        if (CONFIG.schema === "trip" || CONFIG.schema === "southAmerica") {
+          const tripSheetName = CONFIG.sheets.tripItinerary || CONFIG.sheets.southAmericaItinerary;
+          const tripRange = CONFIG.ranges.tripItinerary || CONFIG.ranges.southAmericaItinerary;
+          const [itineraryRows, reservationRows, budgetRows, localInfoRows, basicInfoRows, linkRows, checklistRows] = await Promise.all([
+            loadGvizSheet(CONFIG.spreadsheetId, tripSheetName, tripRange),
+            loadGvizSheet(CONFIG.spreadsheetId, CONFIG.sheets.reservations, CONFIG.ranges.reservations),
+            loadGvizSheet(CONFIG.spreadsheetId, CONFIG.sheets.budget, CONFIG.ranges.budget),
+            loadGvizSheet(CONFIG.spreadsheetId, CONFIG.sheets.localInfo, CONFIG.ranges.localInfo).catch(() => []),
+            loadGvizSheet(CONFIG.spreadsheetId, CONFIG.sheets.basicInfo, CONFIG.ranges.basicInfo).catch(() => []),
+            loadGvizSheet(CONFIG.spreadsheetId, CONFIG.sheets.tripLinks, CONFIG.ranges.tripLinks).catch(() => []),
+            loadGvizSheet(CONFIG.spreadsheetId, CONFIG.sheets.tripChecklist, CONFIG.ranges.tripChecklist).catch(() => [])
+          ]);
+          const data = buildTripSheetData(itineraryRows, reservationRows, budgetRows, basicInfoRows, linkRows, checklistRows);
+          data.localInfo = buildLocalInfo(localInfoRows);
+          return data;
+        }
+        const [itinerary, links, settlementRows, checklist] = await Promise.all([
+          loadGvizSheet(CONFIG.spreadsheetId, CONFIG.sheets.itinerary),
+          loadGvizSheet(CONFIG.spreadsheetId, CONFIG.sheets.links),
+          loadGvizSheet(CONFIG.spreadsheetId, CONFIG.sheets.settlement),
+          loadGvizSheet(CONFIG.spreadsheetId, CONFIG.sheets.checklist)
+        ]);
+        const settlement = {};
+        settlementRows.forEach((row) => { settlement[row.key] = row.value; });
+        return {
+          trip: {
+            title: settlement.title || SAMPLE.trip.title,
+            dates: settlement.dates || SAMPLE.trip.dates,
+            members: settlement.members || SAMPLE.trip.members,
+            note: settlement.note || SAMPLE.trip.note
+          },
+          itinerary,
+          links,
+          checklist,
+          settlement
+        };
+      }
+      if (CONFIG.mode === "appsScript" && CONFIG.appsScriptUrl) {
+        const response = await callAppsScript({ action: "data", token: getAuthToken() });
+        return response.data;
+      }
+      return SAMPLE;
+    }
+
+    function renderBase() {
+      const data = state.data;
+      setText("[data-title]", data.trip.title);
+      setText("[data-dates]", formatHeaderDateRange(data.trip.dates));
+      setText("[data-note]", data.trip.note);
+      setText("[data-sync-label]", "最終同期: " + new Date().toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }));
+      setText("[data-updated]", "最終更新: " + new Date().toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }));
+      updateProfileButton();
+
+      const tabs = [
+        { key: "home", label: "ホーム" },
+        { key: "plan", label: "予定" },
+        { key: "map", label: "地図" },
+        { key: "money", label: "費用" },
+        { key: "links", label: "リンク" }
+      ];
+      setHtml("[data-actions]", tabs.map((tab) =>
+        `<button class="tl-action" type="button" data-section-nav="${tab.key}" aria-selected="${tab.key === mobileView}">
+          <b>${tab.label}</b>
+        </button>`
+      ).join(""));
+      qsa("[data-section-nav]").forEach((button) => {
+        button.addEventListener("click", () => applyMobileView(button.dataset.sectionNav));
+      });
+
+      qs("[data-my-maps]").href = linkByKey("maps").url || "#";
+      qs("[data-photo-link]").href = linkByKey("photos").url || "#";
+      qs("[data-photo-button]").href = linkByKey("photos").url || "#";
+
+      const settlement = data.settlement || {};
+      const progress = Number(settlement.progress || 0);
+      const expenseTotal = selectedExpenseTotal(settlement);
+      setText("[data-paid]", expenseTotal.amountLabel || settlement.paid || "¥0");
+      setText("[data-progress-label]", expenseTotal.label);
+      qs("[data-progress]").style.setProperty("--value", `${Math.max(0, Math.min(100, progress))}%`);
+      setText("[data-your-paid]", settlement.yourPaid || "-");
+      setText("[data-your-due]", settlement.yourDue || "-");
+      renderTransfers(settlement);
+      renderExpenseDetails(settlement);
+      setText("[data-photo-title]", settlement.photoTitle || "写真アルバム");
+      setText("[data-photo-meta]", settlement.photoMeta || "Google Photos");
+      saveExpenseEntryCache(data);
+      renderExpenseEntry(data);
+      renderLocalInfo(data.localInfo || []);
+
+      const primaryLinks = ["itinerary", "maps", "expenseSheet", "photos"].map(linkByKey).filter((link) => link.url);
+      const docs = data.links.filter((link) => !["itinerary", "maps", "expenseForm", "photos", "expenseSheet"].includes(link.key)).concat(primaryLinks);
+      setHtml("[data-docs]", docs.slice(0, 5).map((doc) =>
+        `<a class="tl-doc" href="${doc.url}" target="_blank" rel="noopener">
+          <span class="tl-doc-icon">${doc.icon || "↗"}</span><b>${doc.label}</b><span>↗</span>
+        </a>`
+      ).join(""));
+
+      setHtml("[data-checks]", (data.checklist || []).slice(0, 4).map((check) =>
+        `<label><input type="checkbox" ${String(check.done).toLowerCase() === "true" || check.done === true ? "checked" : ""}><span>${check.label}</span></label>`
+      ).join(""));
+
+      setHtml("[data-days]", state.days.map((day, index) =>
+        `<button class="tl-day" type="button" data-day-index="${index}" aria-selected="${index === state.active}">
+          <b>${day.day || `Day ${index + 1}`}<br>${day.area || ""}</b>
+          <small>${day.date.replace(/^\\d{4}-/, "").replace("-", "/")}</small>
+        </button>`
+      ).join(""));
+      qsa("[data-day-index]").forEach((button) => {
+        button.addEventListener("click", () => {
+          state.active = Number(button.dataset.dayIndex);
+          leafletState.followActive = true;
+          renderActive();
+        });
+      });
+      applyMobileView(mobileView);
+    }
+
+    function renderLocalInfo(rows) {
+      const items = (rows || []).slice(0, 9);
+      setHtml("[data-local-info]", items.map((item) => {
+        const currency = [item.currencyCode, item.currencyName].filter(Boolean).join(" / ");
+        const rate = [item.approxRate, item.rateUpdatedAt ? `更新 ${item.rateUpdatedAt}` : ""].filter(Boolean).join(" · ");
+        const rideRecommendations = [item.rideBest].concat(String(item.rideAlt || "").split("/"))
+          .map((value) => value.trim())
+          .filter(Boolean)
+          .filter((value, index, list) => list.indexOf(value) === index)
+          .slice(0, 2)
+          .join(" / ");
+        return `<article class="tl-local-card">
+          <div class="tl-local-top">
+            <b class="tl-local-country">${escapeHtml(item.country)}</b>
+            <span class="tl-local-currency">${escapeHtml(currency || item.approxRate || "")}</span>
+          </div>
+          <dl class="tl-local-meta">
+            <div><dt>為替</dt><dd>${escapeHtml(rate || "-")}</dd></div>
+            <div><dt>無料ATM</dt><dd>${escapeHtml(item.feeFreeAtm || "-")}</dd></div>
+            <div><dt>配車おすすめ</dt><dd>${escapeHtml(rideRecommendations || "-")}</dd></div>
+          </dl>
+          <p class="tl-local-note">${escapeHtml([item.atmNote, item.paymentNote].filter(Boolean).join(" / "))}</p>
+        </article>`;
+      }).join(""));
+    }
+
+    function renderActive() {
+      const day = state.days[state.active];
+      if (!day) return;
+      qsa("[data-day-index]").forEach((button) => {
+        button.setAttribute("aria-selected", String(Number(button.dataset.dayIndex) === state.active));
+      });
+
+      const titleMain = day.date === todayISO() ? "今日の予定" : "この日の予定";
+      const titleMeta = [day.day, day.area].filter(Boolean).join(" | ");
+      setHtml("[data-day-title]", `<span>${escapeHtml(titleMain)}</span>${titleMeta ? `<span class="tl-day-heading-meta">${escapeHtml(titleMeta)}</span>` : ""}`);
+      setText("[data-weather]", day.weather ? "☀ " + day.weather : "");
+
+      const activePlaces = projectPlaces(day.items);
+      const placeNames = activePlaces.map((place) => place.place || place.title).filter(Boolean);
+      setText("[data-location-caption]", `現在地: ${day.area || placeNames[0] || "-"} / 次: ${placeNames[1] || placeNames[0] || "-"}`);
+      qs("[data-directions]").href = mapsDir(activePlaces);
+      renderMapEmbed(activePlaces, day);
+      qs("[data-route]").setAttribute("points", activePlaces.map((p) => `${p.x},${p.y}`).join(" "));
+      qsa(".tl-pin").forEach((pin) => pin.remove());
+      activePlaces.forEach((place, index) => {
+        const pin = document.createElement("a");
+        pin.className = "tl-pin" + (index === Math.min(1, activePlaces.length - 1) ? " is-active" : "");
+        pin.href = mapsSearch(place.mapQuery || place.place || place.title);
+        pin.target = "_blank";
+        pin.rel = "noopener";
+        pin.style.left = `${place.x}%`;
+        pin.style.top = `${place.y}%`;
+        pin.innerHTML = `<span class="tl-pin-num">${index + 1}</span><span class="tl-pin-name">${escapeHtml(place.place || place.title)}</span>`;
+        qs("[data-map]").appendChild(pin);
+      });
+
+      setHtml("[data-timeline]", day.items.map((item) => {
+        const place = item.place && item.place !== item.title ? `場所: ${item.place}` : "";
+        const note = [place, item.note].filter(Boolean).join(" / ");
+        return `<article class="tl-item">
+          <time class="tl-time">${escapeHtml(item.time || "")}</time>
+          <span class="tl-rail"><span class="tl-dot"></span></span>
+          <div class="tl-plan">
+            <div class="tl-plan-line">
+              <span class="tl-chip ${escapeHtml(item.type || "todo")}">${escapeHtml(item.typeLabel || item.type || "予定")}</span>
+              <h3>${escapeHtml(item.title || "")}</h3>
+            </div>
+            ${item.needed ? `<p class="tl-needed">${escapeHtml(item.needed)}</p>` : ""}
+            <p class="tl-note">${escapeHtml(note)}</p>
+          </div>
+          <a class="tl-maplink" href="${mapsSearch(item.mapQuery || item.place || item.title)}" target="_blank" rel="noopener">Google Maps ↗</a>
+        </article>`;
+      }).join(""));
+
+      const upcoming = state.days.slice(state.active + 1, state.active + 6)
+        .map((next, offset) => ({ ...next, index: state.active + offset + 1 }));
+      setHtml("[data-upcoming]", upcoming.length ? upcoming.map((next) => {
+        const items = (next.items || []).slice(0, 6).map((item) => {
+          const place = item.place && item.place !== next.area ? ` / ${item.place}` : "";
+          return `<div class="tl-upcoming-item">
+            <span class="tl-upcoming-time">${escapeHtml(item.time || "")}</span>
+            <span class="tl-upcoming-text">${escapeHtml(item.title || "予定")}${escapeHtml(place)}</span>
+          </div>`;
+        }).join("");
+        return `<a class="tl-upcoming-row" href="#" data-upcoming-index="${next.index}">
+          <span class="tl-upcoming-date">${next.date.replace(/^\\d{4}-/, "").replace("-", "/")}</span>
+          <span class="tl-upcoming-title">${next.day || ""}　${next.area || ""}</span>
+          <span class="tl-upcoming-arrow">›</span>
+          ${items ? `<div class="tl-upcoming-items">${items}</div>` : ""}
+        </a>`;
+      }).join("") : `<div class="tl-upcoming-row"><span class="tl-upcoming-date">完了</span><span class="tl-upcoming-title">今後の予定はありません</span><span></span></div>`);
+      qsa("[data-upcoming-index]").forEach((link) => {
+        link.addEventListener("click", (event) => {
+          event.preventDefault();
+          state.active = Number(link.dataset.upcomingIndex);
+          renderActive();
+        });
+      });
+    }
+
+    async function renderMapEmbed(activePlaces, day) {
+      const map = qs("[data-map]");
+      const existing = qs(".tl-map-iframe");
+      if (existing) existing.remove();
+      const existingLeaflet = qs(".tl-leaflet-map");
+      map.classList.remove("has-leaflet");
+
+      let src = "";
+      if (CONFIG.mapEmbed.mode === "myMaps" && CONFIG.mapEmbed.myMapsEmbedUrl) {
+        src = CONFIG.mapEmbed.myMapsEmbedUrl;
+      } else if (CONFIG.mapEmbed.mode === "mapsEmbedApi") {
+        src = mapsEmbedDirections(activePlaces);
+      } else if (CONFIG.mapEmbed.mode === "leaflet") {
+        try {
+          await renderLeafletMap(day);
+        } catch (error) {
+          console.warn(error);
+        }
+        return;
+      }
+
+      map.classList.toggle("has-embed", Boolean(src));
+      if (existingLeaflet) existingLeaflet.remove();
+      if (!src) return;
+
+      const iframe = document.createElement("iframe");
+      iframe.className = "tl-map-iframe";
+      iframe.src = src;
+      iframe.loading = "lazy";
+      iframe.referrerPolicy = "no-referrer-when-downgrade";
+      iframe.allowFullscreen = true;
+      iframe.title = "Google Map";
+      map.prepend(iframe);
+    }
+
+    function splitAntimeridianSegment(from, to) {
+      const start = { lat: Number(from.lat), lng: Number(from.lng) };
+      const end = { lat: Number(to.lat), lng: Number(to.lng) };
+      if (![start.lat, start.lng, end.lat, end.lng].every(Number.isFinite)) return [];
+      const delta = end.lng - start.lng;
+      if (Math.abs(delta) <= 180) return [[[start.lat, start.lng], [end.lat, end.lng]]];
+
+      const adjustedEndLng = delta > 180 ? end.lng - 360 : end.lng + 360;
+      const edgeLng = delta > 180 ? -180 : 180;
+      const wrappedEdgeLng = delta > 180 ? 180 : -180;
+      const ratio = (edgeLng - start.lng) / (adjustedEndLng - start.lng);
+      const edgeLat = start.lat + (end.lat - start.lat) * ratio;
+      return [
+        [[start.lat, start.lng], [edgeLat, edgeLng]],
+        [[edgeLat, wrappedEdgeLng], [end.lat, end.lng]]
+      ];
+    }
+
+    function addRoutePolylines(points, options) {
+      for (let index = 0; index < points.length - 1; index++) {
+        splitAntimeridianSegment(points[index], points[index + 1]).forEach((segment) => {
+          L.polyline(segment, options).addTo(leafletState.layer);
+        });
+      }
+    }
+
+    function crossesAntimeridian(points) {
+      return (points || []).some((point, index) => {
+        const next = points[index + 1];
+        return next && Math.abs(Number(next.lng) - Number(point.lng)) > 180;
+      });
+    }
+
+    function pacificMapPoint(point, enabled) {
+      if (!enabled || Number(point.lng) >= 0) return point;
+      return { ...point, lng: Number(point.lng) + 360 };
+    }
+
+    function boundsAroundPoint(point, radiusKm) {
+      const lat = Number(point && point.lat);
+      const lng = Number(point && point.lng);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+      const latDelta = radiusKm / 111.32;
+      const cosLat = Math.max(.18, Math.abs(Math.cos(lat * Math.PI / 180)));
+      const lngDelta = radiusKm / (111.32 * cosLat);
+      return L.latLngBounds([[lat - latDelta, lng - lngDelta], [lat + latDelta, lng + lngDelta]]);
+    }
+
+    function boundsAroundPoints(points, radiusKm) {
+      const validPoints = uniqueMapPoints(points);
+      if (!validPoints.length) return null;
+      if (validPoints.length === 1) return boundsAroundPoint(validPoints[0], radiusKm);
+      const pointBounds = L.latLngBounds(validPoints.map((point) => [point.lat, point.lng]));
+      const centerBounds = boundsAroundPoint(pointBounds.getCenter(), radiusKm);
+      if (centerBounds && centerBounds.contains(pointBounds.getSouthWest()) && centerBounds.contains(pointBounds.getNorthEast())) {
+        return centerBounds;
+      }
+      return pointBounds;
+    }
+
+    function uniqueMapPoints(points) {
+      const seen = new Set();
+      return (points || []).filter((point) => {
+        const lat = Number(point && point.lat);
+        const lng = Number(point && point.lng);
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false;
+        const key = `${lat.toFixed(3)},${lng.toFixed(3)}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+    }
+
+    async function renderLeafletMap(activeDay) {
+      await loadLeaflet();
+      const mapEl = qs("[data-map]");
+      mapEl.classList.remove("has-embed");
+      mapEl.classList.add("has-leaflet");
+      qsa(".tl-map-iframe").forEach((node) => node.remove());
+
+      let container = qs(".tl-leaflet-map");
+      if (!container) {
+        container = document.createElement("div");
+        container.className = "tl-leaflet-map";
+        mapEl.prepend(container);
+      }
+
+      if (!leafletState.map) {
+        leafletState.map = L.map(container, {
+          zoomControl: true,
+          scrollWheelZoom: true,
+          attributionControl: true
+        });
+        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+          maxZoom: 18,
+          attribution: "&copy; OpenStreetMap"
+        }).addTo(leafletState.map);
+      }
+
+      if (leafletState.layer) {
+        leafletState.layer.remove();
+      }
+      leafletState.layer = L.layerGroup().addTo(leafletState.map);
+
+      const allPoints = itineraryRoutePoints();
+      const activeIndex = state.active;
+      const activePoints = allPoints.filter((point) => point.dayIndex === activeIndex);
+      const usePacificWorld = crossesAntimeridian(activePoints);
+      const displayAllPoints = allPoints.map((point) => pacificMapPoint(point, usePacificWorld));
+      const displayActivePoints = activePoints.map((point) => pacificMapPoint(point, usePacificWorld));
+      const allLatLngs = displayAllPoints.map((point) => [point.lat, point.lng]);
+      const activeLatLngs = displayActivePoints.map((point) => [point.lat, point.lng]);
+      const showActiveDetail = leafletState.followActive && activeLatLngs.length;
+
+      for (let index = 0; index < displayAllPoints.length - 1; index++) {
+        const point = displayAllPoints[index];
+        const next = displayAllPoints[index + 1];
+        addRoutePolylines([point, next], {
+          color: "#7b8f86",
+          weight: 2,
+          opacity: .55,
+          dashArray: "6 8"
+        });
+      }
+
+      if (showActiveDetail && activeLatLngs.length >= 2) {
+        addRoutePolylines(displayActivePoints, {
+          color: "#0b5a42",
+          weight: 4,
+          opacity: .95
+        });
+      }
+
+      const stopGroups = [];
+      const stopByCoord = new Map();
+      displayAllPoints.forEach((point) => {
+        const key = `${point.lat.toFixed(3)},${point.lng.toFixed(3)}`;
+        if (!stopByCoord.has(key)) {
+          const group = { ...point, dates: [], dayIndexes: [], places: new Set(), titles: [] };
+          stopByCoord.set(key, group);
+          stopGroups.push(group);
+        }
+        const group = stopByCoord.get(key);
+        group.dates.push(point.date);
+        group.dayIndexes.push(point.dayIndex + 1);
+        if (point.place || point.area) group.places.add(point.place || point.area);
+        if (point.title) group.titles.push(point.title);
+      });
+
+      stopGroups.forEach((point) => {
+        const days = Array.from(new Set(point.dayIndexes)).sort((a, b) => a - b);
+        const dateLabel = compactDateRange(point.dates);
+        const placeLabel = Array.from(point.places)[0] || point.place || point.area || point.title || "";
+        const icon = L.divIcon({
+          className: "",
+          html: `<div class="tl-map-marker is-route-stop" tabindex="0" aria-label="${dateLabel} ${placeLabel}">
+            <span class="tl-map-marker-num">${shortDate(point.date) || days[0]}</span>
+          </div>`,
+          iconSize: [42, 26],
+          iconAnchor: [19, 15]
+        });
+        L.marker([point.lat, point.lng], { icon })
+          .bindPopup(`<b>${dateLabel} / ${placeLabel}</b><br>${point.titles.slice(0, 4).join("<br>")}`)
+          .addTo(leafletState.layer);
+      });
+
+      if (showActiveDetail) {
+        displayActivePoints.forEach((point) => {
+          const icon = L.divIcon({
+            className: "",
+            html: `<div class="tl-map-marker is-active" tabindex="0" aria-label="${shortDate(point.date)} ${point.place || point.area || point.title}">
+              <span class="tl-map-marker-num">${shortDate(point.date) || point.dayIndex + 1}</span>
+            </div>`,
+            iconSize: [46, 28],
+            iconAnchor: [21, 16]
+          });
+          L.marker([point.lat, point.lng], { icon })
+            .bindPopup(`<b>${shortDate(point.date)} / ${point.place || point.area || ""}</b><br>${point.title || ""}<br>${point.note || ""}`)
+            .addTo(leafletState.layer);
+        });
+      }
+
+      const defaultCenter = Array.isArray(CONFIG.mapDefaults.center) && CONFIG.mapDefaults.center.length === 2
+        ? CONFIG.mapDefaults.center
+        : [20, 0];
+      const defaultZoom = Number(CONFIG.mapDefaults.zoom) || 2;
+      const activeRadiusKm = Number(CONFIG.mapDefaults.activeRadiusKm) || 300;
+      const overviewRadiusKm = Number(CONFIG.mapDefaults.overviewRadiusKm) || 800;
+      let bounds = null;
+      if (!leafletState.followActive && displayAllPoints.length) {
+        bounds = boundsAroundPoints(displayAllPoints, overviewRadiusKm);
+      } else if (leafletState.followActive && activeLatLngs.length) {
+        bounds = boundsAroundPoints(displayActivePoints, activeRadiusKm);
+      } else if (allLatLngs.length) {
+        bounds = boundsAroundPoints(displayAllPoints, overviewRadiusKm);
+      }
+      if (bounds && bounds.isValid()) {
+        leafletState.map.fitBounds(bounds.pad(.25), {
+          animate: false,
+          maxZoom: 18
+        });
+      } else {
+        leafletState.map.setView(defaultCenter, defaultZoom, { animate: false });
+      }
+
+      setTimeout(() => leafletState.map.invalidateSize(), 0);
+    }
+
+    function showError(error) {
+      root.insertAdjacentHTML("afterbegin", `<div class="tl-error">データ読み込みに失敗しました。サンプル表示に戻します: ${error.message}</div>`);
+    }
+
+    function isAuthError(error) {
+      const message = String(error && error.message ? error.message : error || "");
+      return /auth|token|password|Authentication|Invalid token|Token expired|認証|権限|Password/i.test(message);
+    }
+
+    async function syncData(isInitial, didRetryAuth) {
+      if (syncInFlight) return syncInFlight;
+      const minInterval = Number(CONFIG.minRefreshSeconds || 0) * 1000;
+      if (!isInitial && minInterval && Date.now() - lastSyncAt < minInterval) return null;
+      if (isInitial) setLoading(true, "最新データを取得しています");
+
+      syncInFlight = (async () => {
+      try {
+        const data = await loadData();
+        lastSyncAt = Date.now();
+        renderData(data, CONFIG.mode);
+        if (isInitial) setLoading(false);
+      } catch (error) {
+        if (CONFIG.mode === "appsScript" && CONFIG.auth.enabled && !didRetryAuth && isAuthError(error)) {
+          clearAuthSession();
+          await requestPassword();
+          return syncData(isInitial, true);
+        }
+        showError(error);
+        if (isInitial || !state.days.length) renderData(SAMPLE, "sample");
+        if (isInitial) setLoading(false);
+      }
+      })();
+
+      try {
+        return await syncInFlight;
+      } finally {
+        syncInFlight = null;
+      }
+    }
+
+    async function init() {
+      registerServiceWorker();
+      syncStickyOffsets();
+      window.addEventListener("resize", syncStickyOffsets);
+      if ("ResizeObserver" in window) {
+        new ResizeObserver(syncStickyOffsets).observe(qs(".tl-head"));
+      }
+      qsa("[data-mobile-nav]").forEach((button) => {
+        button.addEventListener("click", () => {
+          applyMobileView(button.dataset.mobileNav);
+        });
+      });
+      qs("[data-profile-button]").addEventListener("click", () => {
+        showIdentityModal(false);
+      });
+      applyMobileView(mobileView);
+      await requestPassword();
+      await syncData(true);
+      await requestIdentityIfNeeded();
+      if (CONFIG.refreshMinutes > 0) {
+        setInterval(() => syncData(false), CONFIG.refreshMinutes * 60 * 1000);
+      }
+      if (CONFIG.refreshOnFocus) {
+        document.addEventListener("visibilitychange", () => {
+          if (!document.hidden) syncData(false);
+        });
+        window.addEventListener("focus", () => syncData(false));
+      }
+    }
+
+    function registerServiceWorker() {
+      if (!("serviceWorker" in navigator)) return;
+      if (!/^https?:$/.test(location.protocol)) return;
+      navigator.serviceWorker.register("sw.js").catch(() => {});
+    }
+
+    init();
+  })();
+</script>
+</body>
+</html>

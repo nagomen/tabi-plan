@@ -1,0 +1,3 @@
+参加者ID,表示名,有効,精算比率,既定通貨,連絡先,メモ,フォーム選択肢
+member1,参加者A,TRUE,1,JPY,,,TRUE
+member2,参加者B,TRUE,1,JPY,,,TRUE

@@ -1,0 +1,47 @@
+{
+  "name": "2026年8月 東北旅行",
+  "short_name": "東北旅行",
+  "description": "2026年8月 東北旅行の共有ダッシュボード",
+  "id": "./",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#0b5a42",
+  "orientation": "portrait",
+  "shortcuts": [
+    {
+      "name": "費用入力",
+      "short_name": "費用入力",
+      "description": "旅行中の立替費用を記録する",
+      "url": "./expense-entry.html",
+      "icons": [
+        {
+          "src": "icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    }
+  ],
+  "icons": [
+    {
+      "src": "icon-32.png",
+      "sizes": "32x32",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
