@@ -11,29 +11,23 @@ import {
   type TripConfig,
 } from "../shared/config";
 import type { TripData } from "../shared/types";
+import { escapeHtml, errorMessage, makeScopedQuery } from "../shared/dom";
+import {
+  hasAuthSession as hasAuthSessionShared,
+  getAuthToken as getAuthTokenShared,
+  saveAuthSession as saveAuthSessionShared,
+  clearAuthSession as clearAuthSessionShared,
+} from "../shared/auth";
+import {
+  callAppsScript as callAppsScriptShared,
+  postAppsScript as postAppsScriptShared,
+  sha256Hex,
+  isAuthError,
+  type AppsScriptParams,
+  type AppsScriptResponse,
+} from "../shared/apps-script";
 
 // ---- 補助型 -------------------------------------------------------------
-
-/** Apps Script JSONP/POST のレスポンス共通形 */
-interface AppsScriptResponse {
-  ok?: boolean;
-  error?: string;
-  token?: string;
-  expiresAt?: number;
-  url?: string;
-  data?: TripData;
-  [key: string]: unknown;
-}
-
-/** callAppsScript / postAppsScript に渡すパラメータ */
-type AppsScriptParams = Record<string, string | number | undefined>;
-
-/** ローカルストレージに保存する認証セッション */
-interface AuthSession {
-  ok?: boolean;
-  token?: string;
-  expiresAt?: number;
-}
 
 /** ローカルストレージに保存する本人プロフィール */
 interface ProfileRecord {
@@ -59,13 +53,6 @@ interface PreparedPhoto {
 type ExpenseSourceData = Partial<TripData> & {
   participants?: unknown;
 };
-
-/** postMessage で受け取るレシートアップロード結果 */
-interface ReceiptUploadMessage {
-  source?: string;
-  uploadId?: string;
-  response?: AppsScriptResponse;
-}
 
 interface AppState {
   data: TripData | null;
@@ -101,120 +88,29 @@ if (!rootElement) {
 }
 const root: HTMLElement = rootElement;
 
-/** root 配下から要素を取得し、無ければ throw する型付き qs */
-function qs<E extends Element = Element>(selector: string): E {
-  const el = root.querySelector<E>(selector);
-  if (!el) throw new Error(`要素が見つかりません: ${selector}`);
-  return el;
-}
+const { qs } = makeScopedQuery(root);
 
-const ESCAPE_MAP: Record<string, string> = {
-  "&": "&amp;",
-  "<": "&lt;",
-  ">": "&gt;",
-  '"': "&quot;",
-  "'": "&#39;",
-};
+const callAppsScript = (params: AppsScriptParams): Promise<AppsScriptResponse> =>
+  callAppsScriptShared(CONFIG.appsScriptUrl, params);
 
-function escapeHtml(value: unknown): string {
-  return String(value ?? "").replace(/[&<>"']/g, (ch) => ESCAPE_MAP[ch]);
-}
+const postAppsScript = (params: AppsScriptParams): Promise<AppsScriptResponse> =>
+  postAppsScriptShared(CONFIG.appsScriptUrl, params, {
+    source: "trip-expense-receipt-upload",
+    idPrefix: "receipt",
+    timeoutMessage: "写真アップロードがタイムアウトしました",
+    failMessage: "写真アップロードに失敗しました",
+  });
+
+const hasAuthSession = (): boolean => hasAuthSessionShared(CONFIG.auth);
+
+const getAuthToken = (): string => getAuthTokenShared(CONFIG.auth.storageKey);
+
+const saveAuthSession = (token?: string, expiresAt?: number): void =>
+  saveAuthSessionShared(CONFIG.auth, token, expiresAt);
+
+const clearAuthSession = (): void => clearAuthSessionShared(CONFIG.auth.storageKey);
 
 const state: AppState = { data: null, participants: FALLBACK_PARTICIPANTS };
-
-// ---- Apps Script 通信 ---------------------------------------------------
-
-function callAppsScript(params: AppsScriptParams): Promise<AppsScriptResponse> {
-  return new Promise((resolve, reject) => {
-    if (!CONFIG.appsScriptUrl) {
-      reject(new Error("appsScriptUrl が未設定です"));
-      return;
-    }
-    const callback = "__tripExpenseCallback_" + Math.random().toString(36).slice(2);
-    const script = document.createElement("script");
-    const queryParams: Record<string, string> = { callback, cachebust: String(Date.now()) };
-    Object.entries(params).forEach(([key, value]) => {
-      if (value !== undefined) queryParams[key] = String(value);
-    });
-    const query = new URLSearchParams(queryParams);
-    const globalScope = window as unknown as Record<string, unknown>;
-    globalScope[callback] = (response: AppsScriptResponse | undefined): void => {
-      delete globalScope[callback];
-      script.remove();
-      if (!response || response.ok === false) {
-        reject(new Error(response && response.error ? response.error : "Apps Script API error"));
-        return;
-      }
-      resolve(response);
-    };
-    script.onerror = (): void => {
-      delete globalScope[callback];
-      script.remove();
-      reject(new Error("Apps Script APIを読み込めませんでした"));
-    };
-    script.async = true;
-    script.src =
-      CONFIG.appsScriptUrl +
-      (CONFIG.appsScriptUrl.includes("?") ? "&" : "?") +
-      query.toString();
-    document.head.appendChild(script);
-  });
-}
-
-function postAppsScript(params: AppsScriptParams): Promise<AppsScriptResponse> {
-  return new Promise((resolve, reject) => {
-    if (!CONFIG.appsScriptUrl) {
-      reject(new Error("appsScriptUrl が未設定です"));
-      return;
-    }
-    const uploadId = "receipt-" + Date.now() + "-" + Math.random().toString(36).slice(2);
-    const iframeName = "receiptUploadFrame_" + uploadId.replace(/[^A-Za-z0-9_]/g, "_");
-    const iframe = document.createElement("iframe");
-    const form = document.createElement("form");
-    const cleanup = (): void => {
-      window.removeEventListener("message", onMessage);
-      form.remove();
-      iframe.remove();
-    };
-    const timer = window.setTimeout(() => {
-      cleanup();
-      reject(new Error("写真アップロードがタイムアウトしました"));
-    }, 60000);
-    const onMessage = (event: MessageEvent): void => {
-      const data = (event.data || {}) as ReceiptUploadMessage;
-      if (data.source !== "trip-expense-receipt-upload" || data.uploadId !== uploadId) return;
-      clearTimeout(timer);
-      cleanup();
-      const response = data.response || {};
-      if (response.ok === false) {
-        reject(new Error(response.error || "写真アップロードに失敗しました"));
-        return;
-      }
-      resolve(response);
-    };
-
-    iframe.name = iframeName;
-    iframe.hidden = true;
-    form.hidden = true;
-    form.method = "POST";
-    form.action = CONFIG.appsScriptUrl;
-    form.target = iframeName;
-
-    const allParams: AppsScriptParams = { ...params, uploadId };
-    Object.entries(allParams).forEach(([key, value]) => {
-      const input = document.createElement("input");
-      input.type = "hidden";
-      input.name = key;
-      input.value = value == null ? "" : String(value);
-      form.appendChild(input);
-    });
-
-    window.addEventListener("message", onMessage);
-    document.body.appendChild(iframe);
-    document.body.appendChild(form);
-    form.submit();
-  });
-}
 
 // ---- 画像処理 -----------------------------------------------------------
 
@@ -284,61 +180,6 @@ async function uploadReceiptPhoto(file: File): Promise<AppsScriptResponse> {
     mimeType: prepared.mimeType,
     data: prepared.data,
   });
-}
-
-// ---- 認証 ---------------------------------------------------------------
-
-async function sha256Hex(text: string): Promise<string> {
-  const bytes = new TextEncoder().encode(text);
-  const digest = await crypto.subtle.digest("SHA-256", bytes);
-  return Array.from(new Uint8Array(digest))
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
-}
-
-function readAuthSession(): AuthSession {
-  try {
-    return JSON.parse(localStorage.getItem(CONFIG.auth.storageKey) || "{}") as AuthSession;
-  } catch (_) {
-    return {};
-  }
-}
-
-function hasAuthSession(): boolean {
-  if (!CONFIG.auth.enabled) return true;
-  try {
-    const session = readAuthSession();
-    return Boolean(session && session.expiresAt && Date.now() < session.expiresAt && session.token);
-  } catch (_) {
-    return false;
-  }
-}
-
-function getAuthToken(): string {
-  try {
-    const session = readAuthSession();
-    return session && session.expiresAt && Date.now() < session.expiresAt
-      ? session.token || ""
-      : "";
-  } catch (_) {
-    return "";
-  }
-}
-
-function saveAuthSession(token: string | undefined, expiresAt: number | undefined): void {
-  const days = Number(CONFIG.auth.rememberDays || 1);
-  localStorage.setItem(
-    CONFIG.auth.storageKey,
-    JSON.stringify({
-      ok: true,
-      token: token || "",
-      expiresAt: expiresAt || Date.now() + days * 24 * 60 * 60 * 1000,
-    }),
-  );
-}
-
-function clearAuthSession(): void {
-  localStorage.removeItem(CONFIG.auth.storageKey);
 }
 
 // ---- プロフィール -------------------------------------------------------
@@ -569,11 +410,6 @@ function requestPassword(): Promise<boolean> {
 
 // ---- 値ユーティリティ ---------------------------------------------------
 
-function errorMessage(error: unknown): string {
-  if (error instanceof Error) return error.message;
-  return String(error ?? "");
-}
-
 function todayISO(): string {
   if (CONFIG.todayOverride) return CONFIG.todayOverride;
   const now = new Date();
@@ -639,13 +475,6 @@ function setStatus(message: string, type: "error" | "ok" | ""): void {
   status.textContent = message || "";
   status.classList.toggle("is-error", type === "error");
   status.classList.toggle("is-ok", type === "ok");
-}
-
-function isAuthError(error: unknown): boolean {
-  const message = errorMessage(error);
-  return /auth|token|password|Authentication|Invalid token|Token expired|認証|権限|Password/i.test(
-    message,
-  );
 }
 
 // ---- フォーム要素アクセス ----------------------------------------------

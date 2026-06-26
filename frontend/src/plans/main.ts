@@ -6,22 +6,16 @@
 import * as TripPlans from "../shared/plans-store";
 import type { PlanMeta, LocalPlanData, PlanSource } from "../shared/plans-store";
 import { readGlobalTripConfig } from "../shared/config";
+import { escapeHtml, errorMessage, makeScopedQuery } from "../shared/dom";
+import {
+  callAppsScript,
+  postAppsScript,
+  sha256Hex,
+  isAuthError,
+  type AppsScriptResponse,
+} from "../shared/apps-script";
 
 // ---- 補助型 -------------------------------------------------------------
-
-/** Apps Script JSONP/POST のレスポンス共通形 */
-interface AppsScriptResponse {
-  ok?: boolean;
-  error?: string;
-  token?: string;
-  expiresAt?: number;
-  spreadsheetId?: string;
-  spreadsheetUrl?: string;
-  shared?: boolean;
-}
-
-/** callAppsScript / postAppsScript に渡すパラメータ */
-type AppsScriptParams = Record<string, string | number | undefined>;
 
 /** ローカルストレージに保存する公開用認証セッション */
 interface PublishAuthSession {
@@ -43,34 +37,12 @@ interface AppState {
 
 // ---- DOM 取得ヘルパー ----------------------------------------------------
 
-/** document 配下から要素を取得し、無ければ throw する型付き qs */
-function qs<E extends Element = Element>(selector: string): E {
-  const el = document.querySelector<E>(selector);
-  if (!el) throw new Error(`要素が見つかりません: ${selector}`);
-  return el;
-}
-
-function errorMessage(error: unknown): string {
-  if (error instanceof Error) return error.message;
-  return String(error ?? "");
-}
+const { qs } = makeScopedQuery(document);
 
 const grid = qs<HTMLElement>("[data-grid]");
 const countEl = qs<HTMLElement>("[data-count]");
 const filterEl = qs<HTMLInputElement>("[data-filter]");
 const state: AppState = { filter: "" };
-
-const ESCAPE_MAP: Record<string, string> = {
-  "&": "&amp;",
-  "<": "&lt;",
-  ">": "&gt;",
-  '"': "&quot;",
-  "'": "&#39;",
-};
-
-function escapeHtml(value: unknown): string {
-  return String(value == null ? "" : value).replace(/[&<>"']/g, (ch) => ESCAPE_MAP[ch]);
-}
 
 const SOURCE_LABEL: Record<string, string> = {
   local: "ローカル",
@@ -194,11 +166,6 @@ function appsScriptUrlFor(meta: PlanMeta | null): string {
   return (meta && meta.appsScriptUrl) || config.appsScriptUrl || "";
 }
 
-function isAuthError(error: unknown): boolean {
-  const message = errorMessage(error);
-  return /auth|token|password|Authentication|Invalid token|Token expired|認証|権限|Password/i.test(message);
-}
-
 function getPublishToken(): string {
   try {
     const s = JSON.parse(localStorage.getItem(AUTH_KEY) || "{}") as PublishAuthSession;
@@ -220,100 +187,6 @@ function savePublishToken(token: string | undefined, expiresAt: number | undefin
   } catch {
     /* ignore */
   }
-}
-
-async function sha256Hex(text: string): Promise<string> {
-  const bytes = new TextEncoder().encode(text);
-  const digest = await crypto.subtle.digest("SHA-256", bytes);
-  return Array.from(new Uint8Array(digest))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-}
-
-function callAppsScript(url: string, params: AppsScriptParams): Promise<AppsScriptResponse> {
-  return new Promise((resolve, reject) => {
-    const callback = "__tripPlansCb_" + Math.random().toString(36).slice(2);
-    const script = document.createElement("script");
-    const search: Record<string, string> = {};
-    Object.entries({ ...params, callback, cachebust: Date.now() }).forEach(([key, value]) => {
-      search[key] = value == null ? "" : String(value);
-    });
-    const query = new URLSearchParams(search);
-    const cb = callback as keyof Window & string;
-    (window as unknown as Record<string, unknown>)[cb] = (response: AppsScriptResponse | undefined) => {
-      delete (window as unknown as Record<string, unknown>)[cb];
-      script.remove();
-      if (!response || response.ok === false) {
-        reject(new Error(response && response.error ? response.error : "Apps Script API error"));
-        return;
-      }
-      resolve(response);
-    };
-    script.onerror = () => {
-      delete (window as unknown as Record<string, unknown>)[cb];
-      script.remove();
-      reject(new Error("Apps Script API を読み込めませんでした"));
-    };
-    script.src = url + (url.indexOf("?") >= 0 ? "&" : "?") + query.toString();
-    document.head.appendChild(script);
-  });
-}
-
-function postAppsScript(url: string, params: AppsScriptParams): Promise<AppsScriptResponse> {
-  return new Promise((resolve, reject) => {
-    const uploadId = "plan-" + Date.now() + "-" + Math.random().toString(36).slice(2);
-    const iframeName = "tripPlanFrame_" + uploadId.replace(/[^A-Za-z0-9_]/g, "_");
-    const iframe: HTMLIFrameElement = document.createElement("iframe");
-    const form: HTMLFormElement = document.createElement("form");
-    function cleanup(): void {
-      window.removeEventListener("message", onMessage);
-      form.remove();
-      iframe.remove();
-    }
-    const timer = window.setTimeout(() => {
-      cleanup();
-      reject(new Error("公開がタイムアウトしました"));
-    }, 90000);
-    function onMessage(event: MessageEvent): void {
-      const data = (event.data || {}) as {
-        source?: string;
-        uploadId?: string;
-        response?: {
-          ok?: boolean;
-          error?: string;
-          spreadsheetId?: string;
-          spreadsheetUrl?: string;
-          shared?: boolean;
-        };
-      };
-      if (data.source !== "trip-plan-publish" || data.uploadId !== uploadId) return;
-      clearTimeout(timer);
-      cleanup();
-      const response = data.response || {};
-      if (response.ok === false) {
-        reject(new Error(response.error || "公開に失敗しました"));
-        return;
-      }
-      resolve(response);
-    }
-    iframe.name = iframeName;
-    iframe.hidden = true;
-    form.hidden = true;
-    form.method = "POST";
-    form.action = url;
-    form.target = iframeName;
-    Object.entries({ ...params, uploadId }).forEach(([name, value]) => {
-      const input: HTMLInputElement = document.createElement("input");
-      input.type = "hidden";
-      input.name = name;
-      input.value = value == null ? "" : String(value);
-      form.appendChild(input);
-    });
-    window.addEventListener("message", onMessage);
-    document.body.appendChild(iframe);
-    document.body.appendChild(form);
-    form.submit();
-  });
 }
 
 function askPassword(): Promise<PasswordPrompt> {
@@ -412,10 +285,17 @@ async function publishPlan(slug: string, button: HTMLButtonElement | null): Prom
   }
 
   try {
+    const publishOptions = {
+      source: "trip-plan-publish",
+      idPrefix: "plan",
+      timeoutMs: 90000,
+      timeoutMessage: "公開がタイムアウトしました",
+      failMessage: "公開に失敗しました",
+    } as const;
     let token = getPublishToken();
     let res: AppsScriptResponse;
     try {
-      res = await postAppsScript(url, { action: "createTrip", plan: planJson, token: token || "" });
+      res = await postAppsScript(url, { action: "createTrip", plan: planJson, token: token || "" }, publishOptions);
     } catch (err) {
       if (isAuthError(err)) {
         try {
@@ -424,7 +304,7 @@ async function publishPlan(slug: string, button: HTMLButtonElement | null): Prom
           /* ignore */
         }
         token = await authenticate(url);
-        res = await postAppsScript(url, { action: "createTrip", plan: planJson, token: token || "" });
+        res = await postAppsScript(url, { action: "createTrip", plan: planJson, token: token || "" }, publishOptions);
       } else {
         throw err;
       }
