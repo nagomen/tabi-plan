@@ -2048,6 +2048,22 @@ async function init(): Promise<void> {
   qs<HTMLButtonElement>("[data-profile-button]").addEventListener("click", () => {
     void showIdentityModal(false);
   });
+  // フッターの「編集」を source で振り分け（ローカル→計画エディタ / appsScript→行程編集）。
+  // googleSheets/sample は閲覧のみなので非表示。
+  const editWrap = root.querySelector<HTMLElement>("[data-edit-wrap]");
+  const editLink = root.querySelector<HTMLAnchorElement>("[data-edit-link]");
+  if (editWrap && editLink) {
+    const planQuery = "?plan=" + encodeURIComponent(CONFIG.tripSlug);
+    if (CONFIG.mode === "local") {
+      editLink.href = "plan-editor.html" + planQuery;
+      editLink.textContent = "計画を編集";
+      editWrap.hidden = false;
+    } else if (CONFIG.mode === "appsScript") {
+      editLink.href = "itinerary-editor.html" + planQuery;
+      editLink.textContent = "行程編集";
+      editWrap.hidden = false;
+    }
+  }
   applyMobileView(mobileView);
   await requestPassword();
   await syncData(true);

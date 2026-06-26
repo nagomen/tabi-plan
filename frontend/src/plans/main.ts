@@ -122,12 +122,8 @@ function render(): void {
         '" data-open>' +
         icon("arrowTopRightOnSquare") +
         "<span>開く</span></a>" +
-        (isLocal
-          ? '<a class="plan-btn" href="plan-editor.html?plan=' +
-            encodeURIComponent(meta.slug) +
-            '">' +
-            icon("pencilSquare") +
-            "<span>編集</span></a>"
+        (isLocal || meta.source === "appsScript"
+          ? '<button class="plan-btn" type="button" data-edit>' + icon("pencilSquare") + "<span>編集</span></button>"
           : "") +
         (isLocal
           ? '<button class="plan-btn" type="button" data-publish>' + icon("globeAlt") + "<span>公開</span></button>"
@@ -155,6 +151,14 @@ grid.addEventListener("click", (event) => {
   if (target.closest("[data-open]")) {
     TripPlans.setActiveSlug(slug);
     return; // リンク遷移はそのまま
+  }
+  if (target.closest("[data-edit]")) {
+    event.preventDefault();
+    TripPlans.setActiveSlug(slug);
+    const meta = TripPlans.get(slug);
+    const path = meta && meta.source === "local" ? "plan-editor.html?plan=" : "itinerary-editor.html?plan=";
+    location.href = path + encodeURIComponent(slug);
+    return;
   }
   if (target.closest("[data-dup]")) {
     event.preventDefault();

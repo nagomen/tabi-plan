@@ -2,6 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
+<script>/* ホームは計画一覧。?plan= 指定が無ければ一覧へ */try{if(!new URLSearchParams(location.search).has("plan"))location.replace("plans.html");}catch(e){}</script>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0b5a42">
 <meta name="mobile-web-app-capable" content="yes">
@@ -1810,7 +1811,7 @@
 
   <footer class="tl-foot">
     <span data-note></span>
-    <span><a href="plans.html">旅行計画一覧</a> / <a href="expense-entry.html">費用入力</a> / <a href="itinerary-editor.html">行程編集</a> / <span data-updated></span></span>
+    <span><a href="plans.html">計画一覧</a> / <a href="expense-entry.html">費用入力</a><span data-edit-wrap hidden> / <a data-edit-link href="#">編集</a></span> / <span data-updated></span></span>
   </footer>
 
   <nav class="tl-mobile-nav" aria-label="スマホ用ナビゲーション">

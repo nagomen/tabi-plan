@@ -3,7 +3,7 @@
   "short_name": "東北旅行",
   "description": "2026年8月 東北旅行の共有ダッシュボード",
   "id": "./",
-  "start_url": "./",
+  "start_url": "./plans.html",
   "scope": "./",
   "display": "standalone",
   "background_color": "#ffffff",

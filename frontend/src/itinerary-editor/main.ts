@@ -10,6 +10,7 @@ import {
   readGlobalTripConfig,
   type TripConfig,
 } from "../shared/config";
+import * as TripPlans from "../shared/plans-store";
 import type { ItineraryItem, ItineraryEdit, TripData } from "../shared/types";
 import { escapeHtml, errorMessage, makeScopedQuery } from "../shared/dom";
 import { icon } from "../shared/icons";
@@ -43,10 +44,16 @@ function applyDocumentTripTitle(title: string | undefined): void {
   document.title = `行程編集 | ${tripTitle}`;
 }
 
+// 選択中プラン（?plan= / active）を反映して、対象の旅行を編集する。
+const BASE_TRIP_CONFIG = readGlobalTripConfig();
+const PLAN_OVERRIDE = TripPlans.resolveConfigOverride(BASE_TRIP_CONFIG);
 const CONFIG: TripConfig = normalizeTripConfig(
   mergeConfig(
     DEFAULT_CONFIG as unknown as Record<string, unknown>,
-    readGlobalTripConfig() as Record<string, unknown>,
+    mergeConfig(
+      BASE_TRIP_CONFIG as unknown as Record<string, unknown>,
+      PLAN_OVERRIDE as unknown as Record<string, unknown>,
+    ),
   ) as unknown as TripConfig,
 );
 applyDocumentTripTitle(CONFIG.tripTitle);
