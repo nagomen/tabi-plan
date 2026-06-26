@@ -4,6 +4,7 @@
 // Leaflet 地図、費用精算・明細、本人設定・認証、Service Worker 登録を担う。
 
 import L from "leaflet";
+import "../shared/ui.css";
 import "leaflet/dist/leaflet.css";
 
 import { icon } from "../shared/icons";

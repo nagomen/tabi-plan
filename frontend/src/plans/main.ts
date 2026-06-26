@@ -4,6 +4,7 @@
 // Google Sheets への公開（JSONP 認証 + iframe-POST createTrip）を行う。
 
 import * as TripPlans from "../shared/plans-store";
+import "../shared/ui.css";
 import type { PlanMeta, LocalPlanData, PlanSource } from "../shared/plans-store";
 import { readGlobalTripConfig } from "../shared/config";
 import { escapeHtml, errorMessage, makeScopedQuery } from "../shared/dom";

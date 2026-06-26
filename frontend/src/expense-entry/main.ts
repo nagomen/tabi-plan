@@ -3,6 +3,7 @@
 // JSONP（callAppsScript）と iframe-POST（postAppsScript）で Apps Script と通信し、
 // レシート写真のリサイズ、認証、入力フォームの送信・キャッシュを行う。
 
+import "../shared/ui.css";
 import {
   DEFAULT_CONFIG,
   mergeConfig,

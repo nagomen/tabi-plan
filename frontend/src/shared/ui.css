@@ -1,0 +1,105 @@
+/*
+ * 全ページ共通の UI 基盤。各ページの <style> はトークン（--green 等）を
+ * 個別に持つが、ここでは「アクセシビリティ・モーション・タップ・共通部品」を
+ * 一元化する。各ページの main.ts から import "../shared/ui.css" で読み込む。
+ */
+
+/* フォーカスリング（全インタラクティブ要素で統一） */
+:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 3px solid rgba(11, 90, 66, 0.4);
+  outline-offset: 2px;
+}
+
+/* 選択ハイライト */
+::selection {
+  background: rgba(11, 90, 66, 0.18);
+}
+
+/* モーション控えめ設定を尊重（読み込みアニメ・スムーススクロール等を停止） */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* タッチ端末では主要な操作要素を 44px 以上に（押しやすさ） */
+@media (pointer: coarse) {
+  .ui-btn,
+  .pe-btn,
+  .pe-q,
+  .pe-mini,
+  .pe-icon-btn,
+  .plan-btn,
+  .hub-new,
+  .tl-action,
+  .ed-save,
+  .ed-dashboard {
+    min-height: 44px;
+  }
+}
+
+/* ---- 共有コンポーネント（任意採用） ---- */
+
+.ui-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 0 16px;
+  border: 1px solid var(--line-strong, #c3ccc5);
+  background: #fff;
+  color: var(--ink, #111916);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 850;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.ui-btn:hover {
+  border-color: var(--green, #0b5a42);
+}
+
+.ui-btn.primary {
+  border-color: var(--green, #0b5a42);
+  background: var(--green, #0b5a42);
+  color: #fff;
+}
+
+.ui-btn.ghost {
+  border-color: rgba(11, 90, 66, 0.36);
+  color: var(--green, #0b5a42);
+}
+
+.ui-btn.danger:hover {
+  border-color: var(--red, #cf4f3d);
+  color: var(--red, #cf4f3d);
+}
+
+.ui-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.ui-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.ui-card {
+  border: 1px solid var(--line, #dfe4e0);
+  background: #fff;
+}

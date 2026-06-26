@@ -3,6 +3,7 @@
 // JSONP（callAppsScript）で Apps Script と通信し、認証ゲート・行程の読み込み・
 // 絞り込み・各行の表示上書き保存（itineraryUpdate）を行う。
 
+import "../shared/ui.css";
 import {
   DEFAULT_CONFIG,
   mergeConfig,

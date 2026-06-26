@@ -6,6 +6,7 @@
 //  - 保存時は従来の LocalPlanData.itinerary（ItineraryItem[]）へフラット化し、ダッシュボード互換。
 
 import L from "leaflet";
+import "../shared/ui.css";
 import "leaflet/dist/leaflet.css";
 import flatpickr from "flatpickr";
 import { Japanese } from "flatpickr/dist/l10n/ja.js";
@@ -1216,7 +1217,11 @@ renderCities();
 renderDays();
 initMap();
 refreshMap(true);
-if (localStorage.getItem("pe-map-collapsed") === "1") setMapCollapsed(true);
+// 地図の初期表示：保存設定があれば従う。無指定かつ小さい画面では既定で畳む（リスト優先）
+const savedMapPref = localStorage.getItem("pe-map-collapsed");
+if (savedMapPref === "1" || (savedMapPref == null && window.matchMedia("(max-width: 760px)").matches)) {
+  setMapCollapsed(true);
+}
 statusEl.textContent = isNew ? "下書き（自動保存・未保存）" : editable ? "読み込み完了" : statusEl.textContent;
 
 registerServiceWorker();
