@@ -140,6 +140,21 @@ window.TRIP_CONFIG = {
 - `mode: "local"` のプランは行程・地図・チェックリスト・リンクをこの端末だけで表示します。費用入力と精算は Google Sheets / Apps Script 連携の旅行で使えます。
 - レジストリのキー: `trip-dashboard-plans`（一覧）、`trip-dashboard-plan-<slug>`（各データ）、`trip-dashboard-active-plan`（選択中）。
 
+### 計画エディタの場所検索
+
+エディタの「地図を検索」は、既定では無料の **OpenStreetMap（Nominatim）** を使います。これは OSM に現地語で登録された地名・施設に強い一方、海外のホテル等を**日本語名**で引くのは苦手です（例:「プラザホテル ニューヨーク」はヒットしない）。
+
+多言語の施設検索を使いたい場合は、`frontend/public/trip-config.js` に **Mapbox の公開トークン**を設定します。設定すると検索が Mapbox Search Box（多言語POI）に切り替わり、空なら自動で Nominatim にフォールバックします。
+
+```js
+window.TRIP_CONFIG = {
+  // …
+  geocoding: { mapboxToken: "pk.xxxxx" } // https://account.mapbox.com/ の Access tokens（無料枠あり）
+};
+```
+
+トークンはクライアントに露出する公開トークンです。Mapbox 側で URL 制限をかけて利用してください。座標が分かっている場合は、予定を開いて「地図で指定」→ 地図クリックでも登録できます。
+
 ### ローカルプランを公開する（Google Sheets へ書き出し）
 
 `plans.html` の各ローカルプランにある「公開」ボタンは、Apps Script の `createTrip` を呼び、行程を新しい Google スプレッドシートへ書き出します。書き出し後はそのプランが `googleSheets` 連携に切り替わり、リンクを知っている人と共有できます。

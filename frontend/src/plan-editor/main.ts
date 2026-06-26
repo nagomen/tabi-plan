@@ -16,6 +16,7 @@ import Sortable from "sortablejs";
 import * as TripPlans from "../shared/plans-store";
 import type { LocalPlanData } from "../shared/plans-store";
 import type { ItineraryItem, ItemType } from "../shared/types";
+import { readGlobalTripConfig } from "../shared/config";
 import { escapeHtml } from "../shared/dom";
 import { icon, type IconName } from "../shared/icons";
 import { registerServiceWorker } from "../shared/pwa";
@@ -266,8 +267,14 @@ function latLngKeys(target: GeoTarget): [ItemStrKey, ItemStrKey] {
 }
 
 interface GeoResult { label: string; lat: number; lng: number; }
+
+// Mapbox トークンがあれば Mapbox（多言語POIに強い）、無ければ Nominatim を使う。
+const MAPBOX_TOKEN = readGlobalTripConfig().geocoding?.mapboxToken || "";
+
 let lastGeoAt = 0;
 async function geocodeSearch(query: string): Promise<GeoResult[]> {
+  if (MAPBOX_TOKEN) return geocodeMapbox(query);
+  // Nominatim は規約順守のため最短 1.1 秒間隔
   const wait = 1100 - (Date.now() - lastGeoAt);
   if (wait > 0) await new Promise((r) => window.setTimeout(r, wait));
   lastGeoAt = Date.now();
@@ -277,6 +284,33 @@ async function geocodeSearch(query: string): Promise<GeoResult[]> {
   const data = (await res.json()) as Array<{ display_name?: string; lat?: string; lon?: string }>;
   return data
     .map((d) => ({ label: String(d.display_name || ""), lat: Number(d.lat), lng: Number(d.lon) }))
+    .filter((r) => Number.isFinite(r.lat) && Number.isFinite(r.lng));
+}
+
+interface MapboxFeature {
+  properties?: { name?: string; name_preferred?: string; place_formatted?: string; full_address?: string };
+  geometry?: { coordinates?: [number, number] };
+}
+
+// Mapbox Search Box API（POI/施設名・多言語に強い）。
+async function geocodeMapbox(query: string): Promise<GeoResult[]> {
+  const url =
+    "https://api.mapbox.com/search/searchbox/v1/forward?q=" + encodeURIComponent(query) +
+    "&language=ja&limit=5&access_token=" + encodeURIComponent(MAPBOX_TOKEN);
+  const res = await fetch(url);
+  if (!res.ok) throw new Error("検索に失敗しました (" + res.status + ")");
+  const data = (await res.json()) as { features?: MapboxFeature[] };
+  return (data.features || [])
+    .map((f) => {
+      const coord = f.geometry && f.geometry.coordinates;
+      const name = (f.properties && (f.properties.name_preferred || f.properties.name)) || "";
+      const area = (f.properties && (f.properties.place_formatted || f.properties.full_address)) || "";
+      return {
+        label: [name, area].filter(Boolean).join(" / "),
+        lat: coord ? coord[1] : NaN,
+        lng: coord ? coord[0] : NaN,
+      };
+    })
     .filter((r) => Number.isFinite(r.lat) && Number.isFinite(r.lng));
 }
 

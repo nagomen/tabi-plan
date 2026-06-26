@@ -58,6 +58,11 @@ export interface MapEmbedConfig {
   mapsEmbedApiKey: string;
 }
 
+export interface GeocodingConfig {
+  /** Mapbox の公開アクセストークン（pk.…）。設定すると場所検索が Mapbox になる */
+  mapboxToken: string;
+}
+
 export interface TripConfig {
   mode: TripMode;
   tripSlug: string;
@@ -79,6 +84,7 @@ export interface TripConfig {
   profile: { storageKey: string };
   expenseCache: { storageKey: string };
   mapDefaults: MapDefaults;
+  geocoding: GeocodingConfig;
 }
 
 export const DEFAULT_CONFIG: TripConfig = {
@@ -143,6 +149,9 @@ export const DEFAULT_CONFIG: TripConfig = {
     zoom: 5,
     activeRadiusKm: 300,
     overviewRadiusKm: 800,
+  },
+  geocoding: {
+    mapboxToken: "",
   },
 };
 

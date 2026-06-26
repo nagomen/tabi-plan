@@ -12,5 +12,10 @@ window.TRIP_CONFIG = {
     zoom: 5,
     activeRadiusKm: 300,
     overviewRadiusKm: 800
+  },
+  geocoding: {
+    // Mapbox 公開トークン（pk.…）。設定すると計画エディタの場所検索が
+    // Mapbox（多言語POI）になる。空なら OpenStreetMap(Nominatim) を使う。
+    mapboxToken: ""
   }
 };

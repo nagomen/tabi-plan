@@ -15,5 +15,12 @@ window.TRIP_CONFIG = {
     zoom: 6,
     activeRadiusKm: 180,
     overviewRadiusKm: 620
+  },
+  geocoding: {
+    // 計画エディタの場所検索。Mapbox 公開トークン（pk.…）を入れると
+    // 多言語POI検索になり「プラザホテル ニューヨーク」等も引ける。
+    // 空なら無料の OpenStreetMap(Nominatim) に自動フォールバック。
+    // 取得: https://account.mapbox.com/ → Access tokens（無料枠あり）
+    mapboxToken: ""
   }
 };
