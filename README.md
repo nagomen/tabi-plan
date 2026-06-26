@@ -52,13 +52,17 @@ sheet-template/           Google Sheets の初期データ CSV
 
 ### 開発コマンド
 
-| 場所 | コマンド | 用途 |
-| --- | --- | --- |
-| `frontend` | `npm install` → `npm run dev` | ローカル開発サーバ |
-| `frontend` | `npm run build` | `tsc --noEmit` で型検査してから `vite build`（出力 `frontend/dist`） |
-| `frontend` | `npm run typecheck` | 型検査のみ |
-| `backend` | `npm install` → `npm run typecheck` | Apps Script の型検査 |
-| `backend` | `npm run push` | clasp で Apps Script へ反映（要 `.clasp.json`） |
+npm workspaces 構成です。**ルートで `npm install` 1回**で frontend / backend 両方の依存が入ります（lockfile はルートの `package-lock.json` 1枚）。以降はすべてリポジトリのルートで実行します。
+
+| コマンド | 用途 |
+| --- | --- |
+| `npm install` | frontend + backend をまとめて導入 |
+| `npm run dev` | フロントのローカル開発サーバ（Vite） |
+| `npm run build` | フロントを型検査してビルド（`tsc --noEmit` + `vite build`、出力 `frontend/dist`） |
+| `npm run typecheck` | frontend と backend の両方を型検査 |
+| `npm run push` | clasp で Apps Script へ反映（要 `backend/.clasp.json`） |
+
+個別に動かしたい場合は `npm run <script> -w frontend` / `-w backend`、または各ディレクトリに入って従来どおり実行もできます。
 
 ## 構成
 
@@ -75,7 +79,7 @@ sheet-template/           Google Sheets の初期データ CSV
 | 1 | 旅行 repo | `frontend/public/trip-config.example.js` を参考に `frontend/public/trip-config.js` を編集する | `tripSlug` は旅行ごとに必ず変える |
 | 2 | Apps Script | `setupTripDashboard({ ... })` を実行する | `appsScript` モードを使う場合。読み取り試作だけなら省略可 |
 | 3 | Apps Script | Web App としてデプロイする | 発行された URL を `appsScriptUrl` に入れる |
-| 4 | ローカル | `cd frontend && npm run build` を実行する | Pages に出す前に型検査とビルドで確認する |
+| 4 | ローカル | ルートで `npm run build` を実行する | Pages に出す前に型検査とビルドで確認する |
 | 5 | GitHub | `main` に push する | Actions がビルド後に Pages へ公開する |
 
 `tripSlug` は localStorage のキーに使います。旅行ごとに必ず変えてください。

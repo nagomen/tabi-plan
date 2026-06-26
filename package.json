@@ -1,0 +1,17 @@
+{
+  "name": "tohoku-travel-dashboard",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "frontend",
+    "backend"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w frontend",
+    "build": "npm run build -w frontend",
+    "preview": "npm run preview -w frontend",
+    "typecheck": "npm run typecheck -w frontend && npm run typecheck -w backend",
+    "push": "npm run push -w backend",
+    "deploy": "npm run deploy -w backend"
+  }
+}
