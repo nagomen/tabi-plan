@@ -7,6 +7,7 @@ import * as TripPlans from "../shared/plans-store";
 import type { PlanMeta, LocalPlanData, PlanSource } from "../shared/plans-store";
 import { readGlobalTripConfig } from "../shared/config";
 import { escapeHtml, errorMessage, makeScopedQuery } from "../shared/dom";
+import { registerServiceWorker } from "../shared/pwa";
 import {
   callAppsScript,
   postAppsScript,
@@ -344,8 +345,6 @@ filterEl.addEventListener("input", (event) => {
   render();
 });
 
-if ("serviceWorker" in navigator && /^https?:$/.test(location.protocol)) {
-  navigator.serviceWorker.register("sw.js").catch(() => {});
-}
+registerServiceWorker();
 
 render();

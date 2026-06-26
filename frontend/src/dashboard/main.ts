@@ -29,6 +29,7 @@ import {
   type AppsScriptParams,
   type AppsScriptResponse,
 } from "../shared/apps-script";
+import { registerServiceWorker } from "../shared/pwa";
 import type {
   TripData,
   TripLink,
@@ -2013,12 +2014,6 @@ async function syncData(isInitial: boolean, didRetryAuth?: boolean): Promise<voi
   } finally {
     syncInFlight = null;
   }
-}
-
-function registerServiceWorker(): void {
-  if (!("serviceWorker" in navigator)) return;
-  if (!/^https?:$/.test(location.protocol)) return;
-  navigator.serviceWorker.register("sw.js").catch(() => { /* ignore */ });
 }
 
 async function init(): Promise<void> {
