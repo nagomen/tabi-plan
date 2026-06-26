@@ -47,13 +47,24 @@ interface Item {
   toLng: string;
   transport: string;
   duration: string;
+  /** 宿泊専用：この夜から連泊する泊数（既定 1） */
+  nights: number;
 }
 
 interface Day {
   date: string;
   area: string;
   items: Item[];     // 観光/食事/移動/予定/手続き
-  stay: Item | null; // 宿泊（その日の錨）
+  stay: Item | null; // この夜にチェックインする宿（連泊は nights で表現）
+}
+
+/** 指定の日に「滞在中」の宿（連泊対応）。startIndex はチェックイン日。 */
+function stayCovering(dayIndex: number): { startIndex: number; stay: Item } | null {
+  for (let i = dayIndex; i >= 0; i--) {
+    const s = model.days[i] && model.days[i].stay;
+    if (s && i + Math.max(1, s.nights) > dayIndex) return { startIndex: i, stay: s };
+  }
+  return null;
 }
 
 interface City {
@@ -61,6 +72,17 @@ interface City {
   name: string;
   lat: string;
   lng: string;
+  /** この都市に滞在する日（任意）。設定すると日が都市の下にまとまる */
+  fromDate: string;
+  toDate: string;
+}
+
+/** 指定日をカバーする都市（fromDate<=date<=toDate） */
+function cityForDate(date: string): City | null {
+  for (const c of model.cities) {
+    if (c.fromDate && c.toDate && c.fromDate <= date && date <= c.toDate) return c;
+  }
+  return null;
 }
 
 interface Model {
@@ -162,6 +184,7 @@ function newItem(kind: ItemKind, seed?: Partial<Item>): Item {
     from: seed?.from ?? "", fromLat: seed?.fromLat ?? "", fromLng: seed?.fromLng ?? "",
     to: seed?.to ?? "", toLat: seed?.toLat ?? "", toLng: seed?.toLng ?? "",
     transport: seed?.transport ?? "", duration: seed?.duration ?? "",
+    nights: seed?.nights ?? 1,
   };
 }
 
@@ -306,20 +329,39 @@ function persist(): void {
 
 // ---- レンダリング: 都市（ルート） ---------------------------------------
 
+function dayOptions(selected: string): string {
+  return `<option value="">—</option>` + model.days
+    .map((d) => {
+      const dt = parseISO(d.date);
+      const label = dt ? `${dt.getMonth() + 1}/${dt.getDate()}(${weekday(dt)})` : d.date;
+      return `<option value="${d.date}"${d.date === selected ? " selected" : ""}>${label}</option>`;
+    })
+    .join("");
+}
+
 function renderCities(): void {
   cityOptions.innerHTML = model.cities.map((c) => `<option value="${escapeHtml(c.name)}">`).join("");
   if (!model.cities.length) {
-    citiesEl.innerHTML = `<span class="pe-route-empty">まだありません。行きたい都市を足すと地図に出ます。</span>`;
+    citiesEl.innerHTML = `<span class="pe-route-empty">まだありません。行きたい都市を足すと地図に出ます。期間を入れると「いつ滞在するか」も割り当てられます。</span>`;
     return;
   }
+  const hasDays = model.days.length > 0;
   citiesEl.innerHTML = model.cities
     .map((c, i) => {
       const noGeo = hasLatLng(c.lat, c.lng) ? "" : " no-geo";
-      return `<span class="pe-city${noGeo}" data-city="${c.id}">` +
+      const dateCtl = hasDays
+        ? `<span class="pe-city-dates">` +
+          `<select data-city-from="${c.id}" aria-label="開始日">${dayOptions(c.fromDate)}</select>` +
+          `<span class="pe-city-sep">〜</span>` +
+          `<select data-city-to="${c.id}" aria-label="終了日">${dayOptions(c.toDate)}</select>` +
+          `</span>`
+        : "";
+      return `<div class="pe-city${noGeo}" data-city="${c.id}">` +
         `<span class="pe-city-n">${i + 1}</span>` +
-        `<span>${escapeHtml(c.name)}</span>` +
+        `<span class="pe-city-name">${escapeHtml(c.name)}</span>` +
+        dateCtl +
         `<button type="button" data-act="city-del" data-city="${c.id}" aria-label="削除">${icon("xMark")}</button>` +
-        `</span>`;
+        `</div>`;
     })
     .join("");
 }
@@ -328,7 +370,7 @@ async function addCity(name: string): Promise<void> {
   const trimmed = name.trim();
   if (!trimmed) return;
   const local = TripPlans.coordsFor(trimmed);
-  const city: City = { id: seq++, name: trimmed, lat: local ? String(local.lat) : "", lng: local ? String(local.lng) : "" };
+  const city: City = { id: seq++, name: trimmed, lat: local ? String(local.lat) : "", lng: local ? String(local.lng) : "", fromDate: "", toDate: "" };
   model.cities.push(city);
   markDirty();
   renderCities();
@@ -348,9 +390,12 @@ async function addCity(name: string): Promise<void> {
 function dayHeader(day: Day, index: number): string {
   const d = parseISO(day.date);
   const dayName = `Day ${index + 1}`;
-  const prevStay = index > 0 ? model.days[index - 1].stay : null;
-  const area = day.area || (prevStay && prevStay.title ? prevStay.title : "") || "エリア未設定";
-  const stay = day.stay && day.stay.title ? day.stay.title : "宿 未定";
+  const cover = stayCovering(index);
+  const city = cityForDate(day.date);
+  const area = day.area || (city ? city.name : "") || (cover && cover.stay.title ? cover.stay.title : "") || "エリア未設定";
+  const stay = cover && cover.stay.title
+    ? cover.stay.title + (cover.stay.nights > 1 ? `（${cover.stay.nights}泊）` : "")
+    : "宿 未定";
   return (
     `<div class="pe-day-head">` +
     `<div class="pe-day-badge"><b>${dayName}</b><span>${d ? `${d.getMonth() + 1}/${d.getDate()}(${weekday(d)})` : ""}</span></div>` +
@@ -433,10 +478,17 @@ function editForm(item: Item): string {
     );
   }
   const timeLabel = item.kind === "food" ? "時刻 / 朝昼夜" : item.kind === "stay" ? "チェックイン" : "時刻";
+  const nightsSelect = item.kind === "stay"
+    ? `<label class="pe-field"><span>泊数</span><select data-field="nights" data-item="${item.id}">` +
+      Array.from({ length: Math.max(model.days.length, 1) }, (_, i) => i + 1)
+        .map((n) => `<option value="${n}"${item.nights === n ? " selected" : ""}>${n}泊</option>`).join("") +
+      `</select></label>`
+    : "";
   return (
     g +
     `<label class="pe-field c2"><span>タイトル</span>${fieldInput(item, "title", item.kind === "stay" ? "例: 八戸グランドホテル" : item.kind === "food" ? "例: 夕食 / 海鮮丼" : "例: 中尊寺を拝観")}</label>` +
     `<label class="pe-field"><span>${timeLabel} <em>任意</em></span>${fieldInput(item, "time", item.kind === "food" ? "例: 夜" : "例: 10:00")}</label>` +
+    nightsSelect +
     placeBlock(item, "place", "場所", "例: 平泉 / 中尊寺") +
     `<label class="pe-field c4"><span>メモ <em>任意</em></span>${fieldInput(item, "note", "当日見たい情報だけ")}</label>` +
     end
@@ -457,13 +509,23 @@ function timelineNode(item: Item): string {
   );
 }
 
-function stayBlock(day: Day, index: number): string {
-  const stay = day.stay;
-  if (!stay) return "";
+function stayBand(index: number): string {
+  const cover = stayCovering(index);
+  if (!cover) return "";
+  // 連泊の継続日（編集はチェックイン日で行う）
+  if (cover.startIndex !== index) {
+    return (
+      `<div class="pe-stay pe-stay-cont">` +
+      `<span class="pe-stay-ic">${icon("buildingOffice2")}</span>` +
+      `<div class="pe-stay-main"><b>${escapeHtml(cover.stay.title || "連泊")}</b><span>同じ宿に滞在中（連泊）</span></div>` +
+      `</div>`
+    );
+  }
+  const stay = cover.stay;
   const open = openItemId === stay.id ? " is-open" : "";
   const title = stay.title || "宿泊先 未入力";
   const titleCls = stay.title ? "" : " is-empty";
-  const meta = [stay.time ? `IN ${stay.time}` : "", stay.place].filter(Boolean).join(" ・ ");
+  const meta = [stay.time ? `IN ${stay.time}` : "", stay.nights > 1 ? `${stay.nights}泊` : "", stay.place].filter(Boolean).join(" ・ ");
   return (
     `<div class="pe-node${open}" data-kind="stay" data-node="${stay.id}">` +
     `<div class="pe-stay">` +
@@ -478,10 +540,10 @@ function stayBlock(day: Day, index: number): string {
   );
 }
 
-function quickAdd(day: Day, index: number): string {
+function quickAdd(_day: Day, index: number): string {
   const btn = (kind: ItemKind): string =>
     `<button class="pe-q" type="button" data-act="add" data-kind="${kind}" data-day="${index}">${icon(KINDS[kind].icon)}${KINDS[kind].label}を追加</button>`;
-  const stayBtn = day.stay
+  const stayBtn = stayCovering(index)
     ? ""
     : `<button class="pe-q" type="button" data-act="add" data-kind="stay" data-day="${index}">${icon("buildingOffice2")}宿泊を設定</button>`;
   return (
@@ -492,10 +554,10 @@ function quickAdd(day: Day, index: number): string {
 }
 
 function renderDayStrip(): void {
-  const stays = model.days.filter((d) => d.stay).length;
+  const nights = model.days.reduce((n, d) => n + (d.stay ? Math.max(1, d.stay.nights) : 0), 0);
   const cities = model.cities.length;
   tripSummaryEl.textContent = model.days.length
-    ? ` ・ ${model.days.length}日間${stays ? ` ・ ${stays}泊` : ""}${cities ? ` ・ ${cities}都市` : ""}`
+    ? ` ・ ${model.days.length}日間${nights ? ` ・ ${nights}泊` : ""}${cities ? ` ・ ${cities}都市` : ""}`
     : "";
   if (model.days.length < 2) { dayStripEl.innerHTML = ""; return; }
   dayStripEl.innerHTML = model.days
@@ -519,21 +581,32 @@ function renderDays(): void {
     .map((day, index) => {
       const items = day.items.map(timelineNode).join("");
       const empty = day.items.length ? "" : `<p class="pe-day-empty">まだ予定がありません。下のボタンから追加するか、上の日から予定をドラッグできます。</p>`;
-      const prevStay = index > 0 ? model.days[index - 1].stay : null;
-      const startBanner = prevStay && prevStay.title
+      // 前夜の宿を朝に出発するときだけ「前泊から出発」を出す（連泊中は出さない）
+      const coverPrev = index > 0 ? stayCovering(index - 1) : null;
+      const coverToday = stayCovering(index);
+      const leftHotel = coverPrev && (!coverToday || coverToday.stay.id !== coverPrev.stay.id);
+      const startBanner = leftHotel && coverPrev.stay.title
         ? `<div class="pe-start"><span class="pe-start-ic">${icon("buildingOffice2")}</span>` +
-          `<div class="pe-start-main"><b>前泊から出発</b><br><span>${escapeHtml(prevStay.title)}</span></div></div>`
+          `<div class="pe-start-main"><b>前泊から出発</b><br><span>${escapeHtml(coverPrev.stay.title)}</span></div></div>`
         : "";
+      // 都市バンド（ルート都市の滞在範囲が変わる初日に挿入）
+      const city = cityForDate(day.date);
+      const prevCity = index > 0 ? cityForDate(model.days[index - 1].date) : null;
+      const band = city && city.id !== (prevCity ? prevCity.id : -1)
+        ? `<div class="pe-cityband">${icon("mapPin")}<b>${escapeHtml(city.name)}</b><span>${cityRangeLabel(city)}</span></div>`
+        : "";
+      const areaPlaceholder = city ? city.name : "例: 盛岡";
       return (
+        band +
         `<article class="pe-day" data-day="${index}">` +
         dayHeader(day, index) +
         `<div class="pe-day-body">` +
-        `<label class="pe-field" style="margin-bottom:10px;"><span>この日の拠点エリア <em>任意</em></span>` +
-        `<input data-area="${index}" list="pe-city-options" value="${escapeHtml(day.area)}" placeholder="例: 盛岡"></label>` +
+        `<label class="pe-field" style="margin-bottom:10px;"><span>この日の拠点エリア <em>${city ? "都市から自動・上書き可" : "任意"}</em></span>` +
+        `<input data-area="${index}" list="pe-city-options" value="${escapeHtml(day.area)}" placeholder="${escapeHtml(areaPlaceholder)}"></label>` +
         startBanner +
         `<div class="pe-timeline">${items}</div>` +
         empty +
-        stayBlock(day, index) +
+        stayBand(index) +
         quickAdd(day, index) +
         `</div>` +
         `</article>`
@@ -648,12 +721,12 @@ function refreshMap(fit: boolean): void {
 
   // 各日の予定 + 宿泊。ルートも順につなぐ
   const path: L.LatLngTuple[] = [];
-  model.days.forEach((day) => {
-    const pushPoint = (lat: string, lng: string, color: string, label: string, tip: string): void => {
+  model.days.forEach((day, index) => {
+    const pushPoint = (lat: string, lng: string, color: string, label: string, tip: string, marker = true): void => {
       if (!hasLatLng(lat, lng)) return;
       const ll: L.LatLngTuple = [num(lat), num(lng)];
       pts.push(ll); path.push(ll);
-      L.marker(ll, { icon: pinIcon(color, label) }).bindTooltip(tip).addTo(pinLayer!);
+      if (marker) L.marker(ll, { icon: pinIcon(color, label) }).bindTooltip(tip).addTo(pinLayer!);
     };
     day.items.forEach((it) => {
       if (it.kind === "move") {
@@ -663,7 +736,9 @@ function refreshMap(fit: boolean): void {
         pushPoint(it.lat, it.lng, KIND_COLOR[it.kind], KINDS[it.kind].label.slice(0, 1), it.title || it.place || KINDS[it.kind].label);
       }
     });
-    if (day.stay) pushPoint(day.stay.lat, day.stay.lng, KIND_COLOR.stay, "宿", day.stay.title || "宿泊");
+    // 連泊は各夜の終点として経路に含め、ピンはチェックイン日だけ
+    const cover = stayCovering(index);
+    if (cover) pushPoint(cover.stay.lat, cover.stay.lng, KIND_COLOR.stay, "宿", cover.stay.title || "宿泊", cover.startIndex === index);
   });
 
   if (path.length >= 2) {
@@ -845,11 +920,22 @@ daysEl.addEventListener("input", (event) => {
     return;
   }
 
-  const field = target.getAttribute("data-field") as ItemStrKey | null;
+  const fieldName = target.getAttribute("data-field");
   const itemId = Number(target.getAttribute("data-item") || 0);
-  if (!field || !itemId) return;
+  if (!fieldName || !itemId) return;
   const found = findItem(itemId);
   if (!found) return;
+
+  // 泊数（数値・連泊範囲が変わるので全再描画）
+  if (fieldName === "nights") {
+    found.item.nights = Math.max(1, Number(target.value) || 1);
+    markDirty();
+    renderDays();
+    refreshMap(false);
+    return;
+  }
+
+  const field = fieldName as ItemStrKey;
   found.item[field] = target.value;
 
   // 場所系は内蔵テーブルで座標を補完
@@ -888,6 +974,30 @@ cityInput.addEventListener("keydown", (e) => {
 });
 qs<HTMLButtonElement>(root, "[data-city-add]").addEventListener("click", () => {
   void addCity(cityInput.value); cityInput.value = "";
+});
+
+function cityRangeLabel(city: City): string {
+  const a = parseISO(city.fromDate);
+  const b = parseISO(city.toDate);
+  if (!a || !b) return "";
+  const f = (d: Date): string => `${d.getMonth() + 1}/${d.getDate()}`;
+  return city.fromDate === city.toDate ? f(a) : `${f(a)}〜${f(b)}`;
+}
+
+// 都市の滞在期間（開始/終了日）の割り当て
+citiesEl.addEventListener("change", (event) => {
+  const t = event.target;
+  if (!(t instanceof HTMLSelectElement)) return;
+  const fromId = t.getAttribute("data-city-from");
+  const toId = t.getAttribute("data-city-to");
+  const city = model.cities.find((c) => c.id === Number(fromId || toId || 0));
+  if (!city) return;
+  if (fromId) { city.fromDate = t.value; if (!city.toDate || city.toDate < city.fromDate) city.toDate = city.fromDate; }
+  if (toId) { city.toDate = t.value; if (!city.fromDate || city.fromDate > city.toDate) city.fromDate = city.toDate; }
+  markDirty();
+  renderCities();
+  renderDays();
+  refreshMap(false);
 });
 
 // ---- 保存・読み込み -----------------------------------------------------
@@ -933,7 +1043,9 @@ function buildData(): LocalPlanData {
       itinerary.push(base);
     };
     day.items.forEach(flush);
-    if (day.stay) flush(day.stay);
+    // 連泊は各夜に1行ずつ出す（ダッシュボードで毎晩の宿が地図に出る）
+    const cover = stayCovering(di);
+    if (cover) flush(cover.stay);
   });
   return {
     trip: { title: model.title || "無題の旅行", dates: datesString(), members: model.members || "", note: model.note || "" },
@@ -981,9 +1093,18 @@ function loadExisting(): boolean {
     else day.items.push(it);
   });
   model.days = Object.keys(byDate).sort().map((d) => byDate[d]);
+  // 同名の宿が連日なら連泊として1つにまとめる（後ろから前へ畳む）
+  for (let i = model.days.length - 1; i >= 1; i--) {
+    const cur = model.days[i].stay;
+    const prev = model.days[i - 1].stay;
+    if (cur && prev && cur.title && cur.title === prev.title) {
+      prev.nights = Math.max(1, prev.nights) + Math.max(1, cur.nights);
+      model.days[i].stay = null;
+    }
+  }
   model.cities = Array.from(cityNames).map((name) => {
     const hit = TripPlans.coordsFor(name);
-    return { id: seq++, name, lat: hit ? String(hit.lat) : "", lng: hit ? String(hit.lng) : "" };
+    return { id: seq++, name, lat: hit ? String(hit.lat) : "", lng: hit ? String(hit.lng) : "", fromDate: "", toDate: "" };
   });
   return true;
 }

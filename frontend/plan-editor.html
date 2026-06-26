@@ -207,21 +207,33 @@
 
   /* ルート（大まかな場所） */
   .pe-route { margin-top: 14px; }
-  .pe-route-list { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 9px; }
+  .pe-route-list { display: grid; gap: 7px; margin-bottom: 9px; }
   .pe-city {
-    display: inline-flex;
+    display: flex;
     align-items: center;
-    gap: 7px;
-    padding: 7px 7px 7px 12px;
+    gap: 9px;
+    padding: 7px 9px 7px 11px;
     border: 1px solid var(--line-strong);
     background: #fff;
     font-size: 13px;
     font-weight: 800;
+    flex-wrap: wrap;
   }
-  .pe-city .pe-city-n { display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; background: var(--green-soft); color: var(--green); font-size: 11px; font-weight: 900; }
-  .pe-city.no-geo { border-style: dashed; color: var(--muted); }
-  .pe-city button { border: 0; background: none; color: var(--muted); cursor: pointer; display: inline-grid; place-items: center; padding: 2px; }
-  .pe-city button:hover { color: var(--red); }
+  .pe-city .pe-city-n { display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; background: var(--green-soft); color: var(--green); font-size: 11px; font-weight: 900; flex: none; }
+  .pe-city-name { flex: 1; min-width: 70px; }
+  .pe-city-dates { display: inline-flex; align-items: center; gap: 6px; }
+  .pe-city-dates select { min-height: 34px; border: 1px solid var(--line-strong); background: #fff; padding: 4px 6px; font: inherit; font-size: 12px; }
+  .pe-city-sep { color: var(--muted); }
+  .pe-city.no-geo { border-style: dashed; }
+  .pe-city.no-geo .pe-city-name { color: var(--muted); }
+  .pe-city button[data-act="city-del"] { border: 0; background: none; color: var(--muted); cursor: pointer; display: inline-grid; place-items: center; padding: 2px; flex: none; }
+  .pe-city button[data-act="city-del"]:hover { color: var(--red); }
+
+  /* 都市バンド（日のグループ見出し） */
+  .pe-cityband { display: flex; align-items: baseline; gap: 8px; margin: 8px 0 -8px; padding: 2px 2px; color: var(--green); }
+  .pe-cityband .hi { align-self: center; }
+  .pe-cityband b { font-size: 15px; font-weight: 950; }
+  .pe-cityband span { color: var(--muted); font-size: 12px; font-weight: 800; }
   .pe-route-add { display: flex; gap: 8px; max-width: 420px; }
   .pe-route-add input { flex: 1; min-height: 40px; border: 1px solid var(--line-strong); padding: 8px 10px; font: inherit; font-size: 14px; }
   .pe-route-empty { color: var(--muted); font-size: 12.5px; font-weight: 700; }
@@ -445,6 +457,14 @@
   .pe-stay-main b.is-empty { color: var(--muted); font-weight: 700; }
   .pe-stay-main span { color: var(--muted); font-size: 11.5px; font-weight: 760; }
   .pe-stay-edit { color: var(--red); border-color: rgba(207, 79, 61, .4); }
+
+  /* 連泊の継続日 */
+  .pe-stay.pe-stay-cont {
+    grid-template-columns: auto minmax(0, 1fr);
+    background: #fcf1ef;
+    border-style: dashed;
+  }
+  .pe-stay-cont .pe-stay-ic { background: #d98e84; }
 
   /* クイック追加 */
   .pe-quick { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 12px; }
