@@ -393,9 +393,10 @@ function renderCities(): void {
         : "";
       return `<div class="pe-city${noGeo}" data-city="${c.id}">` +
         `<span class="pe-city-n">${i + 1}</span>` +
-        `<span class="pe-city-name">${escapeHtml(c.name)}</span>` +
+        `<input class="pe-city-name" data-city-name="${c.id}" value="${escapeHtml(c.name)}" placeholder="都市名" aria-label="都市名">` +
+        `<button class="pe-mini" type="button" data-city-geo="${c.id}" title="地図で探す">${icon("magnifyingGlass")}</button>` +
         dateCtl +
-        `<button type="button" data-act="city-del" data-city="${c.id}" aria-label="削除">${icon("xMark")}</button>` +
+        `<button class="pe-icon-btn danger" type="button" data-city-del="${c.id}" aria-label="削除">${icon("xMark")}</button>` +
         `</div>`;
     })
     .join("");
@@ -719,6 +720,7 @@ function refreshDayHeader(index: number): void {
 let map: L.Map | null = null;
 let pinLayer: L.LayerGroup | null = null;
 let routeLayer: L.LayerGroup | null = null;
+let candidateLayer: L.LayerGroup | null = null;
 
 function initMap(): void {
   map = L.map(mapEl, { zoomControl: true, attributionControl: true }).setView([39.6, 140.6], 6);
@@ -727,6 +729,7 @@ function initMap(): void {
   }).addTo(map);
   pinLayer = L.layerGroup().addTo(map);
   routeLayer = L.layerGroup().addTo(map);
+  candidateLayer = L.layerGroup().addTo(map);
   map.on("click", (e: L.LeafletMouseEvent) => onMapClick(e.latlng));
   window.setTimeout(() => map && map.invalidateSize(), 60);
 }
@@ -738,6 +741,29 @@ function pinIcon(color: string, label: string): L.DivIcon {
     iconSize: [22, 22],
     iconAnchor: [11, 22],
   });
+}
+
+// 検索候補を地図上に番号ピンで表示。クリックで採用。
+function showCandidates(itemId: number, target: GeoTarget, results: GeoResult[]): void {
+  if (!map || !candidateLayer) return;
+  candidateLayer.clearLayers();
+  const pts: L.LatLngTuple[] = [];
+  results.forEach((r, i) => {
+    const ll: L.LatLngTuple = [r.lat, r.lng];
+    pts.push(ll);
+    const marker = L.marker(ll, {
+      icon: L.divIcon({ className: "", html: `<div class="pe-candpin">${i + 1}</div>`, iconSize: [28, 28], iconAnchor: [14, 14] }),
+      zIndexOffset: 1000,
+    }).bindTooltip(`候補${i + 1}: ${r.label}`, { direction: "top" });
+    marker.on("click", () => applyGeo(itemId, target, r));
+    marker.addTo(candidateLayer!);
+  });
+  if (pts.length && map) map.fitBounds(L.latLngBounds(pts).pad(0.35), { maxZoom: 14 });
+  mapHintEl.textContent = "地図の候補ピンをクリックして選択";
+}
+
+function clearCandidates(): void {
+  if (candidateLayer) candidateLayer.clearLayers();
 }
 
 function refreshMap(fit: boolean): void {
@@ -803,6 +829,7 @@ function disarm(): void {
   mapHintEl.textContent = "";
   mapEl.style.cursor = "";
   daysEl.querySelectorAll(".pe-mini.is-armed").forEach((b) => b.classList.remove("is-armed"));
+  clearCandidates();
 }
 
 function arm(itemId: number, target: GeoTarget, button: HTMLElement): void {
@@ -832,18 +859,20 @@ async function runGeocode(itemId: number, target: GeoTarget): Promise<void> {
   const resultsEl = daysEl.querySelector<HTMLElement>(`[data-geores="${itemId}-${target}"]`);
   if (!query) { setGeoStatus(itemId, target, "場所名を入力してください", "warn"); return; }
   setGeoStatus(itemId, target, "検索中…");
+  clearCandidates();
   if (resultsEl) { resultsEl.hidden = true; resultsEl.innerHTML = ""; }
   try {
     const results = await geocodeSearch(query);
     if (!results.length) { setGeoStatus(itemId, target, "見つかりませんでした。表記を変えて再検索を", "warn"); return; }
     if (results.length === 1) { applyGeo(itemId, target, results[0]); return; }
+    geoCache.set(`${itemId}-${target}`, results);
+    showCandidates(itemId, target, results);
     if (resultsEl) {
       resultsEl.innerHTML = results
         .map((r, i) => `<button type="button" data-act="geo-pick" data-item="${itemId}" data-target="${target}" data-idx="${i}"><b>候補 ${i + 1}</b><small>${escapeHtml(r.label)}</small></button>`)
         .join("");
       resultsEl.hidden = false;
-      geoCache.set(`${itemId}-${target}`, results);
-      setGeoStatus(itemId, target, "候補から選んでください");
+      setGeoStatus(itemId, target, "地図のピン、または下の候補から選んでください");
     }
   } catch (e) {
     setGeoStatus(itemId, target, e instanceof Error ? e.message : "検索に失敗しました", "warn");
@@ -860,6 +889,8 @@ function applyGeo(itemId: number, target: GeoTarget, r: GeoResult): void {
   found.item[lngKey] = String(r.lng);
   const resultsEl = daysEl.querySelector<HTMLElement>(`[data-geores="${itemId}-${target}"]`);
   if (resultsEl) { resultsEl.hidden = true; resultsEl.innerHTML = ""; }
+  clearCandidates();
+  mapHintEl.textContent = "";
   setGeoStatus(itemId, target, "地図に登録しました", "ok");
   markDirty();
   refreshMap(true);
@@ -933,12 +964,6 @@ daysEl.addEventListener("click", (event) => {
     const list = geoCache.get(key);
     const r = list && list[Number(actEl.dataset.idx || 0)];
     if (r) applyGeo(itemId, (actEl.dataset.target || "place") as GeoTarget, r);
-    return;
-  }
-  if (act === "city-del") {
-    const id = Number(actEl.dataset.city || 0);
-    model.cities = model.cities.filter((c) => c.id !== id);
-    markDirty(); renderCities(); refreshMap(true);
     return;
   }
 });
@@ -1033,6 +1058,56 @@ citiesEl.addEventListener("change", (event) => {
   renderCities();
   renderDays();
   refreshMap(false);
+});
+
+// 都市の削除・地図検索
+citiesEl.addEventListener("click", (event) => {
+  const t = event.target;
+  if (!(t instanceof Element)) return;
+  const delBtn = t.closest<HTMLElement>("[data-city-del]");
+  if (delBtn) {
+    const id = Number(delBtn.dataset.cityDel || 0);
+    model.cities = model.cities.filter((c) => c.id !== id);
+    markDirty();
+    renderCities();
+    renderDays();
+    refreshMap(true);
+    return;
+  }
+  const geoBtn = t.closest<HTMLElement>("[data-city-geo]");
+  if (geoBtn) {
+    const city = model.cities.find((c) => c.id === Number(geoBtn.dataset.cityGeo || 0));
+    if (!city || !city.name.trim()) return;
+    void (async (): Promise<void> => {
+      try {
+        const results = await geocodeSearch(city.name);
+        if (results[0]) {
+          city.lat = String(results[0].lat);
+          city.lng = String(results[0].lng);
+          markDirty();
+          renderCities();
+          refreshMap(true);
+        }
+      } catch { /* best-effort */ }
+    })();
+  }
+});
+
+// 都市名の編集（フォーカス維持のため renderCities はしない）
+citiesEl.addEventListener("input", (event) => {
+  const t = event.target;
+  if (!(t instanceof HTMLInputElement)) return;
+  const id = t.getAttribute("data-city-name");
+  if (id === null) return;
+  const city = model.cities.find((c) => c.id === Number(id));
+  if (!city) return;
+  city.name = t.value;
+  const hit = TripPlans.coordsFor(city.name);
+  if (hit) { city.lat = String(hit.lat); city.lng = String(hit.lng); }
+  cityOptions.innerHTML = model.cities.map((c) => `<option value="${escapeHtml(c.name)}">`).join("");
+  markDirty();
+  renderDays();
+  scheduleMapRefresh();
 });
 
 // ---- 保存・読み込み -----------------------------------------------------

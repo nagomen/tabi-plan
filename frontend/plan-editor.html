@@ -220,7 +220,8 @@
     flex-wrap: wrap;
   }
   .pe-city .pe-city-n { display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; background: var(--green-soft); color: var(--green); font-size: 11px; font-weight: 900; flex: none; }
-  .pe-city-name { flex: 1; min-width: 70px; }
+  .pe-city-name { flex: 1; min-width: 80px; min-height: 34px; border: 1px solid var(--line-strong); background: #fff; padding: 6px 9px; font: inherit; font-size: 13px; font-weight: 800; }
+  .pe-city-name:focus { outline: none; border-color: var(--green); box-shadow: 0 0 0 3px rgba(11, 90, 66, .14); }
   .pe-city-dates { display: inline-flex; align-items: center; gap: 6px; }
   .pe-city-dates select { min-height: 34px; border: 1px solid var(--line-strong); background: #fff; padding: 4px 6px; font: inherit; font-size: 12px; }
   .pe-city-sep { color: var(--muted); }
@@ -534,6 +535,24 @@
   /* Leaflet マーカーラベル */
   .pe-pin { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); color: #fff; font-size: 11px; font-weight: 900; box-shadow: 0 1px 3px rgba(0,0,0,.3); }
   .pe-pin span { transform: rotate(45deg); }
+  /* 検索候補ピン（クリックで採用） */
+  .pe-candpin {
+    display: grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: #b87418;
+    color: #fff;
+    font-size: 13px;
+    font-weight: 900;
+    border: 2px solid #fff;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, .35);
+    cursor: pointer;
+    animation: pe-candpop .25s ease;
+  }
+  .pe-candpin:hover { background: #0b5a42; }
+  @keyframes pe-candpop { from { transform: scale(.4); opacity: 0; } to { transform: scale(1); opacity: 1; } }
 
   @media (max-width: 980px) {
     .pe { border-right: 0; border-left: 0; }
