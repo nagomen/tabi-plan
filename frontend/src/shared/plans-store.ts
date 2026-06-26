@@ -154,6 +154,7 @@ export function remove(slug: string): void {
   } catch {
     /* ignore */
   }
+  deleteDevFile(target);
   if (getActiveSlug() === target) clearActive();
 }
 
@@ -178,6 +179,56 @@ export function saveData(slug: string, data: LocalPlanData): boolean {
   return writeJSON(DATA_PREFIX + safeSlug(slug), data);
 }
 
+// ---- 開発時のファイル保存（data/plans/<slug>.json） --------------------
+// Vite dev プラグインが window.__DEV_PLANS__ を注入し、/api/plans で書込みする。
+// 本番ビルドでは __DEV_PLANS__ は無いので、すべて no-op（localStorage のまま）。
+
+interface DevPlanFile extends PlanMeta {
+  data: LocalPlanData;
+}
+
+function devPlanFiles(): DevPlanFile[] | null {
+  const value = (window as unknown as { __DEV_PLANS__?: unknown }).__DEV_PLANS__;
+  return Array.isArray(value) ? (value as DevPlanFile[]) : null;
+}
+
+function persistDevFile(slug: string): void {
+  if (!devPlanFiles()) return;
+  const meta = get(slug);
+  const data = getData(slug);
+  if (!meta || !data) return;
+  fetch("/api/plans/" + encodeURIComponent(slug), {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ...meta, data }, null, 2),
+  }).catch(() => {
+    /* dev only, best-effort */
+  });
+}
+
+function deleteDevFile(slug: string): void {
+  if (!devPlanFiles()) return;
+  fetch("/api/plans/" + encodeURIComponent(slug), { method: "DELETE" }).catch(() => {
+    /* ignore */
+  });
+}
+
+// 起動時: ファイル（真実）から localStorage を再構築。ローカルプランは置き換える。
+function hydrateFromDevFiles(): void {
+  const files = devPlanFiles();
+  if (!files) return;
+  const nonLocal = list().filter((p) => p.source !== "local");
+  const metas: PlanMeta[] = files.map((f) => {
+    const meta: PlanMeta = { ...f, source: "local" };
+    delete (meta as Partial<DevPlanFile>).data;
+    return meta;
+  });
+  saveList([...nonLocal, ...metas]);
+  files.forEach((f) => {
+    if (f.slug && f.data) writeJSON(DATA_PREFIX + safeSlug(f.slug), f.data);
+  });
+}
+
 /** ローカルプランを保存（メタ＋データ）。data から title/dates/route を導出する */
 export function saveLocalPlan(slug: string, data: LocalPlanData): PlanMeta | null {
   const target = safeSlug(slug);
@@ -198,6 +249,7 @@ export function saveLocalPlan(slug: string, data: LocalPlanData): PlanMeta | nul
     source: "local",
     builtIn: false,
   });
+  persistDevFile(target);
   return get(target);
 }
 
@@ -358,3 +410,6 @@ export const TYPES: { value: ItemType; label: string }[] = [
   { value: "todo", label: "予定" },
   { value: "form", label: "手続き" },
 ];
+
+// 開発時のみ: ファイルから localStorage を再構築（モジュール読込時に1回）。
+hydrateFromDevFiles();

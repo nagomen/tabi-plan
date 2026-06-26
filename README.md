@@ -139,6 +139,7 @@ window.TRIP_CONFIG = {
 - 既存の `window.TRIP_CONFIG`（東北旅行など Sheets 連携の旅行）は、初回に「組み込みプラン」として一覧へ自動登録されます。従来どおりの表示は維持されます。
 - `mode: "local"` のプランは行程・地図・チェックリスト・リンクをこの端末だけで表示します。費用入力と精算は Google Sheets / Apps Script 連携の旅行で使えます。
 - レジストリのキー: `trip-dashboard-plans`（一覧）、`trip-dashboard-plan-<slug>`（各データ）、`trip-dashboard-active-plan`（選択中）。
+- **開発時のファイル保存**：`npm run dev` の Vite サーバが、ローカルプランを `data/plans/<slug>.json` に読み書きします（保存時に自動で書き出し、ページ読込時に `window.__DEV_PLANS__` として注入して localStorage を再構築）。**ファイルが真実**なので別ブラウザでも同じ内容になり、Git で差分も見られます。本番ビルドには含まれません（将来は DB へ移行）。`data/plans/*.json` は既定で gitignore。
 
 ### 計画エディタの場所検索
 
