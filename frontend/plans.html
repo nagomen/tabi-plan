@@ -1,0 +1,406 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b5a42">
+<link rel="manifest" href="site.webmanifest">
+<link rel="icon" href="icon-32.png" type="image/png" sizes="32x32">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>旅行計画一覧</title>
+<style>
+  :root {
+    --ink: #111916;
+    --muted: #66716b;
+    --line: #dfe4e0;
+    --line-strong: #c3ccc5;
+    --paper: #ffffff;
+    --wash: #f7f9f7;
+    --green: #0b5a42;
+    --green-soft: #e7f1ec;
+    --blue: #22719d;
+    --amber: #b87418;
+    --red: #cf4f3d;
+    --violet: #6246a6;
+  }
+
+  html { background: #fff; }
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: #fff;
+    color: var(--ink);
+    font-family: "Avenir Next", "Hiragino Sans", "Yu Gothic", Meiryo, sans-serif;
+    line-height: 1.55;
+  }
+
+  a { color: inherit; }
+
+  .hub {
+    max-width: 1180px;
+    margin: 0 auto;
+    border: 1px solid var(--line-strong);
+    background: var(--paper);
+    min-height: 100vh;
+  }
+
+  .hub-head {
+    padding: 22px 24px;
+    border-bottom: 1px solid var(--line);
+    background:
+      linear-gradient(90deg, rgba(11, 90, 66, .05), transparent 42%),
+      #fff;
+  }
+
+  .hub-kicker {
+    margin: 0 0 3px;
+    color: var(--green);
+    font-size: 12px;
+    font-weight: 900;
+    letter-spacing: .13em;
+    text-transform: uppercase;
+  }
+
+  .hub-title {
+    margin: 0;
+    font-size: clamp(25px, 4.2vw, 43px);
+    font-weight: 950;
+    line-height: 1.08;
+  }
+
+  .hub-sub {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+    margin-top: 8px;
+    color: var(--muted);
+    font-size: 13px;
+    font-weight: 750;
+  }
+
+  .hub-toolbar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px;
+    padding: 14px 24px;
+    border-bottom: 1px solid var(--line);
+    background: var(--wash);
+  }
+
+  .hub-toolbar input {
+    width: 100%;
+    min-height: 42px;
+    border: 1px solid var(--line-strong);
+    background: #fff;
+    color: var(--ink);
+    padding: 8px 11px;
+    font: inherit;
+    font-size: 14px;
+  }
+
+  .hub-new {
+    display: grid;
+    place-items: center;
+    min-height: 42px;
+    padding: 0 18px;
+    border: 1px solid var(--green);
+    background: var(--green);
+    color: #fff;
+    font: inherit;
+    font-size: 14px;
+    font-weight: 900;
+    text-decoration: none;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+
+  .hub-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 14px;
+    padding: 18px 24px 28px;
+  }
+
+  .plan-card {
+    display: grid;
+    gap: 10px;
+    align-content: start;
+    padding: 16px;
+    border: 1px solid var(--line);
+    background: #fff;
+  }
+
+  .plan-card.is-active {
+    border-color: var(--green);
+    box-shadow: 0 0 0 2px var(--green-soft);
+  }
+
+  .plan-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+  }
+
+  .plan-badge {
+    padding: 3px 8px;
+    border: 1px solid transparent;
+    color: #fff;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: .02em;
+  }
+
+  .plan-badge.local { background: var(--green); }
+  .plan-badge.googleSheets { background: var(--blue); }
+  .plan-badge.appsScript { background: var(--violet); }
+  .plan-badge.sample { background: #68746e; }
+
+  .plan-badge.current {
+    background: var(--green-soft);
+    border-color: rgba(11, 90, 66, .32);
+    color: var(--green);
+  }
+
+  .plan-name {
+    margin: 0;
+    font-size: 19px;
+    font-weight: 850;
+    line-height: 1.25;
+    overflow-wrap: anywhere;
+  }
+
+  .plan-meta {
+    display: grid;
+    gap: 3px;
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 720;
+  }
+
+  .plan-meta b {
+    color: var(--ink);
+    font-weight: 800;
+  }
+
+  .plan-route {
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 640;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+
+  .plan-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 2px;
+    padding-top: 12px;
+    border-top: 1px solid var(--line);
+  }
+
+  .plan-btn {
+    flex: 0 0 auto;
+    min-height: 36px;
+    padding: 0 14px;
+    border: 1px solid var(--line-strong);
+    background: #fff;
+    color: var(--ink);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 800;
+    text-decoration: none;
+    cursor: pointer;
+    display: inline-grid;
+    place-items: center;
+  }
+
+  .plan-btn.primary {
+    flex: 1 1 auto;
+    border-color: var(--green);
+    background: var(--green);
+    color: #fff;
+  }
+
+  .plan-btn.danger:hover,
+  .plan-btn.danger:focus-visible {
+    border-color: var(--red);
+    color: var(--red);
+  }
+
+  .plan-btn:disabled {
+    opacity: .45;
+    cursor: not-allowed;
+  }
+
+  .hub-empty {
+    grid-column: 1 / -1;
+    display: grid;
+    gap: 8px;
+    padding: 40px 22px;
+    border: 1px dashed var(--line-strong);
+    background: var(--wash);
+    text-align: center;
+    color: var(--muted);
+  }
+
+  .hub-empty b {
+    color: var(--ink);
+    font-size: 16px;
+  }
+
+  .hub-foot {
+    padding: 16px 24px 28px;
+    border-top: 1px solid var(--line);
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 700;
+  }
+
+  .pub-toast {
+    position: fixed;
+    left: 50%;
+    bottom: 20px;
+    transform: translateX(-50%);
+    max-width: min(560px, calc(100% - 24px));
+    z-index: 9997;
+    padding: 12px 16px;
+    border: 1px solid var(--green);
+    background: #fff;
+    color: var(--ink);
+    font-size: 13px;
+    font-weight: 760;
+    box-shadow: 0 16px 48px rgba(17, 25, 22, .18);
+  }
+
+  .pub-toast.is-error { border-color: var(--red); color: var(--red); }
+
+  .pub-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    display: grid;
+    place-items: center;
+    padding: 18px;
+    background: rgba(255, 255, 255, .96);
+  }
+
+  .pub-box {
+    width: min(420px, 100%);
+    border: 1px solid var(--line-strong);
+    background: #fff;
+  }
+
+  .pub-box h2 {
+    margin: 0;
+    padding: 16px 18px 12px;
+    border-bottom: 1px solid var(--line);
+    font-size: 18px;
+    font-weight: 850;
+  }
+
+  .pub-body {
+    display: grid;
+    gap: 10px;
+    padding: 16px 18px 18px;
+  }
+
+  .pub-body p {
+    margin: 0;
+    color: var(--muted);
+    font-size: 13px;
+  }
+
+  .pub-body input {
+    width: 100%;
+    min-height: 46px;
+    border: 2px solid var(--green);
+    background: #f8fbf9;
+    color: var(--ink);
+    padding: 10px 12px;
+    font: inherit;
+    font-size: 16px;
+  }
+
+  .pub-actions {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 10px;
+  }
+
+  .pub-actions button {
+    min-height: 44px;
+    border: 1px solid var(--green);
+    background: var(--green);
+    color: #fff;
+    font: inherit;
+    font-size: 14px;
+    font-weight: 800;
+    cursor: pointer;
+  }
+
+  .pub-actions button.secondary {
+    background: #fff;
+    color: var(--green);
+  }
+
+  .pub-error {
+    min-height: 16px;
+    color: var(--red);
+    font-size: 12px;
+    font-weight: 720;
+  }
+
+  @media (max-width: 720px) {
+    .hub {
+      border-right: 0;
+      border-left: 0;
+    }
+    .hub-head,
+    .hub-toolbar,
+    .hub-grid,
+    .hub-foot {
+      padding-right: 14px;
+      padding-left: 14px;
+    }
+    .hub-toolbar {
+      grid-template-columns: 1fr;
+    }
+    .hub-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>
+</head>
+<body>
+<main class="hub">
+  <header class="hub-head">
+    <p class="hub-kicker">Travel Plans</p>
+    <h1 class="hub-title">旅行計画</h1>
+    <div class="hub-sub">
+      <span data-count>読み込み中</span>
+      <span>選んだ計画でダッシュボードが開きます</span>
+    </div>
+  </header>
+
+  <div class="hub-toolbar">
+    <input type="search" data-filter placeholder="旅行名、ルートで検索" aria-label="計画を検索">
+    <a class="hub-new" href="plan-editor.html">＋ 新規計画</a>
+  </div>
+
+  <section class="hub-grid" data-grid aria-live="polite"></section>
+
+  <footer class="hub-foot">
+    計画はこの端末内（ブラウザ）に保存されます。費用入力・精算は Google Sheets 連携の計画で使えます。
+  </footer>
+</main>
+
+<script src="./trip-config.js"></script>
+<script type="module" src="./src/plans/main.ts"></script>
+</body>
+</html>

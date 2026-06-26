@@ -3,14 +3,14 @@
 const fs = require("fs");
 const path = require("path");
 
-const outputPath = path.join(process.cwd(), "docs", "trip-config.js");
+const outputPath = path.join(process.cwd(), "frontend", "public", "trip-config.js");
 const rawConfig = String(process.env.TRIP_CONFIG_JSON || "").trim();
 
 if (!rawConfig) {
   if (!fs.existsSync(outputPath)) {
-    throw new Error("docs/trip-config.js is missing and TRIP_CONFIG_JSON is not set.");
+    throw new Error("frontend/public/trip-config.js is missing and TRIP_CONFIG_JSON is not set.");
   }
-  console.log("Using committed docs/trip-config.js");
+  console.log("Using committed frontend/public/trip-config.js");
   process.exit(0);
 }
 

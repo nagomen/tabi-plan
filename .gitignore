@@ -1,0 +1,13 @@
+# Dependencies
+node_modules/
+
+# Build output
+frontend/dist/
+
+# clasp local config (per-developer Apps Script binding)
+backend/.clasp.json
+.clasprc.json
+
+# Logs / OS
+*.log
+.DS_Store

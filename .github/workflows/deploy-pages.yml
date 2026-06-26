@@ -5,9 +5,8 @@ on:
     branches:
       - main
     paths:
-      - "docs/**"
+      - "frontend/**"
       - "tools/build-trip-config.js"
-      - "tools/validate-static-site.js"
       - ".github/workflows/deploy-pages.yml"
   workflow_dispatch:
 
@@ -22,20 +21,32 @@ concurrency:
 
 jobs:
   build:
-    name: Build static site
+    name: Build frontend (Vite + TS)
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
       - name: Configure trip settings
         env:
           TRIP_CONFIG_JSON: ${{ vars.TRIP_CONFIG_JSON }}
         run: node tools/build-trip-config.js
 
-      - name: Validate static files
-        run: node tools/validate-static-site.js
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Type-check and build
+        working-directory: frontend
+        run: npm run build
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v6
@@ -43,7 +54,7 @@ jobs:
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v5
         with:
-          path: docs
+          path: frontend/dist
 
   deploy:
     name: Deploy

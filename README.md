@@ -28,6 +28,38 @@ GitHub Pages には予約番号、宿泊先住所、電話番号、保険証券�
 | 8/8(土) | 山形 → 山寺 → 仙台、松島 | 山寺、仙台七夕、または松島 | 仙台泊 |
 | 8/9(日) | 仙台、松島 → 東京 | 松島を見て帰京 | なし |
 
+## ディレクトリ構成
+
+`frontend`（Vite + TypeScript の公開サイト）と `backend`（clasp + TypeScript の Apps Script）に分けています。
+
+```
+frontend/                 公開サイト（Vite + TypeScript, マルチページ）
+  index.html              共有ダッシュボード（slim。中身は src/dashboard/main.ts）
+  plans.html / plan-editor.html / expense-entry.html / itinerary-editor.html
+  public/                 ビルドを通さない静的ファイル（trip-config.js, sw.js, icon-*, *.webmanifest）
+  src/
+    shared/               全画面共有の TS（types.ts / config.ts / plans-store.ts）
+    dashboard/ plans/ plan-editor/ expense-entry/ itinerary-editor/  各ページの main.ts
+  vite.config.ts / tsconfig.json / package.json
+backend/                  Apps Script（clasp + TypeScript）
+  src/Code.ts             バックエンド本体（global scope。import/export は使わない）
+  src/appsscript.json
+  .clasp.json.example     scriptId を入れて .clasp.json にコピーする
+  tsconfig.json / package.json
+tools/                    補助スクリプト（build-trip-config.js, hash-password.js）
+sheet-template/           Google Sheets の初期データ CSV
+```
+
+### 開発コマンド
+
+| 場所 | コマンド | 用途 |
+| --- | --- | --- |
+| `frontend` | `npm install` → `npm run dev` | ローカル開発サーバ |
+| `frontend` | `npm run build` | `tsc --noEmit` で型検査してから `vite build`（出力 `frontend/dist`） |
+| `frontend` | `npm run typecheck` | 型検査のみ |
+| `backend` | `npm install` → `npm run typecheck` | Apps Script の型検査 |
+| `backend` | `npm run push` | clasp で Apps Script へ反映（要 `.clasp.json`） |
+
 ## 構成
 
 | 用途 | 推奨モード | Google Sheets の公開範囲 | ページからの書き込み | 向いている場面 |
@@ -40,11 +72,11 @@ GitHub Pages には予約番号、宿泊先住所、電話番号、保険証券�
 
 | 手順 | 作業場所 | やること | 補足 |
 | --- | --- | --- | --- |
-| 1 | 旅行 repo | `docs/trip-config.example.js` を参考に `docs/trip-config.js` を編集する | `tripSlug` は旅行ごとに必ず変える |
+| 1 | 旅行 repo | `frontend/public/trip-config.example.js` を参考に `frontend/public/trip-config.js` を編集する | `tripSlug` は旅行ごとに必ず変える |
 | 2 | Apps Script | `setupTripDashboard({ ... })` を実行する | `appsScript` モードを使う場合。読み取り試作だけなら省略可 |
 | 3 | Apps Script | Web App としてデプロイする | 発行された URL を `appsScriptUrl` に入れる |
-| 4 | ローカル | `node tools/validate-static-site.js` を実行する | Pages に出す前に設定と静的ファイルを確認する |
-| 5 | GitHub | `main` に push する | Actions が検証後に Pages へ公開する |
+| 4 | ローカル | `cd frontend && npm run build` を実行する | Pages に出す前に型検査とビルドで確認する |
+| 5 | GitHub | `main` に push する | Actions がビルド後に Pages へ公開する |
 
 `tripSlug` は localStorage のキーに使います。旅行ごとに必ず変えてください。
 
@@ -63,14 +95,14 @@ window.TRIP_CONFIG = {
 
 ## GitHub Pages 自動デプロイ
 
-`.github/workflows/deploy-pages.yml` は、`main` に push された `docs/` を GitHub Pages に自動デプロイします。公式の GitHub Pages Actions を使い、公開前に HTML 内のスクリプト、manifest、`trip-config.js` を検証します。
+`.github/workflows/deploy-pages.yml` は、`main` に push された `frontend/` を Vite でビルドし、出力 `frontend/dist` を GitHub Pages に自動デプロイします。`npm run build`（`tsc --noEmit` + `vite build`）が型検査とビルドを兼ねます。
 
-| トリガー | デプロイ対象 | 事前チェック | 初回だけ必要な設定 |
+| トリガー | ビルド対象 | 事前チェック | 初回だけ必要な設定 |
 | --- | --- | --- | --- |
-| `main` への push | `docs/` | `tools/validate-static-site.js` | 旅行 repo の Settings > Pages で Source を `GitHub Actions` にする |
-| 手動実行 | `docs/` | `tools/validate-static-site.js` | Actions タブから `Deploy GitHub Pages` を実行する |
+| `main` への push（`frontend/**`） | `frontend/dist` | `npm run build`（型検査＋ビルド） | 旅行 repo の Settings > Pages で Source を `GitHub Actions` にする |
+| 手動実行 | `frontend/dist` | `npm run build` | Actions タブから `Deploy GitHub Pages` を実行する |
 
-旅行ごとに repo を分ける場合は、`docs/trip-config.js` をその repo にコミットする運用で十分です。`docs/trip-config.js` をコミットしたくない場合だけ、GitHub の Repository variables に `TRIP_CONFIG_JSON` を設定してください。workflow 実行時に `tools/build-trip-config.js` が `docs/trip-config.js` を生成します。
+旅行ごとに repo を分ける場合は、`frontend/public/trip-config.js` をその repo にコミットする運用で十分です。コミットしたくない場合だけ、GitHub の Repository variables に `TRIP_CONFIG_JSON` を設定してください。workflow 実行時に `tools/build-trip-config.js` が `frontend/public/trip-config.js` を生成します。
 
 | 変数 | 例 | 公開可否 |
 | --- | --- | --- |
@@ -80,13 +112,46 @@ window.TRIP_CONFIG = {
 
 ## 画面
 
-| ファイル | 役割 | 主な利用者 |
-| --- | --- | --- |
-| `docs/index.html` | 共有ダッシュボード | 旅行メンバー全員 |
-| `docs/expense-entry.html` | スマホ向け費用入力 | 立替を入力する人 |
-| `docs/itinerary-editor.html` | 公開表示用の行程編集 | 行程を管理する人 |
+| ページ | エントリ | 役割 | 主な利用者 |
+| --- | --- | --- | --- |
+| `frontend/plans.html` | `src/plans/main.ts` | 旅行計画の一覧・選択ハブ | 計画を選ぶ・作る人 |
+| `frontend/plan-editor.html` | `src/plan-editor/main.ts` | 旅行計画の新規作成・編集（行程まで） | 計画を組み立てる人 |
+| `frontend/index.html` | `src/dashboard/main.ts` | 共有ダッシュボード | 旅行メンバー全員 |
+| `frontend/expense-entry.html` | `src/expense-entry/main.ts` | スマホ向け費用入力 | 立替を入力する人 |
+| `frontend/itinerary-editor.html` | `src/itinerary-editor/main.ts` | 公開表示用の行程編集 | 行程を管理する人 |
 
-3画面とも `docs/trip-config.js` を読みます。Apps Script URL や localStorage キーを各 HTML に直書きしない運用です。
+各画面とも `public/trip-config.js`（`window.TRIP_CONFIG`）を読み込み、共有 TS（`src/shared/config.ts`, `src/shared/plans-store.ts`）を import します。Apps Script URL や localStorage キーを各 HTML に直書きしない運用です。
+
+## 旅行計画の作成と選択
+
+`frontend/plans.html` が複数の旅行計画を束ねる入口です。`src/shared/plans-store.ts` がレジストリ（プラン一覧と各ローカルプランのデータ）を localStorage に保存します。
+
+| 操作 | 画面 | 保存先 |
+| --- | --- | --- |
+| 計画を作る・編集する | `plan-editor.html` | この端末（ブラウザ）の localStorage |
+| 計画を選んで開く | `plans.html` → `index.html?plan=<slug>` | 選択中 slug を localStorage に記録 |
+| 公開済み旅行を見る | `index.html` | Google Sheets / Apps Script |
+
+- 既存の `window.TRIP_CONFIG`（東北旅行など Sheets 連携の旅行）は、初回に「組み込みプラン」として一覧へ自動登録されます。従来どおりの表示は維持されます。
+- `mode: "local"` のプランは行程・地図・チェックリスト・リンクをこの端末だけで表示します。費用入力と精算は Google Sheets / Apps Script 連携の旅行で使えます。
+- レジストリのキー: `trip-dashboard-plans`（一覧）、`trip-dashboard-plan-<slug>`（各データ）、`trip-dashboard-active-plan`（選択中）。
+
+### ローカルプランを公開する（Google Sheets へ書き出し）
+
+`plans.html` の各ローカルプランにある「公開」ボタンは、Apps Script の `createTrip` を呼び、行程を新しい Google スプレッドシートへ書き出します。書き出し後はそのプランが `googleSheets` 連携に切り替わり、リンクを知っている人と共有できます。
+
+| 前提 | 内容 |
+| --- | --- |
+| デプロイ | `backend/src/Code.ts` を最新にして Web App をデプロイし、発行 URL を `frontend/public/trip-config.js` の `appsScriptUrl` に設定する |
+| 認証 | `createTrip` は共有パスワード（`TRIP_PASSWORD_HASH`）で保護されます。公開時にパスワードを求められます |
+| 共有 | 作成したスプレッドシートは「リンクを知っている全員が閲覧可」に自動設定されます（組織ポリシーで失敗した場合は手動で設定） |
+
+`appsScriptUrl` が未設定だと「公開」ボタンは案内メッセージのみを表示します。Apps Script を更新したら反映のため再デプロイしてください。
+
+```bash
+cd backend
+npx clasp push
+```
 
 ## Google Sheets
 
@@ -125,6 +190,6 @@ GitHub Pages は公開サイトとして扱うのが安全です。ページに�
 Apps Script 側を変更した場合は、GitHub へ push するだけでは反映されません。
 
 ```bash
-cd apps-script
+cd backend
 npx clasp push
 ```

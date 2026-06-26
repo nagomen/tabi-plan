@@ -1,0 +1,474 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b5a42">
+<link rel="manifest" href="site.webmanifest">
+<link rel="icon" href="icon-32.png" type="image/png" sizes="32x32">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>計画を作成 | 旅行計画</title>
+<style>
+  :root {
+    --ink: #111916;
+    --muted: #66716b;
+    --line: #dfe4e0;
+    --line-strong: #c3ccc5;
+    --paper: #ffffff;
+    --wash: #f7f9f7;
+    --green: #0b5a42;
+    --green-soft: #e7f1ec;
+    --blue: #22719d;
+    --amber: #b87418;
+    --red: #cf4f3d;
+    --violet: #6246a6;
+  }
+
+  html { background: #fff; }
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: #fff;
+    color: var(--ink);
+    font-family: "Avenir Next", "Hiragino Sans", "Yu Gothic", Meiryo, sans-serif;
+    line-height: 1.55;
+  }
+
+  a { color: inherit; }
+
+  .pe {
+    max-width: 1180px;
+    margin: 0 auto;
+    border: 1px solid var(--line-strong);
+    background: var(--paper);
+    min-height: 100vh;
+  }
+
+  .pe-head {
+    position: sticky;
+    top: 0;
+    z-index: 30;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 12px;
+    align-items: center;
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--line);
+    background: rgba(255, 255, 255, .96);
+    backdrop-filter: blur(16px);
+  }
+
+  .pe-head h1 {
+    margin: 0;
+    font-size: clamp(21px, 4vw, 32px);
+    font-weight: 950;
+    line-height: 1.05;
+  }
+
+  .pe-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 6px;
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 760;
+  }
+
+  .pe-meta .is-dirty { color: var(--amber); }
+  .pe-meta .is-ok { color: var(--green); }
+
+  .pe-head-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+
+  .pe-link,
+  .pe-save {
+    min-height: 40px;
+    padding: 0 16px;
+    border: 1px solid var(--line-strong);
+    background: #fff;
+    color: var(--ink);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 900;
+    text-decoration: none;
+    display: inline-grid;
+    place-items: center;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+
+  .pe-link.green { border-color: rgba(11, 90, 66, .36); color: var(--green); }
+
+  .pe-save {
+    border-color: var(--green);
+    background: var(--green);
+    color: #fff;
+  }
+
+  .pe-save:disabled { opacity: .5; cursor: not-allowed; }
+
+  .pe-section {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .pe-section > h2 {
+    margin: 0 0 12px;
+    font-size: 13px;
+    font-weight: 900;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--green);
+  }
+
+  .pe-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  .pe-field {
+    display: grid;
+    gap: 5px;
+    min-width: 0;
+  }
+
+  .pe-field.wide { grid-column: span 2; }
+  .pe-field.full { grid-column: 1 / -1; }
+
+  .pe-field > span {
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 800;
+  }
+
+  .pe-field input,
+  .pe-field select,
+  .pe-field textarea {
+    width: 100%;
+    min-width: 0;
+    min-height: 40px;
+    border: 1px solid var(--line-strong);
+    background: #fff;
+    color: var(--ink);
+    padding: 8px 10px;
+    font: inherit;
+    font-size: 14px;
+  }
+
+  .pe-field textarea {
+    min-height: 60px;
+    resize: vertical;
+  }
+
+  .pe-field input:focus,
+  .pe-field select:focus,
+  .pe-field textarea:focus {
+    outline: none;
+    border-color: var(--green);
+    box-shadow: 0 0 0 3px rgba(11, 90, 66, .14);
+  }
+
+  .pe-days {
+    display: grid;
+    gap: 16px;
+    padding: 16px 20px 24px;
+  }
+
+  .pe-day {
+    border: 1px solid var(--line-strong);
+    background: #fff;
+  }
+
+  .pe-day-head {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 12px;
+    align-items: center;
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--line);
+    background: var(--wash);
+  }
+
+  .pe-day-label {
+    display: grid;
+    gap: 1px;
+  }
+
+  .pe-day-label b {
+    font-size: 16px;
+    font-weight: 900;
+  }
+
+  .pe-day-label span {
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 760;
+  }
+
+  .pe-day-area {
+    display: grid;
+    gap: 4px;
+  }
+
+  .pe-day-area span {
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 800;
+  }
+
+  .pe-day-area input {
+    width: 100%;
+    min-height: 38px;
+    border: 1px solid var(--line-strong);
+    background: #fff;
+    padding: 7px 9px;
+    font: inherit;
+    font-size: 14px;
+  }
+
+  .pe-items {
+    display: grid;
+    gap: 10px;
+    padding: 12px 14px;
+  }
+
+  .pe-item {
+    border: 1px solid var(--line);
+    background: #fff;
+  }
+
+  .pe-item-bar {
+    display: grid;
+    grid-template-columns: 8px minmax(0, 1fr) auto;
+    gap: 8px;
+    align-items: center;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .pe-item-tone {
+    align-self: stretch;
+    min-height: 28px;
+    background: #68746e;
+  }
+
+  .pe-item-tone.move { background: var(--blue); }
+  .pe-item-tone.food { background: var(--amber); }
+  .pe-item-tone.sight { background: var(--green); }
+  .pe-item-tone.stay { background: var(--red); }
+  .pe-item-tone.todo { background: #68746e; }
+  .pe-item-tone.form { background: var(--violet); }
+
+  .pe-item-summary {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 13px;
+    font-weight: 800;
+    color: var(--muted);
+  }
+
+  .pe-item-tools {
+    display: flex;
+    gap: 4px;
+  }
+
+  .pe-icon-btn {
+    min-width: 30px;
+    min-height: 30px;
+    border: 1px solid var(--line-strong);
+    background: #fff;
+    color: var(--ink);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 800;
+    cursor: pointer;
+    line-height: 1;
+  }
+
+  .pe-icon-btn:disabled { opacity: .35; cursor: not-allowed; }
+  .pe-icon-btn.danger:hover { border-color: var(--red); color: var(--red); }
+
+  .pe-item-body {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+    padding: 11px;
+  }
+
+  .pe-add {
+    min-height: 38px;
+    border: 1px dashed var(--line-strong);
+    background: var(--wash);
+    color: var(--green);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 900;
+    cursor: pointer;
+  }
+
+  .pe-add:hover { border-color: var(--green); }
+
+  .pe-day-empty {
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 720;
+    padding: 4px 2px 8px;
+  }
+
+  .pe-hint {
+    padding: 0 20px 20px;
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 700;
+  }
+
+  .pe-daterange-warn {
+    color: var(--red);
+    font-size: 12px;
+    font-weight: 800;
+    padding: 10px 20px 0;
+  }
+
+  @media (max-width: 760px) {
+    .pe { border-right: 0; border-left: 0; }
+    .pe-head { padding: 12px 14px; }
+    .pe-section { padding: 14px; }
+    .pe-grid { grid-template-columns: 1fr; }
+    .pe-field.wide,
+    .pe-field.full { grid-column: 1; }
+    .pe-days { padding: 14px; }
+    .pe-day-head { grid-template-columns: 1fr; }
+    .pe-item-body { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<main class="pe" id="editor">
+  <header class="pe-head">
+    <div>
+      <h1>旅行計画づくり</h1>
+      <div class="pe-meta">
+        <span data-title-echo>新しい計画</span>
+        <span data-status></span>
+      </div>
+    </div>
+    <div class="pe-head-actions">
+      <a class="pe-link" href="plans.html">一覧</a>
+      <a class="pe-link green" data-open href="index.html">ダッシュボード</a>
+      <button class="pe-save" type="button" data-save>保存</button>
+    </div>
+  </header>
+
+  <section class="pe-section">
+    <h2>基本情報</h2>
+    <div class="pe-grid">
+      <label class="pe-field wide">
+        <span>旅行名</span>
+        <input data-f="title" placeholder="例: 2026年8月 東北旅行">
+      </label>
+      <label class="pe-field">
+        <span>開始日</span>
+        <input type="date" data-f="startDate">
+      </label>
+      <label class="pe-field">
+        <span>終了日</span>
+        <input type="date" data-f="endDate">
+      </label>
+      <label class="pe-field wide">
+        <span>メンバー（カンマ区切り）</span>
+        <input data-f="members" placeholder="例: 太郎, 花子">
+      </label>
+      <label class="pe-field wide">
+        <span>共有メモ</span>
+        <input data-f="note" placeholder="全員に見せたい一言メモ">
+      </label>
+    </div>
+    <div class="pe-daterange-warn" data-daterange-warn hidden>開始日と終了日を正しく入れてください。</div>
+  </section>
+
+  <section class="pe-section" style="border-bottom:0;padding-bottom:6px;">
+    <h2>行程</h2>
+  </section>
+  <div class="pe-days" data-days></div>
+  <p class="pe-hint">場所名から緯度経度を自動補完します（地図表示用）。見つからない場合も、地図は場所名で検索表示します。</p>
+
+  <template data-day-template>
+    <article class="pe-day" data-day>
+      <div class="pe-day-head">
+        <div class="pe-day-label">
+          <b data-day-name></b>
+          <span data-day-date></span>
+        </div>
+        <label class="pe-day-area">
+          <span>この日のエリア（日タブの見出し）</span>
+          <input data-day-area placeholder="例: 盛岡">
+        </label>
+      </div>
+      <div class="pe-items" data-items></div>
+      <div style="padding:0 14px 14px;">
+        <button class="pe-add" type="button" data-add>＋ この日に予定を追加</button>
+      </div>
+    </article>
+  </template>
+
+  <template data-item-template>
+    <div class="pe-item" data-item>
+      <div class="pe-item-bar">
+        <span class="pe-item-tone" data-tone></span>
+        <span class="pe-item-summary" data-summary></span>
+        <span class="pe-item-tools">
+          <button class="pe-icon-btn" type="button" data-up title="上へ">↑</button>
+          <button class="pe-icon-btn" type="button" data-down title="下へ">↓</button>
+          <button class="pe-icon-btn danger" type="button" data-remove title="削除">✕</button>
+        </span>
+      </div>
+      <div class="pe-item-body">
+        <label class="pe-field">
+          <span>時刻</span>
+          <input data-i="time" placeholder="10:00 / 午後">
+        </label>
+        <label class="pe-field">
+          <span>種別</span>
+          <select data-i="type"></select>
+        </label>
+        <label class="pe-field wide">
+          <span>タイトル</span>
+          <input data-i="title" placeholder="例: 中尊寺を拝観">
+        </label>
+        <label class="pe-field wide">
+          <span>場所</span>
+          <input data-i="place" placeholder="例: 平泉">
+        </label>
+        <label class="pe-field wide">
+          <span>地図検索（任意 / 既定は場所）</span>
+          <input data-i="mapQuery" placeholder="例: 中尊寺 平泉">
+        </label>
+        <label class="pe-field full">
+          <span>メモ</span>
+          <textarea data-i="note" placeholder="当日見たい情報だけ"></textarea>
+        </label>
+        <label class="pe-field">
+          <span>緯度（任意）</span>
+          <input data-i="lat" inputmode="decimal" placeholder="自動補完">
+        </label>
+        <label class="pe-field">
+          <span>経度（任意）</span>
+          <input data-i="lng" inputmode="decimal" placeholder="自動補完">
+        </label>
+      </div>
+    </div>
+  </template>
+</main>
+
+<script src="./trip-config.js"></script>
+<script type="module" src="./src/plan-editor/main.ts"></script>
+</body>
+</html>
