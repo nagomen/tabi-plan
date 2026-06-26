@@ -11,3 +11,6 @@ backend/.clasp.json
 # Logs / OS
 *.log
 .DS_Store
+
+# Local agent/editor state
+.claude/
