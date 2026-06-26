@@ -783,10 +783,10 @@
 
   .tl-item {
     display: grid;
-    grid-template-columns: 60px 14px minmax(0, 1fr) auto;
+    grid-template-columns: 54px 26px minmax(0, 1fr) auto;
     gap: 7px;
     min-width: 0;
-    padding: 0 0 13px;
+    padding: 0 0 14px;
   }
 
   .tl-time {
@@ -795,7 +795,7 @@
     font-weight: 900;
     line-height: 1.25;
     overflow-wrap: anywhere;
-    padding-top: 2px;
+    padding-top: 4px;
     text-align: right;
   }
 
@@ -808,22 +808,65 @@
   .tl-rail:before {
     content: "";
     position: absolute;
-    top: 10px;
-    bottom: -10px;
+    top: 24px;
+    bottom: -14px;
     width: 2px;
-    background: rgba(11, 90, 66, .25);
+    background: rgba(11, 90, 66, .22);
   }
 
   .tl-item:last-child .tl-rail:before { display: none; }
 
+  /* 種別アイコンのドット（色＝種別） */
   .tl-dot {
     position: relative;
     z-index: 1;
-    width: 8px;
-    height: 8px;
-    margin-top: 6px;
+    display: grid;
+    place-items: center;
+    width: 24px;
+    height: 24px;
+    margin-top: 2px;
+    border-radius: 50%;
     background: var(--green);
+    color: #fff;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, .18);
+    align-self: start;
   }
+  .tl-dot svg, .tl-dot .hi { width: 14px; height: 14px; }
+  .tl-dot.move { background: var(--blue); }
+  .tl-dot.food { background: var(--amber); }
+  .tl-dot.sight { background: var(--green); }
+  .tl-dot.stay { background: var(--red); }
+  .tl-dot.todo { background: #68746e; }
+  .tl-dot.form { background: var(--violet); }
+
+  /* 移動・食事・宿泊は帯で特徴づけ（観光/予定/手続きは素のまま） */
+  .tl-item[data-kind="move"] .tl-plan,
+  .tl-item[data-kind="food"] .tl-plan,
+  .tl-item[data-kind="stay"] .tl-plan {
+    padding: 8px 11px;
+    border: 1px solid var(--line);
+    border-left-width: 4px;
+  }
+  .tl-item[data-kind="move"] .tl-plan { background: #f1f6fa; border-left-color: var(--blue); }
+  .tl-item[data-kind="food"] .tl-plan { background: #fbf4e9; border-left-color: var(--amber); }
+  .tl-item[data-kind="stay"] .tl-plan { background: #fbf0ee; border-left-color: var(--red); }
+
+  /* 移動セグメント（出発 → 到着） */
+  .tl-seg {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    min-width: 0;
+    flex-wrap: wrap;
+    font-weight: 900;
+    font-size: 14px;
+    color: var(--ink);
+  }
+  .tl-seg-arr {
+    display: inline-flex;
+    color: var(--blue);
+  }
+  .tl-seg-arr svg, .tl-seg-arr .hi { width: 18px; height: 18px; }
 
   .tl-plan { min-width: 0; }
 
@@ -1703,7 +1746,7 @@
     .tl-timeline { padding: 0 16px 4px; }
     .tl-day-title { padding: 14px 0 10px; }
     .tl-day-title h2 { font-size: 21px; }
-    .tl-item { grid-template-columns: 58px 12px minmax(0, 1fr); gap: 6px; padding: 12px 0; }
+    .tl-item { grid-template-columns: 50px 24px minmax(0, 1fr); gap: 6px; padding: 12px 0; }
     .tl-maplink { grid-column: 3; }
     .tl-card-grid { display: block; }
     .tl-local-grid { display: block; }

@@ -7,7 +7,7 @@ import L from "leaflet";
 import "../shared/ui.css";
 import "leaflet/dist/leaflet.css";
 
-import { icon } from "../shared/icons";
+import { icon, type IconName } from "../shared/icons";
 
 import {
   DEFAULT_CONFIG,
@@ -1810,6 +1810,19 @@ function renderLocalInfo(rows: LocalInfoItem[]): void {
   }).join(""));
 }
 
+const KIND_ICON: Record<string, IconName> = {
+  sight: "camera",
+  food: "cake",
+  move: "arrowsRightLeft",
+  stay: "buildingOffice2",
+  todo: "check",
+  form: "documentText",
+};
+
+function kindIcon(type: string): string {
+  return icon(KIND_ICON[type] || "check");
+}
+
 function renderActive(): void {
   const day = state.days[state.active];
   if (!day) return;
@@ -1842,18 +1855,30 @@ function renderActive(): void {
   });
 
   setHtml("[data-timeline]", day.items.map((item) => {
+    const type = String(item.type || "todo");
     const place = item.place && item.place !== item.title ? `場所: ${item.place}` : "";
     const note = [place, item.note].filter(Boolean).join(" / ");
-    return `<article class="tl-item">
+    const chip = `<span class="tl-chip ${escapeHtml(type)}">${escapeHtml(item.typeLabel || item.type || "予定")}</span>`;
+
+    // 移動: 出発→到着のセグメント表示（origin/destination が無ければタイトルの「→」を分割）
+    let segA = item.origin || "";
+    let segB = item.destination || "";
+    if (type === "move" && (!segA || !segB) && /→|->/.test(item.title || "")) {
+      const parts = (item.title || "").split(/→|->/);
+      segA = segA || (parts[0] || "").trim();
+      segB = segB || (parts[1] || "").trim();
+    }
+    const head = type === "move" && (segA || segB)
+      ? `<div class="tl-plan-line">${chip}<div class="tl-seg"><span class="tl-seg-a">${escapeHtml(segA || "出発")}</span><span class="tl-seg-arr">${icon("arrowLongRight")}</span><span class="tl-seg-b">${escapeHtml(segB || "到着")}</span></div></div>`
+      : `<div class="tl-plan-line">${chip}<h3>${escapeHtml(item.title || "")}</h3></div>`;
+
+    return `<article class="tl-item" data-kind="${escapeHtml(type)}">
       <time class="tl-time">${escapeHtml(item.time || "")}</time>
-      <span class="tl-rail"><span class="tl-dot"></span></span>
+      <span class="tl-rail"><span class="tl-dot ${escapeHtml(type)}">${kindIcon(type)}</span></span>
       <div class="tl-plan">
-        <div class="tl-plan-line">
-          <span class="tl-chip ${escapeHtml(item.type || "todo")}">${escapeHtml(item.typeLabel || item.type || "予定")}</span>
-          <h3>${escapeHtml(item.title || "")}</h3>
-        </div>
+        ${head}
         ${item.needed ? `<p class="tl-needed">${escapeHtml(item.needed)}</p>` : ""}
-        <p class="tl-note">${escapeHtml(note)}</p>
+        ${note ? `<p class="tl-note">${escapeHtml(note)}</p>` : ""}
       </div>
       <a class="tl-maplink" href="${mapsSearch(item.mapQuery || item.place || item.title)}" target="_blank" rel="noopener">Google Maps ${icon("arrowTopRightOnSquare")}</a>
     </article>`;
