@@ -115,6 +115,8 @@ const cityOptions = qs<HTMLDataListElement>(document, "#pe-city-options");
 const mapEl = qs<HTMLElement>(root, "[data-map]");
 const mapHintEl = qs<HTMLElement>(root, "[data-map-hint]");
 const rangeEl = qs<HTMLInputElement>(root, "[data-range]");
+const dayStripEl = qs<HTMLElement>(root, "[data-daystrip]");
+const tripSummaryEl = qs<HTMLElement>(root, "[data-trip-summary]");
 
 // セクション見出しにアイコン
 qs<HTMLElement>(root, "[data-ic-setup]").insertAdjacentHTML("afterbegin", icon("sparkles") + " ");
@@ -179,6 +181,18 @@ function datesString(): string {
   const f = (d: Date): string => `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}`;
   return `${f(a)} - ${f(b)}`;
 }
+// 時刻文字列を分に変換（並べ替え用）。HH:MM と 朝/昼/夕/夜 に対応。
+function timeOrder(s: string): number {
+  const t = String(s || "");
+  const m = /(\d{1,2}):(\d{2})/.exec(t);
+  if (m) return Number(m[1]) * 60 + Number(m[2]);
+  if (/朝|午前|モーニング/i.test(t)) return 8 * 60;
+  if (/昼|正午|ランチ/i.test(t)) return 12 * 60;
+  if (/夕/.test(t)) return 17 * 60;
+  if (/夜|ディナー|晩/i.test(t)) return 19 * 60;
+  return 9000;
+}
+
 function normalizeToISO(value: string | undefined): string {
   const s = String(value || "").trim();
   if (!s) return "";
@@ -253,11 +267,41 @@ function findItem(id: number): Found | null {
   return null;
 }
 
+let persistTimer = 0;
 function markDirty(): void {
   dirty = true;
-  statusEl.textContent = "未保存";
-  statusEl.className = "is-dirty";
-  savebarNoteEl.textContent = "未保存の変更があります。最後に保存してください。";
+  if (model.title.trim()) {
+    statusEl.textContent = "編集中…";
+    statusEl.className = "is-dirty";
+  } else {
+    statusEl.textContent = "旅行名を入れると自動保存されます";
+    statusEl.className = "is-dirty";
+  }
+  window.clearTimeout(persistTimer);
+  persistTimer = window.setTimeout(persist, 700);
+}
+
+function nowHM(): string {
+  const d = new Date();
+  return `${d.getHours()}:${pad(d.getMinutes())}`;
+}
+
+// 自動保存（localStorage）。旅行名があれば slug を採番して保存する。
+function persist(): void {
+  if (!model.title.trim()) return;
+  if (!slug) {
+    slug = TripPlans.uniqueSlug(model.title);
+    model.slug = slug;
+    openLink.href = "index.html?plan=" + encodeURIComponent(slug);
+    openLink.hidden = false;
+    try { history.replaceState(null, "", "plan-editor.html?plan=" + encodeURIComponent(slug)); } catch { /* ignore */ }
+  }
+  TripPlans.saveLocalPlan(slug, buildData());
+  TripPlans.setActiveSlug(slug);
+  dirty = false;
+  statusEl.textContent = `自動保存しました ${nowHM()}`;
+  statusEl.className = "is-ok";
+  savebarNoteEl.textContent = "";
 }
 
 // ---- レンダリング: 都市（ルート） ---------------------------------------
@@ -315,6 +359,7 @@ function dayHeader(day: Day, index: number): string {
     `<span>${icon("buildingOffice2")} ${escapeHtml(stay)}</span>` +
     `</div>` +
     `<div class="pe-day-tools">` +
+    `<button class="pe-icon-btn" type="button" data-act="sort-time" data-day="${index}" title="時刻で並べ替え">${icon("clock")}</button>` +
     `<button class="pe-icon-btn" type="button" data-act="copy-prev" data-day="${index}" title="前日をコピー"${index === 0 ? " disabled" : ""}>${icon("documentDuplicate")}</button>` +
     `</div>` +
     `</div>`
@@ -446,7 +491,23 @@ function quickAdd(day: Day, index: number): string {
   );
 }
 
+function renderDayStrip(): void {
+  const stays = model.days.filter((d) => d.stay).length;
+  const cities = model.cities.length;
+  tripSummaryEl.textContent = model.days.length
+    ? ` ・ ${model.days.length}日間${stays ? ` ・ ${stays}泊` : ""}${cities ? ` ・ ${cities}都市` : ""}`
+    : "";
+  if (model.days.length < 2) { dayStripEl.innerHTML = ""; return; }
+  dayStripEl.innerHTML = model.days
+    .map((day, i) => {
+      const d = parseISO(day.date);
+      return `<button class="pe-daychip" type="button" data-jump="${i}"><b>Day ${i + 1}</b><span>${d ? `${d.getMonth() + 1}/${d.getDate()}` : ""}</span></button>`;
+    })
+    .join("");
+}
+
 function renderDays(): void {
+  renderDayStrip();
   dayCountEl.textContent = model.days.length ? `全${model.days.length}日` : "";
   if (!model.days.length) {
     daysEl.innerHTML =
@@ -710,6 +771,7 @@ daysEl.addEventListener("click", (event) => {
     openItemId = openItemId === itemId ? null : itemId;
     disarm();
     renderDays();
+    focusOpenItem();
     return;
   }
   if (act === "close") { openItemId = null; disarm(); renderDays(); return; }
@@ -730,7 +792,7 @@ daysEl.addEventListener("click", (event) => {
     if (kind === "stay") day.stay = it;
     else day.items.push(it);
     openItemId = it.id;
-    markDirty(); renderDays(); refreshMap(false);
+    markDirty(); renderDays(); refreshMap(false); focusOpenItem();
     return;
   }
   if (act === "copy-prev") {
@@ -741,6 +803,17 @@ daysEl.addEventListener("click", (event) => {
     prev.items.forEach((it) => day.items.push(newItem(it.kind, it)));
     if (prev.stay && !day.stay) day.stay = newItem("stay", prev.stay);
     markDirty(); renderDays(); refreshMap(true);
+    return;
+  }
+  if (act === "sort-time") {
+    const day = model.days[dayIndex];
+    if (day) {
+      day.items = day.items
+        .map((it, i) => ({ it, i }))
+        .sort((a, b) => timeOrder(a.it.time) - timeOrder(b.it.time) || a.i - b.i)
+        .map((x) => x.it);
+      markDirty(); renderDays(); refreshMap(false);
+    }
     return;
   }
   if (act === "geo") { void runGeocode(itemId, (actEl.dataset.target || "place") as GeoTarget); return; }
@@ -944,11 +1017,73 @@ function save(): void {
 qs<HTMLAnchorElement>(root, "[data-back]").innerHTML = icon("arrowLeft") + "<span>一覧</span>";
 openLink.innerHTML = icon("arrowTopRightOnSquare") + "<span>表示</span>";
 const saveBtn = qs<HTMLButtonElement>(root, "[data-save]");
-saveBtn.innerHTML = icon("bookmark") + "<span>保存する</span>";
+saveBtn.innerHTML = icon("bookmark") + "<span>今すぐ保存</span>";
 saveBtn.addEventListener("click", save);
 qs<HTMLButtonElement>(root, "[data-city-add]").innerHTML = icon("plus") + "<span>追加</span>";
+qs<HTMLElement>(root, "[data-local-note]").insertAdjacentHTML("afterbegin", icon("informationCircle") + " ");
+
+// 書き出し（JSON）— ローカル保存のバックアップ
+function exportJson(): void {
+  const blob = new Blob([JSON.stringify(buildData(), null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = (model.title || "trip").replace(/\s+/g, "_").replace(/[\\/:*?"<>|]/g, "") + ".json";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+const exportBtn = qs<HTMLButtonElement>(root, "[data-export]");
+exportBtn.innerHTML = icon("documentText") + "<span>書き出し</span>";
+exportBtn.addEventListener("click", exportJson);
+
+// 地図の表示/非表示
+const mapToggle = qs<HTMLButtonElement>(root, "[data-map-toggle]");
+const mapShow = qs<HTMLButtonElement>(root, "[data-map-show]");
+mapShow.innerHTML = icon("map") + "<span>地図を表示</span>";
+function setMapCollapsed(collapsed: boolean): void {
+  root!.classList.toggle("map-collapsed", collapsed);
+  mapShow.hidden = !collapsed;
+  mapToggle.textContent = collapsed ? "地図を表示" : "地図を隠す";
+  try { localStorage.setItem("pe-map-collapsed", collapsed ? "1" : "0"); } catch { /* ignore */ }
+  if (!collapsed) window.setTimeout(() => { if (map) { map.invalidateSize(); refreshMap(true); } }, 60);
+}
+mapToggle.addEventListener("click", () => setMapCollapsed(!root!.classList.contains("map-collapsed")));
+mapShow.addEventListener("click", () => setMapCollapsed(false));
+
+// 行のキーボード操作（Enter/Space で開閉）
+function focusOpenItem(): void {
+  if (openItemId == null) return;
+  const node = daysEl.querySelector<HTMLElement>(`[data-node="${openItemId}"]`);
+  node?.querySelector<HTMLInputElement | HTMLSelectElement>(".pe-edit input, .pe-edit select")?.focus();
+}
+daysEl.addEventListener("keydown", (event) => {
+  const t = event.target;
+  if (!(t instanceof Element)) return;
+  const row = t.closest<HTMLElement>('.pe-row[data-act="toggle"]');
+  if (!row) return;
+  if (event.key === "Enter" || event.key === " ") {
+    event.preventDefault();
+    const id = Number(row.dataset.item || 0);
+    openItemId = openItemId === id ? null : id;
+    disarm();
+    renderDays();
+    focusOpenItem();
+  }
+});
+
+// 日へジャンプ
+dayStripEl.addEventListener("click", (event) => {
+  const t = event.target;
+  if (!(t instanceof Element)) return;
+  const chip = t.closest<HTMLElement>("[data-jump]");
+  if (!chip) return;
+  daysEl.querySelector<HTMLElement>(`article[data-day="${chip.dataset.jump}"]`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+});
 
 window.addEventListener("beforeunload", (event) => {
+  if (dirty && model.title.trim()) persist();
   if (dirty) { event.preventDefault(); event.returnValue = ""; }
 });
 
@@ -960,6 +1095,7 @@ renderCities();
 renderDays();
 initMap();
 refreshMap(true);
-statusEl.textContent = isNew ? "下書き（未保存）" : editable ? "読み込み完了" : statusEl.textContent;
+if (localStorage.getItem("pe-map-collapsed") === "1") setMapCollapsed(true);
+statusEl.textContent = isNew ? "下書き（自動保存・未保存）" : editable ? "読み込み完了" : statusEl.textContent;
 
 registerServiceWorker();

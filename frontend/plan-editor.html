@@ -227,8 +227,81 @@
   .pe-route-empty { color: var(--muted); font-size: 12.5px; font-weight: 700; }
 
   /* 行程：日 */
-  .pe-days { display: grid; gap: 18px; padding: 16px 18px 8px; }
+  .pe-days { display: grid; gap: 18px; padding: 8px 18px 8px; }
   .pe-days-count { color: var(--muted); font-size: 12px; font-weight: 800; }
+  .pe-trip-summary { color: var(--muted); font-size: 11px; font-weight: 700; letter-spacing: 0; text-transform: none; }
+
+  /* 日へジャンプするストリップ */
+  .pe-daystrip {
+    position: sticky;
+    top: var(--head-h);
+    z-index: 20;
+    display: flex;
+    gap: 7px;
+    overflow-x: auto;
+    padding: 10px 18px;
+    border-bottom: 1px solid var(--line);
+    background: rgba(255, 255, 255, .96);
+    backdrop-filter: blur(12px);
+  }
+  .pe-daystrip:empty { display: none; }
+  .pe-daychip {
+    flex: none;
+    display: inline-flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1px;
+    padding: 5px 11px;
+    border: 1px solid var(--line-strong);
+    background: #fff;
+    font: inherit;
+    cursor: pointer;
+    line-height: 1.15;
+  }
+  .pe-daychip b { font-size: 12px; font-weight: 900; }
+  .pe-daychip span { font-size: 10px; font-weight: 760; color: var(--muted); }
+  .pe-daychip:hover { border-color: var(--green); }
+
+  /* 地図トグル */
+  .pe-map-toggle {
+    margin-left: auto;
+    border: 1px solid var(--line-strong);
+    background: #fff;
+    color: var(--muted);
+    font: inherit;
+    font-size: 11px;
+    font-weight: 800;
+    padding: 4px 9px;
+    cursor: pointer;
+  }
+  .pe-map-toggle:hover { color: var(--ink); }
+  .pe-map-show {
+    position: fixed;
+    right: 16px;
+    bottom: 74px;
+    z-index: 36;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 9px 14px;
+    border: 1px solid var(--green);
+    background: var(--green);
+    color: #fff;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 850;
+    cursor: pointer;
+    box-shadow: 0 6px 20px rgba(17, 25, 22, .2);
+  }
+  .pe-map-show[hidden] { display: none; }
+  .pe.map-collapsed .pe-stage { grid-template-columns: 1fr; }
+  .pe.map-collapsed .pe-mapwrap { display: none; }
+
+  .pe-local-note { display: inline-flex; align-items: center; gap: 5px; color: var(--muted); font-size: 11.5px; font-weight: 760; }
+  .pe-row:focus-visible,
+  .pe-q:focus-visible,
+  .pe-daychip:focus-visible,
+  .pe-btn:focus-visible { outline: 3px solid rgba(11, 90, 66, .3); outline-offset: 2px; }
 
   .pe-empty-cta {
     display: grid;
@@ -505,9 +578,10 @@
       </section>
 
       <section style="padding:14px 18px 0;">
-        <h2 class="pe-sec-title" data-ic-days>行程 <span class="pe-days-count" data-day-count></span></h2>
-        <p class="pe-sec-note">各日に予定を足します。<b>観光・食事・移動・宿泊</b>を選んで追加。行はタップで開いて編集できます。</p>
+        <h2 class="pe-sec-title" data-ic-days>行程 <span class="pe-days-count" data-day-count></span><span class="pe-trip-summary" data-trip-summary></span></h2>
+        <p class="pe-sec-note">各日に予定を足します。<b>観光・食事・移動・宿泊</b>を選んで追加。行はハンドルでドラッグ、タップで開いて編集できます。</p>
       </section>
+      <nav class="pe-daystrip" data-daystrip aria-label="日へジャンプ"></nav>
       <div class="pe-days" data-days></div>
       <p class="pe-hint">場所を入れると地図に自動表示。見つからない時は予定を開いて「地図で検索」または地図をクリックして指定できます。</p>
     </div>
@@ -520,15 +594,20 @@
         <span class="pe-legend"><i style="background:#22719d"></i>移動</span>
         <span class="pe-legend"><i style="background:#cf4f3d"></i>宿泊</span>
         <span class="pe-map-hint" data-map-hint></span>
+        <button class="pe-map-toggle" type="button" data-map-toggle>地図を隠す</button>
       </div>
     </aside>
   </div>
 
+  <button class="pe-map-show" type="button" data-map-show hidden>地図を表示</button>
+
   <datalist id="pe-city-options"></datalist>
 
   <div class="pe-savebar">
-    <span data-savebar-note>変更は自動保存されません。最後に保存してください。</span>
-    <button class="pe-btn primary" type="button" data-save>保存する</button>
+    <span class="pe-local-note" data-local-note>この端末にのみ保存（自動保存）</span>
+    <span data-savebar-note></span>
+    <button class="pe-btn" type="button" data-export>書き出し</button>
+    <button class="pe-btn primary" type="button" data-save>今すぐ保存</button>
   </div>
 </main>
 
