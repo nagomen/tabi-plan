@@ -71,6 +71,16 @@ const DEFAULT_CONFIG = {
   tokenTtlDays: 14
 };
 
+// ダッシュボードのキャッシュキー。版を上げるときはここだけ変え、旧キーは LEGACY に移す。
+const DASHBOARD_CACHE_KEY = 'dashboard_data_public_v11';
+const LEGACY_DASHBOARD_CACHE_KEYS = [
+  'dashboard_data_public_v10',
+  'dashboard_data_public_v9',
+  'dashboard_data_public_v8',
+  'dashboard_data_public_v7',
+  'dashboard_data_public_v6'
+];
+
 function doGet(e: GoogleAppsScript.Events.DoGet): GoogleAppsScript.Content.TextOutput {
   const params: Params = e && e.parameter ? e.parameter : {};
   const callback = sanitizeCallback_(params.callback || '');
@@ -124,6 +134,29 @@ function doPost(e: GoogleAppsScript.Events.DoPost): GoogleAppsScript.HTML.HtmlOu
   }
 }
 
+// 認証が有効ならトークンを検証し、ScriptProperties を返す共通処理。
+function requireAuth_(params: Params): ScriptProps {
+  const props = PropertiesService.getScriptProperties();
+  const authEnabled = String(props.getProperty('TRIP_AUTH_ENABLED') || DEFAULT_CONFIG.authEnabled) !== 'false';
+  if (authEnabled) {
+    const tokenSecret = props.getProperty('TRIP_TOKEN_SECRET');
+    if (!tokenSecret) throw new Error('Token secret is not configured');
+    verifyToken_(params.token || '', tokenSecret);
+  }
+  return props;
+}
+
+// シートを変更し、キャッシュを更新して最新データを返す共通処理。
+function mutateAndRespond_(params: Params, mutate: (ss: Spreadsheet) => void, options?: DataOptions) {
+  const props = requireAuth_(params);
+  const ss = SpreadsheetApp.openById(getSpreadsheetId_(props));
+  mutate(ss);
+  clearDashboardCache_();
+  const data = buildDashboardData_(options || {});
+  putCachedDashboardData_(data, options || {});
+  return { ok: true, data };
+}
+
 function handleAuth_(params: Params) {
   const props = PropertiesService.getScriptProperties();
   const expectedHash = props.getProperty('TRIP_PASSWORD_HASH');
@@ -152,14 +185,7 @@ function handleAuth_(params: Params) {
 }
 
 function handleData_(params: Params) {
-  const props = PropertiesService.getScriptProperties();
-  const authEnabled = String(props.getProperty('TRIP_AUTH_ENABLED') || DEFAULT_CONFIG.authEnabled) !== 'false';
-  const tokenSecret = props.getProperty('TRIP_TOKEN_SECRET');
-
-  if (authEnabled) {
-    if (!tokenSecret) throw new Error('Token secret is not configured');
-    verifyToken_(params.token || '', tokenSecret);
-  }
+  requireAuth_(params);
 
   const options = { includeHidden: String(params.includeHidden || '').toLowerCase() === 'true' };
   const cached = getCachedDashboardData_(options);
@@ -181,84 +207,20 @@ function handleData_(params: Params) {
 }
 
 function handleExpense_(params: Params) {
-  const props = PropertiesService.getScriptProperties();
-  const authEnabled = String(props.getProperty('TRIP_AUTH_ENABLED') || DEFAULT_CONFIG.authEnabled) !== 'false';
-  const tokenSecret = props.getProperty('TRIP_TOKEN_SECRET');
-
-  if (authEnabled) {
-    if (!tokenSecret) throw new Error('Token secret is not configured');
-    verifyToken_(params.token || '', tokenSecret);
-  }
-
-  const spreadsheetId = getSpreadsheetId_(props);
-  const ss = SpreadsheetApp.openById(spreadsheetId);
-  appendExpense_(ss, params);
-  clearDashboardCache_();
-  const data = buildDashboardData_();
-  putCachedDashboardData_(data, {});
-
-  return {
-    ok: true,
-    data
-  };
+  return mutateAndRespond_(params, ss => appendExpense_(ss, params));
 }
 
 function handleSettlementComplete_(params: Params) {
-  const props = PropertiesService.getScriptProperties();
-  const authEnabled = String(props.getProperty('TRIP_AUTH_ENABLED') || DEFAULT_CONFIG.authEnabled) !== 'false';
-  const tokenSecret = props.getProperty('TRIP_TOKEN_SECRET');
-
-  if (authEnabled) {
-    if (!tokenSecret) throw new Error('Token secret is not configured');
-    verifyToken_(params.token || '', tokenSecret);
-  }
-
-  const spreadsheetId = getSpreadsheetId_(props);
-  const ss = SpreadsheetApp.openById(spreadsheetId);
-  appendSettlementCompletion_(ss, params);
-  clearDashboardCache_();
-  const data = buildDashboardData_();
-  putCachedDashboardData_(data, {});
-
-  return {
-    ok: true,
-    data
-  };
+  return mutateAndRespond_(params, ss => appendSettlementCompletion_(ss, params));
 }
 
 function handleItineraryUpdate_(params: Params) {
-  const props = PropertiesService.getScriptProperties();
-  const authEnabled = String(props.getProperty('TRIP_AUTH_ENABLED') || DEFAULT_CONFIG.authEnabled) !== 'false';
-  const tokenSecret = props.getProperty('TRIP_TOKEN_SECRET');
-
-  if (authEnabled) {
-    if (!tokenSecret) throw new Error('Token secret is not configured');
-    verifyToken_(params.token || '', tokenSecret);
-  }
-
-  const spreadsheetId = getSpreadsheetId_(props);
-  const ss = SpreadsheetApp.openById(spreadsheetId);
-  updateItineraryRow_(ss, params);
-  clearDashboardCache_();
   const options = { includeHidden: String(params.includeHidden || '').toLowerCase() === 'true' };
-  const data = buildDashboardData_(options);
-  putCachedDashboardData_(data, options);
-
-  return {
-    ok: true,
-    data
-  };
+  return mutateAndRespond_(params, ss => updateItineraryRow_(ss, params), options);
 }
 
 function handleReceiptUpload_(params: Params) {
-  const props = PropertiesService.getScriptProperties();
-  const authEnabled = String(props.getProperty('TRIP_AUTH_ENABLED') || DEFAULT_CONFIG.authEnabled) !== 'false';
-  const tokenSecret = props.getProperty('TRIP_TOKEN_SECRET');
-
-  if (authEnabled) {
-    if (!tokenSecret) throw new Error('Token secret is not configured');
-    verifyToken_(params.token || '', tokenSecret);
-  }
+  const props = requireAuth_(params);
 
   const fileName = sanitizeDriveFileName_(params.fileName || 'receipt.jpg');
   const mimeType = String(params.mimeType || 'image/jpeg').trim();
@@ -304,7 +266,7 @@ function sanitizeDriveFileName_(value: string) {
 }
 
 function dashboardCacheKey_(options: DataOptions) {
-  return (options && options.includeHidden) ? '' : 'dashboard_data_public_v11';
+  return (options && options.includeHidden) ? '' : DASHBOARD_CACHE_KEY;
 }
 
 function getCachedDashboardData_(options: DataOptions): TripDashboardData | null {
@@ -330,12 +292,9 @@ function putCachedDashboardData_(data: TripDashboardData, options: DataOptions) 
 
 function clearDashboardCache_() {
   try {
-    CacheService.getScriptCache().remove('dashboard_data_public_v11');
-    CacheService.getScriptCache().remove('dashboard_data_public_v10');
-    CacheService.getScriptCache().remove('dashboard_data_public_v9');
-    CacheService.getScriptCache().remove('dashboard_data_public_v8');
-    CacheService.getScriptCache().remove('dashboard_data_public_v7');
-    CacheService.getScriptCache().remove('dashboard_data_public_v6');
+    const cache = CacheService.getScriptCache();
+    cache.remove(DASHBOARD_CACHE_KEY);
+    LEGACY_DASHBOARD_CACHE_KEYS.forEach(key => cache.remove(key));
   } catch (error) {
     // Best-effort cache invalidation.
   }
@@ -488,6 +447,7 @@ function buildTripData_(itineraryRows: SheetRow[], budgetRows: SheetRow[], sprea
       yourPaid: settlement.topPayer,
       yourDue: settlement.transferSummary,
       transfers: settlement.transfers || [],
+      expenseDetails: settlement.expenseDetails || [],
       rateDetails: settlement.rateDetails || [],
       rateWarnings: settlement.rateWarnings || [],
       baseCurrency: 'JPY',
@@ -1036,9 +996,12 @@ function appendExpense_(ss: Spreadsheet, params: Params): void {
   }
 }
 
+function readParticipants_(ss: Spreadsheet): Participant[] {
+  return buildParticipants_(readObjects_(ss.getSheetByName(DEFAULT_CONFIG.sheets.participants), 1, 1, 8));
+}
+
 function activeParticipantNames_(ss: Spreadsheet): string[] {
-  return buildParticipants_(readObjects_(ss.getSheetByName(DEFAULT_CONFIG.sheets.participants), 1, 1, 8))
-    .map(member => member.name);
+  return readParticipants_(ss).map(member => member.name);
 }
 
 function defaultParticipantNames_(props: ScriptProps): string[] {
@@ -1080,7 +1043,7 @@ function ensureExpenseLogSheet_(ss: Spreadsheet, participantNames: string[]): { 
   const individualHeaders = uniqueNames_(participantNames).map(name => `個別金額_${name}`);
   const tailHeaders = ['支払方法', 'レシート写真URL', 'メモ', '入力元', '確認済'];
   const requiredHeaders = baseHeaders.concat(individualHeaders, tailHeaders);
-  const sheet = ss.getSheetByName(DEFAULT_CONFIG.sheets.expenseLog) || ss.insertSheet(DEFAULT_CONFIG.sheets.expenseLog);
+  const sheet = getOrCreateSheet_(ss, DEFAULT_CONFIG.sheets.expenseLog);
 
   if (sheet.getLastRow() === 0) {
     sheet.getRange(1, 1, 1, requiredHeaders.length).setValues([requiredHeaders]);
@@ -1142,7 +1105,7 @@ function appendSettlementCompletion_(ss: Spreadsheet, params: Params): void {
 
 function ensureSettlementCompletionsSheet_(ss: Spreadsheet): Sheet {
   const headers = ['タイムスタンプ', '支払者', '受取者', '精算額', '通貨', '対象ペア', '入力元', 'メモ'];
-  const sheet = ss.getSheetByName(DEFAULT_CONFIG.sheets.settlementLog) || ss.insertSheet(DEFAULT_CONFIG.sheets.settlementLog);
+  const sheet = getOrCreateSheet_(ss, DEFAULT_CONFIG.sheets.settlementLog);
   if (sheet.getLastRow() === 0) {
     sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
   } else {
@@ -1449,20 +1412,14 @@ function setupPlanningSheets() {
   Logger.log('Planning sheets are ready.');
 }
 
-function ensureExchangeRatesSheet_(ss: Spreadsheet): void {
-  let sheet = ss.getSheetByName(DEFAULT_CONFIG.sheets.exchangeRates);
-  if (!sheet) {
-    sheet = ss.insertSheet(DEFAULT_CONFIG.sheets.exchangeRates);
-  }
-  if (sheet.getLastRow() === 0) {
-    sheet.getRange(1, 1, 1, 5).setValues([['日付', '通貨', '円換算レート', '取得元/メモ', '更新日時']]);
-    sheet.setFrozenRows(1);
-    sheet.autoResizeColumns(1, 5);
-    return;
-  }
+// 名前のシートを取得、無ければ作成する。
+function getOrCreateSheet_(ss: Spreadsheet, name: string): Sheet {
+  return ss.getSheetByName(name) || ss.insertSheet(name);
+}
 
+// 既存ヘッダー行に不足している列を末尾に追加する（既存データは保持）。
+function ensureHeaderColumns_(sheet: Sheet, required: string[]): void {
   const headers = sheet.getRange(1, 1, 1, Math.max(sheet.getLastColumn(), 1)).getDisplayValues()[0];
-  const required = ['日付', '通貨', '円換算レート', '取得元/メモ', '更新日時'];
   let nextColumn = headers.length;
   const missingCount = required.filter(header => headers.indexOf(header) === -1).length;
   if (missingCount && sheet.getMaxColumns() < headers.length + missingCount) {
@@ -1477,11 +1434,20 @@ function ensureExchangeRatesSheet_(ss: Spreadsheet): void {
   sheet.setFrozenRows(1);
 }
 
-function ensureLocalInfoSheet_(ss: Spreadsheet): void {
-  let sheet = ss.getSheetByName(DEFAULT_CONFIG.sheets.localInfo);
-  if (!sheet) {
-    sheet = ss.insertSheet(DEFAULT_CONFIG.sheets.localInfo);
+function ensureExchangeRatesSheet_(ss: Spreadsheet): void {
+  const headers = ['日付', '通貨', '円換算レート', '取得元/メモ', '更新日時'];
+  const sheet = getOrCreateSheet_(ss, DEFAULT_CONFIG.sheets.exchangeRates);
+  if (sheet.getLastRow() === 0) {
+    sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+    sheet.setFrozenRows(1);
+    sheet.autoResizeColumns(1, headers.length);
+    return;
   }
+  ensureHeaderColumns_(sheet, headers);
+}
+
+function ensureLocalInfoSheet_(ss: Spreadsheet): void {
+  const sheet = getOrCreateSheet_(ss, DEFAULT_CONFIG.sheets.localInfo);
   const values = defaultLocalInfoRows_();
   if (sheet.getLastRow() === 0) {
     sheet.getRange(1, 1, values.length, values[0].length).setValues(values);
@@ -1489,21 +1455,7 @@ function ensureLocalInfoSheet_(ss: Spreadsheet): void {
     sheet.autoResizeColumns(1, values[0].length);
     return;
   }
-
-  const headers = sheet.getRange(1, 1, 1, Math.max(sheet.getLastColumn(), 1)).getDisplayValues()[0];
-  const required = values[0];
-  let nextColumn = headers.length;
-  const missingCount = required.filter(header => headers.indexOf(header) === -1).length;
-  if (missingCount && sheet.getMaxColumns() < headers.length + missingCount) {
-    sheet.insertColumnsAfter(sheet.getMaxColumns(), headers.length + missingCount - sheet.getMaxColumns());
-  }
-  required.forEach(header => {
-    if (headers.indexOf(header) !== -1) return;
-    nextColumn += 1;
-    sheet.getRange(1, nextColumn).setValue(header);
-    headers.push(header);
-  });
-  sheet.setFrozenRows(1);
+  ensureHeaderColumns_(sheet, values[0]);
 }
 
 function defaultLocalInfoRows_(): string[][] {
@@ -1513,10 +1465,7 @@ function defaultLocalInfoRows_(): string[][] {
 }
 
 function ensureItinerarySheet_(ss: Spreadsheet): Sheet {
-  let sheet = ss.getSheetByName(DEFAULT_CONFIG.sheets.itinerary);
-  if (!sheet) {
-    sheet = ss.insertSheet(DEFAULT_CONFIG.sheets.itinerary);
-  }
+  const sheet = getOrCreateSheet_(ss, DEFAULT_CONFIG.sheets.itinerary);
   const headers = [
     '日付',
     'Day',
@@ -1558,10 +1507,7 @@ function ensureItinerarySheet_(ss: Spreadsheet): Sheet {
 }
 
 function ensureHeaderSheet_(ss: Spreadsheet, sheetName: string, headers: string[]): Sheet {
-  let sheet = ss.getSheetByName(sheetName);
-  if (!sheet) {
-    sheet = ss.insertSheet(sheetName);
-  }
+  const sheet = getOrCreateSheet_(ss, sheetName);
   if (sheet.getMaxColumns() < headers.length) {
     sheet.insertColumnsAfter(sheet.getMaxColumns(), headers.length - sheet.getMaxColumns());
   }
@@ -1676,8 +1622,7 @@ function syncExpenseFormParticipants() {
   const formId = basicInfo.expenseFormId || props.getProperty('TRIP_EXPENSE_FORM_ID');
   if (!formId) throw new Error('expenseFormId is not configured in 基本情報 or Script Properties');
 
-  const participantRows = readObjects_(ss.getSheetByName(DEFAULT_CONFIG.sheets.participants), 1, 1, 8);
-  const participants = buildParticipants_(participantRows).map(member => member.name);
+  const participants = readParticipants_(ss).map(member => member.name);
   if (!participants.length) throw new Error('No active participants found');
   const currencyChoices = defaultCurrencyChoices_(ss);
 
@@ -1705,8 +1650,7 @@ function setupExpenseForm() {
   const formId = basicInfo.expenseFormId || props.getProperty('TRIP_EXPENSE_FORM_ID');
   if (!formId) throw new Error('expenseFormId is not configured in 基本情報 or Script Properties');
 
-  const participantRows = readObjects_(ss.getSheetByName(DEFAULT_CONFIG.sheets.participants), 1, 1, 8);
-  const participants = buildParticipants_(participantRows).map(member => member.name);
+  const participants = readParticipants_(ss).map(member => member.name);
   if (!participants.length) throw new Error('No active participants found');
   const currencyChoices = defaultCurrencyChoices_(ss);
 
@@ -1798,10 +1742,7 @@ function setupExpenseForm() {
 }
 
 function ensureSheetData_(ss: Spreadsheet, sheetName: string, values: any[][]): void {
-  let sheet = ss.getSheetByName(sheetName);
-  if (!sheet) {
-    sheet = ss.insertSheet(sheetName);
-  }
+  const sheet = getOrCreateSheet_(ss, sheetName);
   const width = values.reduce((max, row) => Math.max(max, row.length), 0);
   if (sheet.getMaxColumns() < width) {
     sheet.insertColumnsAfter(sheet.getMaxColumns(), width - sheet.getMaxColumns());
@@ -1851,13 +1792,7 @@ function verifyToken_(token: string, secret: string): any {
  * リンクを知っている人が閲覧できるよう共有設定する。認証が有効ならトークン必須。
  */
 function handleCreateTrip_(params: Params) {
-  const props = PropertiesService.getScriptProperties();
-  const authEnabled = String(props.getProperty('TRIP_AUTH_ENABLED') || DEFAULT_CONFIG.authEnabled) !== 'false';
-  const tokenSecret = props.getProperty('TRIP_TOKEN_SECRET');
-  if (authEnabled) {
-    if (!tokenSecret) throw new Error('Token secret is not configured');
-    verifyToken_(params.token || '', tokenSecret);
-  }
+  requireAuth_(params);
 
   let plan;
   try {
@@ -1942,8 +1877,7 @@ function provisionPlanSpreadsheet_(ss: Spreadsheet, plan: any): void {
 }
 
 function writePlanSheet_(ss: Spreadsheet, name: string, header: string[], rows: any[][]): Sheet {
-  let sheet = ss.getSheetByName(name);
-  if (!sheet) sheet = ss.insertSheet(name);
+  const sheet = getOrCreateSheet_(ss, name);
   sheet.clear();
   const body = (rows && rows.length) ? rows : [];
   const values = [header].concat(body).map(function (row) {
