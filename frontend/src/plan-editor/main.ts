@@ -6,6 +6,8 @@
 import * as TripPlans from "../shared/plans-store";
 import type { LocalPlanData } from "../shared/plans-store";
 import type { ItineraryItem, ItemType } from "../shared/types";
+import { escapeHtml } from "../shared/dom";
+import { registerServiceWorker } from "../shared/pwa";
 
 // ---- 編集中モデル（入力バインド用に lat/lng は文字列で保持）-----------------
 
@@ -65,6 +67,8 @@ const statusEl = qs<HTMLElement>(root, "[data-status]");
 const titleEcho = qs<HTMLElement>(root, "[data-title-echo]");
 const openLink = qs<HTMLAnchorElement>(root, "[data-open]");
 const warnEl = qs<HTMLElement>(root, "[data-daterange-warn]");
+const dayCountEl = qs<HTMLElement>(root, "[data-day-count]");
+const savebarNoteEl = qs<HTMLElement>(root, "[data-savebar-note]");
 const dayTpl = qs<HTMLTemplateElement>(root, "[data-day-template]");
 const itemTpl = qs<HTMLTemplateElement>(root, "[data-item-template]");
 
@@ -95,9 +99,12 @@ function newItem(seed?: ItemSeed): EditorItem {
   };
 }
 
+// ?plan= が無ければ新規。safeSlug は空文字に "trip" を充てるので、
+// 新規判定は生のパラメータで行い、slug は保存時に旅行名から採番する。
 const params = new URLSearchParams(location.search);
-let slug = TripPlans.safeSlug(params.get("plan") || "");
-const isNew = !slug;
+const planParam = (params.get("plan") || "").trim();
+const isNew = !planParam;
+let slug = isNew ? "" : TripPlans.safeSlug(planParam);
 
 const model: EditorModel = {
   slug: slug,
@@ -171,21 +178,52 @@ function autoCoords(item: EditorItem): void {
   }
 }
 
+function hasCoords(item: EditorItem): boolean {
+  return (
+    String(item.lat).trim() !== "" &&
+    String(item.lng).trim() !== "" &&
+    !isNaN(Number(item.lat)) &&
+    !isNaN(Number(item.lng))
+  );
+}
+
+// ---- ジオコーディング（OpenStreetMap Nominatim・無料/キー不要）-----------
+// 規約順守のため最短 1.1 秒間隔・件数制限つき。地名から緯度経度を取得する。
+interface GeoResult {
+  label: string;
+  lat: number;
+  lng: number;
+}
+
+let lastGeoAt = 0;
+
+async function geocodeSearch(query: string): Promise<GeoResult[]> {
+  const wait = 1100 - (Date.now() - lastGeoAt);
+  if (wait > 0) await new Promise((resolve) => window.setTimeout(resolve, wait));
+  lastGeoAt = Date.now();
+  const url =
+    "https://nominatim.openstreetmap.org/search?format=json&limit=5&accept-language=ja&q=" +
+    encodeURIComponent(query);
+  const res = await fetch(url, { headers: { Accept: "application/json" } });
+  if (!res.ok) throw new Error("検索に失敗しました (" + res.status + ")");
+  const data = (await res.json()) as Array<{ display_name?: string; lat?: string; lon?: string }>;
+  return data
+    .map((d) => ({ label: String(d.display_name || ""), lat: Number(d.lat), lng: Number(d.lon) }))
+    .filter((r) => Number.isFinite(r.lat) && Number.isFinite(r.lng));
+}
+
 function markDirty(): void {
   dirty = true;
   statusEl.textContent = "未保存";
   statusEl.className = "is-dirty";
+  savebarNoteEl.textContent = "未保存の変更があります。最後に保存してください。";
 }
+
+const EMPTY_SUMMARY = "（タイトル未入力）";
 
 function summaryText(item: EditorItem): string {
   const bits = [item.time, typeLabelOf[item.type] || "", item.title || item.place].filter(Boolean);
-  return bits.join(" ・ ") || "（内容未入力）";
-}
-
-function fillTypeSelect(select: HTMLSelectElement, value: string): void {
-  select.innerHTML = TYPES.map((t) => {
-    return '<option value="' + t.value + '"' + (t.value === value ? " selected" : "") + ">" + t.label + "</option>";
-  }).join("");
+  return bits.join(" ・ ") || EMPTY_SUMMARY;
 }
 
 function cloneTemplate(tpl: HTMLTemplateElement): HTMLElement {
@@ -196,9 +234,11 @@ function cloneTemplate(tpl: HTMLTemplateElement): HTMLElement {
 
 function renderDays(): void {
   daysEl.innerHTML = "";
+  dayCountEl.textContent = model.days.length ? `全${model.days.length}日` : "";
   if (!model.days.length) {
     daysEl.innerHTML =
-      '<div class="pe-day-empty" style="padding:0 0 6px;">開始日と終了日を入れると、日ごとの行程欄が出ます。</div>';
+      '<div class="pe-empty-cta"><b>まずは期間を選びましょう</b>' +
+      '<span>上の「開始日」と「終了日」を入れると、日ごとの予定欄がここに出ます。</span></div>';
     return;
   }
   model.days.forEach((day, dayIndex) => {
@@ -238,27 +278,121 @@ function renderItem(day: EditorDay, item: EditorItem, itemIndex: number): HTMLEl
   const tone = qs<HTMLElement>(node, "[data-tone]");
   const summary = qs<HTMLElement>(node, "[data-summary]");
   tone.className = "pe-item-tone " + item.type;
-  summary.textContent = summaryText(item);
 
-  node.querySelectorAll<HTMLElement>("[data-i]").forEach((input) => {
-    const key = input.dataset.i as EditorItemKey | undefined;
-    if (!key) return;
-    if (input.tagName === "SELECT") {
-      fillTypeSelect(input as HTMLSelectElement, item.type);
-    } else {
-      (input as HTMLInputElement | HTMLTextAreaElement).value = item[key] == null ? "" : String(item[key]);
+  const setSummary = (): void => {
+    const text = summaryText(item);
+    summary.textContent = text;
+    summary.classList.toggle("is-empty", text === EMPTY_SUMMARY);
+  };
+  setSummary();
+
+  // 地図登録（場所名 → 緯度経度）
+  const placeInput = qs<HTMLInputElement>(node, '[data-i="place"]');
+  const latInput = qs<HTMLInputElement>(node, '[data-i="lat"]');
+  const lngInput = qs<HTMLInputElement>(node, '[data-i="lng"]');
+  const geoBtn = qs<HTMLButtonElement>(node, "[data-geocode]");
+  const geoStatus = qs<HTMLElement>(node, "[data-geo-status]");
+  const geoResults = qs<HTMLElement>(node, "[data-geo-results]");
+
+  const setGeoStatus = (text: string, kind?: "ok" | "warn"): void => {
+    geoStatus.textContent = text;
+    geoStatus.className = "pe-geo-status" + (kind ? " is-" + kind : "");
+  };
+  const refreshGeoStatus = (): void => {
+    if (hasCoords(item)) setGeoStatus("✓ 地図に登録済み", "ok");
+    else setGeoStatus("未登録：場所名を入れて「地図を検索」で登録できます");
+  };
+  refreshGeoStatus();
+
+  const applyResult = (result: GeoResult): void => {
+    item.lat = String(result.lat);
+    item.lng = String(result.lng);
+    latInput.value = item.lat;
+    lngInput.value = item.lng;
+    geoResults.hidden = true;
+    geoResults.innerHTML = "";
+    setGeoStatus("✓ 地図に登録しました", "ok");
+    markDirty();
+  };
+
+  geoBtn.addEventListener("click", () => {
+    const query = (item.mapQuery || item.place || placeInput.value).trim();
+    if (!query) {
+      setGeoStatus("場所名を入力してください", "warn");
+      return;
     }
-    const ev = input.tagName === "SELECT" ? "change" : "input";
-    input.addEventListener(ev, () => {
-      const value = (input as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement).value;
-      if (key === "type") {
-        item.type = normalizeType(value);
-        tone.className = "pe-item-tone " + item.type;
-      } else {
-        item[key] = value;
+    geoBtn.disabled = true;
+    geoResults.hidden = true;
+    geoResults.innerHTML = "";
+    setGeoStatus("検索中…");
+    void (async (): Promise<void> => {
+      try {
+        const results = await geocodeSearch(query);
+        if (!results.length) {
+          setGeoStatus("見つかりませんでした。表記を変えて再検索してください。", "warn");
+          return;
+        }
+        if (results.length === 1) {
+          applyResult(results[0]);
+          return;
+        }
+        geoResults.innerHTML = results
+          .map(
+            (result, index) =>
+              `<button type="button" class="pe-geo-result" data-geo-pick="${index}"><b>候補 ${index + 1}</b><small>${escapeHtml(result.label)}</small></button>`,
+          )
+          .join("");
+        geoResults.hidden = false;
+        setGeoStatus("候補から選んでください");
+        geoResults.querySelectorAll<HTMLButtonElement>("[data-geo-pick]").forEach((pick) => {
+          pick.addEventListener("click", () => {
+            const result = results[Number(pick.dataset.geoPick)];
+            if (result) applyResult(result);
+          });
+        });
+      } catch (error) {
+        setGeoStatus(error instanceof Error ? error.message : "検索に失敗しました", "warn");
+      } finally {
+        geoBtn.disabled = false;
       }
-      if (key === "place" || key === "mapQuery") autoCoords(item);
-      summary.textContent = summaryText(item);
+    })();
+  });
+
+  // 種別チップ（ダッシュボードのチップ色と一致）
+  const chipsWrap = qs<HTMLElement>(node, "[data-type-chips]");
+  chipsWrap.innerHTML = TYPES.map(
+    (t) => `<button type="button" class="pe-type-chip" data-type="${t.value}">${t.label}</button>`,
+  ).join("");
+  const syncChips = (): void => {
+    chipsWrap.querySelectorAll<HTMLButtonElement>(".pe-type-chip").forEach((chip) => {
+      chip.classList.toggle("is-active", chip.dataset.type === item.type);
+    });
+  };
+  syncChips();
+  chipsWrap.querySelectorAll<HTMLButtonElement>(".pe-type-chip").forEach((chip) => {
+    chip.addEventListener("click", () => {
+      item.type = normalizeType(chip.dataset.type);
+      syncChips();
+      tone.className = "pe-item-tone " + item.type;
+      setSummary();
+      markDirty();
+    });
+  });
+
+  // テキスト/数値入力（種別以外）のバインド
+  node.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>("[data-i]").forEach((input) => {
+    const key = input.dataset.i as EditorItemKey | undefined;
+    if (!key || key === "type") return;
+    input.value = item[key] == null ? "" : String(item[key]);
+    input.addEventListener("input", () => {
+      item[key] = input.value;
+      if (key === "place" || key === "mapQuery") {
+        autoCoords(item);
+        latInput.value = item.lat;
+        lngInput.value = item.lng;
+      }
+      if (key === "place" || key === "mapQuery" || key === "lat" || key === "lng") refreshGeoStatus();
+      setSummary();
       markDirty();
     });
   });
@@ -424,6 +558,8 @@ function save(): void {
   statusEl.textContent = "保存しました";
   statusEl.className = "is-ok";
   openLink.href = "index.html?plan=" + encodeURIComponent(slug);
+  openLink.hidden = false;
+  savebarNoteEl.textContent = "保存しました。右上の「この計画を表示」で確認できます。";
   // 新規URLを反映（リロードや複製時の整合のため）
   try {
     history.replaceState(null, "", "plan-editor.html?plan=" + encodeURIComponent(slug));
@@ -443,15 +579,14 @@ window.addEventListener("beforeunload", (event) => {
 
 // 初期化
 const editable = loadExisting();
-if (slug) openLink.href = "index.html?plan=" + encodeURIComponent(slug);
-if (editable && isNew && !model.days.length) {
-  // 新規は空のまま。日付を入れると行程欄が出る。
+if (slug) {
+  // 既存プランは保存済みなので「この計画を表示」リンクを出す
+  openLink.href = "index.html?plan=" + encodeURIComponent(slug);
+  openLink.hidden = false;
 }
 syncBasicInputs();
 rebuildDays();
 renderDays();
-statusEl.textContent = isNew ? "新規作成" : "読み込み完了";
+statusEl.textContent = isNew ? "下書き（未保存）" : editable ? "読み込み完了" : statusEl.textContent;
 
-if ("serviceWorker" in navigator && /^https?:$/.test(location.protocol)) {
-  navigator.serviceWorker.register("sw.js").catch(() => {});
-}
+registerServiceWorker();
