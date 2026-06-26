@@ -1087,6 +1087,13 @@ function buildData(): LocalPlanData {
     itinerary,
     links: [],
     checklist: [],
+    cities: model.cities.map((c) => ({
+      name: c.name,
+      fromDate: c.fromDate,
+      toDate: c.toDate,
+      lat: coordOut(c.lat),
+      lng: coordOut(c.lng),
+    })),
   };
 }
 
@@ -1137,10 +1144,20 @@ function loadExisting(): boolean {
       model.days[i].stay = null;
     }
   }
-  model.cities = Array.from(cityNames).map((name) => {
-    const hit = TripPlans.coordsFor(name);
-    return { id: seq++, name, lat: hit ? String(hit.lat) : "", lng: hit ? String(hit.lng) : "", fromDate: "", toDate: "" };
-  });
+  if (data.cities && data.cities.length) {
+    // 保存済みの都市（期間つき）を復元
+    model.cities = data.cities.map((c) => ({
+      id: seq++, name: c.name || "",
+      fromDate: c.fromDate || "", toDate: c.toDate || "",
+      lat: c.lat != null ? String(c.lat) : "", lng: c.lng != null ? String(c.lng) : "",
+    }));
+  } else {
+    // 旧データ：行程の area から都市名だけ拾う（期間は空）
+    model.cities = Array.from(cityNames).map((name) => {
+      const hit = TripPlans.coordsFor(name);
+      return { id: seq++, name, lat: hit ? String(hit.lat) : "", lng: hit ? String(hit.lng) : "", fromDate: "", toDate: "" };
+    });
+  }
   return true;
 }
 

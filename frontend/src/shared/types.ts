@@ -147,6 +147,15 @@ export interface LocalInfoItem {
   order?: number;
 }
 
+/** ルート上の滞在都市（大まかな場所＋滞在期間） */
+export interface RouteCity {
+  name: string;
+  fromDate: string;
+  toDate: string;
+  lat?: number | string;
+  lng?: number | string;
+}
+
 /** 各画面が描画する正規化済みデータ */
 export interface TripData {
   trip: TripInfo;
@@ -155,6 +164,8 @@ export interface TripData {
   checklist: ChecklistItem[];
   localInfo: LocalInfoItem[];
   itinerary: ItineraryItem[];
+  /** 滞在都市（任意）。無ければダッシュボードは行程の area から推定する */
+  cities?: RouteCity[];
 }
 
 /** Sheets の gviz から得られる1行（ヘッダー名 -> セル値） */

@@ -11,6 +11,7 @@ import type {
   TripLink,
   ChecklistItem,
   LocalInfoItem,
+  RouteCity,
   ItemType,
   LatLng,
 } from "./types";
@@ -42,6 +43,7 @@ export interface LocalPlanData {
   links?: TripLink[];
   checklist?: ChecklistItem[];
   localInfo?: LocalInfoItem[];
+  cities?: RouteCity[];
 }
 
 export const PLANS_KEY = "trip-dashboard-plans";
@@ -301,6 +303,7 @@ export function toDashboardData(data: LocalPlanData | null): TripData {
     checklist: Array.isArray(source.checklist) ? source.checklist : [],
     localInfo: Array.isArray(source.localInfo) ? source.localInfo : [],
     settlement: {},
+    cities: Array.isArray(source.cities) ? source.cities : undefined,
   };
 }
 

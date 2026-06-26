@@ -427,6 +427,40 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
+  /* ルート帯（滞在都市） */
+  .tl-route {
+    display: flex;
+    align-items: stretch;
+    gap: 8px;
+    overflow-x: auto;
+    padding: 9px 16px;
+    border-bottom: 1px solid var(--line);
+    background:
+      linear-gradient(90deg, rgba(11, 90, 66, .04), transparent 60%),
+      #fff;
+  }
+
+  .tl-route[hidden] { display: none; }
+
+  .tl-route-seg {
+    flex: none;
+    display: grid;
+    gap: 1px;
+    align-content: center;
+    padding: 6px 12px;
+    border: 1px solid var(--line);
+    border-left: 4px solid var(--c, #0b5a42);
+    background: #fff;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .tl-route-seg:hover { background: var(--wash); }
+  .tl-route-seg b { font-size: 13px; font-weight: 900; color: var(--ink); }
+  .tl-route-seg small { font-size: 11px; font-weight: 760; color: var(--muted); }
+  .tl-route-arrow { display: grid; place-items: center; color: var(--line-strong); flex: none; }
+
   .tl-days {
     display: grid;
     grid-auto-flow: column;
@@ -435,6 +469,23 @@
     border-bottom: 1px solid var(--line);
     background: #fff;
   }
+
+  /* 都市でグループ化した日タブ */
+  .tl-days:has(.tl-daygroup) { display: flex; }
+  .tl-daygroup { flex: none; display: flex; flex-direction: column; border-right: 1px solid var(--line-strong); }
+  .tl-daygroup:last-child { border-right: 0; }
+  .tl-daygroup-label {
+    padding: 5px 10px;
+    background: var(--c, #0b5a42);
+    color: #fff;
+    font-size: 11px;
+    font-weight: 900;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .tl-daygroup-days { display: flex; }
+  .tl-daygroup .tl-day { min-width: 84px; }
 
   .trip-live[data-section-view="money"] .tl-days,
   .trip-live[data-section-view="links"] .tl-days {
@@ -1732,6 +1783,7 @@
     </div>
   </header>
 
+  <nav class="tl-route" data-route-strip aria-label="ルート（滞在都市）" hidden></nav>
   <nav class="tl-actions" data-actions aria-label="主要リンク"></nav>
   <nav class="tl-days" data-days aria-label="日別旅程"></nav>
 
