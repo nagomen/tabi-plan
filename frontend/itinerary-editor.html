@@ -20,6 +20,8 @@
 
   * { box-sizing: border-box; }
 
+  .hi { width: 1.15em; height: 1.15em; vertical-align: -0.18em; flex: none; }
+
   body {
     margin: 0;
     background: #fff;
@@ -69,8 +71,10 @@
   }
 
   .ed-dashboard {
-    display: grid;
-    place-items: center;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
     min-height: 38px;
     padding: 0 12px;
     border: 1px solid rgba(11, 90, 66, .36);
@@ -88,6 +92,60 @@
     padding: 12px 18px;
     border-bottom: 1px solid var(--line);
     background: var(--wash);
+  }
+
+  .ed-search {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    padding: 0 9px;
+    border: 1px solid var(--line-strong);
+    background: #fff;
+    color: var(--muted);
+  }
+
+  .ed-search input {
+    flex: 1;
+    min-width: 0;
+    min-height: 36px;
+    border: 0 !important;
+    padding: 7px 0 !important;
+    background: transparent;
+    color: var(--ink);
+    font: inherit;
+    font-size: 14px;
+  }
+
+  .ed-search input:focus {
+    outline: none;
+  }
+
+  .ed-daysel {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    padding: 0 9px;
+    border: 1px solid var(--line-strong);
+    background: #fff;
+    color: var(--muted);
+  }
+
+  .ed-daysel select {
+    flex: 1;
+    min-width: 0;
+    min-height: 36px;
+    border: 0 !important;
+    padding: 7px 0 !important;
+    background: transparent;
+    color: var(--ink);
+    font: inherit;
+    font-size: 14px;
+  }
+
+  .ed-daysel select:focus {
+    outline: none;
   }
 
   .ed-toolbar input,
@@ -225,6 +283,10 @@
   }
 
   .ed-save {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
     min-height: 38px;
     min-width: 96px;
     border: 1px solid var(--green);
@@ -244,6 +306,9 @@
   }
 
   .ed-row-msg {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
     min-width: 0;
     color: var(--muted);
     font-size: 12px;
@@ -390,8 +455,14 @@
   </header>
 
   <div class="ed-toolbar">
-    <input type="search" data-filter placeholder="日付、都市、内容で検索">
-    <select data-day-filter aria-label="日付で絞り込み"></select>
+    <div class="ed-search">
+      <span data-search-icon aria-hidden="true"></span>
+      <input type="search" data-filter placeholder="日付、都市、内容で検索">
+    </div>
+    <div class="ed-daysel">
+      <span data-day-icon aria-hidden="true"></span>
+      <select data-day-filter aria-label="日付で絞り込み"></select>
+    </div>
   </div>
 
   <main class="ed-list" data-list></main>

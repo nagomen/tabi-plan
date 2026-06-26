@@ -6,6 +6,8 @@
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
+import { icon } from "../shared/icons";
+
 import {
   DEFAULT_CONFIG,
   mergeConfig,
@@ -484,7 +486,8 @@ function updateProfileButton(): void {
   const button = root.querySelector<HTMLButtonElement>("[data-profile-button]");
   if (!button) return;
   const profile = readProfile();
-  button.textContent = profile && profile.name ? profile.name : "本人設定";
+  const label = profile && profile.name ? profile.name : "本人設定";
+  button.innerHTML = `${icon("user")}<span>${escapeHtml(label)}</span>`;
   button.setAttribute("aria-label", profile && profile.name ? `本人設定を変更: ${profile.name}` : "本人設定");
 }
 
@@ -698,6 +701,20 @@ function chooseActive(days: DayGroup[]): number {
 
 function linkByKey(key: string): TripLink | Partial<TripLink> {
   return state.data.links.find((link) => link.key === key) || {};
+}
+
+/** リンク種別ごとに Heroicon を返す（タイルアイコン用、data の icon は据え置き） */
+function linkIcon(key: string): string {
+  switch (key) {
+    case "itinerary": return icon("ticket");
+    case "maps": return icon("map");
+    case "expenseSheet": return icon("banknotes");
+    case "budget": return icon("banknotes");
+    case "photos": return icon("photo");
+    case "packing": return icon("briefcase");
+    case "reservations": return icon("calendarDays");
+    default: return icon("arrowTopRightOnSquare");
+  }
 }
 
 function uniquePlaces(items: ItineraryItem[]): ItineraryItem[] {
@@ -1564,16 +1581,16 @@ function renderBase(): void {
   setText("[data-updated]", "最終更新: " + new Date().toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }));
   updateProfileButton();
 
-  const tabs = [
-    { key: "home", label: "ホーム" },
-    { key: "plan", label: "予定" },
-    { key: "map", label: "地図" },
-    { key: "money", label: "費用" },
-    { key: "links", label: "リンク" },
+  const tabs: { key: string; label: string; glyph: string }[] = [
+    { key: "home", label: "ホーム", glyph: icon("home") },
+    { key: "plan", label: "予定", glyph: icon("calendarDays") },
+    { key: "map", label: "地図", glyph: icon("map") },
+    { key: "money", label: "費用", glyph: icon("banknotes") },
+    { key: "links", label: "リンク", glyph: icon("link") },
   ];
   setHtml("[data-actions]", tabs.map((tab) =>
     `<button class="tl-action" type="button" data-section-nav="${tab.key}" aria-selected="${tab.key === mobileView}">
-      <b>${tab.label}</b>
+      ${tab.glyph}<b>${tab.label}</b>
     </button>`,
   ).join(""));
   qsa<HTMLElement>("[data-section-nav]").forEach((button) => {
@@ -1604,7 +1621,7 @@ function renderBase(): void {
   const docs = data.links.filter((link) => !["itinerary", "maps", "expenseForm", "photos", "expenseSheet"].includes(link.key)).concat(primaryLinks);
   setHtml("[data-docs]", docs.slice(0, 5).map((doc) =>
     `<a class="tl-doc" href="${doc.url}" target="_blank" rel="noopener">
-      <span class="tl-doc-icon">${doc.icon || "↗"}</span><b>${doc.label}</b><span>↗</span>
+      <span class="tl-doc-icon">${linkIcon(doc.key)}</span><b>${doc.label}</b><span>${icon("arrowTopRightOnSquare")}</span>
     </a>`,
   ).join(""));
 
@@ -1699,7 +1716,7 @@ function renderActive(): void {
         ${item.needed ? `<p class="tl-needed">${escapeHtml(item.needed)}</p>` : ""}
         <p class="tl-note">${escapeHtml(note)}</p>
       </div>
-      <a class="tl-maplink" href="${mapsSearch(item.mapQuery || item.place || item.title)}" target="_blank" rel="noopener">Google Maps ↗</a>
+      <a class="tl-maplink" href="${mapsSearch(item.mapQuery || item.place || item.title)}" target="_blank" rel="noopener">Google Maps ${icon("arrowTopRightOnSquare")}</a>
     </article>`;
   }).join(""));
 

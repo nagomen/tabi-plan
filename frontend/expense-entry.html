@@ -28,6 +28,8 @@
 
   * { box-sizing: border-box; }
 
+  .hi { width: 1.15em; height: 1.15em; vertical-align: -0.18em; flex: none; }
+
   html {
     background: #fff;
     overflow-y: scroll;
@@ -97,8 +99,10 @@
 
   .profile-button,
   .expense-link {
-    display: grid;
-    place-items: center;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
     min-height: 38px;
     padding: 0 11px;
     border: 1px solid rgba(11, 90, 66, .36);
@@ -221,6 +225,12 @@
     min-height: 68px;
     padding: 9px 10px;
     resize: vertical;
+  }
+
+  .photo-field > span {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
   }
 
   .photo-field {
@@ -346,6 +356,9 @@
   }
 
   .expense-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
     min-width: 0;
     color: var(--muted);
     font-size: 12px;
@@ -361,6 +374,10 @@
   }
 
   .expense-submit button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
     min-width: 112px;
     min-height: 44px;
     border: 1px solid var(--green);
@@ -550,6 +567,10 @@
   }
 
   .identity-actions button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
     min-height: 42px;
     border: 1px solid var(--green);
     background: var(--green);

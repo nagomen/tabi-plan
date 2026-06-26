@@ -24,6 +24,8 @@
     --violet: #6246a6;
   }
 
+  .hi { width: 1.15em; height: 1.15em; vertical-align: -0.18em; flex: none; }
+
   html { background: #fff; }
   * { box-sizing: border-box; }
 
@@ -101,8 +103,10 @@
   }
 
   .hub-new {
-    display: grid;
-    place-items: center;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
     min-height: 42px;
     padding: 0 18px;
     border: 1px solid var(--green);
@@ -216,8 +220,10 @@
     font-weight: 800;
     text-decoration: none;
     cursor: pointer;
-    display: inline-grid;
-    place-items: center;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
   }
 
   .plan-btn.primary {
@@ -269,6 +275,9 @@
     transform: translateX(-50%);
     max-width: min(560px, calc(100% - 24px));
     z-index: 9997;
+    display: inline-flex;
+    align-items: flex-start;
+    gap: 8px;
     padding: 12px 16px;
     border: 1px solid var(--green);
     background: #fff;
@@ -390,7 +399,7 @@
 
   <div class="hub-toolbar">
     <input type="search" data-filter placeholder="旅行名、ルートで検索" aria-label="計画を検索">
-    <a class="hub-new" href="plan-editor.html">＋ 新規計画</a>
+    <a class="hub-new" href="plan-editor.html"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" class="hi" aria-hidden="true" focusable="false"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg><span>新規計画</span></a>
   </div>
 
   <section class="hub-grid" data-grid aria-live="polite"></section>

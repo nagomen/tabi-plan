@@ -49,6 +49,8 @@
   .trip-live * { box-sizing: border-box; }
   .trip-live a { color: inherit; }
 
+  .hi { width: 1.15em; height: 1.15em; vertical-align: -0.18em; flex: none; }
+
   .tl-loading {
     position: fixed;
     inset: 0;
@@ -316,6 +318,9 @@
   }
 
   .tl-persona-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
     justify-self: end;
     min-height: 32px;
     background-color: var(--green-soft, #e7f1ec);
@@ -323,6 +328,7 @@
     padding: 5px 10px;
     font-size: 12px;
     font-weight: 720;
+    text-decoration: none;
   }
 
   .tl-persona-button:hover,
@@ -387,8 +393,10 @@
   }
 
   .tl-action {
-    display: grid;
-    place-items: center;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
     min-height: 50px;
     padding: 10px;
     border-right: 1px solid var(--line);
@@ -507,6 +515,12 @@
     text-align: right;
     text-decoration: none;
     white-space: nowrap;
+  }
+
+  .tl-panel-head a {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
   }
 
   .tl-map {
@@ -679,7 +693,7 @@
   }
 
   .tl-map-status b { color: var(--ink); }
-  .tl-map-status a { color: var(--green); text-decoration: none; white-space: nowrap; }
+  .tl-map-status a { display: inline-flex; align-items: center; gap: 6px; color: var(--green); text-decoration: none; white-space: nowrap; }
 
   .tl-timeline {
     padding: 14px 14px 12px;
@@ -813,6 +827,9 @@
 
   .tl-maplink {
     align-self: start;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
     color: var(--green);
     font-size: 12px;
     font-weight: 900;
@@ -1368,7 +1385,7 @@
   .tl-doc:last-child { border-bottom: 0; }
   .tl-doc-icon { display: grid; place-items: center; width: 28px; height: 28px; background: var(--green-soft); color: var(--green); font-size: 12px; font-weight: 950; }
   .tl-doc b { min-width: 0; overflow: hidden; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
-  .tl-doc span:last-child { color: var(--muted); font-weight: 950; }
+  .tl-doc span:last-child { display: inline-flex; align-items: center; color: var(--muted); font-weight: 950; }
 
   .tl-checks {
     display: grid;
@@ -1721,7 +1738,7 @@
     <section class="tl-panel tl-map-panel" data-mobile-view="home map" data-section-target="home map">
       <div class="tl-panel-head">
         <h2>地図・ルート</h2>
-        <a data-my-maps href="#" target="_blank" rel="noopener">Google My Mapsで開く ↗</a>
+        <a data-my-maps href="#" target="_blank" rel="noopener">Google My Mapsで開く <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" class="hi" aria-hidden="true" focusable="false"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 0 0 3 8.25v10.5A2.25 2.25 0 0 0 5.25 21h10.5A2.25 2.25 0 0 0 18 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25"/></svg></a>
       </div>
       <div class="tl-map" data-map>
         <div class="tl-map-land" aria-hidden="true"></div>
@@ -1730,7 +1747,7 @@
         </svg>
         <div class="tl-map-status">
           <span data-location-caption></span>
-          <a data-directions href="#" target="_blank" rel="noopener">Google Mapsで経路 ↗</a>
+          <a data-directions href="#" target="_blank" rel="noopener">Google Mapsで経路 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" class="hi" aria-hidden="true" focusable="false"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 0 0 3 8.25v10.5A2.25 2.25 0 0 0 5.25 21h10.5A2.25 2.25 0 0 0 18 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25"/></svg></a>
         </div>
       </div>
     </section>

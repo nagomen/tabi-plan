@@ -12,6 +12,7 @@ import {
 } from "../shared/config";
 import type { ItineraryItem, ItineraryEdit, TripData } from "../shared/types";
 import { escapeHtml, errorMessage, makeScopedQuery } from "../shared/dom";
+import { icon } from "../shared/icons";
 import {
   hasAuthSession as hasAuthSessionShared,
   getAuthToken as getAuthTokenShared,
@@ -284,7 +285,7 @@ function renderRow(row: ItineraryItem): string {
               <span>公開ページに表示</span>
             </label>
             <div class="ed-row-msg" data-row-msg></div>
-            <button class="ed-save" type="submit">保存</button>
+            <button class="ed-save" type="submit">${icon("check")}保存</button>
           </div>
         </form>`;
 }
@@ -304,7 +305,13 @@ async function saveRow(event: Event): Promise<void> {
   const msg = form.querySelector<HTMLElement>("[data-row-msg]");
   const setMsg = (text: string, type: "error" | "ok" | ""): void => {
     if (!msg) return;
-    msg.textContent = text || "";
+    const glyph =
+      type === "ok"
+        ? icon("checkCircle")
+        : type === "error"
+          ? icon("exclamationTriangle")
+          : "";
+    msg.innerHTML = glyph + escapeHtml(text || "");
     msg.className = "ed-row-msg" + (type ? ` is-${type}` : "");
   };
   if (button) button.disabled = true;
@@ -343,6 +350,15 @@ async function saveRow(event: Event): Promise<void> {
 
 // ---- 初期化 -------------------------------------------------------------
 
+function initIcons(): void {
+  const dashboardLink = qs<HTMLAnchorElement>(".ed-dashboard");
+  dashboardLink.insertAdjacentHTML("afterbegin", icon("home"));
+  const searchIcon = qs<HTMLElement>("[data-search-icon]");
+  searchIcon.innerHTML = icon("magnifyingGlass");
+  const dayIcon = qs<HTMLElement>("[data-day-icon]");
+  dayIcon.innerHTML = icon("calendarDays");
+}
+
 function initFilters(): void {
   qs<HTMLInputElement>("[data-filter]").addEventListener("input", (event) => {
     state.filter = (event.target as HTMLInputElement).value || "";
@@ -357,6 +373,7 @@ function initFilters(): void {
 qs<HTMLElement>("[data-trip-title]").textContent = CONFIG.tripTitle || "旅行";
 
 async function init(): Promise<void> {
+  initIcons();
   initFilters();
   await requestPassword();
   await loadData(false);

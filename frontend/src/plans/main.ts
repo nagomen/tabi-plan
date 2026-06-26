@@ -8,6 +8,7 @@ import type { PlanMeta, LocalPlanData, PlanSource } from "../shared/plans-store"
 import { readGlobalTripConfig } from "../shared/config";
 import { escapeHtml, errorMessage, makeScopedQuery } from "../shared/dom";
 import { registerServiceWorker } from "../shared/pwa";
+import { icon } from "../shared/icons";
 import {
   callAppsScript,
   postAppsScript,
@@ -50,6 +51,13 @@ const SOURCE_LABEL: Record<string, string> = {
   googleSheets: "Sheets連携",
   appsScript: "公開",
   sample: "サンプル",
+};
+
+const SOURCE_ICON: Record<string, string> = {
+  local: icon("mapPin"),
+  googleSheets: icon("documentText"),
+  appsScript: icon("globeAlt"),
+  sample: icon("sparkles"),
 };
 
 function sourceClass(source: PlanSource | string): string {
@@ -95,6 +103,7 @@ function render(): void {
         '<span class="plan-badge ' +
         src +
         '">' +
+        (SOURCE_ICON[src] || "") +
         escapeHtml(SOURCE_LABEL[src] || src) +
         "</span>" +
         (isActive ? '<span class="plan-badge current">表示中</span>' : "") +
@@ -110,13 +119,25 @@ function render(): void {
         '<div class="plan-actions">' +
         '<a class="plan-btn primary" href="index.html?plan=' +
         encodeURIComponent(meta.slug) +
-        '" data-open>開く</a>' +
+        '" data-open>' +
+        icon("arrowTopRightOnSquare") +
+        "<span>開く</span></a>" +
         (isLocal
-          ? '<a class="plan-btn" href="plan-editor.html?plan=' + encodeURIComponent(meta.slug) + '">編集</a>'
+          ? '<a class="plan-btn" href="plan-editor.html?plan=' +
+            encodeURIComponent(meta.slug) +
+            '">' +
+            icon("pencilSquare") +
+            "<span>編集</span></a>"
           : "") +
-        (isLocal ? '<button class="plan-btn" type="button" data-publish>公開</button>' : "") +
-        '<button class="plan-btn" type="button" data-dup>複製</button>' +
-        (meta.builtIn ? "" : '<button class="plan-btn danger" type="button" data-del>削除</button>') +
+        (isLocal
+          ? '<button class="plan-btn" type="button" data-publish>' + icon("globeAlt") + "<span>公開</span></button>"
+          : "") +
+        '<button class="plan-btn" type="button" data-dup>' +
+        icon("documentDuplicate") +
+        "<span>複製</span></button>" +
+        (meta.builtIn
+          ? ""
+          : '<button class="plan-btn danger" type="button" data-del>' + icon("trash") + "<span>削除</span></button>") +
         "</div>" +
         "</article>"
       );
@@ -233,7 +254,11 @@ function askPassword(): Promise<PasswordPrompt> {
 function showToast(message: string, isError?: boolean): void {
   const toast = document.createElement("div");
   toast.className = "pub-toast" + (isError ? " is-error" : "");
-  toast.textContent = message;
+  const glyph = isError ? icon("exclamationTriangle") : icon("checkCircle");
+  const text = document.createElement("span");
+  text.textContent = message;
+  toast.innerHTML = glyph;
+  toast.appendChild(text);
   document.body.appendChild(toast);
   setTimeout(() => {
     toast.remove();

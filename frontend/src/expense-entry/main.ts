@@ -26,6 +26,7 @@ import {
   type AppsScriptParams,
   type AppsScriptResponse,
 } from "../shared/apps-script";
+import { icon } from "../shared/icons";
 
 // ---- 補助型 -------------------------------------------------------------
 
@@ -213,7 +214,8 @@ function updateProfileButton(): void {
   const button = root.querySelector<HTMLButtonElement>("[data-profile-button]");
   if (!button) return;
   const profile = readProfile();
-  button.textContent = profile && profile.name ? profile.name : "本人設定";
+  const label = profile && profile.name ? profile.name : "本人設定";
+  button.innerHTML = icon("user") + `<span>${escapeHtml(label)}</span>`;
   button.setAttribute(
     "aria-label",
     profile && profile.name ? `本人設定を変更: ${profile.name}` : "本人設定",
@@ -271,8 +273,8 @@ function showIdentityModal(required: boolean): Promise<boolean> {
               </label>
               <div class="identity-actions">
                 <span class="identity-note">ブラウザのローカルストレージに保存されます。</span>
-                <button type="submit">登録する</button>
-                ${required ? "" : `<button class="secondary" type="button" data-identity-close>閉じる</button>`}
+                <button type="submit">${icon("user")}<span>登録する</span></button>
+                ${required ? "" : `<button class="secondary" type="button" data-identity-close>${icon("xMark")}<span>閉じる</span></button>`}
               </div>
             </div>
           </form>`;
@@ -472,7 +474,15 @@ function expenseCurrencies(data: ExpenseSourceData): string[] {
 function setStatus(message: string, type: "error" | "ok" | ""): void {
   const status = root.querySelector<HTMLElement>("[data-expense-status]");
   if (!status) return;
-  status.textContent = message || "";
+  if (!message) {
+    status.textContent = "";
+  } else if (type === "error") {
+    status.innerHTML = icon("exclamationTriangle") + `<span>${escapeHtml(message)}</span>`;
+  } else if (type === "ok") {
+    status.innerHTML = icon("checkCircle") + `<span>${escapeHtml(message)}</span>`;
+  } else {
+    status.textContent = message;
+  }
   status.classList.toggle("is-error", type === "error");
   status.classList.toggle("is-ok", type === "ok");
 }
@@ -601,7 +611,7 @@ function renderExpenseEntry(data: ExpenseSourceData): void {
 
           <div class="expense-grid">
             <label class="expense-field wide photo-field">
-              <span>レシート写真</span>
+              <span>${icon("photo")}レシート写真</span>
               <input type="file" name="receiptPhoto" accept="image/*" capture="environment">
             </label>
             <label class="expense-field wide">
@@ -612,7 +622,7 @@ function renderExpenseEntry(data: ExpenseSourceData): void {
 
           <div class="expense-submit">
             <div class="expense-status" data-expense-status aria-live="polite"></div>
-            <button type="submit">保存</button>
+            <button type="submit">${icon("check")}<span>保存</span></button>
           </div>
         </form>`;
 
@@ -776,6 +786,10 @@ async function init(): Promise<void> {
   const meta = qs<HTMLElement>("[data-meta]");
   meta.textContent = cache && cache.tripTitle ? cache.tripTitle : CONFIG.tripTitle || "旅行";
   updateProfileButton();
+  const dashboardLink = root.querySelector<HTMLAnchorElement>(".expense-link");
+  if (dashboardLink) {
+    dashboardLink.innerHTML = icon("home") + `<span>${escapeHtml(dashboardLink.textContent || "")}</span>`;
+  }
   qs<HTMLButtonElement>("[data-profile-button]").addEventListener("click", () => {
     showIdentityModal(false);
   });
