@@ -294,16 +294,12 @@
     font-weight: 560;
   }
 
-  .tl-identity-actions button,
-  .tl-persona-button {
+  .tl-identity-actions button {
     appearance: none;
     -webkit-appearance: none;
     border: 1px solid var(--green, #0b5a42);
     font: inherit;
     cursor: pointer;
-  }
-
-  .tl-identity-actions button {
     min-height: 42px;
     background-color: var(--green, #0b5a42);
     color: #fff;
@@ -317,24 +313,34 @@
     color: var(--green, #0b5a42);
   }
 
-  .tl-persona-button {
+  /* ヘッダーのリンク（枠なし・アイコン＋ラベル。押す/重ねると色が変わる） */
+  .tl-headlink {
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    justify-self: end;
-    min-height: 32px;
-    background-color: var(--green-soft, #e7f1ec);
-    color: var(--green, #0b5a42);
-    padding: 5px 10px;
-    font-size: 12px;
-    font-weight: 720;
+    appearance: none;
+    -webkit-appearance: none;
+    border: 0;
+    background: none;
+    padding: 4px 2px;
+    color: var(--muted);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 850;
     text-decoration: none;
+    cursor: pointer;
+    transition: color .12s ease;
   }
 
-  .tl-persona-button:hover,
-  .tl-persona-button:focus-visible {
-    background-color: #fff;
+  .tl-headlink .hi { width: 19px; height: 19px; }
+
+  .tl-headlink:hover,
+  .tl-headlink:focus-visible {
+    color: var(--green);
+    outline: none;
   }
+
+  .tl-headlink:active { color: #084935; }
 
   .tl-head {
     display: block;
@@ -1822,12 +1828,14 @@
       <p class="tl-kicker">Shared Travel Dashboard</p>
       <h1 class="tl-title" data-title>旅行ダッシュボード</h1>
       <div class="tl-sub">
-        <span data-dates></span>
-        <span class="tl-source">
-          <b data-sync-label>最終同期: 準備中</b>
-          <a class="tl-persona-button" href="plans.html">計画一覧</a>
-          <button class="tl-persona-button" type="button" data-profile-button>本人設定</button>
-        </span>
+        <a class="tl-headlink" href="plans.html">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" class="hi" aria-hidden="true" focusable="false"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 6.75h12M8.25 12h12m-12 5.25h12M3.75 6.75h.007v.008H3.75V6.75Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0ZM3.75 12h.007v.008H3.75V12Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm-.375 5.25h.007v.008H3.75v-.008Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z"/></svg>
+          <span>計画一覧</span>
+        </a>
+        <button class="tl-headlink" type="button" data-mypage aria-label="マイページ（準備中）">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" class="hi" aria-hidden="true" focusable="false"><path stroke-linecap="round" stroke-linejoin="round" d="M17.982 18.725A7.488 7.488 0 0 0 12 15.75a7.488 7.488 0 0 0-5.982 2.975m11.963 0a9 9 0 1 0-11.963 0m11.963 0A8.966 8.966 0 0 1 12 21a8.966 8.966 0 0 1-5.982-2.275M15 9.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"/></svg>
+          <span>マイページ</span>
+        </button>
       </div>
     </div>
   </header>

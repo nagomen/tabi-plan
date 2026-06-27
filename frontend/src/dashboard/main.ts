@@ -483,15 +483,6 @@ function profileInitial(name: string | undefined): string {
   return String(name || "?").trim().slice(0, 1) || "?";
 }
 
-function updateProfileButton(): void {
-  const button = root.querySelector<HTMLButtonElement>("[data-profile-button]");
-  if (!button) return;
-  const profile = readProfile();
-  const label = profile && profile.name ? profile.name : "本人設定";
-  button.innerHTML = `${icon("user")}<span>${escapeHtml(label)}</span>`;
-  button.setAttribute("aria-label", profile && profile.name ? `本人設定を変更: ${profile.name}` : "本人設定");
-}
-
 function applyProfileDefaults(form: HTMLFormElement | null, participants: string[]): void {
   const name = currentProfileName(participants);
   const payer = form?.elements.namedItem("payer") as HTMLSelectElement | null;
@@ -560,7 +551,6 @@ function showIdentityModal(required: boolean): Promise<boolean> {
       }
       saveProfile(name);
       modal.remove();
-      updateProfileButton();
       const expenseForm = root.querySelector<HTMLFormElement>("[data-expense-form-native]");
       applyProfileDefaults(expenseForm, participants);
       renderBase();
@@ -571,7 +561,6 @@ function showIdentityModal(required: boolean): Promise<boolean> {
 }
 
 async function requestIdentityIfNeeded(): Promise<void> {
-  updateProfileButton();
   const participants = expenseParticipants(state.data || SAMPLE);
   if (!currentProfileName(participants)) {
     await showIdentityModal(true);
@@ -658,20 +647,6 @@ function normalizeDate(value: unknown): string {
   const match = text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
   if (!match) return text;
   return `${match[1]}-${match[2].padStart(2, "0")}-${match[3].padStart(2, "0")}`;
-}
-
-function formatHeaderDate(value: string): string {
-  const normalized = normalizeDate(value);
-  const match = normalized.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  return match ? `${match[1]}/${match[2]}/${match[3]}` : normalized;
-}
-
-function formatHeaderDateRange(value: string | undefined): string {
-  return String(value || "")
-    .split(/\s+-\s+/)
-    .map(formatHeaderDate)
-    .filter(Boolean)
-    .join(" - ");
 }
 
 function groupDays(itinerary: ItineraryItem[]): DayGroup[] {
@@ -1700,11 +1675,8 @@ function renderDayTabs(route: { segs: RouteSeg[]; dayToSeg: number[] }): void {
 function renderBase(): void {
   const data = state.data;
   setText("[data-title]", data.trip.title);
-  setText("[data-dates]", formatHeaderDateRange(data.trip.dates));
   setText("[data-note]", data.trip.note);
-  setText("[data-sync-label]", "最終同期: " + new Date().toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }));
   setText("[data-updated]", "最終更新: " + new Date().toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }));
-  updateProfileButton();
 
   const tabs: { key: string; label: string; glyph: string }[] = [
     { key: "home", label: "ホーム", glyph: icon("home") },
@@ -2223,9 +2195,7 @@ async function init(): Promise<void> {
       applyMobileView(button.dataset.mobileNav);
     });
   });
-  qs<HTMLButtonElement>("[data-profile-button]").addEventListener("click", () => {
-    void showIdentityModal(false);
-  });
+  // マイページ（後日実装）はヘッダーに静的表示のみ。押しても今は何もしない。
   // フッターの「編集」を source で振り分け（ローカル→計画エディタ / appsScript→行程編集）。
   // googleSheets/sample は閲覧のみなので非表示。
   const editWrap = root.querySelector<HTMLElement>("[data-edit-wrap]");
