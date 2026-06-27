@@ -968,62 +968,45 @@
     letter-spacing: 0;
   }
 
-  .tl-upcoming {
+  /* 前日／翌日ページャ（その場で別の日の予定を開く） */
+  .tl-pager {
     display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-top: 8px;
+    padding-top: 16px;
+    border-top: 1px solid var(--line);
   }
-
-  .tl-upcoming-row {
-    display: grid;
-    grid-template-columns: 76px minmax(0, 1fr) auto;
-    gap: 8px;
+  .tl-pager:empty { display: none; }
+  .tl-pager-btn {
+    display: flex;
     align-items: center;
-    min-height: 48px;
-    padding: 8px 14px;
-    border-bottom: 1px solid var(--line);
-    text-decoration: none;
-  }
-
-  .tl-upcoming-row:last-child { border-bottom: 0; }
-  .tl-upcoming-date { color: var(--muted); font-size: 12px; font-weight: 850; }
-  .tl-upcoming-title { min-width: 0; overflow: hidden; font-size: 13px; font-weight: 900; text-overflow: ellipsis; white-space: nowrap; }
-  .tl-upcoming-arrow { color: var(--muted); font-size: 15px; }
-
-  .tl-upcoming-items {
-    grid-column: 1 / -1;
-    display: grid;
-    gap: 6px;
-    padding-top: 3px;
-  }
-
-  .trip-live[data-section-view="home"] .tl-upcoming-items {
-    display: none;
-  }
-
-  .trip-live[data-section-view="plan"] .tl-upcoming-row {
-    align-items: start;
-    min-height: 0;
-    padding-top: 10px;
-    padding-bottom: 10px;
-  }
-
-  .tl-upcoming-item {
-    display: grid;
-    grid-template-columns: 62px minmax(0, 1fr);
-    gap: 8px;
+    gap: 10px;
     min-width: 0;
-    color: var(--muted);
-    font-size: 12px;
-    line-height: 1.35;
-  }
-
-  .tl-upcoming-time {
+    min-height: 54px;
+    padding: 8px 13px;
+    border: 1px solid var(--line);
+    background: #fff;
+    font: inherit;
     color: var(--ink);
-    font-weight: 620;
+    cursor: pointer;
+    transition: border-color .12s ease, background-color .12s ease;
   }
-
-  .tl-upcoming-text {
-    min-width: 0;
-    overflow-wrap: anywhere;
+  .tl-pager-btn:hover,
+  .tl-pager-btn:focus-visible { border-color: var(--green); background: var(--green-soft); outline: none; }
+  .tl-pager-ic { display: grid; place-items: center; color: var(--green); flex: none; }
+  .tl-pager-ic svg, .tl-pager-ic .hi { width: 20px; height: 20px; }
+  .tl-pager-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; flex: 1; }
+  .tl-pager-btn.next .tl-pager-text { align-items: flex-end; }
+  .tl-pager-dir { font-size: 11px; font-weight: 800; color: var(--green); letter-spacing: .03em; }
+  .tl-pager-day {
+    max-width: 100%;
+    overflow: hidden;
+    font-size: 13px;
+    font-weight: 900;
+    color: var(--ink);
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .tl-settle {
@@ -1763,7 +1746,7 @@
     .tl-pin-name { display: none; }
     .tl-map-status { grid-template-columns: 1fr; }
     .tl-timeline { padding: 0 16px 4px; }
-    .tl-day-title { padding: 14px 0 10px; }
+    .tl-day-title { padding: 14px 0 10px; scroll-margin-top: 128px; }
     .tl-day-title h2 { font-size: 16px; }
     .tl-item { grid-template-columns: 50px 24px minmax(0, 1fr); gap: 6px; padding: 12px 0; }
     .tl-meta { row-gap: 6px; }
@@ -1877,15 +1860,11 @@
         </div>
         <div data-day-stay></div>
         <div data-timeline></div>
+        <nav class="tl-pager" data-day-pager aria-label="前後の日へ移動"></nav>
       </div>
     </section>
 
     <section class="tl-card-grid" data-section-target="home plan money links">
-      <article class="tl-box" data-mobile-view="home plan" data-section-target="home plan">
-        <h2>予定一覧</h2>
-        <div class="tl-upcoming" data-upcoming></div>
-      </article>
-
       <article class="tl-box" data-mobile-view="money" data-section-target="home money">
         <h2>費用</h2>
         <div class="tl-settle">

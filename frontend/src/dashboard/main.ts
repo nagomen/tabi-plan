@@ -1868,28 +1868,30 @@ function renderActive(): void {
     </article>`;
   }).join(""));
 
-  const upcoming = state.days.slice(state.active + 1, state.active + 6)
-    .map((next, offset) => ({ ...next, index: state.active + offset + 1 }));
-  setHtml("[data-upcoming]", upcoming.length ? upcoming.map((next) => {
-    const items = (next.items || []).slice(0, 6).map((item) => {
-      const place = item.place && item.place !== next.area ? ` / ${item.place}` : "";
-      return `<div class="tl-upcoming-item">
-        <span class="tl-upcoming-time">${escapeHtml(item.time || "")}</span>
-        <span class="tl-upcoming-text">${escapeHtml(item.title || "予定")}${escapeHtml(place)}</span>
-      </div>`;
-    }).join("");
-    return `<a class="tl-upcoming-row" href="#" data-upcoming-index="${next.index}">
-      <span class="tl-upcoming-date">${next.date.replace(/^\\d{4}-/, "").replace("-", "/")}</span>
-      <span class="tl-upcoming-title">${next.day || ""}　${next.area || ""}</span>
-      <span class="tl-upcoming-arrow">›</span>
-      ${items ? `<div class="tl-upcoming-items">${items}</div>` : ""}
-    </a>`;
-  }).join("") : `<div class="tl-upcoming-row"><span class="tl-upcoming-date">完了</span><span class="tl-upcoming-title">今後の予定はありません</span><span></span></div>`);
-  qsa<HTMLElement>("[data-upcoming-index]").forEach((link) => {
-    link.addEventListener("click", (event) => {
-      event.preventDefault();
-      state.active = Number(link.dataset.upcomingIndex);
-      renderActive();
+  // 前日／翌日へその場で切り替えるページャ
+  const pagerBtn = (index: number, dir: "prev" | "next"): string => {
+    const d = state.days[index];
+    if (!d) return "";
+    const label = [d.day, d.area].filter(Boolean).join(" ・ ");
+    const sub = [label, mdLabel(d.date)].filter(Boolean).join(" ・ ");
+    const arrow = dir === "prev" ? icon("chevronLeft") : icon("chevronRight");
+    return `<button class="tl-pager-btn ${dir}" type="button" data-pager-index="${index}">` +
+      (dir === "prev" ? `<span class="tl-pager-ic">${arrow}</span>` : "") +
+      `<span class="tl-pager-text"><span class="tl-pager-dir">${dir === "prev" ? "前の日" : "次の日"}</span>` +
+      `<span class="tl-pager-day">${escapeHtml(sub)}</span></span>` +
+      (dir === "next" ? `<span class="tl-pager-ic">${arrow}</span>` : "") +
+      `</button>`;
+  };
+  const prevHtml = pagerBtn(state.active - 1, "prev");
+  const nextHtml = pagerBtn(state.active + 1, "next");
+  setHtml("[data-day-pager]", (prevHtml || nextHtml)
+    ? `${prevHtml || '<span class="tl-pager-slot"></span>'}${nextHtml || '<span class="tl-pager-slot"></span>'}`
+    : "");
+  qsa<HTMLElement>("[data-pager-index]").forEach((b) => {
+    b.addEventListener("click", () => {
+      jumpToDay(Number(b.dataset.pagerIndex));
+      const title = root.querySelector<HTMLElement>("[data-day-title]");
+      if (title) title.scrollIntoView({ behavior: "smooth", block: "start" });
     });
   });
 }
