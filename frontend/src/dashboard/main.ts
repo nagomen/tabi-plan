@@ -1817,34 +1817,33 @@ function renderActive(): void {
 
   const stayRow = (s: ItineraryItem, variant: string, label: string): string => {
     const place = s.place && s.place !== s.title ? s.place : "";
-    const meta = variant === " is-prev"
-      ? `<span class="tl-stay-time tl-stay-out">チェックアウト</span>`
-      : s.time ? `<span class="tl-stay-time">IN ${escapeHtml(s.time)}</span>` : "";
+    const sub = variant === " is-prev"
+      ? `${label} ・ チェックアウト`
+      : s.time ? `${label} ・ IN ${s.time}` : label;
     return `<div class="tl-stay${variant}">
       <span class="tl-stay-ic">${icon("buildingOffice2")}</span>
       <div class="tl-stay-body">
-        <span class="tl-stay-label">${label}</span>
+        <span class="tl-stay-label">${escapeHtml(sub)}</span>
         <span class="tl-stay-name">${escapeHtml(s.title || "宿泊先")}</span>
         ${place ? `<span class="tl-stay-place">${escapeHtml(place)}</span>` : ""}
       </div>
-      ${meta}
-      <a class="tl-stay-map" href="${mapsSearch(s.mapQuery || s.place || s.title)}" target="_blank" rel="noopener">Google Maps ${icon("arrowTopRightOnSquare")}</a>
+      <a class="tl-stay-map" href="${mapsSearch(s.mapQuery || s.place || s.title)}" target="_blank" rel="noopener">地図 ${icon("arrowTopRightOnSquare")}</a>
     </div>`;
   };
 
   const stayRows: string[] = [];
   if (prevStay && !continued) stayRows.push(stayRow(prevStay, " is-prev", "前泊"));
-  if (todayStay) stayRows.push(stayRow(todayStay, "", continued ? "連泊" : "宿泊"));
+  if (todayStay) stayRows.push(stayRow(todayStay, "", continued ? "連泊" : "今夜の宿"));
   if (!stayRows.length) {
-    stayRows.push(`<div class="tl-stay is-empty"><span class="tl-stay-ic">${icon("buildingOffice2")}</span><div class="tl-stay-body"><span class="tl-stay-label">宿泊</span><span class="tl-stay-name tl-stay-muted">未定</span></div></div>`);
+    stayRows.push(`<div class="tl-stay is-empty"><span class="tl-stay-ic">${icon("buildingOffice2")}</span><div class="tl-stay-body"><span class="tl-stay-label">今夜の宿</span><span class="tl-stay-name tl-stay-muted">未定</span></div></div>`);
   }
   setHtml("[data-day-stay]", stayRows.join(""));
 
   setHtml("[data-timeline]", day.items.filter((i) => String(i.type) !== "stay").map((item) => {
     const type = String(item.type || "todo");
-    const place = item.place && item.place !== item.title ? `場所: ${item.place}` : "";
-    const note = [place, item.note].filter(Boolean).join(" / ");
-    const chip = `<span class="tl-chip ${escapeHtml(type)}">${escapeHtml(item.typeLabel || item.type || "予定")}</span>`;
+    const placeText = item.place && item.place !== item.title ? `場所: ${item.place}` : "";
+    const metaText = [placeText, item.note].filter(Boolean).join(" / ");
+    const label = `<span class="tl-kind ${escapeHtml(type)}">${escapeHtml(item.typeLabel || item.type || "予定")}</span>`;
 
     // 移動: 出発→到着のセグメント表示（origin/destination が無ければタイトルの「→」を分割）
     let segA = item.origin || "";
@@ -1854,19 +1853,18 @@ function renderActive(): void {
       segA = segA || (parts[0] || "").trim();
       segB = segB || (parts[1] || "").trim();
     }
-    const head = type === "move" && (segA || segB)
-      ? `<div class="tl-plan-line">${chip}<div class="tl-seg"><span class="tl-seg-a">${escapeHtml(segA || "出発")}</span><span class="tl-seg-arr">${icon("arrowLongRight")}</span><span class="tl-seg-b">${escapeHtml(segB || "到着")}</span></div></div>`
-      : `<div class="tl-plan-line">${chip}<h3>${escapeHtml(item.title || "")}</h3></div>`;
+    const title = type === "move" && (segA || segB)
+      ? `<div class="tl-seg"><span>${escapeHtml(segA || "出発")}</span><span class="tl-seg-arr">${icon("arrowLongRight")}</span><span>${escapeHtml(segB || "到着")}</span></div>`
+      : `<h3>${escapeHtml(item.title || "")}</h3>`;
 
     return `<article class="tl-item" data-kind="${escapeHtml(type)}">
       <time class="tl-time">${escapeHtml(item.time || "")}</time>
       <span class="tl-rail"><span class="tl-dot ${escapeHtml(type)}">${kindIcon(type)}</span></span>
       <div class="tl-plan">
-        ${head}
+        <div class="tl-plan-line">${label}${title}</div>
         ${item.needed ? `<p class="tl-needed">${escapeHtml(item.needed)}</p>` : ""}
-        ${note ? `<p class="tl-note">${escapeHtml(note)}</p>` : ""}
+        <p class="tl-meta">${metaText ? `<span class="tl-meta-text">${escapeHtml(metaText)}</span>` : ""}<a class="tl-maplink" href="${mapsSearch(item.mapQuery || item.place || item.title)}" target="_blank" rel="noopener">地図 ${icon("arrowTopRightOnSquare")}</a></p>
       </div>
-      <a class="tl-maplink" href="${mapsSearch(item.mapQuery || item.place || item.title)}" target="_blank" rel="noopener">Google Maps ${icon("arrowTopRightOnSquare")}</a>
     </article>`;
   }).join(""));
 

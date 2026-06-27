@@ -767,10 +767,10 @@
 
   .tl-item {
     display: grid;
-    grid-template-columns: 54px 26px minmax(0, 1fr) auto;
-    gap: 7px;
+    grid-template-columns: 50px 24px minmax(0, 1fr);
+    gap: 9px;
     min-width: 0;
-    padding: 0 0 14px;
+    padding: 0 0 16px;
   }
 
   .tl-time {
@@ -823,15 +823,32 @@
   .tl-dot.todo { background: #68746e; }
   .tl-dot.form { background: var(--violet); }
 
-  /* 移動・食事は帯で特徴づけ（観光/予定/手続きは素のまま。宿泊は別バナー） */
-  .tl-item[data-kind="move"] .tl-plan,
-  .tl-item[data-kind="food"] .tl-plan {
-    padding: 8px 11px;
-    border: 1px solid var(--line);
-    border-left-width: 4px;
+  /* カードに頼らず、種別は左の色アイコンと小さな色ラベルで示す（帯で囲わない）。 */
+
+  /* 種別ラベル（塗りチップではなく、色付きの小さな文字） */
+  .tl-kind {
+    flex: none;
+    align-self: center;
+    font-size: 11px;
+    font-weight: 950;
+    letter-spacing: .02em;
   }
-  .tl-item[data-kind="move"] .tl-plan { background: #f1f6fa; border-left-color: var(--blue); }
-  .tl-item[data-kind="food"] .tl-plan { background: #fbf4e9; border-left-color: var(--amber); }
+  .tl-kind.move { color: var(--blue); }
+  .tl-kind.food { color: var(--amber); }
+  .tl-kind.sight { color: var(--green); }
+  .tl-kind.stay { color: var(--red); }
+  .tl-kind.todo { color: #68746e; }
+  .tl-kind.form { color: var(--violet); }
+
+  /* メタ行（場所・メモ ＋ 控えめな地図リンク） */
+  .tl-meta {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 3px 10px;
+    margin: 4px 0 0;
+  }
+  .tl-meta-text { min-width: 0; color: var(--muted); font-size: 12px; }
 
   /* 移動セグメント（出発 → 到着） */
   .tl-seg {
@@ -850,44 +867,37 @@
   }
   .tl-seg-arr svg, .tl-seg-arr .hi { width: 18px; height: 18px; }
 
-  /* 宿泊バナー（工程から独立。日付見出しの直下に表示） */
+  /* 宿泊（その日の宿）。塗りの箱ではなく、左の細い色罫＋アイコンで上品に。 */
   .tl-stay {
+    --stay-accent: #c2543f;
     display: flex;
     align-items: center;
-    flex-wrap: wrap;
-    gap: 6px 11px;
-    margin: 0 0 14px;
-    padding: 10px 13px;
-    background: #fbf0ee;
-    border: 1px solid var(--line);
-    border-left: 4px solid var(--red);
+    gap: 13px;
+    margin: 0 0 18px;
+    padding: 4px 2px 14px 14px;
+    border-left: 2px solid var(--stay-accent);
   }
-  .tl-stay.is-empty { background: #f6f6f4; border-left-color: #c9cdca; }
-  .tl-stay.is-prev { background: #f4f5f3; border-left-color: #9aa19c; }
-  .tl-stay + .tl-stay { margin-top: -6px; }
+  .tl-stay.is-empty { --stay-accent: #c9cdca; }
+  .tl-stay.is-prev { --stay-accent: #aab0ab; }
+  .tl-stay + .tl-stay { margin-top: -8px; }
   .tl-stay-ic {
     display: grid;
     place-items: center;
-    width: 30px;
-    height: 30px;
-    border-radius: 50%;
-    background: var(--red);
-    color: #fff;
+    width: 36px;
+    height: 36px;
+    border-radius: 11px;
+    background: color-mix(in srgb, var(--stay-accent) 14%, #fff);
+    color: var(--stay-accent);
     flex: none;
   }
-  .tl-stay.is-empty .tl-stay-ic { background: #9aa19c; }
-  .tl-stay.is-prev .tl-stay-ic { background: #9aa19c; }
-  .tl-stay.is-prev .tl-stay-label { color: #6f756f; }
-  .tl-stay-out { color: #6f756f !important; }
-  .tl-stay-ic svg, .tl-stay-ic .hi { width: 17px; height: 17px; }
-  .tl-stay-body { display: flex; align-items: baseline; gap: 9px; flex-wrap: wrap; min-width: 0; flex: 1; }
-  .tl-stay-label { font-size: 11px; font-weight: 950; color: var(--red); letter-spacing: .06em; }
-  .tl-stay.is-empty .tl-stay-label { color: #6f756f; }
-  .tl-stay-name { font-size: 15px; font-weight: 900; color: var(--ink); overflow-wrap: anywhere; }
+  .tl-stay-ic svg, .tl-stay-ic .hi { width: 19px; height: 19px; }
+  .tl-stay-body { display: flex; flex-direction: column; gap: 1px; min-width: 0; flex: 1; }
+  .tl-stay-label { font-size: 11px; font-weight: 800; color: var(--stay-accent); letter-spacing: .04em; }
+  .tl-stay-name { font-size: 16px; font-weight: 900; color: var(--ink); line-height: 1.25; overflow-wrap: anywhere; }
   .tl-stay-muted { color: #8a908a; font-weight: 800; }
-  .tl-stay-place { font-size: 12px; color: var(--muted); }
-  .tl-stay-time { font-size: 12px; font-weight: 900; color: var(--red); white-space: nowrap; }
-  .tl-stay-map { margin-left: auto; font-size: 12px; font-weight: 800; color: var(--green); white-space: nowrap; display: inline-flex; align-items: center; gap: 4px; }
+  .tl-stay-place { margin-top: 1px; font-size: 12px; color: var(--muted); }
+  .tl-stay-map { flex: none; align-self: center; margin-left: auto; font-size: 12px; font-weight: 800; color: var(--green); white-space: nowrap; display: inline-flex; align-items: center; gap: 4px; text-decoration: none; }
+  .tl-stay-map:hover { text-decoration: underline; }
   .tl-stay-map svg, .tl-stay-map .hi { width: 13px; height: 13px; }
 
   .tl-plan { min-width: 0; }
@@ -899,24 +909,6 @@
     min-width: 0;
   }
 
-  .tl-chip {
-    display: inline-flex;
-    align-items: center;
-    min-width: 38px;
-    min-height: 22px;
-    padding: 3px 7px;
-    color: #fff;
-    font-size: 11px;
-    font-weight: 950;
-    white-space: nowrap;
-  }
-
-  .tl-chip.move { background: var(--blue); }
-  .tl-chip.food { background: var(--amber); }
-  .tl-chip.sight { background: var(--green); }
-  .tl-chip.stay { background: var(--red); }
-  .tl-chip.todo { background: #68746e; }
-  .tl-chip.form { background: var(--violet); }
 
   .tl-plan h3 {
     min-width: 0;
@@ -929,11 +921,6 @@
     white-space: nowrap;
   }
 
-  .tl-note {
-    margin: 3px 0 0;
-    color: var(--muted);
-    font-size: 12px;
-  }
 
   .tl-needed {
     margin: 4px 0 0;
@@ -943,16 +930,17 @@
   }
 
   .tl-maplink {
-    align-self: start;
     display: inline-flex;
     align-items: center;
-    gap: 6px;
+    gap: 4px;
     color: var(--green);
     font-size: 12px;
-    font-weight: 900;
+    font-weight: 800;
     text-decoration: none;
     white-space: nowrap;
   }
+  .tl-maplink svg, .tl-maplink .hi { width: 13px; height: 13px; }
+  .tl-maplink:hover { text-decoration: underline; }
 
   .tl-card-grid {
     grid-column: 1 / -1;
@@ -1774,7 +1762,7 @@
     .tl-day-title { padding: 14px 0 10px; }
     .tl-day-title h2 { font-size: 16px; }
     .tl-item { grid-template-columns: 50px 24px minmax(0, 1fr); gap: 6px; padding: 12px 0; }
-    .tl-maplink { grid-column: 3; justify-self: start; min-height: 38px; padding: 9px 0; }
+    .tl-meta { row-gap: 6px; }
     .tl-card-grid { display: block; }
     .tl-local-grid { display: block; }
     .tl-local-card,
