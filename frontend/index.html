@@ -331,8 +331,9 @@
   }
   .tl-headmain { flex: 1; min-width: 0; }
 
-  /* タイトル左の戻る（< → 計画一覧へ）と、右上のマイページ（アイコンのみ） */
+  /* タイトル左の戻る（< → 計画一覧へ）と、右上の編集・マイページ（アイコンのみ） */
   .tl-back,
+  .tl-edit,
   .tl-mypage {
     display: inline-flex;
     align-items: center;
@@ -346,15 +347,18 @@
     transition: color .12s ease, background-color .12s ease;
   }
   .tl-back { margin-left: -7px; color: var(--ink); }
-  .tl-mypage { appearance: none; -webkit-appearance: none; border: 0; background: none; cursor: pointer; align-self: flex-start; }
-  .tl-back svg, .tl-mypage svg { width: 18px; height: 18px; }
+  .tl-edit, .tl-mypage { align-self: flex-start; }
+  .tl-edit[hidden] { display: none; }
+  .tl-mypage { appearance: none; -webkit-appearance: none; border: 0; background: none; cursor: pointer; }
+  .tl-back svg, .tl-edit svg, .tl-mypage svg { width: 18px; height: 18px; }
   .tl-back:hover, .tl-back:focus-visible,
+  .tl-edit:hover, .tl-edit:focus-visible,
   .tl-mypage:hover, .tl-mypage:focus-visible {
     color: var(--green);
     background: var(--green-soft);
     outline: none;
   }
-  .tl-back:active, .tl-mypage:active { color: #084935; }
+  .tl-back:active, .tl-edit:active, .tl-mypage:active { color: #084935; }
 
   .tl-kicker {
     margin: 0 0 3px;
@@ -1835,6 +1839,9 @@
         <p class="tl-kicker">Shared Travel Dashboard</p>
         <h1 class="tl-title" data-title>旅行ダッシュボード</h1>
       </div>
+      <a class="tl-edit" data-edit-head href="#" hidden aria-label="計画を編集" title="計画を編集">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true" focusable="false"><path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10"/></svg>
+      </a>
       <button class="tl-mypage" type="button" data-mypage aria-label="マイページ">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true" focusable="false"><path stroke-linecap="round" stroke-linejoin="round" d="M17.982 18.725A7.488 7.488 0 0 0 12 15.75a7.488 7.488 0 0 0-5.982 2.975m11.963 0a9 9 0 1 0-11.963 0m11.963 0A8.966 8.966 0 0 1 12 21a8.966 8.966 0 0 1-5.982-2.275M15 9.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"/></svg>
       </button>

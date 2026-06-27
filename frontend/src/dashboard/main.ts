@@ -2200,16 +2200,25 @@ async function init(): Promise<void> {
   // googleSheets/sample は閲覧のみなので非表示。
   const editWrap = root.querySelector<HTMLElement>("[data-edit-wrap]");
   const editLink = root.querySelector<HTMLAnchorElement>("[data-edit-link]");
-  if (editWrap && editLink) {
-    const planQuery = "?plan=" + encodeURIComponent(CONFIG.tripSlug);
-    if (CONFIG.mode === "local") {
-      editLink.href = "plan-editor.html" + planQuery;
-      editLink.textContent = "計画を編集";
-      editWrap.hidden = false;
-    } else if (CONFIG.mode === "appsScript") {
-      editLink.href = "itinerary-editor.html" + planQuery;
-      editLink.textContent = "行程編集";
-      editWrap.hidden = false;
+  const editHead = root.querySelector<HTMLAnchorElement>("[data-edit-head]");
+  const planQuery = "?plan=" + encodeURIComponent(CONFIG.tripSlug);
+  const editTarget =
+    CONFIG.mode === "local" ? { href: "plan-editor.html" + planQuery, label: "計画を編集" }
+    : CONFIG.mode === "appsScript" ? { href: "itinerary-editor.html" + planQuery, label: "行程編集" }
+    : null;
+  if (editWrap && editLink && editTarget) {
+    editLink.href = editTarget.href;
+    editLink.textContent = editTarget.label;
+    editWrap.hidden = false;
+  }
+  if (editHead) {
+    if (editTarget) {
+      editHead.href = editTarget.href;
+      editHead.setAttribute("aria-label", editTarget.label);
+      editHead.setAttribute("title", editTarget.label);
+      editHead.hidden = false;
+    } else {
+      editHead.hidden = true;
     }
   }
   applyMobileView(mobileView);
