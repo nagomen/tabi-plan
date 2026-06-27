@@ -839,17 +839,15 @@
   .tl-dot.todo { background: #68746e; }
   .tl-dot.form { background: var(--violet); }
 
-  /* 移動・食事・宿泊は帯で特徴づけ（観光/予定/手続きは素のまま） */
+  /* 移動・食事は帯で特徴づけ（観光/予定/手続きは素のまま。宿泊は別バナー） */
   .tl-item[data-kind="move"] .tl-plan,
-  .tl-item[data-kind="food"] .tl-plan,
-  .tl-item[data-kind="stay"] .tl-plan {
+  .tl-item[data-kind="food"] .tl-plan {
     padding: 8px 11px;
     border: 1px solid var(--line);
     border-left-width: 4px;
   }
   .tl-item[data-kind="move"] .tl-plan { background: #f1f6fa; border-left-color: var(--blue); }
   .tl-item[data-kind="food"] .tl-plan { background: #fbf4e9; border-left-color: var(--amber); }
-  .tl-item[data-kind="stay"] .tl-plan { background: #fbf0ee; border-left-color: var(--red); }
 
   /* 移動セグメント（出発 → 到着） */
   .tl-seg {
@@ -867,6 +865,40 @@
     color: var(--blue);
   }
   .tl-seg-arr svg, .tl-seg-arr .hi { width: 18px; height: 18px; }
+
+  /* 宿泊バナー（工程から独立。日付見出しの直下に表示） */
+  .tl-stay {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    margin: 0 0 14px;
+    padding: 10px 13px;
+    background: #fbf0ee;
+    border: 1px solid var(--line);
+    border-left: 4px solid var(--red);
+  }
+  .tl-stay.is-empty { background: #f6f6f4; border-left-color: #c9cdca; }
+  .tl-stay-ic {
+    display: grid;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    background: var(--red);
+    color: #fff;
+    flex: none;
+  }
+  .tl-stay.is-empty .tl-stay-ic { background: #9aa19c; }
+  .tl-stay-ic svg, .tl-stay-ic .hi { width: 17px; height: 17px; }
+  .tl-stay-body { display: flex; align-items: baseline; gap: 9px; flex-wrap: wrap; min-width: 0; flex: 1; }
+  .tl-stay-label { font-size: 11px; font-weight: 950; color: var(--red); letter-spacing: .06em; }
+  .tl-stay.is-empty .tl-stay-label { color: #6f756f; }
+  .tl-stay-name { font-size: 15px; font-weight: 900; color: var(--ink); overflow-wrap: anywhere; }
+  .tl-stay-muted { color: #8a908a; font-weight: 800; }
+  .tl-stay-place { font-size: 12px; color: var(--muted); }
+  .tl-stay-time { font-size: 12px; font-weight: 900; color: var(--red); white-space: nowrap; }
+  .tl-stay-map { font-size: 12px; font-weight: 800; color: var(--green); white-space: nowrap; display: inline-flex; align-items: center; gap: 4px; }
+  .tl-stay-map svg, .tl-stay-map .hi { width: 13px; height: 13px; }
 
   .tl-plan { min-width: 0; }
 
@@ -1854,6 +1886,7 @@
           <h2 data-day-title>今日の予定</h2>
           <span data-weather></span>
         </div>
+        <div data-day-stay></div>
         <div data-timeline></div>
       </div>
     </section>

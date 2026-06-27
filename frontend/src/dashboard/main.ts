@@ -1854,7 +1854,25 @@ function renderActive(): void {
     qs("[data-map]").appendChild(pin);
   });
 
-  setHtml("[data-timeline]", day.items.map((item) => {
+  // 宿泊は工程から独立させ、日付見出しの直下に専用バナーで表示する
+  const stays = day.items.filter((i) => String(i.type) === "stay");
+  setHtml("[data-day-stay]", stays.length
+    ? stays.map((s) => {
+        const place = s.place && s.place !== s.title ? s.place : "";
+        return `<div class="tl-stay">
+          <span class="tl-stay-ic">${icon("buildingOffice2")}</span>
+          <div class="tl-stay-body">
+            <span class="tl-stay-label">宿泊</span>
+            <span class="tl-stay-name">${escapeHtml(s.title || "宿泊先")}</span>
+            ${place ? `<span class="tl-stay-place">${escapeHtml(place)}</span>` : ""}
+          </div>
+          ${s.time ? `<span class="tl-stay-time">IN ${escapeHtml(s.time)}</span>` : ""}
+          <a class="tl-stay-map" href="${mapsSearch(s.mapQuery || s.place || s.title)}" target="_blank" rel="noopener">Google Maps ${icon("arrowTopRightOnSquare")}</a>
+        </div>`;
+      }).join("")
+    : `<div class="tl-stay is-empty"><span class="tl-stay-ic">${icon("buildingOffice2")}</span><div class="tl-stay-body"><span class="tl-stay-label">宿泊</span><span class="tl-stay-name tl-stay-muted">未定</span></div></div>`);
+
+  setHtml("[data-timeline]", day.items.filter((i) => String(i.type) !== "stay").map((item) => {
     const type = String(item.type || "todo");
     const place = item.place && item.place !== item.title ? `場所: ${item.place}` : "";
     const note = [place, item.note].filter(Boolean).join(" / ");
