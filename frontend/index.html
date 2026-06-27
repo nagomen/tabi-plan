@@ -988,17 +988,23 @@
   .tl-dayblock-weather { color: var(--amber); font-size: 12px; font-weight: 800; white-space: nowrap; }
   .tl-dayblock-empty { margin: 2px 0 4px; color: var(--muted); font-size: 13px; }
 
-  /* 「次の日を表示」— 箱で囲わない、破線＋テキスト＋シェブロンの控えめな展開 */
-  .tl-more {
+  /* 「次の日を表示」「全て見る」— 箱で囲わない、破線＋テキストの控えめな展開 */
+  .tl-more-wrap {
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 7px;
-    width: 100%;
+    flex-wrap: wrap;
+    gap: 4px 20px;
     margin: 18px 0 2px;
-    padding: 13px 0;
-    border: 0;
+    padding-top: 13px;
     border-top: 1px dashed var(--line-strong);
+  }
+  .tl-more {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 6px 0;
+    border: 0;
     background: none;
     color: var(--green);
     font: inherit;
@@ -1010,6 +1016,20 @@
   .tl-more:focus-visible { color: #084935; outline: none; }
   .tl-more-ic { display: inline-flex; }
   .tl-more-ic svg, .tl-more-ic .hi { width: 17px; height: 17px; }
+  .tl-more-all {
+    padding: 6px 0;
+    border: 0;
+    background: none;
+    color: var(--muted);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 800;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    cursor: pointer;
+  }
+  .tl-more-all:hover,
+  .tl-more-all:focus-visible { color: var(--green); outline: none; }
 
   .tl-settle {
     padding: 13px 14px 14px;

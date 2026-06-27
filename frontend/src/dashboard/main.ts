@@ -1902,20 +1902,24 @@ function renderActive(): void {
   if (end < last) {
     const nx = state.days[end + 1];
     const label = [nx.day, nx.area].filter(Boolean).join(" ・ ");
-    feed += `<button class="tl-more" type="button" data-more-index="${end + 1}">` +
-      `<span class="tl-more-label">次の日を表示${label ? ` ・ ${escapeHtml(label)}` : ""}</span>` +
-      `<span class="tl-more-ic">${icon("chevronDown")}</span></button>`;
+    const remaining = last - end;
+    feed += `<div class="tl-more-wrap">` +
+      `<button class="tl-more" type="button" data-more-index="${end + 1}">` +
+        `<span class="tl-more-label">次の日を表示${label ? ` ・ ${escapeHtml(label)}` : ""}</span>` +
+        `<span class="tl-more-ic">${icon("chevronDown")}</span></button>` +
+      (remaining > 1 ? `<button class="tl-more-all" type="button" data-more-all="${last}">全て見る（残り${remaining}日）</button>` : "") +
+      `</div>`;
   }
   setHtml("[data-day-feed]", feed);
-  qsa<HTMLElement>("[data-more-index]").forEach((b) => {
-    b.addEventListener("click", () => {
-      const target = Number(b.dataset.moreIndex);
-      state.viewEnd = target;
-      renderActive();
-      const block = root.querySelector<HTMLElement>(`[data-day-block="${target}"]`);
-      if (block) block.scrollIntoView({ behavior: "smooth", block: "start" });
-    });
-  });
+  const firstNew = end + 1;
+  const expand = (target: number): void => {
+    state.viewEnd = target;
+    renderActive();
+    const block = root.querySelector<HTMLElement>(`[data-day-block="${firstNew}"]`);
+    if (block) block.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+  qsa<HTMLElement>("[data-more-index]").forEach((b) => b.addEventListener("click", () => expand(Number(b.dataset.moreIndex))));
+  qsa<HTMLElement>("[data-more-all]").forEach((b) => b.addEventListener("click", () => expand(Number(b.dataset.moreAll))));
 }
 
 // ---- 地図描画 -----------------------------------------------------------
