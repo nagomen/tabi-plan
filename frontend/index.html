@@ -968,46 +968,48 @@
     letter-spacing: 0;
   }
 
-  /* 前日／翌日ページャ（その場で別の日の予定を開く） */
-  .tl-pager {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 10px;
-    margin-top: 8px;
-    padding-top: 16px;
+  /* 「この日の予定」フィードの各日ブロック */
+  .tl-dayblock { scroll-margin-top: 124px; }
+  .tl-dayblock + .tl-dayblock {
+    margin-top: 20px;
+    padding-top: 18px;
     border-top: 1px solid var(--line);
   }
-  .tl-pager:empty { display: none; }
-  .tl-pager-btn {
+  .tl-dayblock-head {
     display: flex;
-    align-items: center;
+    align-items: baseline;
+    justify-content: space-between;
     gap: 10px;
-    min-width: 0;
-    min-height: 54px;
-    padding: 8px 13px;
-    border: 1px solid var(--line);
-    background: #fff;
-    font: inherit;
-    color: var(--ink);
-    cursor: pointer;
-    transition: border-color .12s ease, background-color .12s ease;
-  }
-  .tl-pager-btn:hover,
-  .tl-pager-btn:focus-visible { border-color: var(--green); background: var(--green-soft); outline: none; }
-  .tl-pager-ic { display: grid; place-items: center; color: var(--green); flex: none; }
-  .tl-pager-ic svg, .tl-pager-ic .hi { width: 20px; height: 20px; }
-  .tl-pager-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; flex: 1; }
-  .tl-pager-btn.next .tl-pager-text { align-items: flex-end; }
-  .tl-pager-dir { font-size: 11px; font-weight: 800; color: var(--green); letter-spacing: .03em; }
-  .tl-pager-day {
-    max-width: 100%;
-    overflow: hidden;
+    margin: 0 0 13px;
     font-size: 13px;
     font-weight: 900;
     color: var(--ink);
-    text-overflow: ellipsis;
-    white-space: nowrap;
   }
+  .tl-dayblock-weather { color: var(--amber); font-size: 12px; font-weight: 800; white-space: nowrap; }
+  .tl-dayblock-empty { margin: 2px 0 4px; color: var(--muted); font-size: 13px; }
+
+  /* 「次の日を表示」— 箱で囲わない、破線＋テキスト＋シェブロンの控えめな展開 */
+  .tl-more {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    width: 100%;
+    margin: 18px 0 2px;
+    padding: 13px 0;
+    border: 0;
+    border-top: 1px dashed var(--line-strong);
+    background: none;
+    color: var(--green);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 800;
+    cursor: pointer;
+  }
+  .tl-more:hover,
+  .tl-more:focus-visible { color: #084935; outline: none; }
+  .tl-more-ic { display: inline-flex; }
+  .tl-more-ic svg, .tl-more-ic .hi { width: 17px; height: 17px; }
 
   .tl-settle {
     padding: 13px 14px 14px;
@@ -1856,11 +1858,8 @@
       <div class="tl-timeline">
         <div class="tl-day-title">
           <h2 data-day-title>今日の予定</h2>
-          <span data-weather></span>
         </div>
-        <div data-day-stay></div>
-        <div data-timeline></div>
-        <nav class="tl-pager" data-day-pager aria-label="前後の日へ移動"></nav>
+        <div data-day-feed></div>
       </div>
     </section>
 

@@ -94,6 +94,8 @@ interface AppState {
   data: TripData;
   days: DayGroup[];
   active: number;
+  /** 「この日の予定」フィードで下に展開して表示している最後の日 index */
+  viewEnd: number;
   source: string;
 }
 
@@ -322,7 +324,7 @@ function mapsEmbedDirections(places: ItineraryItem[]): string {
 
 // ---- 状態 ---------------------------------------------------------------
 
-const state: AppState = { data: SAMPLE, days: [], active: 0, source: "sample" };
+const state: AppState = { data: SAMPLE, days: [], active: 0, viewEnd: 0, source: "sample" };
 let mobileView = "home";
 const leafletState: LeafletState = { map: null, layer: null, followActive: true };
 let expenseDetailsOpen = false;
@@ -1637,6 +1639,7 @@ function computeRoute(): { segs: RouteSeg[]; dayToSeg: number[] } {
 
 function jumpToDay(index: number): void {
   state.active = index;
+  state.viewEnd = index; // 日を切り替えたらフィードは1日だけに戻す
   leafletState.followActive = true;
   renderActive();
 }
@@ -1770,82 +1773,61 @@ function kindIcon(type: string): string {
   return icon(KIND_ICON[type] || "check");
 }
 
-function renderActive(): void {
-  const day = state.days[state.active];
-  if (!day) return;
-  qsa<HTMLElement>("[data-day-index]").forEach((button) => {
-    button.setAttribute("aria-selected", String(Number(button.dataset.dayIndex) === state.active));
-  });
+// ---- 1日分の「予定」ブロック（複数日を縦に積めるように分離） ----------
 
-  const titleMain = day.date === todayISO() ? "今日の予定" : "この日の予定";
-  const titleMeta = [day.day, day.area].filter(Boolean).join(" | ");
-  setHtml("[data-day-title]", `<span>${escapeHtml(titleMain)}</span>${titleMeta ? `<span class="tl-day-heading-meta">${escapeHtml(titleMeta)}</span>` : ""}`);
-  setText("[data-weather]", day.weather ? "☀ " + day.weather : "");
+function stayOfDay(d: DayGroup | undefined): ItineraryItem | null {
+  return d ? d.items.find((i) => String(i.type) === "stay") || null : null;
+}
 
-  const activePlaces = projectPlaces(day.items);
-  const placeNames = activePlaces.map((place) => place.place || place.title).filter(Boolean);
-  setText("[data-location-caption]", `現在地: ${day.area || placeNames[0] || "-"} / 次: ${placeNames[1] || placeNames[0] || "-"}`);
-  qs<HTMLAnchorElement>("[data-directions]").href = mapsDir(activePlaces);
-  void renderMapEmbed(activePlaces, day);
-  qs("[data-route]").setAttribute("points", activePlaces.map((p) => `${p.x},${p.y}`).join(" "));
-  qsa(".tl-pin").forEach((pin) => pin.remove());
-  activePlaces.forEach((place, index) => {
-    const pin = document.createElement("a");
-    pin.className = "tl-pin" + (index === Math.min(1, activePlaces.length - 1) ? " is-active" : "");
-    pin.href = mapsSearch(place.mapQuery || place.place || place.title);
-    pin.target = "_blank";
-    pin.rel = "noopener";
-    pin.style.left = `${place.x}%`;
-    pin.style.top = `${place.y}%`;
-    pin.innerHTML = `<span class="tl-pin-num">${index + 1}</span><span class="tl-pin-name">${escapeHtml(place.place || place.title)}</span>`;
-    qs("[data-map]").appendChild(pin);
-  });
+function sameHotel(a: ItineraryItem | null, b: ItineraryItem | null): boolean {
+  return !!a && !!b && (a.title || "").trim() === (b.title || "").trim();
+}
 
-  // 宿泊は工程から独立させ、日付見出しの直下に専用バナーで表示する。
-  // ホテルが変わる日は、前泊（チェックアウト元）も並べて見せる。
-  const stayOf = (d: DayGroup | undefined): ItineraryItem | null =>
-    (d ? d.items.find((i) => String(i.type) === "stay") || null : null);
-  const todayStay = stayOf(day);
+function stayRowHtml(s: ItineraryItem, variant: string, label: string): string {
+  const place = s.place && s.place !== s.title ? s.place : "";
+  const sub = variant === " is-prev"
+    ? `${label} ・ チェックアウト`
+    : s.time ? `${label} ・ IN ${s.time}` : label;
+  return `<div class="tl-stay${variant}">
+    <span class="tl-stay-ic">${icon("buildingOffice2")}</span>
+    <div class="tl-stay-body">
+      <span class="tl-stay-label">${escapeHtml(sub)}</span>
+      <span class="tl-stay-name">${escapeHtml(s.title || "宿泊先")}</span>
+      ${place ? `<span class="tl-stay-place">${escapeHtml(place)}</span>` : ""}
+    </div>
+    <a class="tl-stay-map" href="${mapsSearch(s.mapQuery || s.place || s.title)}" target="_blank" rel="noopener">地図 ${icon("arrowTopRightOnSquare")}</a>
+  </div>`;
+}
+
+function stayHtmlForDay(idx: number): string {
+  const day = state.days[idx];
+  if (!day) return "";
+  const todayStay = stayOfDay(day);
   let prevStay: ItineraryItem | null = null;
-  for (let k = state.active - 1; k >= 0; k--) {
-    const s = stayOf(state.days[k]);
+  for (let k = idx - 1; k >= 0; k--) {
+    const s = stayOfDay(state.days[k]);
     if (s) { prevStay = s; break; }
   }
-  const sameHotel = (a: ItineraryItem | null, b: ItineraryItem | null): boolean =>
-    !!a && !!b && (a.title || "").trim() === (b.title || "").trim();
   const continued = sameHotel(prevStay, todayStay);
-
-  const stayRow = (s: ItineraryItem, variant: string, label: string): string => {
-    const place = s.place && s.place !== s.title ? s.place : "";
-    const sub = variant === " is-prev"
-      ? `${label} ・ チェックアウト`
-      : s.time ? `${label} ・ IN ${s.time}` : label;
-    return `<div class="tl-stay${variant}">
-      <span class="tl-stay-ic">${icon("buildingOffice2")}</span>
-      <div class="tl-stay-body">
-        <span class="tl-stay-label">${escapeHtml(sub)}</span>
-        <span class="tl-stay-name">${escapeHtml(s.title || "宿泊先")}</span>
-        ${place ? `<span class="tl-stay-place">${escapeHtml(place)}</span>` : ""}
-      </div>
-      <a class="tl-stay-map" href="${mapsSearch(s.mapQuery || s.place || s.title)}" target="_blank" rel="noopener">地図 ${icon("arrowTopRightOnSquare")}</a>
-    </div>`;
-  };
-
-  const stayRows: string[] = [];
-  if (prevStay && !continued) stayRows.push(stayRow(prevStay, " is-prev", "前泊"));
-  if (todayStay) stayRows.push(stayRow(todayStay, "", continued ? "連泊" : "今夜の宿"));
-  if (!stayRows.length) {
-    stayRows.push(`<div class="tl-stay is-empty"><span class="tl-stay-ic">${icon("buildingOffice2")}</span><div class="tl-stay-body"><span class="tl-stay-label">今夜の宿</span><span class="tl-stay-name tl-stay-muted">未定</span></div></div>`);
+  const tonight = day.date === todayISO() ? "今夜の宿" : "宿泊";
+  const rows: string[] = [];
+  if (prevStay && !continued) rows.push(stayRowHtml(prevStay, " is-prev", "前泊"));
+  if (todayStay) rows.push(stayRowHtml(todayStay, "", continued ? "連泊" : tonight));
+  if (!rows.length) {
+    rows.push(`<div class="tl-stay is-empty"><span class="tl-stay-ic">${icon("buildingOffice2")}</span><div class="tl-stay-body"><span class="tl-stay-label">${tonight}</span><span class="tl-stay-name tl-stay-muted">未定</span></div></div>`);
   }
-  setHtml("[data-day-stay]", stayRows.join(""));
+  return rows.join("");
+}
 
-  setHtml("[data-timeline]", day.items.filter((i) => String(i.type) !== "stay").map((item) => {
+function timelineHtmlForDay(idx: number): string {
+  const day = state.days[idx];
+  if (!day) return "";
+  return day.items.filter((i) => String(i.type) !== "stay").map((item) => {
     const type = String(item.type || "todo");
     const placeText = item.place && item.place !== item.title ? `場所: ${item.place}` : "";
     const metaText = [placeText, item.note].filter(Boolean).join(" / ");
     const label = `<span class="tl-kind ${escapeHtml(type)}">${escapeHtml(item.typeLabel || item.type || "予定")}</span>`;
 
-    // 移動: 出発→到着のセグメント表示（origin/destination が無ければタイトルの「→」を分割）
     let segA = item.origin || "";
     let segB = item.destination || "";
     if (type === "move" && (!segA || !segB) && /→|->/.test(item.title || "")) {
@@ -1866,32 +1848,72 @@ function renderActive(): void {
         <p class="tl-meta">${metaText ? `<span class="tl-meta-text">${escapeHtml(metaText)}</span>` : ""}<a class="tl-maplink" href="${mapsSearch(item.mapQuery || item.place || item.title)}" target="_blank" rel="noopener">地図 ${icon("arrowTopRightOnSquare")}</a></p>
       </div>
     </article>`;
-  }).join(""));
+  }).join("");
+}
 
-  // 前日／翌日へその場で切り替えるページャ
-  const pagerBtn = (index: number, dir: "prev" | "next"): string => {
-    const d = state.days[index];
-    if (!d) return "";
-    const label = [d.day, d.area].filter(Boolean).join(" ・ ");
-    const sub = [label, mdLabel(d.date)].filter(Boolean).join(" ・ ");
-    const arrow = dir === "prev" ? icon("chevronLeft") : icon("chevronRight");
-    return `<button class="tl-pager-btn ${dir}" type="button" data-pager-index="${index}">` +
-      (dir === "prev" ? `<span class="tl-pager-ic">${arrow}</span>` : "") +
-      `<span class="tl-pager-text"><span class="tl-pager-dir">${dir === "prev" ? "前の日" : "次の日"}</span>` +
-      `<span class="tl-pager-day">${escapeHtml(sub)}</span></span>` +
-      (dir === "next" ? `<span class="tl-pager-ic">${arrow}</span>` : "") +
-      `</button>`;
-  };
-  const prevHtml = pagerBtn(state.active - 1, "prev");
-  const nextHtml = pagerBtn(state.active + 1, "next");
-  setHtml("[data-day-pager]", (prevHtml || nextHtml)
-    ? `${prevHtml || '<span class="tl-pager-slot"></span>'}${nextHtml || '<span class="tl-pager-slot"></span>'}`
-    : "");
-  qsa<HTMLElement>("[data-pager-index]").forEach((b) => {
+function dayBlockHtml(idx: number): string {
+  const day = state.days[idx];
+  if (!day) return "";
+  const head = [day.day, day.area, mdLabel(day.date)].filter(Boolean).join(" ・ ");
+  const weather = day.weather ? `<span class="tl-dayblock-weather">☀ ${escapeHtml(day.weather)}</span>` : "";
+  const items = timelineHtmlForDay(idx);
+  return `<section class="tl-dayblock" data-day-block="${idx}">
+    <div class="tl-dayblock-head"><span>${escapeHtml(head)}</span>${weather}</div>
+    ${stayHtmlForDay(idx)}
+    ${items || `<p class="tl-dayblock-empty">予定はまだありません</p>`}
+  </section>`;
+}
+
+function renderActive(): void {
+  const day = state.days[state.active];
+  if (!day) return;
+  qsa<HTMLElement>("[data-day-index]").forEach((button) => {
+    button.setAttribute("aria-selected", String(Number(button.dataset.dayIndex) === state.active));
+  });
+
+  const titleMain = day.date === todayISO() ? "今日の予定" : "この日の予定";
+  setHtml("[data-day-title]", `<span>${escapeHtml(titleMain)}</span>`);
+
+  const activePlaces = projectPlaces(day.items);
+  const placeNames = activePlaces.map((place) => place.place || place.title).filter(Boolean);
+  setText("[data-location-caption]", `現在地: ${day.area || placeNames[0] || "-"} / 次: ${placeNames[1] || placeNames[0] || "-"}`);
+  qs<HTMLAnchorElement>("[data-directions]").href = mapsDir(activePlaces);
+  void renderMapEmbed(activePlaces, day);
+  qs("[data-route]").setAttribute("points", activePlaces.map((p) => `${p.x},${p.y}`).join(" "));
+  qsa(".tl-pin").forEach((pin) => pin.remove());
+  activePlaces.forEach((place, index) => {
+    const pin = document.createElement("a");
+    pin.className = "tl-pin" + (index === Math.min(1, activePlaces.length - 1) ? " is-active" : "");
+    pin.href = mapsSearch(place.mapQuery || place.place || place.title);
+    pin.target = "_blank";
+    pin.rel = "noopener";
+    pin.style.left = `${place.x}%`;
+    pin.style.top = `${place.y}%`;
+    pin.innerHTML = `<span class="tl-pin-num">${index + 1}</span><span class="tl-pin-name">${escapeHtml(place.place || place.title)}</span>`;
+    qs("[data-map]").appendChild(pin);
+  });
+
+  // 「この日の予定」フィード：選択中の日から、展開した日までを縦に積む。
+  // 「次の日」を押すと、いまの日の予定を残したまま下に翌日が増える。
+  const last = state.days.length - 1;
+  const end = Math.min(Math.max(state.active, state.viewEnd), last);
+  let feed = "";
+  for (let i = state.active; i <= end; i++) feed += dayBlockHtml(i);
+  if (end < last) {
+    const nx = state.days[end + 1];
+    const label = [nx.day, nx.area].filter(Boolean).join(" ・ ");
+    feed += `<button class="tl-more" type="button" data-more-index="${end + 1}">` +
+      `<span class="tl-more-label">次の日を表示${label ? ` ・ ${escapeHtml(label)}` : ""}</span>` +
+      `<span class="tl-more-ic">${icon("chevronDown")}</span></button>`;
+  }
+  setHtml("[data-day-feed]", feed);
+  qsa<HTMLElement>("[data-more-index]").forEach((b) => {
     b.addEventListener("click", () => {
-      jumpToDay(Number(b.dataset.pagerIndex));
-      const title = root.querySelector<HTMLElement>("[data-day-title]");
-      if (title) title.scrollIntoView({ behavior: "smooth", block: "start" });
+      const target = Number(b.dataset.moreIndex);
+      state.viewEnd = target;
+      renderActive();
+      const block = root.querySelector<HTMLElement>(`[data-day-block="${target}"]`);
+      if (block) block.scrollIntoView({ behavior: "smooth", block: "start" });
     });
   });
 }
