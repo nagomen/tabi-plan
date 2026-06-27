@@ -851,7 +851,8 @@
   .tl-stay {
     display: flex;
     align-items: center;
-    gap: 11px;
+    flex-wrap: wrap;
+    gap: 6px 11px;
     margin: 0 0 14px;
     padding: 10px 13px;
     background: #fbf0ee;
@@ -883,7 +884,7 @@
   .tl-stay-muted { color: #8a908a; font-weight: 800; }
   .tl-stay-place { font-size: 12px; color: var(--muted); }
   .tl-stay-time { font-size: 12px; font-weight: 900; color: var(--red); white-space: nowrap; }
-  .tl-stay-map { font-size: 12px; font-weight: 800; color: var(--green); white-space: nowrap; display: inline-flex; align-items: center; gap: 4px; }
+  .tl-stay-map { margin-left: auto; font-size: 12px; font-weight: 800; color: var(--green); white-space: nowrap; display: inline-flex; align-items: center; gap: 4px; }
   .tl-stay-map svg, .tl-stay-map .hi { width: 13px; height: 13px; }
 
   .tl-plan { min-width: 0; }
@@ -1749,7 +1750,10 @@
     .tl-panel-head {
       min-height: 48px;
       padding: 12px 16px 10px;
+      flex-wrap: wrap;
+      row-gap: 2px;
     }
+    .tl-panel-head a { margin-left: auto; }
     .tl-map {
       min-height: 0;
       max-height: 260px;
@@ -1767,7 +1771,7 @@
     .tl-day-title { padding: 14px 0 10px; }
     .tl-day-title h2 { font-size: 21px; }
     .tl-item { grid-template-columns: 50px 24px minmax(0, 1fr); gap: 6px; padding: 12px 0; }
-    .tl-maplink { grid-column: 3; }
+    .tl-maplink { grid-column: 3; justify-self: start; min-height: 38px; padding: 9px 0; }
     .tl-card-grid { display: block; }
     .tl-local-grid { display: block; }
     .tl-local-card,
@@ -1884,7 +1888,7 @@
         <div class="tl-upcoming" data-upcoming></div>
       </article>
 
-      <article class="tl-box" data-mobile-view="home money" data-section-target="home money">
+      <article class="tl-box" data-mobile-view="money" data-section-target="home money">
         <h2>費用</h2>
         <div class="tl-settle">
           <div class="tl-money"><strong data-paid></strong><span data-progress-label></span></div>
@@ -1902,13 +1906,13 @@
         </div>
       </article>
 
-      <article class="tl-box" data-mobile-view="home links" data-section-target="home links">
+      <article class="tl-box" data-mobile-view="links" data-section-target="home links">
         <h2>リンク・チェック</h2>
         <div class="tl-docs" data-docs></div>
         <div class="tl-checks" data-checks></div>
       </article>
 
-      <article class="tl-box" data-mobile-view="home links" data-section-target="home links">
+      <article class="tl-box" data-mobile-view="links" data-section-target="home links">
         <h2>写真アルバム</h2>
         <div class="tl-photo-body">
           <a class="tl-photo-art" data-photo-link href="#" target="_blank" rel="noopener" aria-label="写真アルバム"></a>
@@ -1917,7 +1921,7 @@
         </div>
       </article>
 
-      <article class="tl-box tl-local-info" data-mobile-view="home links" data-section-target="home links">
+      <article class="tl-box tl-local-info" data-mobile-view="links" data-section-target="home links">
         <h2>国別 お金・移動</h2>
         <div class="tl-local-grid" data-local-info></div>
       </article>

@@ -788,7 +788,7 @@ function applyMobileView(view?: string): void {
   syncStickyOffsets();
   qsa<HTMLElement>("[data-mobile-view]").forEach((node) => {
     const views = String(node.dataset.mobileView || "").split(/\s+/);
-    node.classList.toggle("is-mobile-active", mobileView === "home" || views.includes(mobileView));
+    node.classList.toggle("is-mobile-active", views.includes(mobileView));
   });
   qsa<HTMLElement>("[data-section-nav]").forEach((button) => {
     button.setAttribute("aria-selected", String(button.dataset.sectionNav === mobileView));
@@ -2047,7 +2047,6 @@ async function renderLeafletMap(_activeDay: DayGroup): Promise<void> {
   const usePacificWorld = crossesAntimeridian(activePoints);
   const displayAllPoints = allPoints.map((point) => pacificMapPoint(point, usePacificWorld));
   const displayActivePoints = activePoints.map((point) => pacificMapPoint(point, usePacificWorld));
-  const allLatLngs = displayAllPoints.map((point) => [point.lat, point.lng]);
   const activeLatLngs = displayActivePoints.map((point) => [point.lat, point.lng]);
   const showActiveDetail = leafletState.followActive && activeLatLngs.length;
 
@@ -2123,20 +2122,23 @@ async function renderLeafletMap(_activeDay: DayGroup): Promise<void> {
     ? CONFIG.mapDefaults.center
     : [20, 0];
   const defaultZoom = Number(CONFIG.mapDefaults.zoom) || 2;
-  const activeRadiusKm = Number(CONFIG.mapDefaults.activeRadiusKm) || 300;
   const overviewRadiusKm = Number(CONFIG.mapDefaults.overviewRadiusKm) || 800;
+  // 日詳細のダッシュボードなので、まず選択中の日の地点の実範囲にフィットする
+  // （広い半径パディングは使わず、maxZoom で都市レベルに収める）。
+  // 当日の地点が無いときだけ全行程の概観にフォールバック。
   let bounds: L.LatLngBounds | null = null;
-  if (!leafletState.followActive && displayAllPoints.length) {
+  let fitMaxZoom = 13;
+  if (activeLatLngs.length) {
+    bounds = L.latLngBounds(activeLatLngs as L.LatLngExpression[]);
+    fitMaxZoom = 13;
+  } else if (displayAllPoints.length) {
     bounds = boundsAroundPoints(displayAllPoints, overviewRadiusKm);
-  } else if (leafletState.followActive && activeLatLngs.length) {
-    bounds = boundsAroundPoints(displayActivePoints, activeRadiusKm);
-  } else if (allLatLngs.length) {
-    bounds = boundsAroundPoints(displayAllPoints, overviewRadiusKm);
+    fitMaxZoom = 16;
   }
   if (bounds && bounds.isValid()) {
-    lmap.fitBounds(bounds.pad(.25), {
+    lmap.fitBounds(bounds.pad(.35), {
       animate: false,
-      maxZoom: 18,
+      maxZoom: fitMaxZoom,
     });
   } else {
     lmap.setView(defaultCenter, defaultZoom, { animate: false });
