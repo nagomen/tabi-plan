@@ -345,19 +345,8 @@
       #fff;
   }
 
-  /* 全幅バンドの中で、中身は共通カラム幅に揃える */
-  .tl-titlewrap,
-  .tl-route,
-  .tl-actions,
-  .tl-days,
-  .tl-main,
-  .tl-foot {
-    width: 100%;
-    max-width: var(--shell);
-    margin-inline: auto;
-  }
-
-  .tl-titlewrap { padding-inline: 28px; }
+  /* ヘッダーもメインも全幅。タイトルと本文の中身は共通の左右ガターで揃える */
+  .tl-titlewrap { padding-inline: 32px; }
 
   .tl-kicker {
     margin: 0 0 3px;
@@ -440,40 +429,6 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
-  /* ルート帯（滞在都市） */
-  .tl-route {
-    display: flex;
-    align-items: stretch;
-    gap: 8px;
-    overflow-x: auto;
-    padding: 9px 16px;
-    border-bottom: 1px solid var(--line);
-    background:
-      linear-gradient(90deg, rgba(11, 90, 66, .04), transparent 60%),
-      #fff;
-  }
-
-  .tl-route[hidden] { display: none; }
-
-  .tl-route-seg {
-    flex: none;
-    display: grid;
-    gap: 1px;
-    align-content: center;
-    padding: 6px 12px;
-    border: 1px solid var(--line);
-    border-left: 4px solid var(--c, #0b5a42);
-    background: #fff;
-    font: inherit;
-    text-align: left;
-    cursor: pointer;
-  }
-
-  .tl-route-seg:hover { background: var(--wash); }
-  .tl-route-seg b { font-size: 13px; font-weight: 900; color: var(--ink); }
-  .tl-route-seg small { font-size: 11px; font-weight: 760; color: var(--muted); }
-  .tl-route-arrow { display: grid; place-items: center; color: var(--line-strong); flex: none; }
-
   .tl-days {
     display: grid;
     grid-auto-flow: column;
@@ -535,9 +490,9 @@
 
   .tl-main {
     display: grid;
-    grid-template-columns: minmax(0, 1.08fr) minmax(344px, .92fr);
-    gap: 18px;
-    padding: 18px;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 20px;
+    padding: 22px 32px;
     background:
       linear-gradient(90deg, rgba(17, 25, 22, .025) 1px, transparent 1px),
       linear-gradient(0deg, rgba(17, 25, 22, .025) 1px, transparent 1px),
@@ -1654,7 +1609,7 @@
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     gap: 12px;
-    padding: 11px 18px;
+    padding: 11px 32px;
     border-top: 1px solid var(--line);
     background: var(--wash);
     color: var(--muted);
@@ -1877,7 +1832,6 @@
     </div>
   </header>
 
-  <nav class="tl-route" data-route-strip aria-label="ルート（滞在都市）" hidden></nav>
   <nav class="tl-actions" data-actions aria-label="主要リンク"></nav>
   <nav class="tl-days" data-days aria-label="日別旅程"></nav>
 

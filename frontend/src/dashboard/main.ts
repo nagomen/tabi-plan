@@ -1666,30 +1666,6 @@ function jumpToDay(index: number): void {
   renderActive();
 }
 
-function renderRouteStrip(segs: RouteSeg[]): void {
-  const strip = root.querySelector<HTMLElement>("[data-route-strip]");
-  if (!strip) return;
-  if (segs.length < 2) {
-    strip.innerHTML = "";
-    strip.hidden = true;
-    return;
-  }
-  strip.hidden = false;
-  strip.innerHTML = segs
-    .map(
-      (s, i) =>
-        (i ? `<span class="tl-route-arrow">${icon("arrowLongRight")}</span>` : "") +
-        `<button class="tl-route-seg" type="button" data-route-jump="${s.firstDayIndex}" style="--c:${s.color}">` +
-        `<b>${escapeHtml(s.name)}</b>` +
-        `<small>${mdLabel(s.fromDate)}–${mdLabel(s.toDate)}${s.nights ? ` ・${s.nights}泊` : ""}</small>` +
-        `</button>`,
-    )
-    .join("");
-  strip.querySelectorAll<HTMLElement>("[data-route-jump]").forEach((b) => {
-    b.addEventListener("click", () => jumpToDay(Number(b.dataset.routeJump)));
-  });
-}
-
 function renderDayTabs(route: { segs: RouteSeg[]; dayToSeg: number[] }): void {
   const dayTab = (day: (typeof state.days)[number], index: number, withArea: boolean): string =>
     `<button class="tl-day" type="button" data-day-index="${index}" aria-selected="${index === state.active}">` +
@@ -1779,7 +1755,6 @@ function renderBase(): void {
   ).join(""));
 
   const route = computeRoute();
-  renderRouteStrip(route.segs);
   renderDayTabs(route);
   applyMobileView(mobileView);
 }
