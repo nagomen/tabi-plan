@@ -1854,23 +1854,44 @@ function renderActive(): void {
     qs("[data-map]").appendChild(pin);
   });
 
-  // 宿泊は工程から独立させ、日付見出しの直下に専用バナーで表示する
-  const stays = day.items.filter((i) => String(i.type) === "stay");
-  setHtml("[data-day-stay]", stays.length
-    ? stays.map((s) => {
-        const place = s.place && s.place !== s.title ? s.place : "";
-        return `<div class="tl-stay">
-          <span class="tl-stay-ic">${icon("buildingOffice2")}</span>
-          <div class="tl-stay-body">
-            <span class="tl-stay-label">宿泊</span>
-            <span class="tl-stay-name">${escapeHtml(s.title || "宿泊先")}</span>
-            ${place ? `<span class="tl-stay-place">${escapeHtml(place)}</span>` : ""}
-          </div>
-          ${s.time ? `<span class="tl-stay-time">IN ${escapeHtml(s.time)}</span>` : ""}
-          <a class="tl-stay-map" href="${mapsSearch(s.mapQuery || s.place || s.title)}" target="_blank" rel="noopener">Google Maps ${icon("arrowTopRightOnSquare")}</a>
-        </div>`;
-      }).join("")
-    : `<div class="tl-stay is-empty"><span class="tl-stay-ic">${icon("buildingOffice2")}</span><div class="tl-stay-body"><span class="tl-stay-label">宿泊</span><span class="tl-stay-name tl-stay-muted">未定</span></div></div>`);
+  // 宿泊は工程から独立させ、日付見出しの直下に専用バナーで表示する。
+  // ホテルが変わる日は、前泊（チェックアウト元）も並べて見せる。
+  const stayOf = (d: DayGroup | undefined): ItineraryItem | null =>
+    (d ? d.items.find((i) => String(i.type) === "stay") || null : null);
+  const todayStay = stayOf(day);
+  let prevStay: ItineraryItem | null = null;
+  for (let k = state.active - 1; k >= 0; k--) {
+    const s = stayOf(state.days[k]);
+    if (s) { prevStay = s; break; }
+  }
+  const sameHotel = (a: ItineraryItem | null, b: ItineraryItem | null): boolean =>
+    !!a && !!b && (a.title || "").trim() === (b.title || "").trim();
+  const continued = sameHotel(prevStay, todayStay);
+
+  const stayRow = (s: ItineraryItem, variant: string, label: string): string => {
+    const place = s.place && s.place !== s.title ? s.place : "";
+    const meta = variant === " is-prev"
+      ? `<span class="tl-stay-time tl-stay-out">チェックアウト</span>`
+      : s.time ? `<span class="tl-stay-time">IN ${escapeHtml(s.time)}</span>` : "";
+    return `<div class="tl-stay${variant}">
+      <span class="tl-stay-ic">${icon("buildingOffice2")}</span>
+      <div class="tl-stay-body">
+        <span class="tl-stay-label">${label}</span>
+        <span class="tl-stay-name">${escapeHtml(s.title || "宿泊先")}</span>
+        ${place ? `<span class="tl-stay-place">${escapeHtml(place)}</span>` : ""}
+      </div>
+      ${meta}
+      <a class="tl-stay-map" href="${mapsSearch(s.mapQuery || s.place || s.title)}" target="_blank" rel="noopener">Google Maps ${icon("arrowTopRightOnSquare")}</a>
+    </div>`;
+  };
+
+  const stayRows: string[] = [];
+  if (prevStay && !continued) stayRows.push(stayRow(prevStay, " is-prev", "前泊"));
+  if (todayStay) stayRows.push(stayRow(todayStay, "", continued ? "連泊" : "宿泊"));
+  if (!stayRows.length) {
+    stayRows.push(`<div class="tl-stay is-empty"><span class="tl-stay-ic">${icon("buildingOffice2")}</span><div class="tl-stay-body"><span class="tl-stay-label">宿泊</span><span class="tl-stay-name tl-stay-muted">未定</span></div></div>`);
+  }
+  setHtml("[data-day-stay]", stayRows.join(""));
 
   setHtml("[data-timeline]", day.items.filter((i) => String(i.type) !== "stay").map((item) => {
     const type = String(item.type || "todo");
