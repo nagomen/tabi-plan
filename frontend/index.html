@@ -39,9 +39,8 @@
     --red: #cf4f3d;
     --violet: #6246a6;
     color: var(--ink);
-    max-width: 1180px;
-    margin: 0 auto;
-    border: 1px solid var(--line-strong);
+    --shell: 1180px;
+    width: 100%;
     background: var(--paper);
     font-family: "Avenir Next", "Hiragino Sans", "Yu Gothic", Meiryo, sans-serif;
     line-height: 1.55;
@@ -339,12 +338,26 @@
 
   .tl-head {
     display: block;
-    padding: 22px 24px;
+    padding: 24px 0;
     border-bottom: 1px solid var(--line);
     background:
-      linear-gradient(90deg, rgba(11, 90, 66, .05), transparent 42%),
+      linear-gradient(90deg, rgba(11, 90, 66, .06), transparent 52%),
       #fff;
   }
+
+  /* 全幅バンドの中で、中身は共通カラム幅に揃える */
+  .tl-titlewrap,
+  .tl-route,
+  .tl-actions,
+  .tl-days,
+  .tl-main,
+  .tl-foot {
+    width: 100%;
+    max-width: var(--shell);
+    margin-inline: auto;
+  }
+
+  .tl-titlewrap { padding-inline: 28px; }
 
   .tl-kicker {
     margin: 0 0 3px;
@@ -1732,10 +1745,11 @@
       top: 0;
       z-index: 40;
       gap: 12px;
-      padding: 13px 16px 10px;
+      padding: 13px 0 10px;
       background: rgba(255, 255, 255, .95);
       backdrop-filter: blur(16px);
     }
+    .tl-titlewrap { padding-inline: 16px; }
     .tl-kicker { display: none; }
     .tl-title { font-size: 24px; line-height: 1; }
     .tl-sub { gap: 8px 10px; font-size: 11px; }
