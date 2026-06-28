@@ -1035,41 +1035,41 @@
     padding: 13px 14px 14px;
   }
 
-  .tl-money {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 10px;
-  }
-
-  .tl-money strong { font-size: 30px; line-height: 1; }
-  .tl-money span { color: var(--muted); font-size: 13px; font-weight: 900; }
-
-  .tl-progress {
-    height: 8px;
-    margin: 10px 0 12px;
-    background: #e7ece8;
-  }
-
-  .tl-progress span {
-    display: block;
-    height: 100%;
-    width: var(--value);
-    background: var(--green);
-  }
-
-  .tl-money-detail {
+  /* 主役は「自分の精算額」。総額・立替は補助に降格。 */
+  .tl-settle-hero {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 10px;
+    gap: 3px;
+    padding: 2px 0 4px;
+  }
+
+  .tl-settle-label {
     color: var(--muted);
     font-size: 12px;
+    font-weight: 500;
   }
 
-  .tl-money-detail b {
-    display: block;
+  .tl-settle-amount {
+    font-size: 32px;
+    font-weight: 700;
+    line-height: 1.1;
+    letter-spacing: .01em;
+  }
+
+  .tl-settle-sub {
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 400;
+  }
+
+  .tl-settle-sub b {
     color: var(--ink);
-    font-size: 15px;
+    font-weight: 600;
+  }
+
+  .tl-settle-sub i {
+    margin: 0 8px;
+    font-style: normal;
+    color: var(--line-strong);
   }
 
   .tl-transfer-list {
@@ -1084,7 +1084,7 @@
     margin: 0;
     color: var(--muted);
     font-size: 12px;
-    font-weight: 900;
+    font-weight: 600;
   }
 
   .tl-transfer-row {
@@ -1092,17 +1092,19 @@
     grid-template-columns: minmax(0, 1fr) auto auto;
     gap: 8px;
     align-items: center;
-    min-height: 38px;
-    padding: 7px 8px;
+    min-height: 44px;
+    padding: 8px 10px;
     border: 1px solid var(--line);
+    border-radius: 7px;
     background: #fff;
     font-size: 13px;
-    font-weight: 850;
+    font-weight: 500;
   }
 
   .tl-transfer-row b {
     color: var(--green);
     font-size: 15px;
+    font-weight: 700;
   }
 
   .tl-transfer-row small {
@@ -1113,14 +1115,15 @@
   }
 
   .tl-transfer-row button {
-    min-height: 30px;
+    min-height: 44px;
     border: 1px solid var(--green);
+    border-radius: 7px;
     background: var(--green);
     color: #fff;
-    padding: 0 9px;
+    padding: 0 12px;
     font: inherit;
     font-size: 12px;
-    font-weight: 640;
+    font-weight: 600;
     cursor: pointer;
   }
 
@@ -1135,27 +1138,52 @@
     display: grid;
     grid-template-columns: 1fr;
     gap: 8px;
-    margin-top: 13px;
+    margin-top: 14px;
   }
 
   .tl-button {
-    display: grid;
-    place-items: center;
-    min-height: 38px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-height: 44px;
     border: 1px solid rgba(11, 90, 66, .36);
+    border-radius: 8px;
     background: #fff;
     color: var(--green);
     font: inherit;
-    font-size: 13px;
-    font-weight: 950;
+    font-size: 14px;
+    font-weight: 600;
     text-align: center;
     text-decoration: none;
     cursor: pointer;
+    transition: background .15s ease, border-color .15s ease;
   }
 
+  /* 主操作（費用を追加）は塗りで強調 */
   .tl-button.primary {
+    min-height: 48px;
+    border-color: var(--green);
     background: var(--green);
     color: #fff;
+  }
+
+  .tl-button.primary:hover,
+  .tl-button.primary:focus-visible {
+    background: #0d6c4f;
+  }
+
+  /* セカンダリ（費用明細を見る など）は控えめに */
+  .tl-button.ghost {
+    border-color: var(--line-strong);
+    color: var(--ink);
+    font-weight: 500;
+  }
+
+  .tl-button.ghost:hover,
+  .tl-button.ghost:focus-visible {
+    border-color: var(--green);
+    color: var(--green);
   }
 
   .tl-expense-details {
@@ -1235,34 +1263,19 @@
   .tl-expense-entry {
     display: grid;
     gap: 12px;
-    margin-top: 15px;
-    padding-top: 14px;
-    border-top: 1px solid var(--line);
   }
 
   .tl-expense-head {
     display: flex;
     align-items: baseline;
-    justify-content: space-between;
-    gap: 12px;
-  }
-
-  .tl-expense-head b {
-    font-size: 14px;
-    font-weight: 720;
-  }
-
-  .tl-expense-head span {
-    color: var(--muted);
-    font-size: 11px;
-    font-weight: 620;
+    justify-content: flex-end;
   }
 
   .tl-expense-head a {
     color: var(--green);
     font-size: 12px;
-    font-weight: 760;
-    text-decoration: none;
+    font-weight: 600;
+    text-decoration: underline;
     white-space: nowrap;
   }
 
@@ -1289,9 +1302,9 @@
 
   .tl-field span,
   .tl-split-label {
-    color: var(--muted);
-    font-size: 11px;
-    font-weight: 620;
+    color: var(--ink);
+    font-size: 12px;
+    font-weight: 600;
   }
 
   .tl-required-mark {
@@ -1304,18 +1317,27 @@
   .tl-field textarea {
     width: 100%;
     min-width: 0;
-    min-height: 38px;
+    min-height: 44px;
     border: 1px solid var(--line-strong);
+    border-radius: 7px;
     background: #fff;
     color: var(--ink);
     font: inherit;
-    font-size: 13px;
-    font-weight: 520;
+    font-size: 14px;
+    font-weight: 500;
+  }
+
+  .tl-field input:focus-visible,
+  .tl-field select:focus-visible,
+  .tl-field textarea:focus-visible {
+    outline: none;
+    border-color: var(--green);
+    box-shadow: 0 0 0 3px var(--green-soft);
   }
 
   .tl-field input,
   .tl-field select {
-    padding: 7px 9px;
+    padding: 9px 11px;
   }
 
   .tl-field textarea {
@@ -1354,7 +1376,7 @@
   .tl-segment {
     display: grid;
     min-width: 0;
-    min-height: 38px;
+    min-height: 44px;
     background: #fff;
     cursor: pointer;
   }
@@ -1448,14 +1470,15 @@
   }
 
   .tl-expense-submit button {
-    min-height: 40px;
+    min-height: 48px;
     border: 1px solid var(--green);
+    border-radius: 8px;
     background: var(--green);
     color: #fff;
-    padding: 0 18px;
+    padding: 0 24px;
     font: inherit;
-    font-size: 13px;
-    font-weight: 620;
+    font-size: 14px;
+    font-weight: 600;
     cursor: pointer;
   }
 
@@ -1480,6 +1503,79 @@
   .tl-expense-status.is-ok {
     color: var(--green);
   }
+
+  /* 費用入力ボトムシート（読む画面と書く画面の分離） */
+  .tl-sheet {
+    position: fixed;
+    inset: 0;
+    z-index: 9990;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+  }
+
+  .tl-sheet[hidden] { display: none; }
+
+  .tl-sheet-scrim {
+    position: absolute;
+    inset: 0;
+    background: rgba(17, 25, 22, .45);
+    animation: tl-fade .18s ease;
+  }
+
+  .tl-sheet-panel {
+    position: relative;
+    width: 100%;
+    max-height: 88vh;
+    display: flex;
+    flex-direction: column;
+    background: #fff;
+    border-radius: 16px 16px 0 0;
+    box-shadow: 0 -12px 44px rgba(17, 25, 22, .22);
+    animation: tl-slide-up .22s ease;
+  }
+
+  .tl-sheet-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 8px 14px 18px;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .tl-sheet-head b {
+    font-size: 16px;
+    font-weight: 700;
+  }
+
+  .tl-sheet-close {
+    width: 44px;
+    height: 44px;
+    display: grid;
+    place-items: center;
+    border: 0;
+    background: none;
+    color: var(--muted);
+    font-size: 18px;
+    cursor: pointer;
+  }
+
+  .tl-sheet-close:hover,
+  .tl-sheet-close:focus-visible { color: var(--ink); }
+
+  .tl-sheet-body {
+    padding: 16px 18px calc(20px + env(safe-area-inset-bottom));
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  @media (min-width: 721px) {
+    .tl-sheet { align-items: center; padding: 24px; }
+    .tl-sheet-panel { max-width: 560px; max-height: 90vh; border-radius: 16px; animation: tl-fade .2s ease; }
+  }
+
+  @keyframes tl-fade { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes tl-slide-up { from { transform: translateY(100%); } to { transform: translateY(0); } }
 
   .tl-docs {
     display: grid;
@@ -1887,18 +1983,17 @@
       <article class="tl-box" data-mobile-view="money" data-section-target="home money">
         <h2>費用</h2>
         <div class="tl-settle">
-          <div class="tl-money"><strong data-paid></strong><span data-progress-label></span></div>
-          <div class="tl-progress"><span data-progress></span></div>
-          <div class="tl-money-detail">
-            <div>最大立替<b data-your-paid></b></div>
-            <div>精算額<b data-your-due></b></div>
+          <div class="tl-settle-hero">
+            <span class="tl-settle-label">あなたの精算額</span>
+            <strong class="tl-settle-amount" data-your-due>¥0</strong>
+            <span class="tl-settle-sub">あなたの立替 <b data-your-paid>—</b><i>·</i>費用総額 <b data-paid>¥0</b></span>
           </div>
           <div class="tl-transfer-list" data-transfers></div>
           <div class="tl-buttons">
-            <button class="tl-button primary" type="button" data-expense-detail-toggle aria-expanded="false">費用明細を見る</button>
+            <button class="tl-button primary" type="button" data-expense-open>＋ 費用を追加</button>
+            <button class="tl-button ghost" type="button" data-expense-detail-toggle aria-expanded="false">費用明細を見る</button>
           </div>
           <div class="tl-expense-details" data-expense-details></div>
-          <div class="tl-expense-entry" data-expense-entry></div>
         </div>
       </article>
 
@@ -1923,6 +2018,19 @@
       </article>
     </section>
   </main>
+
+  <div class="tl-sheet" data-expense-sheet hidden>
+    <div class="tl-sheet-scrim" data-expense-close></div>
+    <div class="tl-sheet-panel" role="dialog" aria-modal="true" aria-label="費用を追加">
+      <div class="tl-sheet-head">
+        <b>費用を追加</b>
+        <button type="button" class="tl-sheet-close" data-expense-close aria-label="閉じる">✕</button>
+      </div>
+      <div class="tl-sheet-body">
+        <div class="tl-expense-entry" data-expense-entry></div>
+      </div>
+    </div>
+  </div>
 
   <footer class="tl-foot">
     <span data-note></span>

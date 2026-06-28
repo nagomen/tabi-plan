@@ -17,6 +17,7 @@ import {
   type TripConfig,
 } from "../shared/config";
 import * as TripPlans from "../shared/plans-store";
+import * as ExpenseStore from "../shared/expense-store";
 import { escapeHtml, makeScopedQuery } from "../shared/dom";
 import {
   hasAuthSession as hasAuthSessionShared,
@@ -332,6 +333,19 @@ let syncInFlight: Promise<void> | null = null;
 let lastSyncAt = 0;
 
 // ---- Apps Script 通信 ---------------------------------------------------
+
+/** Apps Script(Web App) が無い構成では、費用は端末内 JSON で保存・精算する。 */
+function usingLocalExpenses(): boolean {
+  return !CONFIG.appsScriptUrl;
+}
+
+/** ローカル保存の費用記録から精算を計算し、settlement に反映する。 */
+function localSettlement(): Settlement {
+  const participants = expenseParticipants(state.data || SAMPLE);
+  const profileName = currentProfileName(participants);
+  const records = ExpenseStore.list(CONFIG.tripSlug);
+  return ExpenseStore.computeSettlement(records, participants, profileName);
+}
 
 /** shared/apps-script を CONFIG.appsScriptUrl にバインドした JSONP 取得 */
 const callAppsScript = (params: AppsScriptParams): Promise<AppsScriptResponse> =>
@@ -812,6 +826,20 @@ function syncStickyOffsets(): void {
   root.style.setProperty("--tl-head-height", `${Math.ceil(head.getBoundingClientRect().height)}px`);
 }
 
+/** 費用入力ボトムシートの開閉。入力フォームは [data-expense-entry] にマウント済み。 */
+function setExpenseSheet(open: boolean): void {
+  const sheet = root.querySelector<HTMLElement>("[data-expense-sheet]");
+  if (!sheet) return;
+  sheet.hidden = !open;
+  document.documentElement.style.overflow = open ? "hidden" : "";
+  if (open) {
+    const first = sheet.querySelector<HTMLInputElement | HTMLSelectElement>(
+      "input:not([type=hidden]):not([type=file]), select",
+    );
+    if (first) setTimeout(() => first.focus(), 60);
+  }
+}
+
 // ---- Sheets / gviz ------------------------------------------------------
 
 function rowsFromGviz(response: GvizResponse): SheetRow[] {
@@ -863,17 +891,30 @@ function setupSettlementCompleteHandlers(mount: HTMLElement): void {
       button.disabled = true;
       if (status) status.textContent = `${from} → ${to} を精算完了にしています...`;
       try {
-        const response = await callAppsScript({
-          action: "settlementComplete",
-          token: getAuthToken(),
-          from,
-          to,
-          amount,
-          note: `サイト上で${from}から${to}への精算完了`,
-        });
-        if (response.data) {
-          state.data = response.data;
-          state.days = groupDays(state.data.itinerary || []);
+        if (usingLocalExpenses()) {
+          // 端末内 JSON に精算記録を追加（from→to の振込を相殺）。
+          ExpenseStore.add(CONFIG.tripSlug, {
+            kind: "settlement",
+            payer: from,
+            targets: [to],
+            amount,
+            title: `${from} → ${to} 精算`,
+            splitMode: "精算不要",
+            note: `サイト上で${from}から${to}への精算完了`,
+          });
+        } else {
+          const response = await callAppsScript({
+            action: "settlementComplete",
+            token: getAuthToken(),
+            from,
+            to,
+            amount,
+            note: `サイト上で${from}から${to}への精算完了`,
+          });
+          if (response.data) {
+            state.data = response.data;
+            state.days = groupDays(state.data.itinerary || []);
+          }
         }
         renderBase();
         renderActive();
@@ -893,27 +934,6 @@ function setupSettlementCompleteHandlers(mount: HTMLElement): void {
       }
     });
   });
-}
-
-interface SelectedExpenseTotal {
-  amountLabel: string;
-  label: string;
-}
-
-function selectedExpenseTotal(settlement: Settlement): SelectedExpenseTotal {
-  const profileName = currentProfileName(expenseParticipants(state.data || SAMPLE));
-  const byPerson = settlement.expenseByPerson || {};
-  const personExpense = profileName ? byPerson[profileName] : undefined;
-  if (personExpense !== undefined && personExpense !== null) {
-    return {
-      amountLabel: formatYen(personExpense),
-      label: `${profileName}の費用合計`,
-    };
-  }
-  return {
-    amountLabel: settlement.expenseTotal || "¥0",
-    label: "費用総額",
-  };
 }
 
 function renderExpenseDetails(settlement: Settlement): void {
@@ -1054,10 +1074,9 @@ function renderExpenseEntry(data: TripData): void {
     </label>`).join("");
 
   mount.innerHTML = `
-    <div class="tl-expense-head">
-      <b>ページ内で立替入力</b>
-      <a href="expense-entry.html">入力専用ページを開く</a>
-    </div>
+    ${usingLocalExpenses() ? "" : `<div class="tl-expense-head">
+      <a href="expense-entry.html">別ページで入力する</a>
+    </div>`}
     <form class="tl-expense-form" data-expense-form-native>
       <div class="tl-expense-grid">
         <label class="tl-field">
@@ -1124,10 +1143,10 @@ function renderExpenseEntry(data: TripData): void {
             <option>その他</option>
           </select>
         </label>
-        <label class="tl-field tl-photo-field">
+        ${usingLocalExpenses() ? "" : `<label class="tl-field tl-photo-field">
           <span>レシート写真</span>
           <input type="file" name="receiptPhoto" accept="image/*" capture="environment">
-        </label>
+        </label>`}
         <label class="tl-field wide">
           <span>メモ</span>
           <textarea name="note" placeholder="任意。為替メモや補足があれば入力"></textarea>
@@ -1237,34 +1256,52 @@ function setupExpenseEntryHandlers(form: HTMLFormElement, participants: string[]
     button.disabled = true;
     setStatus("保存中...", "");
     try {
-      const receiptInput = field("receiptPhoto") as HTMLInputElement;
-      const photo = receiptInput && receiptInput.files ? receiptInput.files[0] : null;
-      let receiptUrl = "";
-      if (photo) {
-        setStatus("写真アップロード中...", "");
-        const upload = await uploadReceiptPhoto(photo);
-        receiptUrl = upload.url || "";
-        setStatus("保存中...", "");
-      }
-      const response = await callAppsScript({
-        action: "expense",
-        token: getAuthToken(),
-        paidDate: (field("paidDate") as HTMLInputElement).value,
-        payer: (field("payer") as HTMLSelectElement).value,
-        category: (field("category") as HTMLSelectElement).value,
-        title: (field("title") as HTMLInputElement).value,
-        amount: (field("amount") as HTMLInputElement).value,
-        currency: (field("currency") as HTMLSelectElement).value,
-        splitMode: mode,
-        targets: JSON.stringify(targets),
-        individual: JSON.stringify(individual),
-        paymentMethod: (field("paymentMethod") as HTMLSelectElement).value,
-        receiptUrl,
-        note: (field("note") as HTMLTextAreaElement).value,
-      });
-      if (response.data) {
-        state.data = response.data;
-        state.days = groupDays(state.data.itinerary || []);
+      if (usingLocalExpenses()) {
+        // 端末内 JSON に保存（Apps Script 不要）。精算は renderBase で再計算。
+        ExpenseStore.add(CONFIG.tripSlug, {
+          kind: "expense",
+          paidDate: (field("paidDate") as HTMLInputElement).value,
+          payer: (field("payer") as HTMLSelectElement).value,
+          category: (field("category") as HTMLSelectElement).value,
+          title: (field("title") as HTMLInputElement).value,
+          amount,
+          currency: (field("currency") as HTMLSelectElement).value,
+          splitMode: mode,
+          targets,
+          individual,
+          paymentMethod: (field("paymentMethod") as HTMLSelectElement).value,
+          note: (field("note") as HTMLTextAreaElement).value,
+        });
+      } else {
+        const receiptInput = field("receiptPhoto") as HTMLInputElement;
+        const photo = receiptInput && receiptInput.files ? receiptInput.files[0] : null;
+        let receiptUrl = "";
+        if (photo) {
+          setStatus("写真アップロード中...", "");
+          const upload = await uploadReceiptPhoto(photo);
+          receiptUrl = upload.url || "";
+          setStatus("保存中...", "");
+        }
+        const response = await callAppsScript({
+          action: "expense",
+          token: getAuthToken(),
+          paidDate: (field("paidDate") as HTMLInputElement).value,
+          payer: (field("payer") as HTMLSelectElement).value,
+          category: (field("category") as HTMLSelectElement).value,
+          title: (field("title") as HTMLInputElement).value,
+          amount: (field("amount") as HTMLInputElement).value,
+          currency: (field("currency") as HTMLSelectElement).value,
+          splitMode: mode,
+          targets: JSON.stringify(targets),
+          individual: JSON.stringify(individual),
+          paymentMethod: (field("paymentMethod") as HTMLSelectElement).value,
+          receiptUrl,
+          note: (field("note") as HTMLTextAreaElement).value,
+        });
+        if (response.data) {
+          state.data = response.data;
+          state.days = groupDays(state.data.itinerary || []);
+        }
       }
       form.reset();
       form.dataset.dirty = "false";
@@ -1274,6 +1311,7 @@ function setupExpenseEntryHandlers(form: HTMLFormElement, participants: string[]
       updateMode();
       renderBase();
       renderActive();
+      setExpenseSheet(false);
       const nextStatus = root.querySelector<HTMLElement>("[data-expense-status]");
       if (nextStatus) {
         nextStatus.textContent = "保存しました。費用を更新済みです。";
@@ -1701,14 +1739,13 @@ function renderBase(): void {
   qs<HTMLAnchorElement>("[data-photo-link]").href = linkByKey("photos").url || "#";
   qs<HTMLAnchorElement>("[data-photo-button]").href = linkByKey("photos").url || "#";
 
+  if (usingLocalExpenses()) {
+    data.settlement = { ...data.settlement, ...localSettlement() };
+  }
   const settlement = data.settlement || {};
-  const progress = Number(settlement.progress || 0);
-  const expenseTotal = selectedExpenseTotal(settlement);
-  setText("[data-paid]", expenseTotal.amountLabel || settlement.paid || "¥0");
-  setText("[data-progress-label]", expenseTotal.label);
-  qs<HTMLElement>("[data-progress]").style.setProperty("--value", `${Math.max(0, Math.min(100, progress))}%`);
-  setText("[data-your-paid]", settlement.yourPaid || "-");
-  setText("[data-your-due]", settlement.yourDue || "-");
+  setText("[data-paid]", settlement.expenseTotal || "¥0");
+  setText("[data-your-paid]", settlement.yourPaid || "—");
+  setText("[data-your-due]", settlement.yourDue || "¥0");
   renderTransfers(settlement);
   renderExpenseDetails(settlement);
   setText("[data-photo-title]", settlement.photoTitle || "写真アルバム");
@@ -2222,6 +2259,18 @@ async function init(): Promise<void> {
     button.addEventListener("click", () => {
       applyMobileView(button.dataset.mobileNav);
     });
+  });
+  // 費用入力はボトムシートに分離（読む画面と書く画面を分ける）。
+  qsa<HTMLElement>("[data-expense-open]").forEach((button) => {
+    button.addEventListener("click", () => setExpenseSheet(true));
+  });
+  qsa<HTMLElement>("[data-expense-close]").forEach((button) => {
+    button.addEventListener("click", () => setExpenseSheet(false));
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") return;
+    const sheet = root.querySelector<HTMLElement>("[data-expense-sheet]");
+    if (sheet && !sheet.hidden) setExpenseSheet(false);
   });
   // マイページ（後日実装）はヘッダーに静的表示のみ。押しても今は何もしない。
   // フッターの「編集」を source で振り分け（ローカル→計画エディタ / appsScript→行程編集）。

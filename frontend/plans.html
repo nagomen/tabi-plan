@@ -56,30 +56,31 @@
   }
 
   .hub-kicker {
-    margin: 0 0 3px;
+    margin: 0 0 4px;
     color: var(--green);
-    font-size: 12px;
-    font-weight: 900;
-    letter-spacing: .13em;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .16em;
     text-transform: uppercase;
   }
 
   .hub-title {
     margin: 0;
-    font-size: clamp(25px, 4.2vw, 43px);
-    font-weight: 950;
-    line-height: 1.08;
+    font-size: clamp(23px, 3.4vw, 30px);
+    font-weight: 700;
+    line-height: 1.15;
+    letter-spacing: .01em;
   }
 
   .hub-sub {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 12px;
+    gap: 10px;
     margin-top: 8px;
     color: var(--muted);
     font-size: 13px;
-    font-weight: 750;
+    font-weight: 400;
   }
 
   .hub-toolbar {
@@ -93,159 +94,235 @@
 
   .hub-toolbar input {
     width: 100%;
-    min-height: 42px;
+    min-height: 44px;
     border: 1px solid var(--line-strong);
+    border-radius: 7px;
     background: #fff;
     color: var(--ink);
-    padding: 8px 11px;
+    padding: 8px 13px;
     font: inherit;
     font-size: 14px;
+    font-weight: 400;
+  }
+
+  .hub-toolbar input:focus-visible {
+    outline: none;
+    border-color: var(--green);
+    box-shadow: 0 0 0 3px var(--green-soft);
   }
 
   .hub-new {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 6px;
-    min-height: 42px;
-    padding: 0 18px;
+    gap: 7px;
+    min-height: 44px;
+    padding: 0 22px;
     border: 1px solid var(--green);
+    border-radius: 7px;
     background: var(--green);
     color: #fff;
     font: inherit;
     font-size: 14px;
-    font-weight: 900;
+    font-weight: 600;
+    letter-spacing: .02em;
     text-decoration: none;
     white-space: nowrap;
     cursor: pointer;
+    transition: background .15s ease;
+  }
+
+  .hub-new:hover,
+  .hub-new:focus-visible {
+    background: #0d6c4f;
+  }
+
+  .hub-new .hi {
+    width: 1.05em;
+    height: 1.05em;
   }
 
   .hub-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-    gap: 14px;
-    padding: 18px 24px 28px;
+    padding: 6px 24px 28px;
   }
 
-  .plan-card {
-    display: grid;
-    gap: 10px;
-    align-content: start;
-    padding: 16px;
-    border: 1px solid var(--line);
-    background: #fff;
-  }
-
-  .plan-card.is-active {
-    border-color: var(--green);
-    box-shadow: 0 0 0 2px var(--green-soft);
-  }
-
-  .plan-badges {
+  /* 1計画 = 1行。タップで開く。枠は積み重ねの薄線1本のみ。 */
+  .plan-row {
+    position: relative;
     display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    align-items: center;
+    align-items: stretch;
+    gap: 4px;
+    border-bottom: 1px solid var(--line);
   }
 
-  .plan-badge {
-    padding: 3px 8px;
-    border: 1px solid transparent;
-    color: #fff;
-    font-size: 11px;
-    font-weight: 800;
-    letter-spacing: .02em;
+  .plan-row:first-child {
+    border-top: 1px solid var(--line);
   }
 
-  .plan-badge.local { background: var(--green); }
-  .plan-badge.googleSheets { background: var(--blue); }
-  .plan-badge.appsScript { background: var(--violet); }
-  .plan-badge.sample { background: #68746e; }
-
-  .plan-badge.current {
-    background: var(--green-soft);
-    border-color: rgba(11, 90, 66, .32);
-    color: var(--green);
+  /* 表示中: 左の細いアクセントバー（状態は色を一本化） */
+  .plan-row.is-active::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    background: var(--green);
   }
 
+  /* 行全体（メイン領域）が「開く」のヒット領域 */
+  .plan-open {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    align-items: flex-start;
+    gap: 11px;
+    padding: 14px 8px 14px 16px;
+    text-decoration: none;
+    color: inherit;
+  }
+
+  .plan-open:hover,
+  .plan-open:focus-visible {
+    background: var(--wash);
+  }
+
+  /* 種別は小さなドット1つ（色の意味は「種別」に限定） */
+  .plan-dot {
+    flex: none;
+    width: 8px;
+    height: 8px;
+    margin-top: 7px;
+    border-radius: 50%;
+    background: #68746e;
+  }
+
+  .plan-dot.local { background: var(--green); }
+  .plan-dot.googleSheets { background: var(--blue); }
+  .plan-dot.appsScript { background: var(--violet); }
+  .plan-dot.sample { background: #9aa5a0; }
+
+  .plan-body {
+    min-width: 0;
+    display: grid;
+    gap: 2px;
+  }
+
+  /* 主役は旅行名のみ少しだけ強く。他は素直なウエイトで読みやすく。 */
   .plan-name {
     margin: 0;
-    font-size: 19px;
-    font-weight: 850;
-    line-height: 1.25;
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 8px;
+    font-size: 16px;
+    font-weight: 600;
+    line-height: 1.35;
     overflow-wrap: anywhere;
   }
 
-  .plan-meta {
-    display: grid;
-    gap: 3px;
-    color: var(--muted);
-    font-size: 12px;
-    font-weight: 720;
+  .plan-tag {
+    flex: none;
+    padding: 1px 8px;
+    border-radius: 999px;
+    background: var(--green-soft);
+    color: var(--green);
+    font-size: 10.5px;
+    font-weight: 500;
+    letter-spacing: .03em;
   }
 
-  .plan-meta b {
-    color: var(--ink);
-    font-weight: 800;
+  .plan-meta {
+    color: var(--muted);
+    font-size: 12.5px;
+    font-weight: 400;
   }
 
   .plan-route {
     color: var(--muted);
     font-size: 12px;
-    font-weight: 640;
+    font-weight: 400;
+    white-space: nowrap;
     overflow: hidden;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
+    text-overflow: ellipsis;
   }
 
-  .plan-actions {
+  /* 副操作はケバブの中に格納。表面はアイコン1つだけ。 */
+  .plan-tools {
+    position: relative;
+    flex: none;
     display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    margin-top: 2px;
-    padding-top: 12px;
-    border-top: 1px solid var(--line);
+    align-items: center;
+    padding-right: 8px;
   }
 
-  .plan-btn {
-    flex: 0 0 auto;
-    min-height: 36px;
-    padding: 0 14px;
+  .plan-menu-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    border: 1px solid transparent;
+    background: none;
+    color: var(--muted);
+    cursor: pointer;
+  }
+
+  .plan-menu-btn:hover,
+  .plan-menu-btn:focus-visible,
+  .plan-menu-btn[aria-expanded="true"] {
+    border-color: var(--line-strong);
+    color: var(--ink);
+    background: #fff;
+  }
+
+  .plan-menu {
+    position: absolute;
+    top: calc(100% - 2px);
+    right: 8px;
+    z-index: 20;
+    min-width: 168px;
+    display: grid;
     border: 1px solid var(--line-strong);
+    background: #fff;
+    box-shadow: 0 14px 40px rgba(17, 25, 22, .16);
+  }
+
+  .plan-menu[hidden] { display: none; }
+
+  .plan-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 11px 14px;
+    border: 0;
+    border-bottom: 1px solid var(--line);
     background: #fff;
     color: var(--ink);
     font: inherit;
     font-size: 13px;
-    font-weight: 800;
-    text-decoration: none;
+    font-weight: 500;
+    text-align: left;
     cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
   }
 
-  .plan-btn.primary {
-    flex: 1 1 auto;
-    border-color: var(--green);
-    background: var(--green);
-    color: #fff;
+  .plan-menu-item:last-child { border-bottom: 0; }
+
+  .plan-menu-item:hover,
+  .plan-menu-item:focus-visible {
+    background: var(--wash);
   }
 
-  .plan-btn.danger:hover,
-  .plan-btn.danger:focus-visible {
-    border-color: var(--red);
+  .plan-menu-item.danger {
     color: var(--red);
   }
 
-  .plan-btn:disabled {
+  .plan-menu-item:disabled {
     opacity: .45;
     cursor: not-allowed;
   }
 
   .hub-empty {
-    grid-column: 1 / -1;
     display: grid;
     gap: 8px;
     padding: 40px 22px;
@@ -265,7 +342,8 @@
     border-top: 1px solid var(--line);
     color: var(--muted);
     font-size: 12px;
-    font-weight: 700;
+    font-weight: 400;
+    line-height: 1.7;
   }
 
   .pub-toast {
@@ -381,7 +459,11 @@
       grid-template-columns: 1fr;
     }
     .hub-grid {
-      grid-template-columns: 1fr;
+      padding-right: 0;
+      padding-left: 0;
+    }
+    .plan-open {
+      padding-left: 14px;
     }
   }
 </style>

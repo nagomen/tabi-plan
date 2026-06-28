@@ -147,6 +147,21 @@ qs<HTMLElement>(root, "[data-ic-setup]").insertAdjacentHTML("afterbegin", icon("
 qs<HTMLElement>(root, "[data-ic-route]").insertAdjacentHTML("afterbegin", icon("map") + " ");
 qs<HTMLElement>(root, "[data-ic-days]").insertAdjacentHTML("afterbegin", icon("calendarDays") + " ");
 
+// 入力ラベル・操作ボタンにも Heroicon を添える
+const ICON_MOUNTS: [string, IconName][] = [
+  ["[data-ic-name]", "bookmark"],
+  ["[data-ic-period]", "calendarDays"],
+  ["[data-ic-members]", "users"],
+  ["[data-ic-note]", "documentText"],
+  ["[data-city-add]", "plus"],
+  ["[data-export]", "documentText"],
+  ["[data-save]", "bookmark"],
+];
+ICON_MOUNTS.forEach(([selector, name]) => {
+  const el = root.querySelector(selector);
+  if (el) el.insertAdjacentHTML("afterbegin", icon(name) + " ");
+});
+
 // ---- 初期状態 -----------------------------------------------------------
 
 const params = new URLSearchParams(location.search);
@@ -337,6 +352,7 @@ function markDirty(): void {
   }
   window.clearTimeout(persistTimer);
   persistTimer = window.setTimeout(persist, 700);
+  updateSteps();
 }
 
 function nowHM(): string {
@@ -374,10 +390,45 @@ function dayOptions(selected: string): string {
     .join("");
 }
 
+/** 表示中のステップ（1=期間 / 2=目的地 / 3=行程）。0 は未初期化。 */
+let viewStep = 0;
+
+/** 作成ステップ（期間→目的地→行程）を実状態に連動させ、スマホでは該当パネルだけ表示。 */
+function updateSteps(): void {
+  const periodDone = Boolean(model.title.trim()) && model.days.length > 0;
+  const placeDone = model.cities.length > 0;
+  const planDone = model.days.some((d) => d.items.length > 0 || d.stay);
+  const done = [periodDone, placeDone, planDone];
+  if (viewStep === 0) {
+    const natural = done.findIndex((d) => !d);
+    viewStep = natural < 0 ? done.length : natural + 1;
+  }
+  const pe = document.getElementById("editor");
+  if (pe) pe.dataset.step = String(viewStep);
+  document.querySelectorAll<HTMLElement>(".pe-step").forEach((el, i) => {
+    const isDone = done[i] && i + 1 !== viewStep;
+    el.classList.toggle("is-done", isDone);
+    el.classList.toggle("is-current", i + 1 === viewStep);
+    const numEl = el.querySelector<HTMLElement>(".pe-step-n");
+    if (numEl) numEl.innerHTML = isDone ? icon("check") : String(i + 1);
+  });
+}
+
+/** ステップのタップで表示を切り替える（スマホのウィザード送り）。 */
+function setViewStep(step: number): void {
+  viewStep = Math.min(3, Math.max(1, step));
+  updateSteps();
+}
+
+document.querySelectorAll<HTMLElement>(".pe-step").forEach((el, i) => {
+  el.addEventListener("click", () => setViewStep(i + 1));
+});
+
 function renderCities(): void {
+  updateSteps();
   cityOptions.innerHTML = model.cities.map((c) => `<option value="${escapeHtml(c.name)}">`).join("");
   if (!model.cities.length) {
-    citiesEl.innerHTML = `<span class="pe-route-empty">まだありません。行きたい都市を足すと地図に出ます。期間を入れると「いつ滞在するか」も割り当てられます。</span>`;
+    citiesEl.innerHTML = `<span class="pe-route-empty">訪問地はまだありません。都市やエリアを追加すると地図に表示されます。期間を設定すると、滞在日も指定できます。</span>`;
     return;
   }
   const hasDays = model.days.length > 0;
@@ -466,7 +517,7 @@ function rowSummary(item: Item): string {
   }
   const title = item.title || item.place;
   const titleCls = title ? "" : " is-empty";
-  const titleText = title || "（タイトル未入力）";
+  const titleText = title || "タイトル未入力";
   const sub = item.place && item.title ? ` <small>${escapeHtml(item.place)}</small>` : "";
   return (
     `<span class="pe-chip" data-kind="${item.kind}">${icon(k.icon)}${k.label}</span>` +
@@ -497,7 +548,7 @@ function placeBlock(item: Item, target: GeoTarget, label: string, ph: string): s
 
 function editForm(item: Item): string {
   const g = `<div class="pe-edit-grid">`;
-  const end = `</div><div class="pe-edit-actions"><button class="pe-mini" type="button" data-act="close">${icon("check")}<span>閉じる</span></button></div>`;
+  const end = `</div><div class="pe-edit-actions"><button class="pe-mini" type="button" data-act="close">${icon("check")}<span>完了</span></button></div>`;
   if (item.kind === "move") {
     return (
       g +
@@ -559,7 +610,7 @@ function stayBand(index: number): string {
   }
   const stay = cover.stay;
   const open = openItemId === stay.id ? " is-open" : "";
-  const title = stay.title || "宿泊先 未入力";
+  const title = stay.title || "宿泊先未入力";
   const titleCls = stay.title ? "" : " is-empty";
   const meta = [stay.time ? `IN ${stay.time}` : "", stay.nights > 1 ? `${stay.nights}泊` : "", stay.place].filter(Boolean).join(" ・ ");
   return (
@@ -605,25 +656,26 @@ function renderDayStrip(): void {
 }
 
 function renderDays(): void {
+  updateSteps();
   renderDayStrip();
   dayCountEl.textContent = model.days.length ? `全${model.days.length}日` : "";
   if (!model.days.length) {
     daysEl.innerHTML =
-      `<div class="pe-empty-cta"><b>まずは期間を選びましょう</b>` +
-      `<span>上の「開始日」と「終了日」を入れると、日ごとの予定欄がここに出ます。</span></div>`;
+      `<div class="pe-empty-cta"><b>期間を選択してください</b>` +
+      `<span>旅行期間を設定すると、日ごとの予定欄が表示されます。</span></div>`;
     return;
   }
   daysEl.innerHTML = model.days
     .map((day, index) => {
       const items = day.items.map(timelineNode).join("");
-      const empty = day.items.length ? "" : `<p class="pe-day-empty">まだ予定がありません。下のボタンから追加するか、上の日から予定をドラッグできます。</p>`;
+      const empty = day.items.length ? "" : `<p class="pe-day-empty">予定はまだありません。下のボタンから追加できます。</p>`;
       // 前夜の宿を朝に出発するときだけ「前泊から出発」を出す（連泊中は出さない）
       const coverPrev = index > 0 ? stayCovering(index - 1) : null;
       const coverToday = stayCovering(index);
       const leftHotel = coverPrev && (!coverToday || coverToday.stay.id !== coverPrev.stay.id);
       const startBanner = leftHotel && coverPrev.stay.title
         ? `<div class="pe-start"><span class="pe-start-ic">${icon("buildingOffice2")}</span>` +
-          `<div class="pe-start-main"><b>前泊から出発</b><br><span>${escapeHtml(coverPrev.stay.title)}</span></div></div>`
+          `<div class="pe-start-main"><b>前日の宿泊先</b><br><span>${escapeHtml(coverPrev.stay.title)}</span></div></div>`
         : "";
       // 都市バンド（ルート都市の滞在範囲が変わる初日に挿入）
       const city = cityForDate(day.date);
@@ -697,7 +749,7 @@ function refreshNode(item: Item): void {
   if (item.kind === "stay") {
     const main = node.querySelector<HTMLElement>(".pe-stay-main");
     if (main) {
-      const title = item.title || "宿泊先 未入力";
+    const title = item.title || "宿泊先未入力";
       const meta = [item.time ? `IN ${item.time}` : "", item.place].filter(Boolean).join(" ・ ");
       main.innerHTML = `<b class="${item.title ? "" : "is-empty"}">${escapeHtml(title)}</b><span>${escapeHtml(meta || "この日の宿泊先")}</span>`;
     }
@@ -891,7 +943,7 @@ function applyGeo(itemId: number, target: GeoTarget, r: GeoResult): void {
   if (resultsEl) { resultsEl.hidden = true; resultsEl.innerHTML = ""; }
   clearCandidates();
   mapHintEl.textContent = "";
-  setGeoStatus(itemId, target, "地図に登録しました", "ok");
+  setGeoStatus(itemId, target, "位置を設定しました", "ok");
   markDirty();
   refreshMap(true);
 }
@@ -1262,10 +1314,10 @@ function save(): void {
 
 // ---- ヘッダーアイコン・初期化 -------------------------------------------
 
-qs<HTMLAnchorElement>(root, "[data-back]").innerHTML = icon("arrowLeft") + "<span>一覧</span>";
-openLink.innerHTML = icon("arrowTopRightOnSquare") + "<span>表示</span>";
+qs<HTMLAnchorElement>(root, "[data-back]").innerHTML = icon("chevronLeft");
+openLink.innerHTML = icon("eye");
 const saveBtn = qs<HTMLButtonElement>(root, "[data-save]");
-saveBtn.innerHTML = icon("bookmark") + "<span>今すぐ保存</span>";
+saveBtn.innerHTML = icon("bookmark") + "<span>保存</span>";
 saveBtn.addEventListener("click", save);
 qs<HTMLButtonElement>(root, "[data-city-add]").innerHTML = icon("plus") + "<span>追加</span>";
 qs<HTMLElement>(root, "[data-local-note]").insertAdjacentHTML("afterbegin", icon("informationCircle") + " ");
@@ -1299,6 +1351,51 @@ function setMapCollapsed(collapsed: boolean): void {
 }
 mapToggle.addEventListener("click", () => setMapCollapsed(!root!.classList.contains("map-collapsed")));
 mapShow.addEventListener("click", () => setMapCollapsed(false));
+
+// スマホ: 地図ボトムシートの境界をドラッグして高さを変更
+const mapGrip = root!.querySelector<HTMLElement>("[data-map-grip]");
+const mapWrapEl = root!.querySelector<HTMLElement>(".pe-mapwrap");
+if (mapGrip && mapWrapEl) {
+  const MIN_MAP_H = 180;
+  const maxMapH = (): number => Math.round(window.innerHeight * 0.92);
+  let resizeRaf = 0;
+  let dragging = false;
+  const applyMapHeight = (height: number, persist = true): void => {
+    const h = Math.max(MIN_MAP_H, Math.min(maxMapH(), Math.round(height)));
+    root!.style.setProperty("--pe-map-h", `${h}px`);
+    if (resizeRaf) cancelAnimationFrame(resizeRaf);
+    resizeRaf = requestAnimationFrame(() => { if (map) map.invalidateSize({ animate: false }); });
+    if (persist) { try { localStorage.setItem("pe-map-h", String(h)); } catch { /* ignore */ } }
+  };
+  mapGrip.addEventListener("pointerdown", (e) => {
+    dragging = true;
+    root!.classList.add("is-map-resizing");
+    try { mapGrip.setPointerCapture(e.pointerId); } catch { /* ignore */ }
+    e.preventDefault();
+  });
+  mapGrip.addEventListener("pointermove", (e) => {
+    if (!dragging) return;
+    applyMapHeight(window.innerHeight - e.clientY);
+  });
+  const endMapDrag = (e: PointerEvent): void => {
+    if (!dragging) return;
+    dragging = false;
+    root!.classList.remove("is-map-resizing");
+    try { mapGrip.releasePointerCapture(e.pointerId); } catch { /* ignore */ }
+    if (map) map.invalidateSize();
+  };
+  mapGrip.addEventListener("pointerup", endMapDrag);
+  mapGrip.addEventListener("pointercancel", endMapDrag);
+  mapGrip.addEventListener("keydown", (e) => {
+    const cur = mapWrapEl.getBoundingClientRect().height;
+    if (e.key === "ArrowUp") { applyMapHeight(cur + 24); e.preventDefault(); }
+    else if (e.key === "ArrowDown") { applyMapHeight(cur - 24); e.preventDefault(); }
+  });
+  try {
+    const saved = Number(localStorage.getItem("pe-map-h"));
+    if (saved && saved >= MIN_MAP_H) applyMapHeight(saved, false);
+  } catch { /* ignore */ }
+}
 
 // 行のキーボード操作（Enter/Space で開閉）
 function focusOpenItem(): void {
@@ -1343,9 +1440,11 @@ renderCities();
 renderDays();
 initMap();
 refreshMap(true);
-// 地図の初期表示：保存設定があれば従う。無指定かつ小さい画面では既定で畳む（リスト優先）
+// 地図の初期表示：スマホは入力を優先し、地図は必要な時だけ開く。
 const savedMapPref = localStorage.getItem("pe-map-collapsed");
-if (savedMapPref === "1" || (savedMapPref == null && window.matchMedia("(max-width: 760px)").matches)) {
+if (window.matchMedia("(max-width: 680px)").matches) {
+  setMapCollapsed(true);
+} else if (savedMapPref === "1" || (savedMapPref == null && window.matchMedia("(max-width: 760px)").matches)) {
   setMapCollapsed(true);
 }
 statusEl.textContent = isNew ? "下書き（自動保存・未保存）" : editable ? "読み込み完了" : statusEl.textContent;

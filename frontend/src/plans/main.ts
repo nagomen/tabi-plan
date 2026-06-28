@@ -54,13 +54,6 @@ const SOURCE_LABEL: Record<string, string> = {
   sample: "サンプル",
 };
 
-const SOURCE_ICON: Record<string, string> = {
-  local: icon("mapPin"),
-  googleSheets: icon("documentText"),
-  appsScript: icon("globeAlt"),
-  sample: icon("sparkles"),
-};
-
 function sourceClass(source: PlanSource | string): string {
   return ["local", "googleSheets", "appsScript", "sample"].indexOf(source) >= 0 ? source : "sample";
 }
@@ -93,54 +86,74 @@ function render(): void {
       const src = sourceClass(meta.source);
       const isLocal = meta.source === "local";
       const isActive = meta.slug === activeSlug;
-      return (
-        "" +
-        '<article class="plan-card' +
-        (isActive ? " is-active" : "") +
-        '" data-slug="' +
-        escapeHtml(meta.slug) +
-        '">' +
-        '<div class="plan-badges">' +
-        '<span class="plan-badge ' +
-        src +
-        '">' +
-        (SOURCE_ICON[src] || "") +
-        escapeHtml(SOURCE_LABEL[src] || src) +
-        "</span>" +
-        (isActive ? '<span class="plan-badge current">表示中</span>' : "") +
-        "</div>" +
-        '<h2 class="plan-name">' +
-        escapeHtml(meta.title || "無題の旅行") +
-        "</h2>" +
-        '<div class="plan-meta">' +
-        (meta.dates ? "<span><b>期間</b> " + escapeHtml(meta.dates) + "</span>" : "") +
-        (meta.members ? "<span><b>メンバー</b> " + escapeHtml(meta.members) + "</span>" : "") +
-        "</div>" +
-        (meta.route ? '<div class="plan-route">' + escapeHtml(meta.route) + "</div>" : "") +
-        '<div class="plan-actions">' +
-        '<a class="plan-btn primary" href="index.html?plan=' +
-        encodeURIComponent(meta.slug) +
-        '" data-open>' +
-        icon("arrowTopRightOnSquare") +
-        "<span>開く</span></a>" +
+      const metaLine = [meta.dates, meta.members].filter(Boolean).map(escapeHtml).join(" · ");
+      const menuItems =
         (isLocal || meta.source === "appsScript"
-          ? '<button class="plan-btn" type="button" data-edit>' + icon("pencilSquare") + "<span>編集</span></button>"
+          ? '<button class="plan-menu-item" type="button" data-edit>' + icon("pencilSquare") + "<span>編集</span></button>"
           : "") +
         (isLocal
-          ? '<button class="plan-btn" type="button" data-publish>' + icon("globeAlt") + "<span>公開</span></button>"
+          ? '<button class="plan-menu-item" type="button" data-publish>' + icon("globeAlt") + "<span>公開</span></button>"
           : "") +
-        '<button class="plan-btn" type="button" data-dup>' +
+        '<button class="plan-menu-item" type="button" data-dup>' +
         icon("documentDuplicate") +
         "<span>複製</span></button>" +
         (meta.builtIn
           ? ""
-          : '<button class="plan-btn danger" type="button" data-del>' + icon("trash") + "<span>削除</span></button>") +
+          : '<button class="plan-menu-item danger" type="button" data-del>' + icon("trash") + "<span>削除</span></button>");
+      return (
+        "" +
+        '<article class="plan-row' +
+        (isActive ? " is-active" : "") +
+        '" data-slug="' +
+        escapeHtml(meta.slug) +
+        '">' +
+        '<a class="plan-open" href="index.html?plan=' +
+        encodeURIComponent(meta.slug) +
+        '" data-open>' +
+        '<span class="plan-dot ' +
+        src +
+        '" title="' +
+        escapeHtml(SOURCE_LABEL[src] || src) +
+        '" aria-label="' +
+        escapeHtml(SOURCE_LABEL[src] || src) +
+        '"></span>' +
+        '<span class="plan-body">' +
+        '<span class="plan-name">' +
+        escapeHtml(meta.title || "無題の旅行") +
+        (isActive ? '<span class="plan-tag">表示中</span>' : "") +
+        "</span>" +
+        (metaLine ? '<span class="plan-meta">' + metaLine + "</span>" : "") +
+        (meta.route ? '<span class="plan-route">' + escapeHtml(meta.route) + "</span>" : "") +
+        "</span>" +
+        "</a>" +
+        '<div class="plan-tools">' +
+        '<button class="plan-menu-btn" type="button" data-menu aria-haspopup="true" aria-expanded="false" aria-label="その他の操作">' +
+        icon("ellipsisHorizontal") +
+        "</button>" +
+        '<div class="plan-menu" data-menu-panel hidden>' +
+        menuItems +
+        "</div>" +
         "</div>" +
         "</article>"
       );
     })
     .join("");
 }
+
+function closeMenus(except?: Element | null): void {
+  grid.querySelectorAll<HTMLElement>("[data-menu-panel]").forEach((panel) => {
+    if (panel === except) return;
+    panel.hidden = true;
+    const btn = panel.parentElement?.querySelector<HTMLButtonElement>("[data-menu]");
+    if (btn) btn.setAttribute("aria-expanded", "false");
+  });
+}
+
+document.addEventListener("click", (event) => {
+  const target = event.target;
+  if (target instanceof Element && target.closest(".plan-tools")) return;
+  closeMenus();
+});
 
 grid.addEventListener("click", (event) => {
   const target = event.target;
@@ -149,10 +162,23 @@ grid.addEventListener("click", (event) => {
   if (!card) return;
   const slug = card.dataset.slug || "";
 
+  const menuButton = target.closest<HTMLButtonElement>("[data-menu]");
+  if (menuButton) {
+    event.preventDefault();
+    const panel = card.querySelector<HTMLElement>("[data-menu-panel]");
+    if (!panel) return;
+    const willOpen = panel.hidden;
+    closeMenus(willOpen ? panel : null);
+    panel.hidden = !willOpen;
+    menuButton.setAttribute("aria-expanded", String(willOpen));
+    return;
+  }
+
   if (target.closest("[data-open]")) {
     TripPlans.setActiveSlug(slug);
     return; // リンク遷移はそのまま
   }
+  closeMenus();
   if (target.closest("[data-edit]")) {
     event.preventDefault();
     TripPlans.setActiveSlug(slug);
