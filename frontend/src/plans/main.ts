@@ -10,6 +10,7 @@ import { readGlobalTripConfig } from "../shared/config";
 import { escapeHtml, errorMessage, makeScopedQuery } from "../shared/dom";
 import { registerServiceWorker } from "../shared/pwa";
 import { icon } from "../shared/icons";
+import { decodeInvite } from "../shared/invite";
 import {
   callAppsScript,
   postAppsScript,
@@ -403,4 +404,30 @@ filterEl.addEventListener("input", (event) => {
 
 registerServiceWorker();
 
-render();
+// 招待リンク（plans.html#join=<token>）を開いたら、計画を取り込んでダッシュボードへ。
+function handleJoinLink(): boolean {
+  const m = /(?:^|[#&])join=([^&]+)/.exec(location.hash || "");
+  if (!m) return false;
+  history.replaceState(null, "", location.pathname + location.search);
+  const payload = decodeInvite(m[1]);
+  if (!payload) {
+    showToast("招待リンクを読み込めませんでした。", true);
+    return false;
+  }
+  const slug = TripPlans.safeSlug(payload.meta.slug || payload.meta.title || "trip");
+  TripPlans.upsert({
+    slug,
+    title: payload.meta.title || "共有された旅行",
+    dates: payload.meta.dates || "",
+    members: payload.meta.members || "",
+    route: payload.meta.route || "",
+    source: "local",
+    builtIn: false,
+  });
+  TripPlans.saveData(slug, payload.data);
+  TripPlans.setActiveSlug(slug);
+  location.replace("index.html?plan=" + encodeURIComponent(slug));
+  return true;
+}
+
+if (!handleJoinLink()) render();

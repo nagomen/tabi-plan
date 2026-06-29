@@ -368,6 +368,119 @@
   }
   .pe-daterange-warn { color: var(--red); font-size: 12px; font-weight: 600; margin: 10px 0 0; }
 
+  /* カレンダー連携 */
+  .pe-calsync {
+    display: grid;
+    gap: 8px;
+    margin-top: 16px;
+    padding: 14px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--wash);
+  }
+  .pe-calsync-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    color: var(--green);
+    font-size: 13px;
+    font-weight: 700;
+  }
+  .pe-calsync-label .hi { width: 16px; height: 16px; vertical-align: 0; }
+  .pe-calsync-btns { display: flex; flex-wrap: wrap; gap: 8px; }
+  .pe-calsync-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    min-height: 42px;
+    padding: 0 16px;
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius);
+    background: #fff;
+    color: var(--ink);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .pe-calsync-btn:hover { border-color: var(--green); color: var(--green); }
+  .pe-calsync-btn.primary { border-color: var(--green); background: var(--green); color: #fff; }
+  .pe-calsync-btn.primary:hover { background: var(--green-deep); color: #fff; }
+  .pe-calsync-btn .hi { width: 16px; height: 16px; vertical-align: 0; }
+  .pe-calsync-btn:disabled { opacity: .5; cursor: not-allowed; }
+  .pe-calsync-note { color: var(--muted); font-size: 11.5px; font-weight: 500; }
+
+  /* メンバー（チップ＋候補＋招待） */
+  .pe-members { display: flex; flex-wrap: wrap; gap: 7px; }
+  .pe-members:empty { display: none; }
+  .pe-chip-m {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 6px 5px 12px;
+    border: 1px solid var(--line-strong);
+    border-radius: 999px;
+    background: #fff;
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .pe-chip-m.is-self { background: var(--green-soft); border-color: rgba(7, 95, 70, .3); color: var(--green); }
+  .pe-chip-m > .hi { width: 15px; height: 15px; vertical-align: 0; }
+  .pe-chip-self { font-size: 10px; font-weight: 700; color: var(--green); }
+  .pe-chip-ic {
+    display: inline-grid;
+    place-items: center;
+    width: 24px;
+    height: 24px;
+    border: 0;
+    border-radius: 50%;
+    background: none;
+    color: var(--muted);
+    cursor: pointer;
+  }
+  .pe-chip-ic:hover { background: rgba(0, 0, 0, .05); color: var(--ink); }
+  .pe-chip-ic.invite:hover { color: var(--green); }
+  .pe-chip-ic.del:hover { color: var(--red); }
+  .pe-chip-ic .hi { width: 15px; height: 15px; vertical-align: 0; }
+
+  .pe-member-add { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; margin-top: 9px; max-width: 480px; }
+  .pe-member-inputwrap { position: relative; min-width: 0; }
+  .pe-member-inputwrap input { width: 100%; min-height: 44px; border: 1px solid var(--line-strong); border-radius: var(--radius); padding: 9px 12px; font: inherit; font-size: 14px; }
+  .pe-member-inputwrap input:focus { outline: none; border-color: var(--green); box-shadow: 0 0 0 3px rgba(7, 95, 70, .14); }
+  .pe-member-suggest {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: calc(100% + 4px);
+    z-index: 30;
+    max-height: 230px;
+    overflow-y: auto;
+    background: #fff;
+    border: 1px solid var(--line-strong);
+    border-radius: 12px;
+    box-shadow: 0 12px 34px rgba(16, 32, 26, .14);
+  }
+  .pe-member-suggest[hidden] { display: none; }
+  .pe-suggest-head { padding: 8px 12px 4px; color: var(--muted); font-size: 11px; font-weight: 700; letter-spacing: .04em; }
+  .pe-suggest-item { display: flex; align-items: center; gap: 9px; width: 100%; padding: 10px 12px; border: 0; border-top: 1px solid var(--line); background: #fff; font: inherit; font-size: 14px; font-weight: 600; text-align: left; cursor: pointer; }
+  .pe-suggest-item:hover, .pe-suggest-item.is-active { background: var(--green-soft); color: var(--green); }
+  .pe-suggest-item .hi { color: var(--green); width: 16px; height: 16px; vertical-align: 0; }
+
+  /* 名前登録モーダル */
+  .pe-modal { position: fixed; inset: 0; z-index: 9999; display: grid; place-items: center; padding: 18px; background: rgba(17, 25, 22, .45); }
+  .pe-modal-box { width: min(420px, 100%); background: #fff; border-radius: 16px; box-shadow: 0 22px 60px rgba(0, 0, 0, .28); overflow: hidden; }
+  .pe-modal-box h2 { margin: 0; padding: 20px 22px 4px; font-size: 18px; font-weight: 700; }
+  .pe-modal-box p { margin: 0; padding: 0 22px; color: var(--muted); font-size: 13px; }
+  .pe-modal-body { padding: 16px 22px 20px; display: grid; gap: 12px; }
+  .pe-modal-body input { min-height: 48px; border: 1px solid var(--line-strong); border-radius: 10px; padding: 10px 12px; font: inherit; font-size: 16px; }
+  .pe-modal-body input:focus { outline: none; border-color: var(--green); box-shadow: 0 0 0 3px rgba(7, 95, 70, .14); }
+  .pe-modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
+  .pe-modal-btn { min-height: 44px; padding: 0 18px; border: 1px solid var(--green); border-radius: 10px; background: var(--green); color: #fff; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
+  .pe-modal-btn.ghost { background: #fff; color: var(--ink); border-color: var(--line-strong); }
+
+  /* トースト */
+  .pe-toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 9998; max-width: 88%; padding: 11px 16px; border-radius: 10px; background: var(--ink); color: #fff; font-size: 13px; font-weight: 600; box-shadow: 0 14px 34px rgba(0, 0, 0, .28); }
+
   /* ルート（大まかな場所） */
   .pe-form-panel {
     padding: 22px;
@@ -821,6 +934,8 @@
     .pe-field textarea { min-height: 48px; font-size: 16px; }
     .pe-route-add { grid-template-columns: 1fr auto; }
     .pe-route-add input { min-height: 48px; font-size: 16px; }
+    .pe-member-add { max-width: none; }
+    .pe-member-inputwrap input { min-height: 48px; font-size: 16px; }
     .pe-route { margin-top: 0; padding-top: 0; border-top: 0; }
     .pe-city { align-items: stretch; gap: 8px; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; background: transparent; padding: 10px 0; }
     .pe-empty-cta { border: 0; background: transparent; padding: 32px 8px; }
@@ -930,16 +1045,32 @@
               <span data-ic-period>期間 <em>カレンダーで開始日→終了日を選択</em></span>
               <input data-range placeholder="期間を選択" readonly>
             </label>
-            <label class="pe-field c3">
-              <span data-ic-members>メンバー <em>任意</em></span>
-              <input data-f="members" placeholder="例: 太郎, 花子">
-            </label>
-            <label class="pe-field c3">
+            <div class="pe-field c6">
+              <span data-ic-members>メンバー <em>任意・友達は候補から選べます</em></span>
+              <div class="pe-members" data-members></div>
+              <div class="pe-member-add">
+                <div class="pe-member-inputwrap">
+                  <input data-member-input type="text" autocomplete="off" placeholder="名前を入力して追加" aria-label="メンバーを追加">
+                  <div class="pe-member-suggest" data-member-suggest hidden></div>
+                </div>
+                <button class="pe-mini" type="button" data-member-add data-ic-memberadd>追加</button>
+              </div>
+            </div>
+            <label class="pe-field c6">
               <span data-ic-note>共有メモ <em>任意</em></span>
               <input data-f="note" placeholder="共有しておきたいメモ">
             </label>
           </div>
           <p class="pe-daterange-warn" data-daterange-warn hidden>終了日は開始日より後にしてください。</p>
+
+          <div class="pe-calsync">
+            <span class="pe-calsync-label" data-ic-cal>カレンダーに連携</span>
+            <div class="pe-calsync-btns">
+              <button class="pe-calsync-btn primary" type="button" data-gcal data-ic-gcal>Googleカレンダーに追加</button>
+              <button class="pe-calsync-btn" type="button" data-ics data-ic-ics>.ics を書き出し</button>
+            </div>
+            <span class="pe-calsync-note">期間を設定すると連携できます。Googleは新規予定の作成画面が開きます。</span>
+          </div>
           </div>
 
           <div class="pe-route" data-step-panel="2">

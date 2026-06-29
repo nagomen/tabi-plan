@@ -20,6 +20,10 @@ import { readGlobalTripConfig } from "../shared/config";
 import { escapeHtml } from "../shared/dom";
 import { icon, type IconName } from "../shared/icons";
 import { registerServiceWorker } from "../shared/pwa";
+import { getUser, setUserName } from "../shared/user-store";
+import { friendCandidates, splitNames } from "../shared/friend-store";
+import { buildInviteLink } from "../shared/invite";
+import { gcalUrl, buildIcs, type CalEvent } from "../shared/calendar";
 
 // ---- モデル -------------------------------------------------------------
 
@@ -152,6 +156,10 @@ const ICON_MOUNTS: [string, IconName][] = [
   ["[data-ic-name]", "bookmark"],
   ["[data-ic-period]", "calendarDays"],
   ["[data-ic-members]", "users"],
+  ["[data-ic-memberadd]", "plus"],
+  ["[data-ic-cal]", "calendarDays"],
+  ["[data-ic-gcal]", "calendarDays"],
+  ["[data-ic-ics]", "documentText"],
   ["[data-ic-note]", "documentText"],
   ["[data-city-add]", "plus"],
   ["[data-export]", "documentText"],
@@ -657,6 +665,7 @@ function renderDayStrip(): void {
 
 function renderDays(): void {
   updateSteps();
+  updateCalsync();
   renderDayStrip();
   dayCountEl.textContent = model.days.length ? `全${model.days.length}日` : "";
   if (!model.days.length) {
@@ -1081,6 +1090,235 @@ root.querySelectorAll<HTMLInputElement>("[data-f]").forEach((input) => {
   });
 });
 
+// ---- メンバー（チップ／友達候補／招待リンク） --------------------------
+
+const membersMount = qs<HTMLElement>(root, "[data-members]");
+const memberInput = qs<HTMLInputElement>(root, "[data-member-input]");
+const memberSuggest = qs<HTMLElement>(root, "[data-member-suggest]");
+
+function memberArray(): string[] { return splitNames(model.members); }
+function setMembers(arr: string[]): void {
+  model.members = arr.join("、");
+  markDirty();
+  renderMembers();
+}
+function addMember(name: string): void {
+  const n = name.trim();
+  if (!n) return;
+  const arr = memberArray();
+  if (!arr.includes(n)) arr.push(n);
+  setMembers(arr);
+}
+function removeMember(name: string): void {
+  setMembers(memberArray().filter((x) => x !== name));
+}
+
+function renderMembers(): void {
+  const me = getUser().name;
+  const arr = memberArray();
+  membersMount.innerHTML = arr
+    .map((name) => {
+      const self = Boolean(me) && name === me;
+      return (
+        `<span class="pe-chip-m${self ? " is-self" : ""}">` +
+        (self ? icon("user") : "") +
+        `<span>${escapeHtml(name)}</span>` +
+        (self ? `<span class="pe-chip-self">自分</span>` : "") +
+        (self
+          ? ""
+          : `<button class="pe-chip-ic invite" type="button" data-invite="${escapeHtml(name)}" title="招待リンクを送る" aria-label="${escapeHtml(name)}を招待">${icon("paperAirplane")}</button>`) +
+        `<button class="pe-chip-ic del" type="button" data-rm="${escapeHtml(name)}" title="削除" aria-label="${escapeHtml(name)}を削除">${icon("xMark")}</button>` +
+        `</span>`
+      );
+    })
+    .join("");
+}
+
+membersMount.addEventListener("click", (event) => {
+  const t = event.target;
+  if (!(t instanceof Element)) return;
+  const rm = t.closest<HTMLElement>("[data-rm]");
+  if (rm) { removeMember(rm.dataset.rm || ""); return; }
+  const inv = t.closest<HTMLElement>("[data-invite]");
+  if (inv) { void shareInvite(inv.dataset.invite || ""); }
+});
+
+function commitMemberInput(): void {
+  const v = memberInput.value.trim();
+  if (v) addMember(v);
+  memberInput.value = "";
+  memberSuggest.hidden = true;
+  memberInput.focus();
+}
+function renderSuggest(): void {
+  const q = memberInput.value.trim().toLowerCase();
+  const cands = friendCandidates(memberArray()).filter((n) => !q || n.toLowerCase().includes(q));
+  if (!cands.length) { memberSuggest.hidden = true; return; }
+  memberSuggest.innerHTML =
+    `<div class="pe-suggest-head">友達から追加</div>` +
+    cands
+      .slice(0, 8)
+      .map((n) => `<button class="pe-suggest-item" type="button" data-pick="${escapeHtml(n)}">${icon("user")}<span>${escapeHtml(n)}</span></button>`)
+      .join("");
+  memberSuggest.hidden = false;
+}
+memberInput.addEventListener("input", renderSuggest);
+memberInput.addEventListener("focus", renderSuggest);
+memberInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") { e.preventDefault(); commitMemberInput(); }
+  else if (e.key === "Escape") { memberSuggest.hidden = true; }
+});
+qs<HTMLButtonElement>(root, "[data-member-add]").addEventListener("click", commitMemberInput);
+memberSuggest.addEventListener("click", (event) => {
+  const t = event.target;
+  if (!(t instanceof Element)) return;
+  const pick = t.closest<HTMLElement>("[data-pick]");
+  if (!pick) return;
+  addMember(pick.dataset.pick || "");
+  memberInput.value = "";
+  memberSuggest.hidden = true;
+  memberInput.focus();
+});
+document.addEventListener("click", (e) => {
+  if (e.target instanceof Element && !e.target.closest(".pe-member-add")) memberSuggest.hidden = true;
+});
+
+function toast(message: string): void {
+  const el = document.createElement("div");
+  el.className = "pe-toast";
+  el.textContent = message;
+  document.body.appendChild(el);
+  window.setTimeout(() => el.remove(), 3200);
+}
+
+async function shareInvite(name: string): Promise<void> {
+  if (!model.title.trim()) { toast("先に旅行名を入力してください"); return; }
+  if (!slug) { slug = TripPlans.uniqueSlug(model.title); model.slug = slug; }
+  persist();
+  const data = buildData();
+  const link = buildInviteLink({
+    v: 1,
+    meta: {
+      slug,
+      title: model.title,
+      dates: datesString(),
+      members: model.members,
+      route: (data.cities || []).map((c) => c.name).filter(Boolean).join("→"),
+    },
+    data,
+    invitedName: name,
+  });
+  const shareData = {
+    title: model.title || "旅行計画",
+    text: `「${model.title || "旅行"}」に${name ? `${name}さんを` : ""}招待します`,
+    url: link,
+  };
+  if (navigator.share) {
+    try { await navigator.share(shareData); return; }
+    catch { return; /* キャンセル */ }
+  }
+  try { await navigator.clipboard.writeText(link); toast("招待リンクをコピーしました"); }
+  catch { window.prompt("招待リンクをコピーしてください", link); }
+}
+
+/** 新規作成時: 未登録なら名前登録を促し、登録済みならメンバーに自分を自動追加。 */
+function ensureSelfMember(): void {
+  const me = getUser().name;
+  if (me) { addMember(me); return; }
+  const modal = document.createElement("div");
+  modal.className = "pe-modal";
+  modal.innerHTML =
+    `<form class="pe-modal-box">` +
+    `<h2>あなたの名前を登録</h2>` +
+    `<p>この端末に保存し、作成する旅行のメンバーに自動で追加します。次回からは自動で入ります。</p>` +
+    `<div class="pe-modal-body">` +
+    `<input type="text" maxlength="24" placeholder="例: 太郎" aria-label="あなたの名前">` +
+    `<div class="pe-modal-actions">` +
+    `<button type="button" class="pe-modal-btn ghost" data-skip>あとで</button>` +
+    `<button type="submit" class="pe-modal-btn">登録</button>` +
+    `</div></div></form>`;
+  document.body.appendChild(modal);
+  const input = modal.querySelector<HTMLInputElement>("input");
+  const form = modal.querySelector<HTMLFormElement>("form");
+  input?.focus();
+  modal.querySelector("[data-skip]")?.addEventListener("click", () => modal.remove());
+  form?.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const n = (input?.value || "").trim();
+    if (!n) { input?.focus(); return; }
+    setUserName(n);
+    addMember(n);
+    modal.remove();
+  });
+}
+
+// ---- カレンダー連携（Google テンプレート / .ics） ----------------------
+
+const gcalBtn = qs<HTMLButtonElement>(root, "[data-gcal]");
+const icsBtn = qs<HTMLButtonElement>(root, "[data-ics]");
+
+/** 旅行全体を1つの終日イベントとして組み立てる。期間未設定なら null。 */
+function planSpanEvent(): CalEvent | null {
+  const s = parseISO(model.startDate);
+  if (!s) return null;
+  const e = parseISO(model.endDate) || s;
+  const start = new Date(s.getFullYear(), s.getMonth(), s.getDate());
+  const endExclusive = new Date(e.getFullYear(), e.getMonth(), e.getDate() + 1);
+  const cities = model.cities.map((c) => c.name).filter(Boolean);
+  const details = [
+    model.members ? `メンバー: ${model.members}` : "",
+    cities.length ? `ルート: ${cities.join(" → ")}` : "",
+    model.note || "",
+  ].filter(Boolean).join("\n");
+  return { title: model.title || "旅行", start, end: endExclusive, allDay: true, details, location: cities[0] || "" };
+}
+
+/** 各行程アイテムを時刻付きイベントにする（.ics 用）。 */
+function itineraryEvents(): CalEvent[] {
+  const data = buildData();
+  const out: CalEvent[] = [];
+  (data.itinerary || []).forEach((it) => {
+    const d = parseISO(it.date);
+    if (!d) return;
+    const [hhRaw, mmRaw] = String(it.time || "").split(":");
+    const hh = Number(hhRaw);
+    const mm = Number(mmRaw);
+    const start = new Date(d.getFullYear(), d.getMonth(), d.getDate(), Number.isFinite(hh) ? hh : 9, Number.isFinite(mm) ? mm : 0);
+    const end = new Date(start.getTime() + 60 * 60 * 1000);
+    const title = [it.typeLabel, it.title || it.place].filter(Boolean).join(" ") || "予定";
+    out.push({ title, start, end, allDay: false, location: it.place || it.mapQuery || "", details: it.note || "" });
+  });
+  return out;
+}
+
+function updateCalsync(): void {
+  const ok = Boolean(parseISO(model.startDate));
+  gcalBtn.disabled = !ok;
+  icsBtn.disabled = !ok;
+}
+
+gcalBtn.addEventListener("click", () => {
+  const ev = planSpanEvent();
+  if (!ev) { toast("先に期間を設定してください"); return; }
+  window.open(gcalUrl(ev), "_blank", "noopener");
+});
+
+icsBtn.addEventListener("click", () => {
+  const span = planSpanEvent();
+  if (!span) { toast("先に期間を設定してください"); return; }
+  const ics = buildIcs(model.title || "旅行", [span, ...itineraryEvents()], new Date());
+  const blob = new Blob([ics], { type: "text/calendar;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = (model.title || "trip").replace(/\s+/g, "_").replace(/[\\/:*?"<>|]/g, "") + ".ics";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  toast("カレンダー(.ics)を書き出しました");
+});
+
 cityInput.addEventListener("keydown", (e) => {
   if (e.key === "Enter") { e.preventDefault(); void addCity(cityInput.value); cityInput.value = ""; }
 });
@@ -1166,10 +1404,11 @@ citiesEl.addEventListener("input", (event) => {
 
 function syncBasicInputs(): void {
   qs<HTMLInputElement>(root!, '[data-f="title"]').value = model.title || "";
-  qs<HTMLInputElement>(root!, '[data-f="members"]').value = model.members || "";
   qs<HTMLInputElement>(root!, '[data-f="note"]').value = model.note || "";
+  renderMembers();
   if (model.startDate && model.endDate) fp.setDate([model.startDate, model.endDate], false);
   titleEcho.textContent = model.title || "新しい計画";
+  updateCalsync();
 }
 
 function coordOut(s: string): number | "" {
@@ -1435,6 +1674,7 @@ window.addEventListener("beforeunload", (event) => {
 const editable = loadExisting();
 if (slug) { openLink.href = "index.html?plan=" + encodeURIComponent(slug); openLink.hidden = false; }
 syncBasicInputs();
+if (isNew && editable) ensureSelfMember();
 rebuildDays();
 renderCities();
 renderDays();
