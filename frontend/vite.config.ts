@@ -114,6 +114,7 @@ export default defineConfig({
       input: {
         index: resolve(rootDir, "index.html"),
         plans: resolve(rootDir, "plans.html"),
+        mypage: resolve(rootDir, "mypage.html"),
         planEditor: resolve(rootDir, "plan-editor.html"),
         expenseEntry: resolve(rootDir, "expense-entry.html"),
         itineraryEditor: resolve(rootDir, "itinerary-editor.html"),

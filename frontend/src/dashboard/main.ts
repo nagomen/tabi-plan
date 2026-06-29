@@ -2272,7 +2272,10 @@ async function init(): Promise<void> {
     const sheet = root.querySelector<HTMLElement>("[data-expense-sheet]");
     if (sheet && !sheet.hidden) setExpenseSheet(false);
   });
-  // マイページ（後日実装）はヘッダーに静的表示のみ。押しても今は何もしない。
+  // マイページへ遷移。
+  root.querySelector<HTMLButtonElement>("[data-mypage]")?.addEventListener("click", () => {
+    location.href = "mypage.html";
+  });
   // フッターの「編集」を source で振り分け（ローカル→計画エディタ / appsScript→行程編集）。
   // googleSheets/sample は閲覧のみなので非表示。
   const editWrap = root.querySelector<HTMLElement>("[data-edit-wrap]");
