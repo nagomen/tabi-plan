@@ -15,7 +15,7 @@ import Sortable from "sortablejs";
 
 import * as TripPlans from "../shared/plans-store";
 import type { LocalPlanData } from "../shared/plans-store";
-import type { ItineraryItem, ItemType } from "../shared/types";
+import type { ItineraryItem, ItemType, Candidate } from "../shared/types";
 import { readGlobalTripConfig } from "../shared/config";
 import { escapeHtml } from "../shared/dom";
 import { icon, type IconName } from "../shared/icons";
@@ -100,6 +100,7 @@ interface Model {
   endDate: string;
   cities: City[];
   days: Day[];
+  candidates: Candidate[];
 }
 
 type GeoTarget = "place" | "from" | "to";
@@ -150,6 +151,7 @@ const tripSummaryEl = qs<HTMLElement>(root, "[data-trip-summary]");
 qs<HTMLElement>(root, "[data-ic-setup]").insertAdjacentHTML("afterbegin", icon("sparkles") + " ");
 qs<HTMLElement>(root, "[data-ic-route]").insertAdjacentHTML("afterbegin", icon("map") + " ");
 qs<HTMLElement>(root, "[data-ic-days]").insertAdjacentHTML("afterbegin", icon("calendarDays") + " ");
+qs<HTMLElement>(root, "[data-ic-cand]").insertAdjacentHTML("afterbegin", icon("star") + " ");
 
 // 入力ラベル・操作ボタンにも Heroicon を添える
 const ICON_MOUNTS: [string, IconName][] = [
@@ -162,6 +164,7 @@ const ICON_MOUNTS: [string, IconName][] = [
   ["[data-ic-ics]", "documentText"],
   ["[data-ic-note]", "documentText"],
   ["[data-city-add]", "plus"],
+  ["[data-cand-add]", "plus"],
   ["[data-export]", "documentText"],
   ["[data-save]", "bookmark"],
 ];
@@ -178,7 +181,7 @@ const isNew = !planParam;
 let slug = isNew ? "" : TripPlans.safeSlug(planParam);
 
 const model: Model = {
-  slug, title: "", members: "", note: "", startDate: "", endDate: "", cities: [], days: [],
+  slug, title: "", members: "", note: "", startDate: "", endDate: "", cities: [], days: [], candidates: [],
 };
 let dirty = false;
 let seq = 1;
@@ -1191,12 +1194,154 @@ function toast(message: string): void {
   window.setTimeout(() => el.remove(), 3200);
 }
 
+// ---- 行きたい候補（投票ボード） ----------------------------------------
+
+const candMount = qs<HTMLElement>(root, "[data-candidates]");
+const candInput = qs<HTMLInputElement>(root, "[data-cand-input]");
+const candCountEl = qs<HTMLElement>(root, "[data-cand-count]");
+
+function candId(): string {
+  return "cand_" + seq++ + "_" + Math.random().toString(36).slice(2, 6);
+}
+
+/** 票数の多い順（同数は作成順）に並べる。 */
+function sortedCandidates(): Candidate[] {
+  return model.candidates
+    .map((c, i) => ({ c, i }))
+    .sort((a, b) => (b.c.votes?.length || 0) - (a.c.votes?.length || 0) || a.i - b.i)
+    .map((x) => x.c);
+}
+
+function renderCandidates(): void {
+  const me = getUser().name.trim();
+  const list = sortedCandidates();
+  candCountEl.textContent = list.length ? `${list.length}件` : "";
+  if (!list.length) {
+    candMount.innerHTML = "";
+    return;
+  }
+  const canAdopt = model.days.length > 0;
+  candMount.innerHTML = list
+    .map((c) => {
+      const voted = Boolean(me) && (c.votes || []).includes(me);
+      const n = (c.votes || []).length;
+      const sub = [c.place, c.proposer ? `提案: ${c.proposer}` : ""].filter(Boolean).join(" ・ ");
+      return (
+        `<div class="pe-cand-row${c.adopted ? " is-adopted" : ""}" data-cand="${escapeHtml(c.id)}">` +
+        `<button class="pe-cand-vote${voted ? " is-voted" : ""}" type="button" data-cand-vote="${escapeHtml(c.id)}" aria-pressed="${voted}" title="行きたい">${icon("star")}<span>${n}</span></button>` +
+        `<span class="pe-cand-body"><span class="pe-cand-title">${escapeHtml(c.title)}</span>${sub ? `<span class="pe-cand-sub">${escapeHtml(sub)}</span>` : ""}</span>` +
+        (c.adopted
+          ? `<span class="pe-cand-sub">追加済み</span>`
+          : `<button class="pe-cand-act" type="button" data-cand-adopt="${escapeHtml(c.id)}"${canAdopt ? "" : ' disabled title="先に日程を作ってください"'}>${icon("plus")}行程に追加</button>`) +
+        `<button class="pe-cand-del" type="button" data-cand-del="${escapeHtml(c.id)}" aria-label="削除">${icon("xMark")}</button>` +
+        `</div>`
+      );
+    })
+    .join("");
+}
+
+function addCandidate(title: string): void {
+  const t = title.trim();
+  if (!t) return;
+  const me = getUser().name.trim();
+  model.candidates.push({
+    id: candId(),
+    title: t,
+    votes: me ? [me] : [],
+    proposer: me || undefined,
+    createdAt: new Date().toISOString(),
+  });
+  markDirty();
+  renderCandidates();
+}
+
+function toggleVote(id: string): void {
+  const me = getUser().name.trim();
+  if (!me) {
+    toast("マイページで名前を登録すると投票できます");
+    return;
+  }
+  const c = model.candidates.find((x) => x.id === id);
+  if (!c) return;
+  c.votes = c.votes || [];
+  const i = c.votes.indexOf(me);
+  if (i >= 0) c.votes.splice(i, 1);
+  else c.votes.push(me);
+  markDirty();
+  renderCandidates();
+}
+
+function adoptCandidate(id: string): void {
+  const c = model.candidates.find((x) => x.id === id);
+  if (!c) return;
+  if (!model.days.length) {
+    toast("先に日程（期間）を作ってください");
+    return;
+  }
+  const kind = normalizeKind(c.type);
+  const it = newItem(kind, {
+    title: c.title,
+    place: c.place || "",
+    note: c.note || "",
+    lat: c.lat != null ? String(c.lat) : "",
+    lng: c.lng != null ? String(c.lng) : "",
+    mapQuery: c.place || c.title || "",
+  });
+  model.days[0].items.push(it);
+  c.adopted = true;
+  markDirty();
+  renderCandidates();
+  renderDays();
+  refreshMap(false);
+  toast("Day 1 に追加しました。ドラッグで日や順番を調整できます");
+}
+
+function removeCandidate(id: string): void {
+  model.candidates = model.candidates.filter((x) => x.id !== id);
+  markDirty();
+  renderCandidates();
+}
+
+candMount.addEventListener("click", (event) => {
+  const t = event.target;
+  if (!(t instanceof Element)) return;
+  const vote = t.closest<HTMLElement>("[data-cand-vote]");
+  if (vote) {
+    toggleVote(vote.dataset.candVote || "");
+    return;
+  }
+  const adopt = t.closest<HTMLElement>("[data-cand-adopt]");
+  if (adopt) {
+    adoptCandidate(adopt.dataset.candAdopt || "");
+    return;
+  }
+  const del = t.closest<HTMLElement>("[data-cand-del]");
+  if (del) {
+    removeCandidate(del.dataset.candDel || "");
+  }
+});
+
+function commitCandInput(): void {
+  const v = candInput.value.trim();
+  if (!v) return;
+  addCandidate(v);
+  candInput.value = "";
+  candInput.focus();
+}
+qs<HTMLButtonElement>(root, "[data-cand-add]").addEventListener("click", commitCandInput);
+candInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    commitCandInput();
+  }
+});
+
 async function shareInvite(name: string): Promise<void> {
   if (!model.title.trim()) { toast("先に旅行名を入力してください"); return; }
   if (!slug) { slug = TripPlans.uniqueSlug(model.title); model.slug = slug; }
   persist();
   const data = buildData();
-  const link = buildInviteLink({
+  const link = await buildInviteLink({
     v: 1,
     meta: {
       slug,
@@ -1257,6 +1402,46 @@ function ensureSelfMember(): void {
 const gcalBtn = qs<HTMLButtonElement>(root, "[data-gcal]");
 const icsBtn = qs<HTMLButtonElement>(root, "[data-ics]");
 
+function fmtMd(iso: string): string {
+  const d = parseISO(iso);
+  return d ? `${d.getMonth() + 1}/${d.getDate()}` : "";
+}
+
+/** カレンダー予定の説明文: メンバー・訪問地に加え、日ごとの詳細を書き出す。 */
+function tripDescription(): string {
+  const data = buildData();
+  const lines: string[] = [];
+  if (model.members) lines.push(`メンバー: ${model.members}`);
+  const cities = model.cities.map((c) => c.name).filter(Boolean);
+  if (cities.length) lines.push(`訪問地: ${cities.join(" → ")}`);
+  if (model.note) lines.push(model.note);
+
+  const byDate = new Map<string, ItineraryItem[]>();
+  (data.itinerary || []).forEach((it) => {
+    const key = it.date || "";
+    if (!key) return;
+    if (!byDate.has(key)) byDate.set(key, []);
+    byDate.get(key)!.push(it);
+  });
+  const dates = Array.from(byDate.keys()).sort();
+  if (dates.length) {
+    lines.push("", "【日程】");
+    dates.forEach((d) => {
+      const items = byDate.get(d)!;
+      const area = items.map((it) => it.area).find(Boolean) || "";
+      const dayLabel = items[0]?.day || "";
+      lines.push(`■ ${[dayLabel, fmtMd(d), area].filter(Boolean).join(" ")}`);
+      items.forEach((it) => {
+        const head = [it.typeLabel, it.title].filter(Boolean).join(" ") || it.place || "予定";
+        const place = it.place && it.place !== it.title ? `（${it.place}）` : "";
+        const time = it.time ? `${it.time} ` : "";
+        lines.push(`  ${time}${head}${place}`);
+      });
+    });
+  }
+  return lines.join("\n");
+}
+
 /** 旅行全体を1つの終日イベントとして組み立てる。期間未設定なら null。 */
 function planSpanEvent(): CalEvent | null {
   const s = parseISO(model.startDate);
@@ -1265,12 +1450,7 @@ function planSpanEvent(): CalEvent | null {
   const start = new Date(s.getFullYear(), s.getMonth(), s.getDate());
   const endExclusive = new Date(e.getFullYear(), e.getMonth(), e.getDate() + 1);
   const cities = model.cities.map((c) => c.name).filter(Boolean);
-  const details = [
-    model.members ? `メンバー: ${model.members}` : "",
-    cities.length ? `ルート: ${cities.join(" → ")}` : "",
-    model.note || "",
-  ].filter(Boolean).join("\n");
-  return { title: model.title || "旅行", start, end: endExclusive, allDay: true, details, location: cities[0] || "" };
+  return { title: model.title || "旅行", start, end: endExclusive, allDay: true, details: tripDescription(), location: cities[0] || "" };
 }
 
 /** 各行程アイテムを時刻付きイベントにする（.ics 用）。 */
@@ -1460,6 +1640,7 @@ function buildData(): LocalPlanData {
       lat: coordOut(c.lat),
       lng: coordOut(c.lng),
     })),
+    candidates: model.candidates,
   };
 }
 
@@ -1476,6 +1657,7 @@ function loadExisting(): boolean {
   model.title = trip.title || "";
   model.members = trip.members || "";
   model.note = trip.note || "";
+  model.candidates = Array.isArray(data.candidates) ? data.candidates : [];
   const parts = String(trip.dates || "").split(/\s+-\s+/);
   model.startDate = normalizeToISO(parts[0]);
   model.endDate = normalizeToISO(parts[1] || parts[0]);
@@ -1678,6 +1860,7 @@ if (isNew && editable) ensureSelfMember();
 rebuildDays();
 renderCities();
 renderDays();
+renderCandidates();
 initMap();
 refreshMap(true);
 // 地図の初期表示：スマホは入力を優先し、地図は必要な時だけ開く。

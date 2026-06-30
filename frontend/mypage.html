@@ -307,6 +307,16 @@
   .mp-bar.cont-r { border-top-right-radius: 0; border-bottom-right-radius: 0; }
   .mp-bar-more { font-size: 10px; font-weight: 700; color: var(--muted); }
 
+  /* 送金リンク登録 */
+  .mp-pay-help { margin: 0 0 14px; color: var(--muted); font-size: 12.5px; }
+  .mp-paylist { display: grid; gap: 10px; }
+  .mp-pay-row { display: grid; grid-template-columns: 130px minmax(0, 1fr); gap: 10px; align-items: center; }
+  .mp-pay-name { display: flex; align-items: center; gap: 7px; font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mp-pay-name .hi { width: 16px; height: 16px; vertical-align: 0; color: var(--muted); flex: none; }
+  .mp-pay-row input { min-width: 0; min-height: 42px; border: 1px solid var(--line-strong); border-radius: 9px; background: #fff; color: var(--ink); padding: 8px 12px; font: inherit; font-size: 14px; }
+  .mp-pay-row input:focus-visible { outline: none; border-color: var(--green); box-shadow: 0 0 0 3px var(--green-soft); }
+  @media (max-width: 560px) { .mp-pay-row { grid-template-columns: 1fr; gap: 4px; } }
+
   .mp-cal-legend { display: grid; gap: 7px; margin-top: 16px; }
   .mp-legend-row {
     display: flex;
@@ -366,6 +376,7 @@
   <nav class="mp-tabs" aria-label="表示切替">
     <button class="mp-tab is-active" type="button" data-tab="plans" data-ic-plans>計画</button>
     <button class="mp-tab" type="button" data-tab="schedule" data-ic-schedule>日程</button>
+    <button class="mp-tab" type="button" data-tab="pay" data-ic-pay>送金</button>
   </nav>
 
   <div class="mp-body">
@@ -390,6 +401,14 @@
       <div class="mp-cal-legend" data-cal-legend></div>
     </section>
   </div>
+
+  <section class="mp-view" data-view="pay" hidden>
+    <div class="mp-listhead">
+      <h2 class="mp-sec-title">送金リンク <span class="mp-sec-count" data-pay-count></span></h2>
+    </div>
+    <p class="mp-pay-help">精算の「PayPayで送る」で使うため、メンバーの PayPay 受取リンク（<code>https://qr.paypay.ne.jp/…</code>）または ID を登録します。リンクはこの端末にだけ保存されます。</p>
+    <div class="mp-paylist" data-paylinks></div>
+  </section>
 </main>
 
 <script src="./trip-config.js"></script>

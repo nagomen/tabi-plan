@@ -542,6 +542,47 @@
   .pe-days-count { color: var(--muted); font-size: 12px; font-weight: 500; }
   .pe-trip-summary { color: var(--muted); font-size: 11px; font-weight: 500; letter-spacing: 0; text-transform: none; }
 
+  /* 行きたい候補（投票ボード） */
+  .pe-cand { padding: 8px 18px 4px; }
+  .pe-cand-count { color: var(--muted); font-size: 12px; font-weight: 500; }
+  .pe-cand-add { display: flex; gap: 8px; margin: 8px 0 12px; }
+  .pe-cand-add input {
+    flex: 1; min-width: 0; min-height: 42px;
+    border: 1px solid var(--line-strong); border-radius: 9px;
+    background: #fff; color: var(--ink); padding: 8px 12px; font: inherit; font-size: 15px;
+  }
+  .pe-cand-add input:focus-visible { outline: none; border-color: var(--green); box-shadow: 0 0 0 3px var(--green-soft); }
+  .pe-cand-list { display: grid; gap: 8px; }
+  .pe-cand-list:empty { display: none; }
+  .pe-cand-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 11px; border: 1px solid var(--line); border-radius: 11px; background: #fff;
+  }
+  .pe-cand-row.is-adopted { opacity: .55; }
+  .pe-cand-vote {
+    appearance: none; flex: none; display: inline-flex; align-items: center; gap: 5px;
+    min-height: 36px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: 999px;
+    background: #fff; color: var(--muted); font: inherit; font-size: 13px; font-weight: 700; cursor: pointer;
+  }
+  .pe-cand-vote .hi { width: 15px; height: 15px; vertical-align: 0; }
+  .pe-cand-vote.is-voted { background: var(--green-soft); border-color: rgba(11, 90, 66, .35); color: var(--green); }
+  .pe-cand-body { flex: 1; min-width: 0; display: grid; gap: 1px; }
+  .pe-cand-title { font-size: 14.5px; font-weight: 600; overflow-wrap: anywhere; }
+  .pe-cand-sub { color: var(--muted); font-size: 12px; }
+  .pe-cand-act {
+    appearance: none; flex: none; display: inline-flex; align-items: center; gap: 5px;
+    min-height: 34px; padding: 0 10px; border: 1px solid var(--green); border-radius: 8px;
+    background: var(--green); color: #fff; font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer;
+  }
+  .pe-cand-act:disabled { opacity: .5; cursor: default; }
+  .pe-cand-act .hi { width: 14px; height: 14px; vertical-align: 0; }
+  .pe-cand-del {
+    appearance: none; flex: none; display: inline-grid; place-items: center;
+    width: 32px; height: 32px; border: 0; border-radius: 8px; background: none; color: var(--muted); cursor: pointer;
+  }
+  .pe-cand-del:hover { color: var(--red); background: rgba(207, 79, 61, .08); }
+  .pe-cand-del .hi { width: 16px; height: 16px; vertical-align: 0; }
+
   /* 日へジャンプするストリップ */
   .pe-daystrip {
     position: sticky;
@@ -1090,6 +1131,15 @@
       <section style="padding:14px 18px 0;">
         <h2 class="pe-sec-title" data-ic-days>行程 <span class="pe-days-count" data-day-count></span><span class="pe-trip-summary" data-trip-summary></span></h2>
         <p class="pe-sec-note">日ごとに予定を追加。観光・食事・移動・宿泊を選べます。</p>
+      </section>
+      <section class="pe-cand" data-cand-section>
+        <h3 class="pe-sec-title" data-ic-cand>行きたい候補 <span class="pe-cand-count" data-cand-count></span></h3>
+        <p class="pe-sec-note">行きたい場所を出し合って投票。決まったら「行程に追加」で日程に入れられます。</p>
+        <div class="pe-cand-add">
+          <input data-cand-input type="text" autocomplete="off" placeholder="例: 中尊寺、〇〇ラーメン" aria-label="候補を追加">
+          <button class="pe-mini" type="button" data-cand-add data-ic-candadd>追加</button>
+        </div>
+        <div class="pe-cand-list" data-candidates></div>
       </section>
       <nav class="pe-daystrip" data-daystrip aria-label="日へジャンプ"></nav>
       <div class="pe-days" data-days></div>

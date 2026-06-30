@@ -8,6 +8,8 @@ import { registerServiceWorker } from "../shared/pwa";
 import * as TripPlans from "../shared/plans-store";
 import type { PlanMeta } from "../shared/plans-store";
 import { getUser, setUserName } from "../shared/user-store";
+import { friendCandidates } from "../shared/friend-store";
+import { getPayLink, setPayLink } from "../shared/payment-links";
 
 const { qs } = makeScopedQuery(document);
 
@@ -17,6 +19,7 @@ const ICONS: [string, IconName][] = [
   ["[data-ic-back]", "chevronLeft"],
   ["[data-ic-plans]", "listBullet"],
   ["[data-ic-schedule]", "calendarDays"],
+  ["[data-ic-pay]", "banknotes"],
   ["[data-ic-prev]", "chevronLeft"],
   ["[data-ic-next]", "chevronRight"],
 ];
@@ -172,6 +175,7 @@ function showTab(name: string): void {
   tabs.forEach((t) => t.classList.toggle("is-active", t.dataset.tab === name));
   views.forEach((v) => { v.hidden = v.dataset.view !== name; });
   if (name === "schedule") renderCalendar();
+  if (name === "pay") renderPayLinks();
 }
 tabs.forEach((t) => t.addEventListener("click", () => showTab(t.dataset.tab || "plans")));
 
@@ -272,6 +276,52 @@ qs<HTMLButtonElement>("[data-cal-next]").addEventListener("click", () => {
   renderCalendar();
 });
 
+// ---- 送金リンク登録（PayPay 受取リンク/ID） ----------------------------
+
+const payMount = qs<HTMLElement>("[data-paylinks]");
+const payCount = qs<HTMLElement>("[data-pay-count]");
+
+/** 自分の名前＋全計画のメンバーを重複なく集めて、登録対象の名前一覧にする。 */
+function payNames(): string[] {
+  const me = getUser().name.trim();
+  const all = friendCandidates(me ? [me] : []);
+  const names = me ? [me, ...all] : all;
+  return Array.from(new Set(names.filter(Boolean)));
+}
+
+function renderPayLinks(): void {
+  const me = getUser().name.trim();
+  const names = payNames();
+  payCount.textContent = names.length ? `${names.length}人` : "";
+  if (!names.length) {
+    payMount.innerHTML = `<div class="mp-empty"><b>メンバーがいません</b><span>計画にメンバーを追加すると、ここで送金リンクを登録できます</span></div>`;
+    return;
+  }
+  payMount.innerHTML = names
+    .map((name) => {
+      const link = getPayLink(name);
+      const self = Boolean(me) && name === me;
+      return (
+        `<div class="mp-pay-row">` +
+        `<span class="mp-pay-name">${self ? icon("user") : ""}${escapeHtml(name)}${self ? `<span class="mp-badge">自分</span>` : ""}</span>` +
+        `<input type="text" inputmode="url" data-pay-name="${escapeHtml(name)}" value="${escapeHtml(link?.paypay || "")}" placeholder="https://qr.paypay.ne.jp/… または ID" aria-label="${escapeHtml(name)}の送金リンク">` +
+        `</div>`
+      );
+    })
+    .join("");
+}
+
+let payTimer = 0;
+payMount.addEventListener("input", (event) => {
+  const input = event.target;
+  if (!(input instanceof HTMLInputElement)) return;
+  const name = input.dataset.payName || "";
+  if (!name) return;
+  window.clearTimeout(payTimer);
+  const value = input.value;
+  payTimer = window.setTimeout(() => setPayLink(name, value), 400);
+});
+
 // ---- 起動 ---------------------------------------------------------------
 
 void dayKey; // 予約（将来の選択状態用）
@@ -279,3 +329,4 @@ registerServiceWorker();
 renderProfile();
 renderPlans();
 renderCalendar(); // PC は左右2カラムで日程も常時表示するため初期描画する
+renderPayLinks(); // PC ではタブが無く常時表示されるため初期描画する

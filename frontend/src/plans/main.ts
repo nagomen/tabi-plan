@@ -405,29 +405,29 @@ filterEl.addEventListener("input", (event) => {
 registerServiceWorker();
 
 // 招待リンク（plans.html#join=<token>）を開いたら、計画を取り込んでダッシュボードへ。
-function handleJoinLink(): boolean {
+// 同じ計画（slug 一致）が既にあれば重複作成せず、本文を最新に更新しつつ候補の票はマージする。
+async function handleJoinLink(): Promise<boolean> {
   const m = /(?:^|[#&])join=([^&]+)/.exec(location.hash || "");
   if (!m) return false;
   history.replaceState(null, "", location.pathname + location.search);
-  const payload = decodeInvite(m[1]);
+  const payload = await decodeInvite(m[1]);
   if (!payload) {
     showToast("招待リンクを読み込めませんでした。", true);
     return false;
   }
   const slug = TripPlans.safeSlug(payload.meta.slug || payload.meta.title || "trip");
-  TripPlans.upsert({
-    slug,
-    title: payload.meta.title || "共有された旅行",
-    dates: payload.meta.dates || "",
-    members: payload.meta.members || "",
-    route: payload.meta.route || "",
-    source: "local",
-    builtIn: false,
-  });
-  TripPlans.saveData(slug, payload.data);
+  const { existed } = TripPlans.mergeLocalPlan(slug, payload.data);
   TripPlans.setActiveSlug(slug);
+  // 既存を更新したときは、すぐ遷移せず一覧で結果を見せる
+  if (existed) {
+    render();
+    showToast(`「${payload.meta.title || "旅行"}」を最新に更新しました。`);
+    return true;
+  }
   location.replace("index.html?plan=" + encodeURIComponent(slug));
   return true;
 }
 
-if (!handleJoinLink()) render();
+void handleJoinLink().then((joined) => {
+  if (!joined) render();
+});

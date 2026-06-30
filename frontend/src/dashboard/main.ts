@@ -34,6 +34,8 @@ import {
   type AppsScriptResponse,
 } from "../shared/apps-script";
 import { registerServiceWorker } from "../shared/pwa";
+import { getPayLink, isPayUrl } from "../shared/payment-links";
+import { fetchDayWeather, weatherLabel } from "../shared/weather";
 import type {
   TripData,
   TripLink,
@@ -656,6 +658,33 @@ function todayISO(): string {
   return `${y}-${m}-${d}`;
 }
 
+/** 現在時刻を分（0-1439）で返す。 */
+function nowMinutes(): number {
+  const now = new Date();
+  return now.getHours() * 60 + now.getMinutes();
+}
+
+function nowHM(): string {
+  const now = new Date();
+  return `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+}
+
+/** "HH:MM" を分に変換（解析不可なら null）。 */
+function timeToMinutes(time: string | undefined): number | null {
+  const m = /^(\d{1,2}):(\d{2})/.exec(String(time || "").trim());
+  if (!m) return null;
+  return Number(m[1]) * 60 + Number(m[2]);
+}
+
+/** 分差を「あとN分 / あとN時間M分」の形にする。 */
+function untilLabel(minutes: number): string {
+  if (minutes <= 0) return "まもなく";
+  if (minutes < 60) return `あと${minutes}分`;
+  const h = Math.floor(minutes / 60);
+  const mm = minutes % 60;
+  return mm ? `あと${h}時間${mm}分` : `あと${h}時間`;
+}
+
 function normalizeDate(value: unknown): string {
   if (!value) return "";
   if (value instanceof Date) return value.toISOString().slice(0, 10);
@@ -872,16 +901,52 @@ function renderTransfers(settlement: Settlement): void {
   mount.innerHTML = `<h3>精算する金額</h3>` + transfers.map((transfer: SettlementTransfer & { completedLabel?: string }) =>
     `<div class="tl-transfer-row">
       <span>${escapeHtml(transfer.from)} → ${escapeHtml(transfer.to)}</span>
-      <b>${escapeHtml(transfer.amountLabel || "")}</b>
-      <button type="button" data-settlement-complete data-from="${escapeHtml(transfer.from)}" data-to="${escapeHtml(transfer.to)}" data-amount="${Number(transfer.amount || 0)}">精算完了</button>
+      <div class="tl-transfer-act">
+        <b>${escapeHtml(transfer.amountLabel || "")}</b>
+        <button type="button" class="tl-paypay" data-paypay data-to="${escapeHtml(transfer.to)}" data-amount="${Number(transfer.amount || 0)}">PayPayで送る</button>
+        <button type="button" data-settlement-complete data-from="${escapeHtml(transfer.from)}" data-to="${escapeHtml(transfer.to)}" data-amount="${Number(transfer.amount || 0)}">精算完了</button>
+      </div>
       ${transfer.completedLabel ? `<small>完了済み ${escapeHtml(transfer.completedLabel)} を差し引き済み</small>` : ""}
     </div>`,
   ).join("") + `<div class="tl-expense-status" data-settlement-status aria-live="polite"></div>`;
   setupSettlementCompleteHandlers(mount);
 }
 
+/** PayPay 受取リンクを開き、金額をクリップボードへコピーして送金を補助する。 */
+async function payViaPayPay(to: string, amount: number, status: HTMLElement | null): Promise<void> {
+  const link = getPayLink(to);
+  let copied = false;
+  try {
+    await navigator.clipboard.writeText(String(Math.round(amount)));
+    copied = true;
+  } catch {
+    /* クリップボード不可でも続行 */
+  }
+  const setStatus = (text: string): void => {
+    if (status) {
+      status.textContent = text;
+      status.classList.remove("is-error");
+    }
+  };
+  if (link?.paypay && isPayUrl(link.paypay)) {
+    window.open(link.paypay, "_blank", "noopener");
+    setStatus(
+      `${to} の PayPay を開きました。${copied ? `金額 ${formatYen(amount)} をコピー済み。貼り付けて送金してください。` : `金額は ${formatYen(amount)} です。`}`,
+    );
+  } else if (link?.paypay) {
+    setStatus(`${to} の PayPay ID: ${link.paypay}（金額 ${formatYen(amount)}${copied ? " をコピー済み" : ""}）`);
+  } else {
+    setStatus(`${to} の受取リンクが未登録です。マイページ → 送金 で登録できます。`);
+  }
+}
+
 function setupSettlementCompleteHandlers(mount: HTMLElement): void {
   const status = mount.querySelector<HTMLElement>("[data-settlement-status]");
+  mount.querySelectorAll<HTMLButtonElement>("[data-paypay]").forEach((button) => {
+    button.addEventListener("click", () => {
+      void payViaPayPay(button.dataset.to || "", Number(button.dataset.amount || 0), status);
+    });
+  });
   mount.querySelectorAll<HTMLButtonElement>("[data-settlement-complete]").forEach((button) => {
     button.addEventListener("click", async () => {
       const from = button.dataset.from || "";
@@ -1888,16 +1953,72 @@ function timelineHtmlForDay(idx: number): string {
   }).join("");
 }
 
+/** その日を代表する座標（最初の座標付き予定、無ければ area の地名辞書）。 */
+function dayCoord(day: DayGroup): LatLng | null {
+  for (const it of day.items) {
+    const la = Number(it.lat);
+    const ln = Number(it.lng);
+    if (Number.isFinite(la) && Number.isFinite(ln)) return { lat: la, lng: ln };
+  }
+  return TripPlans.coordsFor(day.area || "");
+}
+
+/** 表示中の各日について、座標と日付から天気を非同期取得してチップを埋める。 */
+function hydrateWeather(fromIdx: number, toIdx: number): void {
+  for (let i = fromIdx; i <= toIdx; i++) {
+    const day = state.days[i];
+    if (!day || day.weather) continue; // 手入力（Sheets の天気欄）があれば優先
+    const coord = dayCoord(day);
+    if (!coord || !/^\d{4}-\d{2}-\d{2}$/.test(day.date)) continue;
+    void fetchDayWeather(coord.lat, coord.lng, day.date).then((w) => {
+      if (!w) return;
+      const span = root.querySelector<HTMLElement>(`[data-weather-for="${day.date}"]`);
+      if (span) span.textContent = `${weatherLabel(w)}${w.label ? " " + w.label : ""}`;
+    });
+  }
+}
+
 function dayBlockHtml(idx: number): string {
   const day = state.days[idx];
   if (!day) return "";
   const head = [day.day, day.area, mdLabel(day.date)].filter(Boolean).join(" ・ ");
-  const weather = day.weather ? `<span class="tl-dayblock-weather">☀ ${escapeHtml(day.weather)}</span>` : "";
+  // 手入力があれば表示。無ければ空にしておき、hydrateWeather が自動取得で埋める。
+  const weather = `<span class="tl-dayblock-weather" data-weather-for="${escapeHtml(day.date)}">${day.weather ? "☀ " + escapeHtml(day.weather) : ""}</span>`;
   const items = timelineHtmlForDay(idx);
   return `<section class="tl-dayblock" data-day-block="${idx}">
     <div class="tl-dayblock-head"><span>${escapeHtml(head)}</span>${weather}</div>
     ${stayHtmlForDay(idx)}
     ${items || `<p class="tl-dayblock-empty">予定はまだありません</p>`}
+  </section>`;
+}
+
+/** 今日が選択中の日のとき、現在時刻と「いま/次の予定」を示すカード。 */
+function nowNextHtml(day: DayGroup): string {
+  if (day.date !== todayISO()) return "";
+  const cur = nowMinutes();
+  const timed = day.items
+    .filter((i) => String(i.type) !== "stay")
+    .map((i) => ({ i, m: timeToMinutes(i.time) }))
+    .filter((x): x is { i: ItineraryItem; m: number } => x.m != null)
+    .sort((a, b) => a.m - b.m);
+
+  let nowLine = "";
+  let nextLine = "";
+  if (timed.length) {
+    const next = timed.find((x) => x.m >= cur);
+    const past = [...timed].reverse().find((x) => x.m <= cur);
+    if (past && (!next || past.m !== next.m)) {
+      nowLine = `<div class="tl-now-line"><span class="tl-now-lead">いま</span><b>${escapeHtml(past.i.time || "")} ${escapeHtml(past.i.title || past.i.typeLabel || "")}</b></div>`;
+    }
+    if (next) {
+      nextLine = `<div class="tl-now-line"><span class="tl-now-lead">次</span><b>${escapeHtml(next.i.time || "")} ${escapeHtml(next.i.title || next.i.typeLabel || "")}</b><span class="tl-now-until">${escapeHtml(untilLabel(next.m - cur))}</span></div>`;
+    } else {
+      nextLine = `<div class="tl-now-line"><span class="tl-now-lead">次</span><b>本日の予定は終了です</b></div>`;
+    }
+  }
+  return `<section class="tl-now">
+    <div class="tl-now-head">${icon("clock")}<span>現在 ${nowHM()} ・ 旅行中</span></div>
+    ${nowLine}${nextLine || `<div class="tl-now-line"><span class="tl-now-lead">予定</span><b>時刻つきの予定がありません</b></div>`}
   </section>`;
 }
 
@@ -1934,7 +2055,7 @@ function renderActive(): void {
   // 「次の日」を押すと、いまの日の予定を残したまま下に翌日が増える。
   const last = state.days.length - 1;
   const end = Math.min(Math.max(state.active, state.viewEnd), last);
-  let feed = "";
+  let feed = nowNextHtml(day);
   for (let i = state.active; i <= end; i++) feed += dayBlockHtml(i);
   if (end < last) {
     const nx = state.days[end + 1];
@@ -1948,6 +2069,7 @@ function renderActive(): void {
       `</div>`;
   }
   setHtml("[data-day-feed]", feed);
+  hydrateWeather(state.active, end);
   const firstNew = end + 1;
   const expand = (target: number): void => {
     state.viewEnd = target;

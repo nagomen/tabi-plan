@@ -156,6 +156,29 @@ export interface RouteCity {
   lng?: number | string;
 }
 
+/**
+ * 「行きたい候補」（行程に入れる前のたたき台）。
+ * メンバーが出し合い、votes（投票者名の配列）で人気を測る。
+ * 招待リンクの再共有時に votes は和集合でマージされる。
+ */
+export interface Candidate {
+  id: string;
+  title: string;
+  place?: string;
+  lat?: number | string;
+  lng?: number | string;
+  note?: string;
+  /** 候補の種別（行程アイテムへ変換するときの type） */
+  type?: ItemType | string;
+  /** 提案者の表示名 */
+  proposer?: string;
+  /** 投票したメンバーの表示名（重複なし） */
+  votes: string[];
+  /** 行程へ採用済みなら true（ボード上で薄く表示） */
+  adopted?: boolean;
+  createdAt?: string;
+}
+
 /** 各画面が描画する正規化済みデータ */
 export interface TripData {
   trip: TripInfo;

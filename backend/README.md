@@ -5,7 +5,7 @@ GitHub Pages から呼ぶデータ API です。Google Sheets を非公開のま
 ## 新しい旅行のセットアップ
 
 1. Apps Script で新規プロジェクトを作る
-2. `Code.gs` と `appsscript.json` を反映する
+2. `src/` 配下の `.ts`（`clasp push` で `.gs` に変換）と `appsscript.json` を反映する
 3. `initialSetup()` の `CHANGE_ME_*` を編集するか、別の一時関数から `setupTripDashboard({ ... })` を呼ぶ
 4. `setupPlanningSheets()` を実行して必要なシートを作る
 5. 必要なら `setTripLinks(myMapsUrl, "", photosUrl)` を実行する
@@ -32,10 +32,10 @@ function setupForThisTrip() {
 
 ## 反映
 
-`Code.gs` または `appsscript.json` を変更した場合は、必ず Apps Script 本体へ push します。
+`src/` 配下のいずれかのファイルまたは `appsscript.json` を変更した場合は、必ず Apps Script 本体へ push します。コードは責務ごとに複数ファイル（`main` / `auth` / `dashboard` / `settlement` / `fx` / `expense` / `itinerary` / `sheets` / `participants` / `setup` / `create-trip` / `util` / `config`）に分割していますが、Apps Script 上ではすべて同じグローバルスコープに結合されます。
 
 ```bash
-cd apps-script
+cd backend
 npx clasp push
 ```
 

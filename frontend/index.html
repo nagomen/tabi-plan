@@ -986,7 +986,52 @@
     color: var(--ink);
   }
   .tl-dayblock-weather { color: var(--amber); font-size: 12px; font-weight: 800; white-space: nowrap; }
+  .tl-dayblock-weather:empty { display: none; }
   .tl-dayblock-empty { margin: 2px 0 4px; color: var(--muted); font-size: 13px; }
+
+  /* 旅行中の「いま / 次の予定」カード */
+  .tl-now {
+    margin: 0 0 16px;
+    padding: 13px 15px;
+    border: 1px solid rgba(11, 90, 66, .28);
+    border-radius: 12px;
+    background: linear-gradient(180deg, var(--green-soft), #fff);
+  }
+  .tl-now-head {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    margin-bottom: 9px;
+    color: var(--green);
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: .02em;
+  }
+  .tl-now-head .hi { width: 16px; height: 16px; vertical-align: 0; }
+  .tl-now-line {
+    display: flex;
+    align-items: baseline;
+    gap: 9px;
+    padding: 3px 0;
+    font-size: 14px;
+  }
+  .tl-now-line + .tl-now-line { border-top: 1px dashed var(--line); }
+  .tl-now-lead {
+    flex: none;
+    min-width: 28px;
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 700;
+  }
+  .tl-now-line b { font-weight: 700; overflow-wrap: anywhere; }
+  .tl-now-until {
+    margin-left: auto;
+    flex: none;
+    color: var(--green);
+    font-size: 12px;
+    font-weight: 800;
+    white-space: nowrap;
+  }
 
   /* 「次の日を表示」「全て見る」— 箱で囲わない、破線＋テキストの控えめな展開 */
   .tl-more-wrap {
@@ -1089,7 +1134,7 @@
 
   .tl-transfer-row {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-columns: minmax(0, 1fr) auto;
     gap: 8px;
     align-items: center;
     min-height: 44px;
@@ -1101,10 +1146,23 @@
     font-weight: 500;
   }
 
+  .tl-transfer-act {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
   .tl-transfer-row b {
     color: var(--green);
     font-size: 15px;
     font-weight: 700;
+  }
+
+  .tl-transfer-row button.tl-paypay {
+    border-color: #ff0033;
+    background: #ff0033;
   }
 
   .tl-transfer-row small {

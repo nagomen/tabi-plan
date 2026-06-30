@@ -12,6 +12,7 @@ import type {
   ChecklistItem,
   LocalInfoItem,
   RouteCity,
+  Candidate,
   ItemType,
   LatLng,
 } from "./types";
@@ -44,6 +45,8 @@ export interface LocalPlanData {
   checklist?: ChecklistItem[];
   localInfo?: LocalInfoItem[];
   cities?: RouteCity[];
+  /** 「行きたい候補」ボード（任意）。投票は再共有でマージされる */
+  candidates?: Candidate[];
 }
 
 export const PLANS_KEY = "trip-dashboard-plans";
@@ -177,6 +180,48 @@ export function getData(slug: string): LocalPlanData | null {
 
 export function saveData(slug: string, data: LocalPlanData): boolean {
   return writeJSON(DATA_PREFIX + safeSlug(slug), data);
+}
+
+/** 候補を id でマージし、votes（投票者名）は和集合で残す。 */
+export function mergeCandidates(
+  existing: Candidate[] | undefined,
+  incoming: Candidate[] | undefined,
+): Candidate[] | undefined {
+  if (!existing && !incoming) return undefined;
+  const byId = new Map<string, Candidate>();
+  (existing || []).forEach((c) => {
+    if (c && c.id) byId.set(c.id, { ...c, votes: [...(c.votes || [])] });
+  });
+  (incoming || []).forEach((c) => {
+    if (!c || !c.id) return;
+    const prev = byId.get(c.id);
+    if (!prev) {
+      byId.set(c.id, { ...c, votes: [...(c.votes || [])] });
+      return;
+    }
+    const votes = Array.from(new Set([...(prev.votes || []), ...(c.votes || [])]));
+    byId.set(c.id, { ...prev, ...c, votes, adopted: Boolean(prev.adopted || c.adopted) });
+  });
+  return Array.from(byId.values());
+}
+
+/**
+ * 招待リンク等で受け取ったプランを保存する。既存があればマージする。
+ * 本文（行程・リンク・チェックリスト）は受信側を最新として上書きしつつ、
+ * 候補ボードの votes だけは和集合で残す（再共有で各自の票が消えないように）。
+ */
+export function mergeLocalPlan(
+  slug: string,
+  incoming: LocalPlanData,
+): { meta: PlanMeta | null; existed: boolean } {
+  const target = safeSlug(slug);
+  const existing = getData(target);
+  const merged: LocalPlanData = {
+    ...incoming,
+    candidates: mergeCandidates(existing?.candidates, incoming.candidates),
+  };
+  const meta = saveLocalPlan(target, merged);
+  return { meta, existed: Boolean(existing) };
 }
 
 // ---- 開発時のファイル保存（data/plans/<slug>.json） --------------------

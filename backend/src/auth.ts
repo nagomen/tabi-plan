@@ -1,0 +1,43 @@
+// パスワード認証トークンの署名・検証と暗号ユーティリティ。
+
+
+function signToken_(payload: any, secret: string): string {
+  const body = base64UrlEncode_(JSON.stringify(payload));
+  const signature = base64UrlEncodeBytes_(Utilities.computeHmacSha256Signature(body, secret));
+  return `${body}.${signature}`;
+}
+
+function verifyToken_(token: string, secret: string): any {
+  const parts = String(token || '').split('.');
+  if (parts.length !== 2) throw new Error('Authentication is required');
+
+  const expected = base64UrlEncodeBytes_(Utilities.computeHmacSha256Signature(parts[0], secret));
+  if (!constantTimeEqual_(parts[1], expected)) throw new Error('Invalid token');
+
+  const payload = JSON.parse(Utilities.newBlob(Utilities.base64DecodeWebSafe(parts[0])).getDataAsString());
+  if (!payload.exp || Date.now() > Number(payload.exp)) throw new Error('Token expired');
+  return payload;
+}
+
+function sha256Hex_(text: string): string {
+  return Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, text)
+    .map(byte => (byte < 0 ? byte + 256 : byte).toString(16).padStart(2, '0'))
+    .join('');
+}
+
+function base64UrlEncode_(text: string): string {
+  return Utilities.base64EncodeWebSafe(text).replace(/=+$/, '');
+}
+
+function base64UrlEncodeBytes_(bytes: number[]): string {
+  return Utilities.base64EncodeWebSafe(bytes).replace(/=+$/, '');
+}
+
+function constantTimeEqual_(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let result = 0;
+  for (let i = 0; i < a.length; i++) {
+    result |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return result === 0;
+}
