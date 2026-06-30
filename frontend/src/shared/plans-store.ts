@@ -4,6 +4,7 @@
 
 import type { TripConfig, MapDefaults } from "./config";
 import { safeTripSlug } from "./config";
+import * as Backend from "./backend";
 import type {
   TripData,
   TripInfo,
@@ -55,24 +56,13 @@ export const DATA_PREFIX = "trip-dashboard-plan-";
 
 export const safeSlug = safeTripSlug;
 
+// 保存は backend（差し替え口）経由。localStorage を直接触らない。
 function readJSON<T>(key: string, fallback: T): T {
-  try {
-    const raw = localStorage.getItem(key);
-    if (!raw) return fallback;
-    const parsed = JSON.parse(raw) as T | null;
-    return parsed == null ? fallback : parsed;
-  } catch {
-    return fallback;
-  }
+  return Backend.getJSON<T>(key, fallback);
 }
 
 function writeJSON(key: string, value: unknown): boolean {
-  try {
-    localStorage.setItem(key, JSON.stringify(value));
-    return true;
-  } catch {
-    return false;
-  }
+  return Backend.setJSON(key, value);
 }
 
 function nowISO(): string {
@@ -152,11 +142,7 @@ export function upsert(meta: Partial<PlanMeta> & { slug: string }): PlanMeta | n
 export function remove(slug: string): void {
   const target = safeSlug(slug);
   saveList(list().filter((p) => p.slug !== target));
-  try {
-    localStorage.removeItem(DATA_PREFIX + target);
-  } catch {
-    /* ignore */
-  }
+  Backend.removeJSON(DATA_PREFIX + target);
   deleteDevFile(target);
   if (getActiveSlug() === target) clearActive();
 }
@@ -321,6 +307,8 @@ export function duplicate(slug: string): PlanMeta | null {
 }
 
 // ---- 選択中プラン ----
+// これは「この端末でいまどのプランを開いているか」という端末固有の UI 状態であり、
+// 共有すべきドメインデータではないため、あえて backend を通さず localStorage に直接持つ。
 function urlSlug(): string {
   try {
     return new URLSearchParams(location.search).get("plan") || "";
@@ -458,3 +446,8 @@ export const TYPES: { value: ItemType; label: string }[] = [
 
 // 開発時のみ: ファイルから localStorage を再構築（モジュール読込時に1回）。
 hydrateFromDevFiles();
+
+// backend のキャッシュをウォームしておく（全ページが本モジュールを読むため、ここで1回）。
+// localStorage 実装では同期完了。将来 API 実装に差し替えたら、各ページ起動で
+// `await Backend.preload()` を待つように変更する（backend.ts のコメント参照）。
+void Backend.preload();

@@ -4,6 +4,7 @@
 // （computeSettlement は純関数なので DB 化しても再利用できる）。
 
 import type { Settlement, SettlementTransfer, ExpenseDetail, SettlementShare } from "./types";
+import * as Backend from "./backend";
 
 /** 1件の費用 or 精算記録。kind で区別する。 */
 export interface ExpenseRecord {
@@ -35,21 +36,12 @@ function storageKey(slug: string): string {
 }
 
 function readAll(slug: string): ExpenseRecord[] {
-  try {
-    const raw = localStorage.getItem(storageKey(slug));
-    const parsed = raw ? (JSON.parse(raw) as unknown) : [];
-    return Array.isArray(parsed) ? (parsed as ExpenseRecord[]) : [];
-  } catch {
-    return [];
-  }
+  const parsed = Backend.getJSON<ExpenseRecord[]>(storageKey(slug), []);
+  return Array.isArray(parsed) ? parsed : [];
 }
 
 function writeAll(slug: string, records: ExpenseRecord[]): void {
-  try {
-    localStorage.setItem(storageKey(slug), JSON.stringify(records));
-  } catch {
-    /* 容量超過などは黙って無視（呼び出し側が再描画で気付ける） */
-  }
+  Backend.setJSON(storageKey(slug), records);
 }
 
 function newId(): string {

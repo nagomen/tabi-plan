@@ -15,5 +15,6 @@ backend/.clasp.json
 # Local agent/editor state
 .claude/
 
-# Dev plan files (local; future: DB)
+# Dev domain data (local; future: DB)
 data/plans/*.json
+data/store/*.json

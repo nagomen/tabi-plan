@@ -4,6 +4,8 @@
 // 「相手のリンクを開く＋金額をクリップボードへコピー」して送金を補助する。
 // 全計画で共有できるよう、計画ではなく端末（localStorage）に名前キーで保存する。
 
+import * as Backend from "./backend";
+
 const KEY = "trip-dashboard-pay-links";
 
 export interface PayLink {
@@ -14,21 +16,12 @@ export interface PayLink {
 export type PayLinkMap = Record<string, PayLink>;
 
 function readAll(): PayLinkMap {
-  try {
-    const raw = localStorage.getItem(KEY);
-    const parsed = raw ? (JSON.parse(raw) as unknown) : {};
-    return parsed && typeof parsed === "object" ? (parsed as PayLinkMap) : {};
-  } catch {
-    return {};
-  }
+  const parsed = Backend.getJSON<PayLinkMap>(KEY, {});
+  return parsed && typeof parsed === "object" ? parsed : {};
 }
 
 function writeAll(map: PayLinkMap): void {
-  try {
-    localStorage.setItem(KEY, JSON.stringify(map));
-  } catch {
-    /* 容量超過などは黙って無視 */
-  }
+  Backend.setJSON(KEY, map);
 }
 
 export function getPayLinks(): PayLinkMap {
