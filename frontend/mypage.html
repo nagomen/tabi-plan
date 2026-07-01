@@ -36,11 +36,8 @@
   .hi { width: 1.15em; height: 1.15em; vertical-align: -0.18em; flex: none; }
 
   .mp {
-    max-width: 880px;
+    max-width: var(--app-width, 1120px);
     margin: 0 auto;
-    border: 1px solid var(--line-strong);
-    border-top: 0;
-    border-bottom: 0;
     min-height: 100vh;
   }
 
@@ -91,7 +88,7 @@
     gap: 16px;
     padding: 22px 20px;
     border-bottom: 1px solid var(--line);
-    background: var(--wash);
+    background: #fff;
   }
   .mp-avatar {
     flex: none;
@@ -140,6 +137,10 @@
   }
   .mp-name-save:hover { background: #0d6c4f; }
   .mp-profile-note { margin: 6px 0 0; color: var(--green); font-size: 12px; font-weight: 600; min-height: 14px; }
+  .mp-account { margin-top: 8px; font-size: 12.5px; color: var(--muted); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .mp-account a { color: var(--green); font-weight: 700; text-decoration: none; }
+  .mp-account a.danger { color: var(--red); }
+  .mp-account .hi { width: 15px; height: 15px; vertical-align: -2px; }
 
   /* タブ */
   .mp-tabs {
@@ -245,7 +246,7 @@
     padding: 30px 18px;
     border: 1px dashed var(--line-strong);
     border-radius: 14px;
-    background: var(--wash);
+    background: #fff;
     text-align: center;
     color: var(--muted);
     font-size: 13px;
@@ -280,7 +281,7 @@
   .mp-cal-dow.sun { color: var(--red); }
   .mp-cal-dow.sat { color: var(--blue); }
   .mp-cell { background: #fff; min-height: 64px; padding: 5px 5px 4px; display: flex; flex-direction: column; gap: 3px; }
-  .mp-cell.is-out { background: #fafbfa; }
+  .mp-cell.is-out { background: #fff; }
   .mp-cell-n { font-size: 11.5px; font-weight: 600; color: var(--ink); }
   .mp-cell.is-out .mp-cell-n { color: var(--line-strong); }
   .mp-cell.is-today .mp-cell-n {
@@ -335,7 +336,6 @@
 
   /* PC: タブをやめ、左=計画 / 右=カレンダーの2カラムで横幅を活かす */
   @media (min-width: 860px) {
-    .mp { max-width: 1120px; }
     .mp-tabs { display: none; }
     .mp-body { display: grid; grid-template-columns: minmax(0, 400px) minmax(0, 1fr); align-items: start; }
     .mp-view[hidden] { display: block; }
@@ -354,13 +354,7 @@
 </head>
 <body>
 <main class="mp">
-  <header class="mp-head">
-    <a class="mp-back" href="plans.html" data-ic-back aria-label="計画一覧へ戻る" title="計画一覧"></a>
-    <div class="mp-headmain">
-      <p class="mp-kicker">My Page</p>
-      <h1>マイページ</h1>
-    </div>
-  </header>
+  <div data-app-header></div>
 
   <section class="mp-profile">
     <div class="mp-avatar" data-avatar>?</div>
@@ -370,6 +364,7 @@
         <input data-name type="text" maxlength="24" placeholder="名前を入力" aria-label="ユーザー名">
       </div>
       <p class="mp-profile-note" data-profile-note aria-live="polite">入力すると自動で保存されます</p>
+      <div class="mp-account" data-account></div>
     </div>
   </section>
 
@@ -382,11 +377,7 @@
   <div class="mp-body">
     <section class="mp-view" data-view="plans">
       <div class="mp-listhead">
-        <h2 class="mp-sec-title">計画 <span class="mp-sec-count" data-plan-count></span></h2>
-        <div class="mp-filters">
-          <button class="mp-chip is-active" type="button" data-filter="all">すべて</button>
-          <button class="mp-chip" type="button" data-filter="member">参加している</button>
-        </div>
+        <h2 class="mp-sec-title">参加している計画 <span class="mp-sec-count" data-plan-count></span></h2>
       </div>
       <div class="mp-list" data-plans></div>
     </section>

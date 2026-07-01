@@ -40,10 +40,8 @@
   a { color: inherit; }
 
   .hub {
-    max-width: 1180px;
+    max-width: var(--app-width, 1120px);
     margin: 0 auto;
-    border: 1px solid var(--line-strong);
-    background: var(--paper);
     min-height: 100vh;
   }
 
@@ -108,7 +106,7 @@
     gap: 10px;
     padding: 14px 24px;
     border-bottom: 1px solid var(--line);
-    background: var(--wash);
+    background: #fff;
   }
 
   .hub-toolbar input {
@@ -304,7 +302,6 @@
     display: grid;
     border: 1px solid var(--line-strong);
     background: #fff;
-    box-shadow: 0 14px 40px rgba(17, 25, 22, .16);
   }
 
   .plan-menu[hidden] { display: none; }
@@ -346,7 +343,7 @@
     gap: 8px;
     padding: 40px 22px;
     border: 1px dashed var(--line-strong);
-    background: var(--wash);
+    background: #fff;
     text-align: center;
     color: var(--muted);
   }
@@ -381,7 +378,6 @@
     color: var(--ink);
     font-size: 13px;
     font-weight: 760;
-    box-shadow: 0 16px 48px rgba(17, 25, 22, .18);
   }
 
   .pub-toast.is-error { border-color: var(--red); color: var(--red); }
@@ -426,7 +422,7 @@
     width: 100%;
     min-height: 46px;
     border: 2px solid var(--green);
-    background: #f8fbf9;
+    background: #fff;
     color: var(--ink);
     padding: 10px 12px;
     font: inherit;
@@ -489,15 +485,7 @@
 </head>
 <body>
 <main class="hub">
-  <header class="hub-head">
-    <a class="hub-mypage" href="mypage.html" aria-label="マイページ" title="マイページ"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" class="hi" aria-hidden="true" focusable="false"><path stroke-linecap="round" stroke-linejoin="round" d="M17.982 18.725A7.488 7.488 0 0 0 12 15.75a7.488 7.488 0 0 0-5.982 2.975m11.963 0a9 9 0 1 0-11.963 0m11.963 0A8.966 8.966 0 0 1 12 21a8.966 8.966 0 0 1-5.982-2.275M15 9.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"/></svg></a>
-    <p class="hub-kicker">Travel Plans</p>
-    <h1 class="hub-title">旅行計画</h1>
-    <div class="hub-sub">
-      <span data-count>読み込み中</span>
-      <span>選んだ計画でダッシュボードが開きます</span>
-    </div>
-  </header>
+  <div data-app-header></div>
 
   <div class="hub-toolbar">
     <input type="search" data-filter placeholder="旅行名、ルートで検索" aria-label="計画を検索">

@@ -34,6 +34,7 @@ import {
   type AppsScriptResponse,
 } from "../shared/apps-script";
 import { registerServiceWorker } from "../shared/pwa";
+import { mountAppHeader } from "../shared/app-header";
 import { getPayLink, isPayUrl } from "../shared/payment-links";
 import { fetchDayWeather, weatherLabel } from "../shared/weather";
 import type {
@@ -205,8 +206,34 @@ if (!rootElement) {
 }
 const root: HTMLElement = rootElement;
 
+mountAppHeader({
+  mount: "#tripLive [data-app-header]",
+  kicker: "Shared Travel Dashboard",
+  title: "旅行ダッシュボード",
+  titleAttr: "data-title",
+  back: { href: "plans.html", label: "計画一覧へ戻る" },
+  actions: [
+    {
+      kind: "link",
+      display: "icon",
+      icon: "pencilSquare",
+      label: "計画を編集",
+      href: "#",
+      attr: "data-edit-head",
+      hidden: true,
+    },
+    { kind: "button", display: "icon", icon: "user", label: "マイページ", attr: "data-mypage" },
+  ],
+});
+
 /** root にスコープした型付き qs/qsa（shared/dom 由来） */
 const { qs, qsa } = makeScopedQuery(root);
+
+// セクション見出し・ボタンの heroicon を流し込む（HTML 側は data-ic="名前" のみ持つ）
+qsa<HTMLElement>("[data-ic]").forEach((el) => {
+  const name = el.getAttribute("data-ic");
+  if (name) el.innerHTML = icon(name as IconName);
+});
 
 function setText(selector: string, value: string | undefined): void {
   qs(selector).textContent = value || "";
@@ -850,7 +877,7 @@ function applyMobileView(view?: string): void {
 }
 
 function syncStickyOffsets(): void {
-  const head = root.querySelector<HTMLElement>(".tl-head");
+  const head = root.querySelector<HTMLElement>(".ah");
   if (!head) return;
   root.style.setProperty("--tl-head-height", `${Math.ceil(head.getBoundingClientRect().height)}px`);
 }
@@ -2375,7 +2402,7 @@ async function init(): Promise<void> {
   syncStickyOffsets();
   window.addEventListener("resize", syncStickyOffsets);
   if ("ResizeObserver" in window) {
-    new ResizeObserver(syncStickyOffsets).observe(qs(".tl-head"));
+    new ResizeObserver(syncStickyOffsets).observe(qs(".ah"));
   }
   qsa<HTMLElement>("[data-mobile-nav]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -2394,10 +2421,8 @@ async function init(): Promise<void> {
     const sheet = root.querySelector<HTMLElement>("[data-expense-sheet]");
     if (sheet && !sheet.hidden) setExpenseSheet(false);
   });
-  // マイページへ遷移。
-  root.querySelector<HTMLButtonElement>("[data-mypage]")?.addEventListener("click", () => {
-    location.href = "mypage.html";
-  });
+  // マイページはヘッダーの [data-mypage] を共通ドロワー（mypage-drawer）が拾って
+  // 右からスライドインで開く。ここでの遷移は不要。
   // フッターの「編集」を source で振り分け（ローカル→計画エディタ / appsScript→行程編集）。
   // googleSheets/sample は閲覧のみなので非表示。
   const editWrap = root.querySelector<HTMLElement>("[data-edit-wrap]");

@@ -14,7 +14,7 @@ import "flatpickr/dist/flatpickr.css";
 import Sortable from "sortablejs";
 
 import * as TripPlans from "../shared/plans-store";
-import type { LocalPlanData } from "../shared/plans-store";
+import type { LocalPlanData, PlanVisibility } from "../shared/plans-store";
 import type { ItineraryItem, ItemType, Candidate } from "../shared/types";
 import { readGlobalTripConfig } from "../shared/config";
 import { escapeHtml } from "../shared/dom";
@@ -24,6 +24,7 @@ import { getUser, setUserName } from "../shared/user-store";
 import { friendCandidates, splitNames } from "../shared/friend-store";
 import { buildInviteLink } from "../shared/invite";
 import { gcalUrl, buildIcs, type CalEvent } from "../shared/calendar";
+import { mountAppHeader } from "../shared/app-header";
 
 // ---- モデル -------------------------------------------------------------
 
@@ -101,6 +102,7 @@ interface Model {
   cities: City[];
   days: Day[];
   candidates: Candidate[];
+  visibility?: PlanVisibility;
 }
 
 type GeoTarget = "place" | "from" | "to";
@@ -130,6 +132,25 @@ function qs<E extends Element = HTMLElement>(parent: ParentNode, selector: strin
 
 const root = document.getElementById("editor");
 if (!root) throw new Error("エディタのルート要素が見つかりません: #editor");
+
+mountAppHeader({
+  kicker: "Plan Editor",
+  title: "新しい計画",
+  titleAttr: "data-title-echo",
+  back: { href: "plans.html", label: "計画一覧へ戻る", attr: "data-back" },
+  meta: [{ attr: "data-status" }],
+  actions: [
+    {
+      kind: "link",
+      display: "icon",
+      icon: "arrowTopRightOnSquare",
+      label: "ダッシュボードで表示",
+      href: "index.html",
+      attr: "data-open",
+      hidden: true,
+    },
+  ],
+});
 
 const daysEl = qs<HTMLElement>(root, "[data-days]");
 const statusEl = qs<HTMLElement>(root, "[data-status]");
@@ -1658,6 +1679,7 @@ function loadExisting(): boolean {
   model.members = trip.members || "";
   model.note = trip.note || "";
   model.candidates = Array.isArray(data.candidates) ? data.candidates : [];
+  model.visibility = meta?.visibility;
   const parts = String(trip.dates || "").split(/\s+-\s+/);
   model.startDate = normalizeToISO(parts[0]);
   model.endDate = normalizeToISO(parts[1] || parts[0]);
@@ -1721,21 +1743,70 @@ function save(): void {
     qs<HTMLInputElement>(root!, '[data-f="title"]').focus();
     return;
   }
+  // 保存の最後に公開範囲（公開／招待制）を選ばせる。
+  openVisibilityChooser(doSave);
+}
+
+function doSave(visibility: PlanVisibility): void {
   if (!slug) { slug = TripPlans.uniqueSlug(model.title || "trip"); model.slug = slug; }
+  model.visibility = visibility;
+  // 先に公開範囲をメタへ反映してから保存する（dev のファイル書き出しに visibility を含めるため）。
+  TripPlans.upsert({ slug, visibility });
   TripPlans.saveLocalPlan(slug, buildData());
   TripPlans.setActiveSlug(slug);
   dirty = false;
-  statusEl.textContent = "保存しました";
+  const visLabel = visibility === "invite" ? "招待制" : "公開";
+  statusEl.textContent = `保存しました（${visLabel}）`;
   statusEl.className = "is-ok";
   openLink.href = "index.html?plan=" + encodeURIComponent(slug);
   openLink.hidden = false;
-  savebarNoteEl.textContent = "保存しました。右上の「表示」でダッシュボードを確認できます。";
+  savebarNoteEl.textContent = `保存しました（${visLabel}）。右上の「表示」でダッシュボードを確認できます。`;
   try { history.replaceState(null, "", "plan-editor.html?plan=" + encodeURIComponent(slug)); } catch { /* ignore */ }
+}
+
+function visOption(value: PlanVisibility, current: PlanVisibility, label: string, desc: string, glyph: IconName): string {
+  const id = `pe-vis-${value}`;
+  return (
+    `<label class="pe-vis-opt" for="${id}">` +
+    `<input type="radio" id="${id}" name="pe-vis" value="${value}"${value === current ? " checked" : ""}>` +
+    `<span class="pe-vis-ic">${icon(glyph)}</span>` +
+    `<span class="pe-vis-main"><b>${label}</b><small>${desc}</small></span>` +
+    `</label>`
+  );
+}
+
+/** 保存時に公開範囲を選ばせるモーダル。確定で onConfirm(選択値) を呼ぶ。 */
+function openVisibilityChooser(onConfirm: (v: PlanVisibility) => void): void {
+  const current: PlanVisibility = model.visibility === "invite" ? "invite" : "public";
+  const modal = document.createElement("div");
+  modal.className = "pe-modal";
+  modal.innerHTML =
+    `<form class="pe-modal-box">` +
+    `<h2>公開範囲を選択</h2>` +
+    `<p class="pe-modal-sub">この計画を誰が見られるかを選びます。あとから変更できます。</p>` +
+    `<div class="pe-vis-options">` +
+    visOption("public", current, "公開", "リンクを知らない人にも公開される計画として保存します。", "globeAlt") +
+    visOption("invite", current, "招待制", "招待した（メンバーに追加した）人だけが見られます。", "users") +
+    `</div>` +
+    `<div class="pe-modal-actions">` +
+    `<button type="button" class="pe-modal-btn ghost" data-cancel>キャンセル</button>` +
+    `<button type="submit" class="pe-modal-btn">この設定で保存</button>` +
+    `</div></form>`;
+  document.body.appendChild(modal);
+  const form = modal.querySelector<HTMLFormElement>("form");
+  modal.querySelector("[data-cancel]")?.addEventListener("click", () => modal.remove());
+  form?.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const picked =
+      (modal.querySelector<HTMLInputElement>('input[name="pe-vis"]:checked')?.value as PlanVisibility) || current;
+    modal.remove();
+    onConfirm(picked);
+  });
 }
 
 // ---- ヘッダーアイコン・初期化 -------------------------------------------
 
-qs<HTMLAnchorElement>(root, "[data-back]").innerHTML = icon("chevronLeft");
+// 戻る（<）は共通ヘッダー側で描画済み。開くボタンだけ eye アイコンに差し替える。
 openLink.innerHTML = icon("eye");
 const saveBtn = qs<HTMLButtonElement>(root, "[data-save]");
 saveBtn.innerHTML = icon("bookmark") + "<span>保存</span>";

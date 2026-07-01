@@ -28,6 +28,7 @@ import {
   type AppsScriptResponse,
 } from "../shared/apps-script";
 import { icon } from "../shared/icons";
+import { mountAppHeader } from "../shared/app-header";
 
 // ---- 補助型 -------------------------------------------------------------
 
@@ -89,6 +90,17 @@ if (!rootElement) {
   throw new Error("expenseApp 要素が見つかりません");
 }
 const root: HTMLElement = rootElement;
+
+mountAppHeader({
+  mount: "#expenseApp [data-app-header]",
+  kicker: "Expenses",
+  title: "費用入力",
+  meta: [{ attr: "data-meta", text: "旅行" }],
+  actions: [
+    { kind: "button", display: "text", label: "本人設定", attr: "data-profile-button" },
+    { kind: "link", display: "text", icon: "home", text: "ダッシュボード", label: "ダッシュボードへ", href: "index.html" },
+  ],
+});
 
 const { qs } = makeScopedQuery(root);
 

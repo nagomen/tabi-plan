@@ -47,11 +47,10 @@
   a { color: inherit; }
 
   .expense-app {
-    width: min(720px, 100%);
+    max-width: var(--app-width, 1120px);
+    width: 100%;
     min-height: 100svh;
     margin: 0 auto;
-    border-inline: 1px solid var(--line-strong);
-    background: var(--paper);
   }
 
   .expense-head {
@@ -64,8 +63,7 @@
     align-items: center;
     padding: 14px 16px;
     border-bottom: 1px solid var(--line);
-    background: rgba(255, 255, 255, .96);
-    backdrop-filter: blur(16px);
+    background: #fff;
   }
 
   .expense-title {
@@ -132,7 +130,7 @@
   .expense-error {
     padding: 12px;
     border: 1px solid var(--line);
-    background: var(--wash);
+    background: #fff;
     color: var(--muted);
     font-size: 13px;
     font-weight: 650;
@@ -238,7 +236,7 @@
     gap: 8px;
     padding: 10px;
     border: 1px solid var(--line);
-    background: #fbfcfb;
+    background: #fff;
   }
 
   .photo-field input[type="file"] {
@@ -298,7 +296,7 @@
     gap: 8px;
     padding: 10px;
     border: 1px solid var(--line);
-    background: #fbfcfb;
+    background: #fff;
   }
 
   .split-detail.is-visible {
@@ -351,8 +349,7 @@
     margin-inline: -16px;
     padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
     border-top: 1px solid var(--line);
-    background: rgba(255, 255, 255, .96);
-    backdrop-filter: blur(16px);
+    background: #fff;
   }
 
   .expense-status {
@@ -445,7 +442,7 @@
     width: 100%;
     min-height: 48px;
     border: 2px solid var(--green);
-    background: #f8fbf9;
+    background: #fff;
     color: var(--ink);
     padding: 10px 12px;
     font: inherit;
@@ -481,14 +478,12 @@
     background:
       linear-gradient(135deg, rgba(17, 25, 22, .16), rgba(11, 90, 66, .28)),
       rgba(247, 249, 247, .84);
-    backdrop-filter: blur(16px);
   }
 
   .identity-card {
     width: min(460px, 100%);
     border: 1px solid rgba(11, 90, 66, .28);
     background: #fff;
-    box-shadow: 0 24px 80px rgba(17, 25, 22, .18);
   }
 
   .identity-card header {
@@ -635,16 +630,7 @@
 </head>
 <body>
 <div class="expense-app" id="expenseApp">
-  <header class="expense-head">
-    <div class="expense-title">
-      <h1>費用入力</h1>
-      <span data-meta>旅行</span>
-    </div>
-    <div class="expense-actions">
-      <button class="profile-button" type="button" data-profile-button>本人設定</button>
-      <a class="expense-link" href="index.html">ダッシュボード</a>
-    </div>
-  </header>
+  <div data-app-header></div>
 
   <main class="expense-main">
     <div class="expense-loading" data-loading hidden>読み込み中...</div>

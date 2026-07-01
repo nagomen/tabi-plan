@@ -39,9 +39,9 @@
     --red: #cf4f3d;
     --violet: #6246a6;
     color: var(--ink);
-    --shell: 1180px;
     width: 100%;
-    background: var(--paper);
+    max-width: var(--app-width, 1120px);
+    margin-inline: auto;
     font-family: "Avenir Next", "Hiragino Sans", "Yu Gothic", Meiryo, sans-serif;
     line-height: 1.55;
   }
@@ -152,7 +152,7 @@
     width: 100%;
     min-height: 48px;
     border: 2px solid var(--green, #0b5a42);
-    background: #f8fbf9;
+    background: #fff;
     color: var(--ink, #111916);
     padding: 10px 12px;
     font: inherit;
@@ -201,7 +201,6 @@
     background:
       linear-gradient(135deg, rgba(17, 25, 22, .16), rgba(11, 90, 66, .28)),
       rgba(247, 249, 247, .84);
-    backdrop-filter: blur(16px);
   }
 
   .tl-identity-card {
@@ -209,7 +208,6 @@
     border: 1px solid rgba(11, 90, 66, .28);
     background:
       linear-gradient(180deg, rgba(255, 255, 255, .98), rgba(247, 249, 247, .98));
-    box-shadow: 0 24px 80px rgba(17, 25, 22, .18);
   }
 
   .tl-identity-card header {
@@ -505,60 +503,78 @@
   .tl-day b { font-size: 13px; line-height: 1.2; }
   .tl-day small { font-size: 11px; opacity: .75; }
 
+  /* カードで囲わず、セクションは横罫線だけで仕切る */
   .tl-main {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
-    gap: 20px;
-    padding: 22px 32px;
-    background:
-      linear-gradient(90deg, rgba(17, 25, 22, .025) 1px, transparent 1px),
-      linear-gradient(0deg, rgba(17, 25, 22, .025) 1px, transparent 1px),
-      #fff;
-    background-size: 28px 28px;
+    padding: 0 32px;
+    background: #fff;
+  }
+
+  .tl-main > .tl-panel,
+  .tl-main > .tl-card-grid {
+    padding: 24px 0;
+  }
+  .tl-main > .tl-panel + .tl-panel,
+  .tl-main > .tl-panel + .tl-card-grid,
+  .tl-main > .tl-card-grid + .tl-panel {
+    border-top: 1px solid var(--line);
   }
 
   .tl-panel {
     min-width: 0;
-    border: 1px solid var(--line);
-    background: #fff;
   }
 
   .tl-map-panel {
     grid-column: 1 / -1;
   }
 
-  .tl-panel-head {
+  /* 共通セクション見出し: heroicon + タイトル（＋右寄せリンク/メタ） */
+  .tl-sec-head {
     display: flex;
-    justify-content: space-between;
-    gap: 12px;
-    align-items: baseline;
-    min-height: 47px;
-    padding: 12px 14px 10px;
-    border-bottom: 1px solid var(--line);
+    align-items: center;
+    gap: 10px;
+    margin: 0 0 14px;
   }
 
-  .tl-panel-head h2 {
+  .tl-sec-head h2 {
     margin: 0;
     font-size: 16px;
-    font-weight: 950;
-    letter-spacing: 0;
+    font-weight: 800;
+    letter-spacing: .01em;
+    line-height: 1.2;
   }
 
-  .tl-panel-head span,
-  .tl-panel-head a {
+  .tl-sec-ic {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    color: var(--green);
+  }
+  .tl-sec-ic .hi,
+  .tl-sec-ic svg { width: 21px; height: 21px; }
+
+  /* 見出し右側のアクション/メタ（Google My Maps へ 等） */
+  .tl-sec-link,
+  .tl-sec-meta {
+    margin-left: auto;
     color: var(--muted);
     font-size: 12px;
-    font-weight: 850;
+    font-weight: 700;
     text-align: right;
     text-decoration: none;
     white-space: nowrap;
   }
-
-  .tl-panel-head a {
+  .tl-sec-link {
     display: inline-flex;
     align-items: center;
     gap: 6px;
+    color: var(--green);
   }
+  .tl-sec-link:hover,
+  .tl-sec-link:focus-visible { text-decoration: underline; outline: none; }
+  .tl-sec-link .hi,
+  .tl-sec-link svg { width: 15px; height: 15px; }
 
   .tl-map {
     position: relative;
@@ -733,15 +749,18 @@
   .tl-map-status a { display: inline-flex; align-items: center; gap: 6px; color: var(--green); text-decoration: none; white-space: nowrap; }
 
   .tl-timeline {
-    padding: 14px 14px 12px;
+    padding: 0;
   }
 
   .tl-day-title {
     display: flex;
-    justify-content: space-between;
-    gap: 12px;
-    align-items: baseline;
-    margin-bottom: 13px;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 14px;
+  }
+
+  .tl-day-title > span {
+    margin-left: auto;
   }
 
   .tl-day-title h2 {
@@ -816,7 +835,6 @@
     border-radius: 50%;
     background: var(--green);
     color: #fff;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, .18);
     align-self: start;
   }
   .tl-dot svg, .tl-dot .hi { width: 14px; height: 14px; }
@@ -946,26 +964,28 @@
   .tl-maplink svg, .tl-maplink .hi { width: 13px; height: 13px; }
   .tl-maplink:hover { text-decoration: underline; }
 
+  /* 費用 / リンク / 写真 の情報行: カード枠なし、列の間は縦罫線だけ */
   .tl-card-grid {
     grid-column: 1 / -1;
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(260px, .95fr) minmax(260px, .95fr) minmax(260px, .95fr);
-    gap: 14px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    column-gap: 26px;
   }
 
   .tl-box {
     min-width: 0;
-    border: 1px solid var(--line);
-    background: #fff;
+  }
+
+  .tl-card-grid > .tl-box + .tl-box {
+    padding-left: 26px;
+    border-left: 1px solid var(--line);
   }
 
   .tl-box h2 {
     margin: 0;
-    padding: 12px 14px 10px;
-    border-bottom: 1px solid var(--line);
     font-size: 16px;
-    font-weight: 950;
-    letter-spacing: 0;
+    font-weight: 800;
+    letter-spacing: .01em;
   }
 
   /* 「この日の予定」フィードの各日ブロック */
@@ -989,36 +1009,30 @@
   .tl-dayblock-weather:empty { display: none; }
   .tl-dayblock-empty { margin: 2px 0 4px; color: var(--muted); font-size: 13px; }
 
-  /* 旅行中の「いま / 次の予定」カード */
-  .tl-now {
-    margin: 0 0 16px;
-    padding: 13px 15px;
-    border: 1px solid rgba(11, 90, 66, .28);
-    border-radius: 12px;
-    background: linear-gradient(180deg, var(--green-soft), #fff);
-  }
+  /* 旅行中の「いま / 次の予定」— 箱で囲わず、小見出し＋罫線で構成する */
+  .tl-now { margin: 0 0 6px; }
   .tl-now-head {
     display: flex;
     align-items: center;
-    gap: 7px;
-    margin-bottom: 9px;
+    gap: 6px;
+    margin: 0 0 2px;
     color: var(--green);
-    font-size: 12px;
+    font-size: 11.5px;
     font-weight: 800;
-    letter-spacing: .02em;
+    letter-spacing: .04em;
   }
-  .tl-now-head .hi { width: 16px; height: 16px; vertical-align: 0; }
+  .tl-now-head .hi { width: 15px; height: 15px; vertical-align: 0; }
   .tl-now-line {
     display: flex;
     align-items: baseline;
-    gap: 9px;
-    padding: 3px 0;
-    font-size: 14px;
+    gap: 12px;
+    padding: 8px 0;
+    border-top: 1px solid var(--line);
+    font-size: 15px;
   }
-  .tl-now-line + .tl-now-line { border-top: 1px dashed var(--line); }
   .tl-now-lead {
     flex: none;
-    min-width: 28px;
+    min-width: 30px;
     color: var(--muted);
     font-size: 11px;
     font-weight: 700;
@@ -1028,7 +1042,7 @@
     margin-left: auto;
     flex: none;
     color: var(--green);
-    font-size: 12px;
+    font-size: 12.5px;
     font-weight: 800;
     white-space: nowrap;
   }
@@ -1077,7 +1091,7 @@
   .tl-more-all:focus-visible { color: var(--green); outline: none; }
 
   .tl-settle {
-    padding: 13px 14px 14px;
+    padding: 0;
   }
 
   /* 主役は「自分の精算額」。総額・立替は補助に降格。 */
@@ -1199,11 +1213,15 @@
     margin-top: 14px;
   }
 
+  .tl-btn-ic { display: inline-flex; align-items: center; }
+  .tl-btn-ic .hi,
+  .tl-btn-ic svg { width: 17px; height: 17px; }
+
   .tl-button {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 6px;
+    gap: 7px;
     min-height: 44px;
     border: 1px solid rgba(11, 90, 66, .36);
     border-radius: 8px;
@@ -1407,7 +1425,7 @@
   .tl-photo-field {
     padding: 10px;
     border: 1px solid var(--line);
-    background: #fbfcfb;
+    background: #fff;
   }
 
   .tl-photo-field input[type="file"] {
@@ -1466,7 +1484,7 @@
     gap: 8px;
     padding: 10px;
     border: 1px solid var(--line);
-    background: #fbfcfb;
+    background: #fff;
   }
 
   .tl-split-detail.is-visible {
@@ -1589,7 +1607,7 @@
     flex-direction: column;
     background: #fff;
     border-radius: 16px 16px 0 0;
-    box-shadow: 0 -12px 44px rgba(17, 25, 22, .22);
+    border-top: 1px solid var(--line-strong);
     animation: tl-slide-up .22s ease;
   }
 
@@ -1645,7 +1663,7 @@
     gap: 8px;
     align-items: center;
     min-height: 46px;
-    padding: 8px 14px;
+    padding: 8px 0;
     border-bottom: 1px solid var(--line);
     text-decoration: none;
   }
@@ -1658,7 +1676,8 @@
   .tl-checks {
     display: grid;
     gap: 7px;
-    padding: 11px 14px 13px;
+    padding: 12px 0 0;
+    margin-top: 12px;
     border-top: 1px solid var(--line);
   }
 
@@ -1751,7 +1770,7 @@
   .tl-photo-body {
     display: grid;
     gap: 10px;
-    padding: 13px 14px 14px;
+    padding: 0;
   }
 
   .tl-photo-art {
@@ -1779,7 +1798,7 @@
     gap: 12px;
     padding: 11px 32px;
     border-top: 1px solid var(--line);
-    background: var(--wash);
+    background: #fff;
     color: var(--muted);
     font-size: 12px;
     font-weight: 800;
@@ -1845,6 +1864,13 @@
   @media (max-width: 960px) {
     .tl-main { grid-template-columns: 1fr; }
     .tl-card-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    /* 2カラム時: 左端の列には縦罫線を出さず、2行目には横罫線を渡す */
+    .tl-card-grid > .tl-box:nth-child(odd) { border-left: 0; padding-left: 0; }
+    .tl-card-grid > .tl-box:nth-child(n + 3) {
+      margin-top: 20px;
+      padding-top: 20px;
+      border-top: 1px solid var(--line);
+    }
     .tl-local-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .tl-local-card:nth-child(3n) { border-right: 1px solid var(--line); }
     .tl-local-card:nth-child(2n) { border-right: 0; }
@@ -1869,8 +1895,7 @@
       z-index: 40;
       gap: 12px;
       padding: 13px 0 10px;
-      background: rgba(255, 255, 255, .95);
-      backdrop-filter: blur(16px);
+      background: #fff;
     }
     .tl-titlewrap { padding-inline: 16px; }
     .tl-sub { flex-basis: 100%; margin-top: 2px; }
@@ -1892,22 +1917,20 @@
     .tl-day b { font-size: 12px; }
     .tl-main {
       display: block;
-      padding: 0 0 12px;
-      background-size: 28px 28px;
+      padding: 0 16px 14px;
     }
-    .tl-panel,
-    .tl-box {
-      margin: 0 0 12px;
-      border-right: 0;
+    /* モバイルは1カラム縦積み。列の縦罫線はやめ、箱の間は横罫線で仕切る */
+    .tl-card-grid > .tl-box + .tl-box {
       border-left: 0;
+      padding-left: 0;
+      margin-top: 20px;
+      padding-top: 20px;
+      border-top: 1px solid var(--line);
     }
-    .tl-panel-head {
-      min-height: 48px;
-      padding: 12px 16px 10px;
+    .tl-sec-head {
       flex-wrap: wrap;
       row-gap: 2px;
     }
-    .tl-panel-head a { margin-left: auto; }
     .tl-map {
       min-height: 0;
       max-height: 260px;
@@ -1921,8 +1944,8 @@
     .tl-pin { grid-template-columns: 28px; }
     .tl-pin-name { display: none; }
     .tl-map-status { grid-template-columns: 1fr; }
-    .tl-timeline { padding: 0 16px 4px; }
-    .tl-day-title { padding: 14px 0 10px; scroll-margin-top: 128px; }
+    .tl-timeline { padding: 0; }
+    .tl-day-title { scroll-margin-top: 128px; }
     .tl-day-title h2 { font-size: 16px; }
     .tl-item { grid-template-columns: 50px 24px minmax(0, 1fr); gap: 6px; padding: 12px 0; }
     .tl-meta { row-gap: 6px; }
@@ -1955,8 +1978,7 @@
       gap: 0;
       padding: 7px 8px calc(7px + env(safe-area-inset-bottom));
       border-top: 1px solid var(--line-strong);
-      background: rgba(255, 255, 255, .95);
-      backdrop-filter: blur(18px);
+      background: #fff;
     }
     .tl-mobile-nav button {
       display: grid;
@@ -1989,32 +2011,17 @@
       <span data-loading-label>最新データを取得しています</span>
     </div>
   </div>
-  <header class="tl-head">
-    <div class="tl-titlewrap">
-      <a class="tl-back" href="plans.html" aria-label="計画一覧へ戻る">
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" aria-hidden="true" focusable="false"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5"/></svg>
-      </a>
-      <div class="tl-headmain">
-        <p class="tl-kicker">Shared Travel Dashboard</p>
-        <h1 class="tl-title" data-title>旅行ダッシュボード</h1>
-      </div>
-      <a class="tl-edit" data-edit-head href="#" hidden aria-label="計画を編集" title="計画を編集">
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true" focusable="false"><path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10"/></svg>
-      </a>
-      <button class="tl-mypage" type="button" data-mypage aria-label="マイページ">
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true" focusable="false"><path stroke-linecap="round" stroke-linejoin="round" d="M17.982 18.725A7.488 7.488 0 0 0 12 15.75a7.488 7.488 0 0 0-5.982 2.975m11.963 0a9 9 0 1 0-11.963 0m11.963 0A8.966 8.966 0 0 1 12 21a8.966 8.966 0 0 1-5.982-2.275M15 9.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"/></svg>
-      </button>
-    </div>
-  </header>
+  <div data-app-header></div>
 
   <nav class="tl-actions" data-actions aria-label="主要リンク"></nav>
   <nav class="tl-days" data-days aria-label="日別旅程"></nav>
 
   <main class="tl-main">
     <section class="tl-panel tl-map-panel" data-mobile-view="home map" data-section-target="home map">
-      <div class="tl-panel-head">
+      <div class="tl-sec-head">
+        <span class="tl-sec-ic" data-ic="map"></span>
         <h2>地図・ルート</h2>
-        <a data-my-maps href="#" target="_blank" rel="noopener">Google My Mapsで開く <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" class="hi" aria-hidden="true" focusable="false"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 0 0 3 8.25v10.5A2.25 2.25 0 0 0 5.25 21h10.5A2.25 2.25 0 0 0 18 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25"/></svg></a>
+        <a class="tl-sec-link" data-my-maps href="#" target="_blank" rel="noopener">Google My Mapsで開く <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" class="hi" aria-hidden="true" focusable="false"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 0 0 3 8.25v10.5A2.25 2.25 0 0 0 5.25 21h10.5A2.25 2.25 0 0 0 18 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25"/></svg></a>
       </div>
       <div class="tl-map" data-map>
         <div class="tl-map-land" aria-hidden="true"></div>
@@ -2030,7 +2037,8 @@
 
     <section class="tl-panel" data-mobile-view="home plan" data-section-target="home plan">
       <div class="tl-timeline">
-        <div class="tl-day-title">
+        <div class="tl-day-title tl-sec-head">
+          <span class="tl-sec-ic" data-ic="calendarDays"></span>
           <h2 data-day-title>今日の予定</h2>
         </div>
         <div data-day-feed></div>
@@ -2039,7 +2047,10 @@
 
     <section class="tl-card-grid" data-section-target="home plan money links">
       <article class="tl-box" data-mobile-view="money" data-section-target="home money">
-        <h2>費用</h2>
+        <div class="tl-sec-head">
+          <span class="tl-sec-ic" data-ic="banknotes"></span>
+          <h2>費用</h2>
+        </div>
         <div class="tl-settle">
           <div class="tl-settle-hero">
             <span class="tl-settle-label">あなたの精算額</span>
@@ -2048,32 +2059,41 @@
           </div>
           <div class="tl-transfer-list" data-transfers></div>
           <div class="tl-buttons">
-            <button class="tl-button primary" type="button" data-expense-open>＋ 費用を追加</button>
-            <button class="tl-button ghost" type="button" data-expense-detail-toggle aria-expanded="false">費用明細を見る</button>
+            <button class="tl-button primary" type="button" data-expense-open><span class="tl-btn-ic" data-ic="plus"></span>費用を追加</button>
+            <button class="tl-button ghost" type="button" data-expense-detail-toggle aria-expanded="false"><span class="tl-btn-ic" data-ic="documentText"></span>費用明細を見る</button>
           </div>
           <div class="tl-expense-details" data-expense-details></div>
         </div>
       </article>
 
       <article class="tl-box" data-mobile-view="links" data-section-target="home links">
-        <h2>リンク・チェック</h2>
+        <div class="tl-sec-head">
+          <span class="tl-sec-ic" data-ic="link"></span>
+          <h2>リンク・チェック</h2>
+        </div>
         <div class="tl-docs" data-docs></div>
         <div class="tl-checks" data-checks></div>
       </article>
 
       <article class="tl-box" data-mobile-view="links" data-section-target="home links">
-        <h2>写真アルバム</h2>
+        <div class="tl-sec-head">
+          <span class="tl-sec-ic" data-ic="photo"></span>
+          <h2>写真アルバム</h2>
+        </div>
         <div class="tl-photo-body">
           <a class="tl-photo-art" data-photo-link href="#" target="_blank" rel="noopener" aria-label="写真アルバム"></a>
           <div><b data-photo-title></b><span data-photo-meta></span></div>
-          <a class="tl-button" data-photo-button href="#" target="_blank" rel="noopener">写真アルバムを開く</a>
+          <a class="tl-button" data-photo-button href="#" target="_blank" rel="noopener"><span class="tl-btn-ic" data-ic="photo"></span>写真アルバムを開く</a>
         </div>
       </article>
+    </section>
 
-      <article class="tl-box tl-local-info" data-mobile-view="links" data-section-target="home links">
+    <section class="tl-panel tl-local-info" data-mobile-view="links" data-section-target="home links">
+      <div class="tl-sec-head">
+        <span class="tl-sec-ic" data-ic="globeAlt"></span>
         <h2>国別 お金・移動</h2>
-        <div class="tl-local-grid" data-local-info></div>
-      </article>
+      </div>
+      <div class="tl-local-grid" data-local-info></div>
     </section>
   </main>
 

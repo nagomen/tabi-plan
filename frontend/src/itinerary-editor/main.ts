@@ -28,6 +28,7 @@ import {
   type AppsScriptParams,
   type AppsScriptResponse,
 } from "../shared/apps-script";
+import { mountAppHeader } from "../shared/app-header";
 
 // ---- 補助型 -------------------------------------------------------------
 
@@ -66,6 +67,19 @@ if (!rootElement) {
   throw new Error("editor 要素が見つかりません");
 }
 const root: HTMLElement = rootElement;
+
+mountAppHeader({
+  mount: "#editor [data-app-header]",
+  kicker: "Itinerary",
+  title: "行程編集",
+  meta: [
+    { attr: "data-trip-title", text: "旅行" },
+    { attr: "data-status", text: "読み込み中" },
+  ],
+  actions: [
+    { kind: "link", display: "text", icon: "home", text: "ダッシュボード", label: "ダッシュボードへ", href: "index.html" },
+  ],
+});
 
 const { qs, qsa } = makeScopedQuery(root);
 const callAppsScript = (params: AppsScriptParams): Promise<AppsScriptResponse> =>

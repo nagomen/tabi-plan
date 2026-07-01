@@ -1,0 +1,115 @@
+/* 全画面共通アプリヘッダー。単一のデザイン源（app-header.ts が生成）。
+   枠線で構成する方針に沿い、下罫線＋淡いグラデのみでカード枠は使わない。
+   色トークンは各ページの :root（--ink など）を継承し、無い場合のフォールバックを併記。 */
+
+/* 全ページ共通のPC最大コンテンツ幅。各ページのシェルが var(--app-width) を参照する。
+   ここ1か所を変えれば全画面の横幅が揃う。 */
+:root {
+  --app-width: 1120px;
+}
+
+.ah {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 22px;
+  border-bottom: 1px solid var(--line, #dfe4e0);
+  background: #fff;
+  color: var(--ink, #111916);
+}
+
+.ah-main { flex: 1; min-width: 0; }
+
+.ah-kicker {
+  margin: 0 0 2px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--green, #0b5a42);
+}
+
+.ah-title {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.ah-meta {
+  margin-top: 4px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 14px;
+  color: var(--muted, #66716b);
+  font-size: 12.5px;
+}
+.ah-meta > span { display: inline-flex; align-items: center; min-width: 0; }
+.ah-meta > span:empty { display: none; }
+
+/* 戻る／アイコンのみアクション（円形タップターゲット） */
+.ah-back,
+.ah-act--icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  color: var(--muted, #66716b);
+  text-decoration: none;
+  appearance: none;
+  -webkit-appearance: none;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  transition: color 0.12s ease, background-color 0.12s ease;
+}
+.ah-back { margin-left: -7px; color: var(--ink, #111916); }
+.ah-back svg,
+.ah-act--icon svg { width: 18px; height: 18px; }
+.ah-back:hover,
+.ah-back:focus-visible,
+.ah-act--icon:hover,
+.ah-act--icon:focus-visible {
+  color: var(--green, #0b5a42);
+  background: var(--green-soft, #e7f1ec);
+  outline: none;
+}
+.ah-back:active,
+.ah-act--icon:active { color: #084935; }
+
+/* テキストアクション（下線ホバー、枠なし） */
+.ah-act--text {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 4px;
+  color: var(--green, #0b5a42);
+  text-decoration: none;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+.ah-act--text svg { width: 16px; height: 16px; flex: none; }
+.ah-act--text:hover,
+.ah-act--text:focus-visible { text-decoration: underline; outline: none; }
+
+.ah-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+}
+.ah-act[hidden] { display: none; }
+
+@media (max-width: 640px) {
+  .ah { padding: 16px; gap: 8px; }
+  .ah-title { font-size: 19px; }
+}

@@ -33,10 +33,8 @@
   a { color: inherit; }
 
   .edit-app {
-    max-width: 1180px;
+    max-width: var(--app-width, 1120px);
     margin: 0 auto;
-    border: 1px solid var(--line-strong);
-    background: var(--paper);
   }
 
   .ed-head {
@@ -49,8 +47,7 @@
     align-items: center;
     padding: 16px 18px;
     border-bottom: 1px solid var(--line);
-    background: rgba(255, 255, 255, .96);
-    backdrop-filter: blur(16px);
+    background: #fff;
   }
 
   .ed-head h1 {
@@ -91,7 +88,7 @@
     gap: 10px;
     padding: 12px 18px;
     border-bottom: 1px solid var(--line);
-    background: var(--wash);
+    background: #fff;
   }
 
   .ed-search {
@@ -443,16 +440,7 @@
 </head>
 <body>
 <div class="edit-app" id="editor">
-  <header class="ed-head">
-    <div>
-      <h1>行程編集</h1>
-      <div class="ed-meta">
-        <span data-trip-title>旅行</span>
-        <span data-status>読み込み中</span>
-      </div>
-    </div>
-    <a class="ed-dashboard" href="index.html">ダッシュボード</a>
-  </header>
+  <div data-app-header></div>
 
   <div class="ed-toolbar">
     <div class="ed-search">

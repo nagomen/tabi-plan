@@ -10,6 +10,24 @@ import type { PlanMeta } from "../shared/plans-store";
 import { getUser, setUserName } from "../shared/user-store";
 import { friendCandidates } from "../shared/friend-store";
 import { getPayLink, setPayLink } from "../shared/payment-links";
+import { currentAccount, logOut, updateName, isLoggedIn } from "../shared/account-store";
+import { mountAppHeader } from "../shared/app-header";
+
+// ドロワー（右スライドイン）に埋め込まれている時は embed=1 で開かれる。
+// その場合は「戻る」を出さず（ドロワーの✕で閉じる）、計画リンクは最上位ウィンドウで開く。
+const isEmbedded = new URLSearchParams(location.search).has("embed");
+if (isEmbedded) {
+  document.documentElement.classList.add("is-embedded");
+  const base = document.createElement("base");
+  base.target = "_top";
+  document.head.prepend(base);
+}
+
+mountAppHeader({
+  kicker: "My Page",
+  title: "マイページ",
+  back: isEmbedded ? undefined : { href: "plans.html", label: "計画一覧へ戻る" },
+});
 
 const { qs } = makeScopedQuery(document);
 
@@ -86,6 +104,7 @@ function membersOf(plan: PlanMeta): string[] {
 const nameInput = qs<HTMLInputElement>("[data-name]");
 const avatarEl = qs<HTMLElement>("[data-avatar]");
 const noteEl = qs<HTMLElement>("[data-profile-note]");
+const accountEl = qs<HTMLElement>("[data-account]");
 
 function avatarText(name: string): string {
   return (name.trim().slice(0, 1) || "?").toUpperCase();
@@ -95,6 +114,24 @@ function renderProfile(): void {
   const user = getUser();
   nameInput.value = user.name;
   avatarEl.textContent = avatarText(user.name);
+  renderAccount();
+}
+
+function renderAccount(): void {
+  const account = currentAccount();
+  if (account) {
+    accountEl.innerHTML =
+      `${icon("user")}<span>${escapeHtml(account.email)} でログイン中</span>` +
+      `<a href="#" class="danger" data-logout>ログアウト</a>`;
+    const logout = accountEl.querySelector<HTMLAnchorElement>("[data-logout]");
+    logout?.addEventListener("click", (e) => {
+      e.preventDefault();
+      logOut();
+      renderAccount();
+    });
+  } else {
+    accountEl.innerHTML = `<a href="login.html">ログイン / 新規登録</a><span>すると別端末でも同じ名前で使えます（試作）</span>`;
+  }
 }
 
 // 名前は自動保存（入力中はデバウンス、確定時は即時）。
@@ -102,6 +139,7 @@ let nameTimer = 0;
 let noteTimer = 0;
 function commitName(): void {
   const user = setUserName(nameInput.value);
+  if (isLoggedIn()) updateName(user.name); // ログイン中はアカウントの表示名も更新
   avatarEl.textContent = avatarText(user.name);
   renderPlans();
   noteEl.textContent = user.name ? "保存しました" : "入力すると自動で保存されます";
@@ -121,15 +159,20 @@ nameInput.addEventListener("keydown", (e) => {
 
 const planMount = qs<HTMLElement>("[data-plans]");
 const planCount = qs<HTMLElement>("[data-plan-count]");
-let planFilter: "all" | "member" = "all";
 
-function planRow(plan: PlanMeta, allSlugs: string[], isMember: boolean): string {
+/** 本人（名前）がメンバーに含まれるか。名前未設定なら常に false。 */
+function isMemberOf(plan: PlanMeta): boolean {
+  const userName = getUser().name;
+  return Boolean(userName) && membersOf(plan).includes(userName);
+}
+
+function planRow(plan: PlanMeta, allSlugs: string[]): string {
   const meta = [plan.dates, plan.members].filter(Boolean).map(escapeHtml).join(" ・ ");
   return (
     `<a class="mp-row" href="index.html?plan=${encodeURIComponent(plan.slug)}">` +
     `<span class="mp-dot" style="background:${colorFor(plan.slug, allSlugs)}"></span>` +
     `<span class="mp-row-body">` +
-    `<span class="mp-row-name">${escapeHtml(plan.title || "無題の旅行")}${isMember ? `<span class="mp-badge">参加</span>` : ""}</span>` +
+    `<span class="mp-row-name">${escapeHtml(plan.title || "無題の旅行")}</span>` +
     (meta ? `<span class="mp-row-meta">${meta}</span>` : "") +
     `</span>` +
     `<span class="mp-chev">${icon("chevronRight")}</span>` +
@@ -137,35 +180,22 @@ function planRow(plan: PlanMeta, allSlugs: string[], isMember: boolean): string 
   );
 }
 
+// マイページは「自分が参加している計画のみ」を表示する。
 function renderPlans(): void {
   const all = TripPlans.list();
-  const allSlugs = all.map((p) => p.slug);
+  const allSlugs = all.map((p) => p.slug); // 色は全計画基準で安定させる
   const userName = getUser().name;
-  const isMember = (p: PlanMeta): boolean => Boolean(userName) && membersOf(p).includes(userName);
-
-  const list = planFilter === "member" ? all.filter(isMember) : all;
+  const list = all.filter(isMemberOf);
   planCount.textContent = list.length ? `${list.length}件` : "";
 
   if (list.length) {
-    planMount.innerHTML = list.map((p) => planRow(p, allSlugs, isMember(p))).join("");
+    planMount.innerHTML = list.map((p) => planRow(p, allSlugs)).join("");
     return;
   }
-  if (planFilter === "member") {
-    planMount.innerHTML = userName
-      ? `<div class="mp-empty"><b>参加している計画はありません</b><span>計画のメンバーに「${escapeHtml(userName)}」を追加すると表示されます</span></div>`
-      : `<div class="mp-empty"><b>ユーザー名を設定してください</b><span>名前を入れると参加中の計画を絞り込めます</span></div>`;
-  } else {
-    planMount.innerHTML = `<div class="mp-empty"><b>まだ計画がありません</b><span>「計画一覧」から新しい計画を作成できます</span></div>`;
-  }
+  planMount.innerHTML = userName
+    ? `<div class="mp-empty"><b>参加している計画はありません</b><span>計画のメンバーに「${escapeHtml(userName)}」を追加すると表示されます</span></div>`
+    : `<div class="mp-empty"><b>名前を設定してください</b><span>上で名前を入力（またはログイン）すると、参加している計画が表示されます</span></div>`;
 }
-
-document.querySelectorAll<HTMLButtonElement>(".mp-chip").forEach((chip) => {
-  chip.addEventListener("click", () => {
-    planFilter = chip.dataset.filter === "member" ? "member" : "all";
-    document.querySelectorAll<HTMLElement>(".mp-chip").forEach((c) => c.classList.toggle("is-active", c === chip));
-    renderPlans();
-  });
-});
 
 // ---- タブ ---------------------------------------------------------------
 
@@ -194,7 +224,9 @@ interface PlanBand { plan: PlanMeta; range: PlanRange; color: string }
 function renderCalendar(): void {
   const all = TripPlans.list();
   const allSlugs = all.map((p) => p.slug);
-  const bands: PlanBand[] = all
+  // カレンダーも「自分が参加している計画のみ」。
+  const mine = all.filter(isMemberOf);
+  const bands: PlanBand[] = mine
     .map((plan) => {
       const range = planRange(plan);
       return range ? { plan, range, color: colorFor(plan.slug, allSlugs) } : null;

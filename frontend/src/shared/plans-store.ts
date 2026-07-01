@@ -20,6 +20,9 @@ import type {
 
 export type PlanSource = "local" | "googleSheets" | "appsScript" | "sample";
 
+/** 計画の公開範囲。public=公開 / invite=招待されたメンバーのみ。 */
+export type PlanVisibility = "public" | "invite";
+
 export interface PlanMeta {
   slug: string;
   title: string;
@@ -28,6 +31,8 @@ export interface PlanMeta {
   members?: string;
   note?: string;
   source: PlanSource;
+  /** 公開範囲。未設定は「公開」とみなす（既存計画はすべて公開扱い）。 */
+  visibility?: PlanVisibility;
   spreadsheetId?: string;
   appsScriptUrl?: string;
   schema?: string;
@@ -36,6 +41,11 @@ export interface PlanMeta {
   published?: boolean;
   createdAt?: string;
   updatedAt?: string;
+}
+
+/** 公開範囲を返す（未設定は public）。 */
+export function planVisibility(meta: Pick<PlanMeta, "visibility">): PlanVisibility {
+  return meta.visibility === "invite" ? "invite" : "public";
 }
 
 /** plan-editor が保存し、dashboard が local モードで読むプランデータ */
@@ -96,6 +106,7 @@ export function seedMeta(config: Partial<TripConfig>): PlanMeta | null {
     members: "",
     note: "",
     source,
+    visibility: "public",
     spreadsheetId: config.spreadsheetId || "",
     appsScriptUrl: config.appsScriptUrl || "",
     schema: config.schema || "trip",
@@ -444,8 +455,27 @@ export const TYPES: { value: ItemType; label: string }[] = [
   { value: "form", label: "手続き" },
 ];
 
+/**
+ * 既存の計画（visibility 未設定）をすべて「公開」に確定させる一度きりの移行。
+ * 以後に作る計画は plan-editor の保存時に公開/招待制を選んで設定する。
+ */
+export function migrateExistingToPublic(): void {
+  const arr = list();
+  let changed = false;
+  arr.forEach((p) => {
+    if (!p.visibility) {
+      p.visibility = "public";
+      changed = true;
+    }
+  });
+  if (changed) saveList(arr);
+}
+
 // 開発時のみ: ファイルから localStorage を再構築（モジュール読込時に1回）。
 hydrateFromDevFiles();
+
+// 既存計画の公開範囲を確定（未設定→公開）。
+migrateExistingToPublic();
 
 // backend のキャッシュをウォームしておく（全ページが本モジュールを読むため、ここで1回）。
 // localStorage 実装では同期完了。将来 API 実装に差し替えたら、各ページ起動で

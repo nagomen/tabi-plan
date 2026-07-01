@@ -10,6 +10,7 @@ import { readGlobalTripConfig } from "../shared/config";
 import { escapeHtml, errorMessage, makeScopedQuery } from "../shared/dom";
 import { registerServiceWorker } from "../shared/pwa";
 import { icon } from "../shared/icons";
+import { mountAppHeader } from "../shared/app-header";
 import { decodeInvite } from "../shared/invite";
 import {
   callAppsScript,
@@ -40,6 +41,18 @@ interface AppState {
 }
 
 // ---- DOM 取得ヘルパー ----------------------------------------------------
+
+mountAppHeader({
+  kicker: "Travel Plans",
+  title: "旅行計画",
+  meta: [
+    { attr: "data-count", text: "読み込み中" },
+    { text: "選んだ計画でダッシュボードが開きます" },
+  ],
+  actions: [
+    { kind: "link", display: "icon", icon: "user", label: "マイページ", href: "mypage.html" },
+  ],
+});
 
 const { qs } = makeScopedQuery(document);
 
