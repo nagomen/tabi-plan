@@ -29,8 +29,8 @@
     --gray: #68746e;
     --shadow: none;
     --shadow-soft: none;
-    --radius: 10px;
-    --radius-lg: 16px;
+    --radius: 0;
+    --radius-lg: 0;
     --head-h: 72px;
   }
 
@@ -146,7 +146,7 @@
     text-decoration: none;
     white-space: nowrap;
     cursor: pointer;
-    border-radius: var(--radius);
+    border-radius: 0;
   }
 
   .pe-btn[hidden] { display: none; }
@@ -213,7 +213,7 @@
     gap: 7px;
     margin: 0 0 10px;
     padding: 4px 11px 4px 9px;
-    border-radius: 999px;
+    border-radius: 0;
     background: #fff;
     border: 1px solid var(--green-soft);
     color: var(--green);
@@ -336,7 +336,7 @@
     font-weight: 600;
   }
   .pe-field > span em { font-style: normal; color: var(--muted); font-size: 11px; font-weight: 400; }
-  .pe-req { padding: 1px 7px; border-radius: 999px; background: var(--green-soft); color: var(--green); font-size: 10px; font-weight: 600; letter-spacing: .02em; }
+  .pe-req { padding: 1px 7px; border-radius: 0; background: var(--green-soft); color: var(--green); font-size: 10px; font-weight: 600; letter-spacing: .02em; }
 
   .pe-field input,
   .pe-field select,
@@ -350,7 +350,7 @@
     padding: 10px 12px;
     font: inherit;
     font-size: 14px;
-    border-radius: var(--radius);
+    border-radius: 0;
   }
   .pe-field textarea { min-height: 54px; resize: vertical; }
   .pe-field input:focus,
@@ -369,7 +369,7 @@
     margin-top: 16px;
     padding: 14px;
     border: 1px solid var(--line);
-    border-radius: var(--radius);
+    border-radius: 0;
     background: #fff;
   }
   .pe-calsync-label {
@@ -389,7 +389,7 @@
     min-height: 42px;
     padding: 0 16px;
     border: 1px solid var(--line-strong);
-    border-radius: var(--radius);
+    border-radius: 0;
     background: #fff;
     color: var(--ink);
     font: inherit;
@@ -413,7 +413,7 @@
     gap: 6px;
     padding: 5px 6px 5px 12px;
     border: 1px solid var(--line-strong);
-    border-radius: 999px;
+    border-radius: 0;
     background: #fff;
     font-size: 13px;
     font-weight: 600;
@@ -439,7 +439,7 @@
 
   .pe-member-add { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; margin-top: 9px; max-width: 480px; }
   .pe-member-inputwrap { position: relative; min-width: 0; }
-  .pe-member-inputwrap input { width: 100%; min-height: 44px; border: 1px solid var(--line-strong); border-radius: var(--radius); padding: 9px 12px; font: inherit; font-size: 14px; }
+  .pe-member-inputwrap input { width: 100%; min-height: 44px; border: 1px solid var(--line-strong); border-radius: 0; padding: 9px 12px; font: inherit; font-size: 14px; }
   .pe-member-inputwrap input:focus { outline: none; border-color: var(--green); box-shadow: 0 0 0 3px rgba(7, 95, 70, .14); }
   .pe-member-suggest {
     position: absolute;
@@ -451,7 +451,7 @@
     overflow-y: auto;
     background: #fff;
     border: 1px solid var(--line-strong);
-    border-radius: 12px;
+    border-radius: 0;
   }
   .pe-member-suggest[hidden] { display: none; }
   .pe-suggest-head { padding: 8px 12px 4px; color: var(--muted); font-size: 11px; font-weight: 700; letter-spacing: .04em; }
@@ -461,20 +461,20 @@
 
   /* 名前登録モーダル */
   .pe-modal { position: fixed; inset: 0; z-index: 9999; display: grid; place-items: center; padding: 18px; background: rgba(17, 25, 22, .45); }
-  .pe-modal-box { width: min(420px, 100%); background: #fff; border: 1px solid var(--line-strong); border-radius: 16px; overflow: hidden; }
+  .pe-modal-box { width: min(420px, 100%); background: #fff; border: 1px solid var(--line-strong); border-radius: 0; overflow: hidden; }
   .pe-modal-box h2 { margin: 0; padding: 20px 22px 4px; font-size: 18px; font-weight: 700; }
   .pe-modal-box p { margin: 0; padding: 0 22px; color: var(--muted); font-size: 13px; }
   .pe-modal-body { padding: 16px 22px 20px; display: grid; gap: 12px; }
-  .pe-modal-body input { min-height: 48px; border: 1px solid var(--line-strong); border-radius: 10px; padding: 10px 12px; font: inherit; font-size: 16px; }
+  .pe-modal-body input { min-height: 48px; border: 1px solid var(--line-strong); border-radius: 0; padding: 10px 12px; font: inherit; font-size: 16px; }
   .pe-modal-body input:focus { outline: none; border-color: var(--green); box-shadow: 0 0 0 3px rgba(7, 95, 70, .14); }
   .pe-modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
-  .pe-modal-btn { min-height: 44px; padding: 0 18px; border: 1px solid var(--green); border-radius: 10px; background: var(--green); color: #fff; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
+  .pe-modal-btn { min-height: 44px; padding: 0 18px; border: 1px solid var(--green); border-radius: 0; background: var(--green); color: #fff; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
   .pe-modal-btn.ghost { background: #fff; color: var(--ink); border-color: var(--line-strong); }
   .pe-modal-sub { padding-top: 4px !important; }
 
   /* 公開範囲チューザー */
   .pe-vis-options { display: grid; gap: 10px; padding: 14px 22px 8px; }
-  .pe-vis-opt { display: flex; align-items: flex-start; gap: 12px; padding: 12px 13px; border: 1px solid var(--line-strong); border-radius: 12px; cursor: pointer; }
+  .pe-vis-opt { display: flex; align-items: flex-start; gap: 12px; padding: 12px 13px; border: 1px solid var(--line-strong); border-radius: 0; cursor: pointer; }
   .pe-vis-opt:hover { border-color: var(--green); }
   .pe-vis-opt input { margin-top: 2px; width: 18px; height: 18px; flex: none; accent-color: var(--green); }
   .pe-vis-opt:has(input:checked) { border-color: var(--green); background: var(--green-soft); }
@@ -486,13 +486,13 @@
   .pe-modal-box .pe-modal-actions { padding: 6px 22px 20px; }
 
   /* トースト */
-  .pe-toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 9998; max-width: 88%; padding: 11px 16px; border-radius: 10px; background: var(--ink); color: #fff; font-size: 13px; font-weight: 600; }
+  .pe-toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 9998; max-width: 88%; padding: 11px 16px; border-radius: 0; background: var(--ink); color: #fff; font-size: 13px; font-weight: 600; }
 
   /* ルート（大まかな場所） */
   .pe-form-panel {
     padding: 22px;
     border: 1px solid var(--line);
-    border-radius: var(--radius-lg);
+    border-radius: 0;
     background: #fff;
     box-shadow: var(--shadow-soft);
   }
@@ -509,17 +509,17 @@
     gap: 9px;
     padding: 7px 9px 7px 11px;
     border: 1px solid var(--line);
-    border-radius: var(--radius);
+    border-radius: 0;
     background: #fff;
     font-size: 13px;
     font-weight: 600;
     flex-wrap: wrap;
   }
   .pe-city .pe-city-n { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--green); color: #fff; font-size: 11px; font-weight: 600; flex: none; }
-  .pe-city-name { flex: 1; min-width: 120px; min-height: 36px; border: 1px solid var(--line-strong); border-radius: 7px; background: #fff; padding: 6px 9px; font: inherit; font-size: 13px; font-weight: 500; }
+  .pe-city-name { flex: 1; min-width: 120px; min-height: 36px; border: 1px solid var(--line-strong); border-radius: 0; background: #fff; padding: 6px 9px; font: inherit; font-size: 13px; font-weight: 500; }
   .pe-city-name:focus { outline: none; border-color: var(--green); box-shadow: 0 0 0 3px rgba(11, 90, 66, .14); }
   .pe-city-dates { display: inline-flex; align-items: center; gap: 6px; }
-  .pe-city-dates select { min-height: 34px; border: 1px solid var(--line-strong); border-radius: 7px; background: #fff; padding: 4px 6px; font: inherit; font-size: 12px; }
+  .pe-city-dates select { min-height: 34px; border: 1px solid var(--line-strong); border-radius: 0; background: #fff; padding: 4px 6px; font: inherit; font-size: 12px; }
   .pe-city-sep { color: var(--muted); }
   .pe-city.no-geo { border-style: dashed; }
   .pe-city.no-geo .pe-city-name { color: var(--muted); }
@@ -532,12 +532,12 @@
   .pe-cityband b { font-size: 15px; font-weight: 700; }
   .pe-cityband span { color: var(--muted); font-size: 12px; font-weight: 500; }
   .pe-route-add { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; max-width: 560px; }
-  .pe-route-add input { flex: 1; min-height: 44px; border: 1px solid var(--line-strong); border-radius: var(--radius); padding: 9px 12px; font: inherit; font-size: 14px; }
+  .pe-route-add input { flex: 1; min-height: 44px; border: 1px solid var(--line-strong); border-radius: 0; padding: 9px 12px; font: inherit; font-size: 14px; }
   .pe-route-empty {
     display: block;
     padding: 13px 14px;
     border: 1px dashed var(--line-strong);
-    border-radius: var(--radius);
+    border-radius: 0;
     background: #fff;
     color: var(--muted);
     font-size: 12.5px;
@@ -555,7 +555,7 @@
   .pe-cand-add { display: flex; gap: 8px; margin: 8px 0 12px; }
   .pe-cand-add input {
     flex: 1; min-width: 0; min-height: 42px;
-    border: 1px solid var(--line-strong); border-radius: 9px;
+    border: 1px solid var(--line-strong); border-radius: 0;
     background: #fff; color: var(--ink); padding: 8px 12px; font: inherit; font-size: 15px;
   }
   .pe-cand-add input:focus-visible { outline: none; border-color: var(--green); box-shadow: 0 0 0 3px var(--green-soft); }
@@ -563,12 +563,12 @@
   .pe-cand-list:empty { display: none; }
   .pe-cand-row {
     display: flex; align-items: center; gap: 10px;
-    padding: 9px 11px; border: 1px solid var(--line); border-radius: 11px; background: #fff;
+    padding: 9px 11px; border: 1px solid var(--line); border-radius: 0; background: #fff;
   }
   .pe-cand-row.is-adopted { opacity: .55; }
   .pe-cand-vote {
     appearance: none; flex: none; display: inline-flex; align-items: center; gap: 5px;
-    min-height: 36px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: 999px;
+    min-height: 36px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: 0;
     background: #fff; color: var(--muted); font: inherit; font-size: 13px; font-weight: 700; cursor: pointer;
   }
   .pe-cand-vote .hi { width: 15px; height: 15px; vertical-align: 0; }
@@ -578,14 +578,14 @@
   .pe-cand-sub { color: var(--muted); font-size: 12px; }
   .pe-cand-act {
     appearance: none; flex: none; display: inline-flex; align-items: center; gap: 5px;
-    min-height: 34px; padding: 0 10px; border: 1px solid var(--green); border-radius: 8px;
+    min-height: 34px; padding: 0 10px; border: 1px solid var(--green); border-radius: 0;
     background: var(--green); color: #fff; font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer;
   }
   .pe-cand-act:disabled { opacity: .5; cursor: default; }
   .pe-cand-act .hi { width: 14px; height: 14px; vertical-align: 0; }
   .pe-cand-del {
     appearance: none; flex: none; display: inline-grid; place-items: center;
-    width: 32px; height: 32px; border: 0; border-radius: 8px; background: none; color: var(--muted); cursor: pointer;
+    width: 32px; height: 32px; border: 0; border-radius: 0; background: none; color: var(--muted); cursor: pointer;
   }
   .pe-cand-del:hover { color: var(--red); background: rgba(207, 79, 61, .08); }
   .pe-cand-del .hi { width: 16px; height: 16px; vertical-align: 0; }
@@ -611,7 +611,7 @@
     gap: 1px;
     padding: 5px 11px;
     border: 1px solid var(--line);
-    border-radius: var(--radius);
+    border-radius: 0;
     background: #fff;
     font: inherit;
     cursor: pointer;
@@ -632,7 +632,7 @@
     font-weight: 600;
     padding: 4px 9px;
     cursor: pointer;
-    border-radius: 7px;
+    border-radius: 0;
   }
   .pe-map-toggle:hover { color: var(--ink); }
   .pe-map-show {
@@ -645,7 +645,7 @@
     gap: 6px;
     padding: 9px 14px;
     border: 1px solid var(--green);
-    border-radius: var(--radius);
+    border-radius: 0;
     background: var(--green);
     color: #fff;
     font: inherit;
@@ -669,7 +669,7 @@
     gap: 6px;
     padding: 40px 22px;
     border: 1px dashed var(--line-strong);
-    border-radius: var(--radius-lg);
+    border-radius: 0;
     background: #fff;
     text-align: center;
   }
@@ -678,7 +678,7 @@
     width: 44px;
     height: 44px;
     margin-bottom: 6px;
-    border-radius: 14px;
+    border-radius: 0;
     background: var(--green-soft);
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23075f46' stroke-width='1.6'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5'/%3E%3C/svg%3E");
     background-repeat: no-repeat;
@@ -690,7 +690,7 @@
 
   .pe-day {
     border: 1px solid var(--line);
-    border-radius: var(--radius);
+    border-radius: 0;
     background: #fff;
     box-shadow: var(--shadow-soft);
     overflow: hidden;
@@ -705,14 +705,14 @@
     border-bottom: 1px solid var(--line);
     background: #fff;
   }
-  .pe-day-badge { display: grid; justify-items: center; min-width: 62px; padding: 7px 10px; border: 1px solid rgba(7, 95, 70, .28); border-radius: var(--radius); background: var(--green-soft); color: var(--green); }
+  .pe-day-badge { display: grid; justify-items: center; min-width: 62px; padding: 7px 10px; border: 1px solid rgba(7, 95, 70, .28); border-radius: 0; background: var(--green-soft); color: var(--green); }
   .pe-day-badge b { font-size: 14px; font-weight: 700; line-height: 1; }
   .pe-day-badge span { font-size: 10.5px; font-weight: 500; }
   .pe-day-route { min-width: 0; display: grid; gap: 2px; }
   .pe-day-route b { font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .pe-day-route span { color: var(--muted); font-size: 11.5px; font-weight: 500; display: inline-flex; align-items: center; gap: 5px; }
   .pe-day-tools { display: flex; gap: 6px; }
-  .pe-icon-btn { display: inline-grid; place-items: center; min-width: 32px; min-height: 32px; border: 1px solid var(--line-strong); border-radius: 7px; background: #fff; color: var(--muted); cursor: pointer; }
+  .pe-icon-btn { display: inline-grid; place-items: center; min-width: 32px; min-height: 32px; border: 1px solid var(--line-strong); border-radius: 0; background: #fff; color: var(--muted); cursor: pointer; }
   .pe-icon-btn:hover { color: var(--ink); }
   .pe-icon-btn.danger:hover { border-color: var(--red); color: var(--red); }
   .pe-icon-btn:disabled { opacity: .3; cursor: not-allowed; }
@@ -743,7 +743,7 @@
     padding: 9px 10px;
     margin: 5px 0;
     border: 1px solid var(--line);
-    border-radius: var(--radius);
+    border-radius: 0;
     background: #fff;
     text-align: left;
     font: inherit;
@@ -761,7 +761,7 @@
     align-items: center;
     gap: 4px;
     padding: 3px 8px;
-    border-radius: 999px;
+    border-radius: 0;
     color: #fff;
     font-size: 11px;
     font-weight: 600;
@@ -780,7 +780,7 @@
   .pe-row-caret { color: var(--muted); }
 
   /* 展開フォーム */
-  .pe-edit { display: none; padding: 10px; border: 1px solid var(--green); border-top: 0; border-radius: 0 0 var(--radius) var(--radius); margin: -5px 0 5px; background: #fff; }
+  .pe-edit { display: none; padding: 10px; border: 1px solid var(--green); border-top: 0; border-radius: 0; margin: -5px 0 5px; background: #fff; }
   .pe-node.is-open > .pe-edit { display: block; }
   .pe-edit-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
   .pe-edit-grid .c2 { grid-column: span 2; }
@@ -791,7 +791,7 @@
   .pe-edit-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; }
 
   .pe-place-tools { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 6px; }
-  .pe-mini { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-height: 38px; padding: 0 11px; border: 1px solid var(--green); border-radius: 7px; background: var(--green-soft); color: var(--green); font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+  .pe-mini { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-height: 38px; padding: 0 11px; border: 1px solid var(--green); border-radius: 0; background: var(--green-soft); color: var(--green); font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap; }
   .pe-mini:hover { background: #fff; }
   .pe-mini.is-armed { background: var(--green); color: #fff; }
   .pe-geo-status { display: flex; align-items: center; gap: 5px; min-height: 14px; margin-top: 4px; color: var(--muted); font-size: 11px; font-weight: 500; }
@@ -807,7 +807,7 @@
   .pe-node[data-kind="move"] > .pe-row { background: var(--blue-soft); border-style: dashed; border-color: var(--blue); }
   .pe-seg { display: inline-flex; align-items: center; gap: 7px; min-width: 0; font-size: 13.5px; font-weight: 500; }
   .pe-seg .ep { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .pe-seg .mid { display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px; border-radius: 999px; background: var(--blue); color: #fff; font-size: 11px; font-weight: 600; }
+  .pe-seg .mid { display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px; border-radius: 0; background: var(--blue); color: #fff; font-size: 11px; font-weight: 600; }
   .pe-seg .arr { color: var(--blue); }
 
   /* 宿泊（その日の錨） */
@@ -819,7 +819,7 @@
     margin-top: 10px;
     padding: 11px 13px;
     border: 1px solid var(--red);
-    border-radius: var(--radius);
+    border-radius: 0;
     background: #fdf3f1;
   }
   .pe-stay-ic { display: inline-grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; background: var(--red); color: #fff; }
@@ -846,7 +846,7 @@
     min-height: 38px;
     padding: 0 13px;
     border: 1px solid var(--line-strong);
-    border-radius: 999px;
+    border-radius: 0;
     background: #fff;
     font: inherit;
     font-size: 13px;
@@ -905,7 +905,7 @@
   .pe-savebar .pe-btn.primary:hover { background: var(--green-deep); }
 
   /* Leaflet マーカーラベル */
-  .pe-pin { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); color: #fff; font-size: 11px; font-weight: 600; }
+  .pe-pin { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; transform: rotate(-45deg); color: #fff; font-size: 11px; font-weight: 600; }
   .pe-pin span { transform: rotate(45deg); }
   /* 検索候補ピン（クリックで採用） */
   .pe-candpin {
@@ -1004,7 +1004,7 @@
     .pe-row-title { font-size: 13px; }
     .pe-seg { font-size: 12.5px; }
     .pe-quick { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-    .pe-q { justify-content: center; min-height: 42px; padding: 0 8px; border-radius: var(--radius); }
+    .pe-q { justify-content: center; min-height: 42px; padding: 0 8px; border-radius: 0; }
     .pe.map-collapsed .pe-mapwrap { display: none; }
     .pe:not(.map-collapsed) .pe-mapwrap {
       position: fixed;
@@ -1017,7 +1017,7 @@
       grid-template-rows: auto 1fr auto;
       height: var(--pe-map-h, min(58dvh, 430px));
       border-top: 1px solid var(--line-strong);
-      border-radius: 16px 16px 0 0;
+      border-radius: 0;
       background: #fff;
       overflow: hidden;
     }
@@ -1038,7 +1038,7 @@
     .pe:not(.map-collapsed) .pe-map-grip > span {
       width: 44px;
       height: 5px;
-      border-radius: 999px;
+      border-radius: 0;
       background: var(--line-strong);
     }
     .pe:not(.map-collapsed) .pe-map-grip:hover > span,

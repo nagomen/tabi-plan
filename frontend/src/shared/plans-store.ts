@@ -5,6 +5,7 @@
 import type { TripConfig, MapDefaults } from "./config";
 import { safeTripSlug } from "./config";
 import * as Backend from "./backend";
+import { getUser } from "./user-store";
 import type {
   TripData,
   TripInfo,
@@ -90,6 +91,42 @@ export function list(): PlanMeta[] {
 
 function saveList(arr: PlanMeta[]): boolean {
   return writeJSON(PLANS_KEY, Array.isArray(arr) ? arr : []);
+}
+
+// ---- ホーム用の振り分け（自分の計画 / みんなの公開計画） ------------------
+// 開発時は list() が共有プール（data/plans/*.json）全体を返すため、これを
+// 「サーバー代用」として自分/他人に振り分ける。将来バックエンドが入ったら
+// listPublic() は `GET /api/plans?visibility=public` 等のリモート照会に、
+// listMine() はアカウント単位の照会に差し替える（シグネチャは維持）。
+
+// 循環 import 回避のため、メンバー分割は friend-store を使わずここに小さく持つ。
+function planMembers(meta: PlanMeta): string[] {
+  return String(meta.members || "")
+    .split(/[、,／/]|\s*\/\s*|\s*･\s*/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+function currentUserIsMember(meta: PlanMeta): boolean {
+  const name = getUser().name;
+  return Boolean(name) && planMembers(meta).includes(name);
+}
+
+/** 自分の計画: 現在ユーザーがメンバー。名前未設定時は端末ローカル計画を自分扱い。 */
+export function listMine(): PlanMeta[] {
+  const name = getUser().name;
+  return list().filter((m) => (name ? currentUserIsMember(m) : m.source === "local"));
+}
+
+/**
+ * みんなの公開計画: visibility===public かつ 自分がメンバーでない。
+ * dev では実ユーザーの計画のみ発見対象にするため source:"local" に限定
+ * （組み込み sample/appsScript の seed は除外）。
+ */
+export function listPublic(): PlanMeta[] {
+  return list().filter(
+    (m) => m.source === "local" && planVisibility(m) === "public" && !currentUserIsMember(m),
+  );
 }
 
 /** window.TRIP_CONFIG から組み込みプランのメタを作る */

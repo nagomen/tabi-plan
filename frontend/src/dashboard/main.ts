@@ -17,6 +17,9 @@ import {
   type TripConfig,
 } from "../shared/config";
 import * as TripPlans from "../shared/plans-store";
+import { getUser } from "../shared/user-store";
+import { isMemberOf } from "../shared/membership";
+import { currentAccount } from "../shared/account-store";
 import * as ExpenseStore from "../shared/expense-store";
 import { escapeHtml, makeScopedQuery } from "../shared/dom";
 import {
@@ -606,6 +609,14 @@ function showIdentityModal(required: boolean): Promise<boolean> {
 }
 
 async function requestIdentityIfNeeded(): Promise<void> {
+  // 読み取り専用（他人の公開計画の閲覧）では費用に関わらないので本人設定は求めない。
+  if (READ_ONLY) return;
+  // ログイン済みなら本人確認は不要。端末プロフィール未設定ならアカウント名を本人に使う。
+  const account = currentAccount();
+  if (account) {
+    if (!readProfile() && account.name) saveProfile(account.name);
+    return;
+  }
   const participants = expenseParticipants(state.data || SAMPLE);
   if (!currentProfileName(participants)) {
     await showIdentityModal(true);
@@ -2397,8 +2408,35 @@ async function syncData(isInitial: boolean, didRetryAuth?: boolean): Promise<voi
   }
 }
 
+/**
+ * 読み取り専用ビュー判定。
+ * 他人の公開計画は plans ホームから `?view=1` 付きで開かれる（明示シグナル）。
+ * 加えて、名前を設定済みで、この計画の非メンバーなら読み取り専用にする。
+ * 名前未設定時は自分の計画までロックしないよう Boolean(name) でガードする。
+ */
+function computeReadOnly(): boolean {
+  const forcedView = new URLSearchParams(location.search).get("view") === "1";
+  if (forcedView) return true;
+  const name = getUser().name;
+  if (!name) return false;
+  const meta = TripPlans.get(CONFIG.tripSlug);
+  return Boolean(meta) && !isMemberOf(meta!);
+}
+
+const READ_ONLY = computeReadOnly();
+
 async function init(): Promise<void> {
   registerServiceWorker();
+  if (READ_ONLY) {
+    root.classList.add("is-readonly");
+    const headMain = root.querySelector<HTMLElement>(".ah-main");
+    if (headMain && !headMain.querySelector(".tl-ro-badge")) {
+      headMain.insertAdjacentHTML(
+        "beforeend",
+        '<span class="tl-ro-badge">' + icon("eye") + "閲覧のみ</span>",
+      );
+    }
+  }
   syncStickyOffsets();
   window.addEventListener("resize", syncStickyOffsets);
   if ("ResizeObserver" in window) {
@@ -2410,7 +2448,12 @@ async function init(): Promise<void> {
     });
   });
   // 費用入力はボトムシートに分離（読む画面と書く画面を分ける）。
+  // 読み取り専用ビュー（他人の公開計画）では費用追加を出さない。
   qsa<HTMLElement>("[data-expense-open]").forEach((button) => {
+    if (READ_ONLY) {
+      button.hidden = true;
+      return;
+    }
     button.addEventListener("click", () => setExpenseSheet(true));
   });
   qsa<HTMLElement>("[data-expense-close]").forEach((button) => {
@@ -2429,8 +2472,10 @@ async function init(): Promise<void> {
   const editLink = root.querySelector<HTMLAnchorElement>("[data-edit-link]");
   const editHead = root.querySelector<HTMLAnchorElement>("[data-edit-head]");
   const planQuery = "?plan=" + encodeURIComponent(CONFIG.tripSlug);
+  // 読み取り専用ビューでは編集導線（ヘッダー鉛筆 / フッター編集）を出さない。
   const editTarget =
-    CONFIG.mode === "local" ? { href: "plan-editor.html" + planQuery, label: "計画を編集" }
+    READ_ONLY ? null
+    : CONFIG.mode === "local" ? { href: "plan-editor.html" + planQuery, label: "計画を編集" }
     : CONFIG.mode === "appsScript" ? { href: "itinerary-editor.html" + planQuery, label: "行程編集" }
     : null;
   if (editWrap && editLink && editTarget) {

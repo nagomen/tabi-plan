@@ -106,8 +106,8 @@ form.addEventListener("submit", async (event) => {
   try {
     if (mode === "signup") await signUp(email, password, name);
     else await logIn(email, password);
-    // 成功 → マイページへ
-    location.href = "mypage.html";
+    // 成功 → ホーム（計画一覧）へ。マイページはヘッダーのユーザーアイコンから開ける。
+    location.href = "plans.html";
   } catch (err) {
     showError(errorMessage(err) || "失敗しました");
     submitBtn.disabled = false;

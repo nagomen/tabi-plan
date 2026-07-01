@@ -907,7 +907,7 @@
     place-items: center;
     width: 36px;
     height: 36px;
-    border-radius: 11px;
+    border-radius: 0;
     background: color-mix(in srgb, var(--stay-accent) 14%, #fff);
     color: var(--stay-accent);
     flex: none;
@@ -1154,7 +1154,7 @@
     min-height: 44px;
     padding: 8px 10px;
     border: 1px solid var(--line);
-    border-radius: 7px;
+    border-radius: 0;
     background: #fff;
     font-size: 13px;
     font-weight: 500;
@@ -1189,7 +1189,7 @@
   .tl-transfer-row button {
     min-height: 44px;
     border: 1px solid var(--green);
-    border-radius: 7px;
+    border-radius: 0;
     background: var(--green);
     color: #fff;
     padding: 0 12px;
@@ -1213,6 +1213,18 @@
     margin-top: 14px;
   }
 
+  /* 読み取り専用（他人の公開計画）ビューのバッジ */
+  .tl-ro-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: 4px;
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 700;
+  }
+  .tl-ro-badge svg, .tl-ro-badge .hi { width: 14px; height: 14px; }
+
   .tl-btn-ic { display: inline-flex; align-items: center; }
   .tl-btn-ic .hi,
   .tl-btn-ic svg { width: 17px; height: 17px; }
@@ -1224,7 +1236,7 @@
     gap: 7px;
     min-height: 44px;
     border: 1px solid rgba(11, 90, 66, .36);
-    border-radius: 8px;
+    border-radius: 0;
     background: #fff;
     color: var(--green);
     font: inherit;
@@ -1395,7 +1407,7 @@
     min-width: 0;
     min-height: 44px;
     border: 1px solid var(--line-strong);
-    border-radius: 7px;
+    border-radius: 0;
     background: #fff;
     color: var(--ink);
     font: inherit;
@@ -1548,7 +1560,7 @@
   .tl-expense-submit button {
     min-height: 48px;
     border: 1px solid var(--green);
-    border-radius: 8px;
+    border-radius: 0;
     background: var(--green);
     color: #fff;
     padding: 0 24px;
@@ -1606,7 +1618,7 @@
     display: flex;
     flex-direction: column;
     background: #fff;
-    border-radius: 16px 16px 0 0;
+    border-radius: 0;
     border-top: 1px solid var(--line-strong);
     animation: tl-slide-up .22s ease;
   }
@@ -1647,7 +1659,7 @@
 
   @media (min-width: 721px) {
     .tl-sheet { align-items: center; padding: 24px; }
-    .tl-sheet-panel { max-width: 560px; max-height: 90vh; border-radius: 16px; animation: tl-fade .2s ease; }
+    .tl-sheet-panel { max-width: 560px; max-height: 90vh; border-radius: 0; animation: tl-fade .2s ease; }
   }
 
   @keyframes tl-fade { from { opacity: 0; } to { opacity: 1; } }

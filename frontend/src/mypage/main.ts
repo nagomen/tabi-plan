@@ -8,6 +8,7 @@ import { registerServiceWorker } from "../shared/pwa";
 import * as TripPlans from "../shared/plans-store";
 import type { PlanMeta } from "../shared/plans-store";
 import { getUser, setUserName } from "../shared/user-store";
+import { isMemberOf } from "../shared/membership";
 import { friendCandidates } from "../shared/friend-store";
 import { getPayLink, setPayLink } from "../shared/payment-links";
 import { currentAccount, logOut, updateName, isLoggedIn } from "../shared/account-store";
@@ -92,13 +93,6 @@ function planRange(plan: PlanMeta): PlanRange | null {
   return null;
 }
 
-function membersOf(plan: PlanMeta): string[] {
-  return String(plan.members || "")
-    .split(/[、,／/]|\s*\/\s*|\s*･\s*/)
-    .map((s) => s.trim())
-    .filter(Boolean);
-}
-
 // ---- プロフィール -------------------------------------------------------
 
 const nameInput = qs<HTMLInputElement>("[data-name]");
@@ -159,12 +153,6 @@ nameInput.addEventListener("keydown", (e) => {
 
 const planMount = qs<HTMLElement>("[data-plans]");
 const planCount = qs<HTMLElement>("[data-plan-count]");
-
-/** 本人（名前）がメンバーに含まれるか。名前未設定なら常に false。 */
-function isMemberOf(plan: PlanMeta): boolean {
-  const userName = getUser().name;
-  return Boolean(userName) && membersOf(plan).includes(userName);
-}
 
 function planRow(plan: PlanMeta, allSlugs: string[]): string {
   const meta = [plan.dates, plan.members].filter(Boolean).map(escapeHtml).join(" ・ ");

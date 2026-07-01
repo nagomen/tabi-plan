@@ -29,6 +29,7 @@ import {
 } from "../shared/apps-script";
 import { icon } from "../shared/icons";
 import { mountAppHeader } from "../shared/app-header";
+import { currentAccount } from "../shared/account-store";
 
 // ---- 補助型 -------------------------------------------------------------
 
@@ -332,6 +333,13 @@ function showIdentityModal(required: boolean): Promise<boolean> {
 }
 
 async function requestIdentityIfNeeded(): Promise<void> {
+  // ログイン済みなら本人確認は不要。端末プロフィール未設定ならアカウント名を本人に使う。
+  const account = currentAccount();
+  if (account) {
+    if (!readProfile() && account.name) saveProfile(account.name);
+    updateProfileButton();
+    return;
+  }
   updateProfileButton();
   const participants =
     state.participants && state.participants.length ? state.participants : FALLBACK_PARTICIPANTS;
