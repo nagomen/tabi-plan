@@ -20,6 +20,8 @@ import * as TripPlans from "../shared/plans-store";
 import { getUser } from "../shared/user-store";
 import { isMemberOf } from "../shared/membership";
 import { currentAccount } from "../shared/account-store";
+import { incrementView } from "../shared/views-store";
+import { planCoverImage } from "../shared/cover";
 import * as ExpenseStore from "../shared/expense-store";
 import { escapeHtml, makeScopedQuery } from "../shared/dom";
 import {
@@ -209,8 +211,16 @@ if (!rootElement) {
 }
 const root: HTMLElement = rootElement;
 
+// 計画のカバー画像（サムネ）をヘッダー背景のヒーローに使う。
+const coverMeta = TripPlans.get(CONFIG.tripSlug) ?? {
+  slug: CONFIG.tripSlug,
+  route: "",
+  title: CONFIG.tripTitle,
+};
+
 mountAppHeader({
   mount: "#tripLive [data-app-header]",
+  hero: planCoverImage(coverMeta),
   kicker: "Shared Travel Dashboard",
   title: "旅行ダッシュボード",
   titleAttr: "data-title",
@@ -2427,6 +2437,8 @@ const READ_ONLY = computeReadOnly();
 
 async function init(): Promise<void> {
   registerServiceWorker();
+  // この計画を開いた＝1閲覧としてカウント（ホームの観覧数に反映）。
+  if (CONFIG.tripSlug) incrementView(CONFIG.tripSlug);
   if (READ_ONLY) {
     root.classList.add("is-readonly");
     const headMain = root.querySelector<HTMLElement>(".ah-main");

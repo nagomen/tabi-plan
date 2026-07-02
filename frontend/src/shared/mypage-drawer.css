@@ -7,6 +7,9 @@
   inset: 0;
   z-index: 9997;
   visibility: hidden;
+  /* 閉状態のパネルは translateX(100%) で画面外右に退避する。ビューポート外へ
+     はみ出して横スクロールを生まないよう、固定コンテナ側でクリップする。 */
+  overflow: hidden;
   /* 閉じる時はスライドアウトが終わってから非表示にする */
   transition: visibility 0s linear 0.32s;
 }

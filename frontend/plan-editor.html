@@ -362,6 +362,23 @@
   }
   .pe-daterange-warn { color: var(--red); font-size: 12px; font-weight: 600; margin: 10px 0 0; }
 
+  /* サムネ画像 */
+  .pe-cover { display: flex; gap: 12px; align-items: flex-start; }
+  .pe-cover-preview {
+    flex: none;
+    width: 200px;
+    max-width: 46vw;
+    aspect-ratio: 16 / 9;
+    background: var(--wash) center / cover no-repeat;
+    border: 1px solid var(--line-strong);
+  }
+  .pe-cover-preview.is-custom { border-color: var(--green); }
+  .pe-cover-actions { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding-top: 2px; }
+  .pe-cover-pick { cursor: pointer; }
+  .pe-cover-note { color: var(--muted); font-size: 11px; font-weight: 500; }
+  /* .pe-mini は display:inline-flex なので hidden 属性が効かない。明示的に隠す。 */
+  .pe-mini[hidden] { display: none; }
+
   /* カレンダー連携 */
   .pe-calsync {
     display: grid;
@@ -1095,6 +1112,17 @@
               <span data-ic-note>共有メモ <em>任意</em></span>
               <input data-f="note" placeholder="共有しておきたいメモ">
             </label>
+            <div class="pe-field c6">
+              <span data-ic-cover>サムネ画像 <em>任意・未設定なら目的地から自動／デフォルト画像</em></span>
+              <div class="pe-cover">
+                <div class="pe-cover-preview" data-cover-preview aria-hidden="true"></div>
+                <div class="pe-cover-actions">
+                  <label class="pe-mini pe-cover-pick">画像を選ぶ<input type="file" accept="image/*" data-cover-input hidden></label>
+                  <button class="pe-mini" type="button" data-cover-clear hidden>デフォルトに戻す</button>
+                  <span class="pe-cover-note">選んだ画像は WebP に変換して保存されます</span>
+                </div>
+              </div>
+            </div>
           </div>
           <p class="pe-daterange-warn" data-daterange-warn hidden>終了日は開始日より後にしてください。</p>
 

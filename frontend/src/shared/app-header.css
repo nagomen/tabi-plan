@@ -20,6 +20,41 @@
 
 .ah-main { flex: 1; min-width: 0; }
 
+/* ヒーロー表示: カバー画像を背景に敷き、下に暗いスクリム＋白文字でタイトルを重ねる。
+   計画詳細（dashboard）で mountAppHeader({ hero: 画像URL }) を渡すと有効になる。 */
+.ah--hero {
+  position: relative;
+  align-items: flex-end;
+  min-height: 168px;
+  border-bottom: 0;
+  color: #fff;
+  background:
+    linear-gradient(180deg, rgba(17, 25, 22, 0.10) 0%, rgba(17, 25, 22, 0.30) 45%, rgba(17, 25, 22, 0.78) 100%),
+    var(--ah-hero-image, none) center center / cover no-repeat,
+    #17211d;
+}
+.ah--hero .ah-kicker { color: rgba(255, 255, 255, 0.82); }
+.ah--hero .ah-title {
+  color: #fff;
+  font-size: 26px;
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.35);
+}
+.ah--hero .ah-meta { color: rgba(255, 255, 255, 0.9); }
+.ah--hero .ah-back,
+.ah--hero .ah-act--icon { color: #fff; }
+.ah--hero .ah-back:hover,
+.ah--hero .ah-back:focus-visible,
+.ah--hero .ah-act--icon:hover,
+.ah--hero .ah-act--icon:focus-visible {
+  background: rgba(255, 255, 255, 0.2);
+  color: #fff;
+}
+
+@media (max-width: 640px) {
+  .ah--hero { min-height: 140px; }
+  .ah--hero .ah-title { font-size: 22px; }
+}
+
 .ah-kicker {
   margin: 0 0 2px;
   font-size: 11px;

@@ -17,8 +17,9 @@ import * as TripPlans from "../shared/plans-store";
 import type { LocalPlanData, PlanVisibility } from "../shared/plans-store";
 import type { ItineraryItem, ItemType, Candidate } from "../shared/types";
 import { readGlobalTripConfig } from "../shared/config";
-import { escapeHtml } from "../shared/dom";
+import { escapeHtml, errorMessage } from "../shared/dom";
 import { icon, type IconName } from "../shared/icons";
+import { planCoverImage } from "../shared/cover";
 import { registerServiceWorker } from "../shared/pwa";
 import { getUser, setUserName } from "../shared/user-store";
 import { friendCandidates, splitNames } from "../shared/friend-store";
@@ -97,6 +98,7 @@ interface Model {
   title: string;
   members: string;
   note: string;
+  cover: string;
   startDate: string;
   endDate: string;
   cities: City[];
@@ -184,6 +186,7 @@ const ICON_MOUNTS: [string, IconName][] = [
   ["[data-ic-gcal]", "calendarDays"],
   ["[data-ic-ics]", "documentText"],
   ["[data-ic-note]", "documentText"],
+  ["[data-ic-cover]", "photo"],
   ["[data-city-add]", "plus"],
   ["[data-cand-add]", "plus"],
   ["[data-export]", "documentText"],
@@ -202,7 +205,7 @@ const isNew = !planParam;
 let slug = isNew ? "" : TripPlans.safeSlug(planParam);
 
 const model: Model = {
-  slug, title: "", members: "", note: "", startDate: "", endDate: "", cities: [], days: [], candidates: [],
+  slug, title: "", members: "", note: "", cover: "", startDate: "", endDate: "", cities: [], days: [], candidates: [],
 };
 let dirty = false;
 let seq = 1;
@@ -1114,6 +1117,87 @@ root.querySelectorAll<HTMLInputElement>("[data-f]").forEach((input) => {
   });
 });
 
+// ---- サムネ画像（任意・未設定なら自動/デフォルト） ----------------------
+// 選んだ画像は canvas で WebP に変換して data URL としてプラン内に保存する。
+
+const coverInput = qs<HTMLInputElement>(root, "[data-cover-input]");
+const coverClearBtn = qs<HTMLButtonElement>(root, "[data-cover-clear]");
+const coverPreview = qs<HTMLElement>(root, "[data-cover-preview]");
+
+/** 画像ファイルを最大辺 maxSize まで縮小し、WebP の data URL に変換する。 */
+function fileToWebpDataUrl(file: File, maxSize = 1000, quality = 0.82): Promise<string> {
+  return new Promise((resolve, reject) => {
+    if (!/^image\//.test(file.type || "")) {
+      reject(new Error("画像ファイルを選択してください"));
+      return;
+    }
+    const reader = new FileReader();
+    reader.onerror = (): void => reject(new Error("画像を読み込めませんでした"));
+    reader.onload = (): void => {
+      const img = new Image();
+      img.onerror = (): void => reject(new Error("画像を処理できませんでした"));
+      img.onload = (): void => {
+        const nw = img.naturalWidth || img.width;
+        const nh = img.naturalHeight || img.height;
+        const scale = Math.min(1, maxSize / Math.max(nw, nh));
+        const w = Math.max(1, Math.round(nw * scale));
+        const h = Math.max(1, Math.round(nh * scale));
+        const canvas = document.createElement("canvas");
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          reject(new Error("canvas を初期化できませんでした"));
+          return;
+        }
+        ctx.drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL("image/webp", quality));
+      };
+      img.src = String(reader.result || "");
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+/** プレビューに使う画像（手動設定があればそれ、無ければ目的地から自動/デフォルト）。 */
+function previewCoverSrc(): string {
+  return planCoverImage({
+    slug: model.slug,
+    route: model.cities.map((c) => c.name).filter(Boolean).join("、"),
+    title: model.title,
+    cover: model.cover,
+  });
+}
+
+function updateCoverPreview(): void {
+  coverPreview.style.backgroundImage = `url("${previewCoverSrc()}")`;
+  coverPreview.classList.toggle("is-custom", Boolean(model.cover));
+  coverClearBtn.hidden = !model.cover;
+}
+
+coverInput.addEventListener("change", () => {
+  const file = coverInput.files && coverInput.files[0];
+  coverInput.value = ""; // 同じファイルを再選択できるようにリセット
+  if (!file) return;
+  void fileToWebpDataUrl(file)
+    .then((dataUrl) => {
+      model.cover = dataUrl;
+      updateCoverPreview();
+      markDirty();
+    })
+    .catch((err) => {
+      statusEl.textContent = errorMessage(err) || "画像を設定できませんでした";
+      statusEl.className = "is-dirty";
+    });
+});
+
+coverClearBtn.addEventListener("click", () => {
+  if (!model.cover) return;
+  model.cover = "";
+  updateCoverPreview();
+  markDirty();
+});
+
 // ---- メンバー（チップ／友達候補／招待リンク） --------------------------
 
 const membersMount = qs<HTMLElement>(root, "[data-members]");
@@ -1606,6 +1690,7 @@ citiesEl.addEventListener("input", (event) => {
 function syncBasicInputs(): void {
   qs<HTMLInputElement>(root!, '[data-f="title"]').value = model.title || "";
   qs<HTMLInputElement>(root!, '[data-f="note"]').value = model.note || "";
+  updateCoverPreview();
   renderMembers();
   if (model.startDate && model.endDate) fp.setDate([model.startDate, model.endDate], false);
   titleEcho.textContent = model.title || "新しい計画";
@@ -1650,7 +1735,7 @@ function buildData(): LocalPlanData {
     if (cover) flush(cover.stay);
   });
   return {
-    trip: { title: model.title || "無題の旅行", dates: datesString(), members: model.members || "", note: model.note || "" },
+    trip: { title: model.title || "無題の旅行", dates: datesString(), members: model.members || "", note: model.note || "", cover: model.cover || "" },
     itinerary,
     links: [],
     checklist: [],
@@ -1678,6 +1763,7 @@ function loadExisting(): boolean {
   model.title = trip.title || "";
   model.members = trip.members || "";
   model.note = trip.note || "";
+  model.cover = trip.cover || "";
   model.candidates = Array.isArray(data.candidates) ? data.candidates : [];
   model.visibility = meta?.visibility;
   const parts = String(trip.dates || "").split(/\s+-\s+/);

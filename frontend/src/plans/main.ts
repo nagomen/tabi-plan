@@ -12,6 +12,8 @@ import { registerServiceWorker } from "../shared/pwa";
 import { icon, type IconName } from "../shared/icons";
 import { mountAppHeader } from "../shared/app-header";
 import { getUser } from "../shared/user-store";
+import { getViews } from "../shared/views-store";
+import { planCoverImage } from "../shared/cover";
 import { splitNames } from "../shared/friend-store";
 import { decodeInvite } from "../shared/invite";
 import {
@@ -91,156 +93,6 @@ function planText(meta: PlanMeta): string {
 
 type RowVariant = "mine" | "public";
 
-/** 旅行計画の初日の目的地を取得する */
-function getFirstDayLocation(meta: PlanMeta): string {
-  const data = TripPlans.getData(meta.slug);
-  if (data && Array.isArray(data.itinerary) && data.itinerary.length > 0) {
-    // 最初の予定を取得（通常日付順にソートされている）
-    const first = data.itinerary[0];
-    const loc = (first.area || first.place || first.title || "").trim();
-    if (loc) return loc;
-  }
-  // itinerary がない、あるいは空の場合は route や title から推測
-  return (meta.route || meta.title || "").trim();
-}
-
-/** 行き先の地名キーワードから、国・地域別のカバー画像パスを返す */
-function getPlanCoverImage(meta: PlanMeta): string {
-  const loc = getFirstDayLocation(meta).toLowerCase();
-
-  // イギリス
-  if (/イギリス|英国|ロンドン|london|uk|united.*kingdom|イングランド|コッツウォルズ|エディンバラ/.test(loc)) {
-    return "./images/cover_uk.png";
-  }
-  // フランス
-  if (/フランス|仏国|パリ|paris|france|ニース|リヨン|モンサンミッシェル/.test(loc)) {
-    return "./images/cover_france.png";
-  }
-  // ドイツ
-  if (/ドイツ|独国|ベルリン|berlin|germany|ミュンヘン|フランクフルト|ノイシュヴァンシュタイン/.test(loc)) {
-    return "./images/cover_germany.png";
-  }
-  // イタリア
-  if (/イタリア|伊国|ローマ|rome|italy|ミラノ|ヴェネツィア|フィレンツェ|ナポリ/.test(loc)) {
-    return "./images/cover_italia.png";
-  }
-  // スペイン
-  if (/スペイン|西国|マドリード|madrid|spain|バルセロナ|サグラダファミリア|セビリア/.test(loc)) {
-    return "./images/cover_spain.png";
-  }
-  // その他ヨーロッパ
-  if (/ヨーロッパ|欧州|スイス|オーストリア|ベルギー|オランダ|ポルトガル|ギリシャ|北欧|フィンランド|スウェーデン|ノルウェー|デンマーク|チェコ|ハンガリー|ポーランド|クロアチア|チューリッヒ|ウィーン|ブリュッセル|アムステルダム|リスボン|アテネ|ヘルシンキ|ストックホルム|オスロ|コペンハーゲン|プラハ|ブダペスト|ワルシャワ|ドゥブロヴニク/.test(loc)) {
-    return "./images/cover_europe.png";
-  }
-  
-  // インド
-  if (/インド|デリー|ニューデリー|ムンバイ|タージマハル|india|delhi|mumbai/.test(loc)) {
-    return "./images/cover_india.png";
-  }
-  // 中国
-  if (/中国|北京|beijing|上海|shanghai|香港|hong.*kong|マカオ|広州|深セン|西安|成都/.test(loc)) {
-    return "./images/cover_china.png";
-  }
-  // 韓国
-  if (/韓国|ソウル|seoul|釜山|busan|プサン|済州島|チェジュ/.test(loc)) {
-    return "./images/cover_korea.png";
-  }
-  // その他アジア
-  if (/アジア|台湾|台北|高雄|九份|タイ|バンコク|ベトナム|ハノイ|ホーチミン|シンガポール|マレーシア|クアラルンプール|フィリピン|マニラ|インドネシア|ジャカルタ|バリ|スリランカ|ネパール|モンゴル|カンボジア|アンコールワット|asia|taiwan|taipei|bangkok|vietnam/.test(loc)) {
-    return "./images/cover_asia.png";
-  }
-
-  // アフリカ
-  if (/アフリカ|エジプト|カイロ|ケニア|ナイロビ|南アフリカ|ヨハネスブルグ|モロッコ|カサブランカ|チュニジア|タンザニア|マダガスカル|africa|egypt/.test(loc)) {
-    return "./images/cover_africa.png";
-  }
-
-  // アメリカ各州
-  // カリフォルニア州
-  if (/カリフォルニア|ロサンゼルス|サンフランシスコ|ヨセミテ|シリコンバレー|ディズニーランド|サンディエゴ|ca|california|los.*angeles|san.*francisco/.test(loc)) {
-    return "./images/cover_california.png";
-  }
-  // ネバダ州
-  if (/ネバダ|ラスベガス|リノ|nv|nevada|las.*vegas/.test(loc)) {
-    return "./images/cover_nevada.png";
-  }
-  // ハワイ州
-  if (/ハワイ|ホノルル|ワイキキ|マウイ|カウアイ|オアフ|hi|hawaii|honolulu|waikiki/.test(loc)) {
-    return "./images/cover_hawaii.png";
-  }
-  // ニューヨーク州
-  if (/ニューヨーク|マンハッタン|自由の女神|タイムズスクエア|バッファロー|ナイアガラ|ny|new.*york|manhattan/.test(loc)) {
-    return "./images/cover_newyork.png";
-  }
-  // イリノイ州
-  if (/イリノイ|シカゴ|il|illinois|chicago/.test(loc)) {
-    return "./images/cover_illinois.png";
-  }
-  // アリゾナ州
-  if (/アリゾナ|セドナ|グランドキャニオン|フェニックス|az|arizona|sedona|grand.*canyon/.test(loc)) {
-    return "./images/cover_arizona.png";
-  }
-  // それ以外のアメリカ
-  if (/アメリカ|米国|ワシントン|シアトル|ボストン|マイアミ|テキサス|フロリダ|グアム|サイパン|usa|united.*states|america|seattle|boston/.test(loc)) {
-    return "./images/cover_usa.png";
-  }
-
-  // オーストラリア
-  if (/オーストラリア|シドニー|メルボルン|ケアンズ|ウルル|パース|ゴールドコースト|australia|sydney|melbourne|cairns/.test(loc)) {
-    return "./images/cover_australia.png";
-  }
-  // それ以外のオセアニア
-  if (/オセアニア|ニュージーランド|フィジー|タヒチ|オークランド|クライストチャーチ|ポリネシア|メラネシア|ミクロネシア|oceania|new.*zealand|fiji/.test(loc)) {
-    return "./images/cover_oceania.png";
-  }
-
-  // 東北地方の既存アセット判定
-  if (loc.includes("青森") || loc.includes("aomori") || loc.includes("ねぶた")) {
-    return "./images/cover_aomori.png";
-  }
-  if (loc.includes("仙台") || loc.includes("sendai") || loc.includes("宮城") || loc.includes("牛タン") || loc.includes("ずんだ")) {
-    return "./images/cover_sendai.png";
-  }
-  if (loc.includes("松島") || loc.includes("matsushima")) {
-    return "./images/cover_matsushima.png";
-  }
-  if (loc.includes("蔵王") || loc.includes("zao") || loc.includes("樹氷") || loc.includes("スキー")) {
-    return "./images/cover_zao.png";
-  }
-  // 東北（一般）— 個別スポット（青森/仙台/松島/蔵王）に当たらない場合
-  if (/東北|岩手|盛岡|秋田|山形|福島|角館|十和田|奥入瀬|銀山温泉|山寺|tohoku/.test(loc)) {
-    return "./images/cover_tohoku.png";
-  }
-
-  // 北海道
-  if (/北海道|札幌|函館|小樽|旭川|富良野|美瑛|ニセコ|知床|hokkaido|sapporo/.test(loc)) {
-    return "./images/cover_hokkaido.png";
-  }
-  // 東京（※「東京都」も拾う。京都より先に置くこと）
-  if (/東京|渋谷|新宿|浅草|上野|銀座|秋葉原|お台場|スカイツリー|tokyo|shibuya|shinjuku/.test(loc)) {
-    return "./images/cover_tokyo.png";
-  }
-  // 名古屋（愛知）
-  if (/名古屋|愛知|nagoya/.test(loc)) {
-    return "./images/cover_nagoya.png";
-  }
-  // 京都
-  if (/京都|嵐山|祇園|清水寺|金閣寺|伏見稲荷|kyoto/.test(loc)) {
-    return "./images/cover_kyoto.png";
-  }
-  // 大阪
-  if (/大阪|梅田|難波|なんば|道頓堀|通天閣|usj|ユニバ|osaka/.test(loc)) {
-    return "./images/cover_osaka.png";
-  }
-  // 福岡
-  if (/福岡|博多|天神|太宰府|hakata|fukuoka/.test(loc)) {
-    return "./images/cover_fukuoka.png";
-  }
-
-  // デフォルト
-  return "./images/cover_default.png";
-}
-
 /** 1枚のカード（計画）の HTML を組み立てる。variant で「自分の計画」/「みんなの公開計画」を出し分ける。 */
 function rowHtml(meta: PlanMeta, variant: RowVariant, activeSlug: string): string {
   const src = sourceClass(meta.source);
@@ -275,8 +127,17 @@ function rowHtml(meta: PlanMeta, variant: RowVariant, activeSlug: string): strin
         ? '<span class="plan-tag">表示中</span>'
         : "";
 
-  const coverSrc = getPlanCoverImage(meta);
+  const coverSrc = planCoverImage(meta);
   const sourceLabelText = SOURCE_LABEL[src] || src;
+  const views = getViews(meta.slug);
+  const viewsBadge =
+    '<div class="plan-views-badge" title="観覧数" aria-label="観覧数 ' +
+    views +
+    '">' +
+    icon("eye") +
+    "<span>" +
+    views.toLocaleString("ja-JP") +
+    "</span></div>";
 
   return (
     '<article class="plan-row' +
@@ -307,6 +168,7 @@ function rowHtml(meta: PlanMeta, variant: RowVariant, activeSlug: string): strin
     '" alt="' +
     escapeHtml(meta.title || "旅行画像") +
     '" loading="lazy">' +
+    viewsBadge +
     "</div>" +
     '<span class="plan-body">' +
     '<span class="plan-name">' +
@@ -351,7 +213,7 @@ function render(): void {
   } else {
     gridMine.innerHTML =
       '<div class="hub-empty">' +
-      '<img src="./images/cover_default.png" alt="東北旅行" style="width: 140px; height: auto; margin: 0 auto 12px; opacity: 0.85;">' +
+      '<img src="./images/cover_default.webp" alt="東北旅行" style="width: 140px; height: auto; margin: 0 auto 12px; opacity: 0.85;">' +
       (mineTotal
         ? "<b>該当する計画がありません</b><span>検索条件を変えてください</span>"
         : '<b>最初の計画を作りましょう</b><span>「新規計画」から行程を作成できます</span>') +

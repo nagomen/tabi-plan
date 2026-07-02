@@ -31,6 +31,8 @@ export interface PlanMeta {
   route?: string;
   members?: string;
   note?: string;
+  /** 手動設定のサムネ画像（WebP の data URL）。空/未設定なら自動判定/デフォルト。 */
+  cover?: string;
   source: PlanSource;
   /** 公開範囲。未設定は「公開」とみなす（既存計画はすべて公開扱い）。 */
   visibility?: PlanVisibility;
@@ -324,6 +326,7 @@ export function saveLocalPlan(slug: string, data: LocalPlanData): PlanMeta | nul
     dates: trip.dates || "",
     members: trip.members || "",
     note: trip.note || "",
+    cover: trip.cover || "",
     route: areas.join("、"),
     source: "local",
     builtIn: false,

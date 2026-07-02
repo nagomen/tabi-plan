@@ -243,6 +243,27 @@
     pointer-events: none;
   }
 
+  /* 観覧数バッジ（カバー右下） */
+  .plan-views-badge {
+    position: absolute;
+    right: 12px;
+    bottom: 12px;
+    z-index: 10;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 9px;
+    background: rgba(17, 25, 22, 0.62);
+    backdrop-filter: blur(4px);
+    color: #fff;
+    font-size: 11px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    pointer-events: none;
+  }
+  .plan-views-badge svg,
+  .plan-views-badge .hi { width: 13px; height: 13px; }
+
   .plan-dot {
     flex: none;
     width: 8px;
@@ -530,14 +551,46 @@
       padding-right: 14px;
       padding-left: 14px;
     }
-    .hub-toolbar {
-      grid-template-columns: 1fr;
-    }
     .hub-grid {
       padding-right: 14px;
       padding-left: 14px;
       gap: 16px;
     }
+  }
+
+  /* スマホ: 横2列のコンパクトグリッド（縦スクロール） */
+  @media (max-width: 600px) {
+    .hub-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      padding: 8px 12px 24px;
+    }
+    .hub-sec-head { padding: 16px 12px 6px; }
+    /* 検索窓の横にコンパクトな「＋新規」ボタンを並べる（横幅を使い切らない） */
+    .hub-toolbar { grid-template-columns: minmax(0, 1fr) auto; padding: 10px 12px; gap: 8px; }
+    .hub-new { padding: 0 13px; gap: 5px; font-size: 13px; }
+    .hub-new span { font-size: 13px; }
+
+    .plan-cover { height: 104px; }
+    .plan-open { padding: 10px; gap: 6px; }
+    .plan-name { font-size: 14px; gap: 5px; line-height: 1.25; }
+    .plan-meta { font-size: 11px; }
+    .plan-route {
+      font-size: 10.5px;
+      padding: 4px 7px;
+      -webkit-line-clamp: 1;
+    }
+    .plan-tag { font-size: 9px; padding: 1px 6px; }
+
+    .plan-dot-badge { top: 8px; left: 8px; padding: 3px 7px; gap: 4px; font-size: 10px; }
+    .plan-views-badge { right: 8px; bottom: 8px; padding: 3px 6px; gap: 4px; font-size: 10px; }
+    .plan-views-badge svg, .plan-views-badge .hi { width: 12px; height: 12px; }
+
+    .plan-tools { top: 8px; right: 8px; }
+    .plan-menu-btn { width: 28px; height: 28px; }
+
+    /* スマホでは浮き上がりアニメは切り、影だけ維持（レイアウト崩れ防止） */
+    .plan-row:hover { transform: none; }
   }
 </style>
 </head>

@@ -57,6 +57,8 @@ export interface TripInfo {
   dates: string;
   members: string;
   note: string;
+  /** 手動設定のサムネ画像（WebP の data URL）。未設定なら目的地から自動判定/デフォルト。 */
+  cover?: string;
 }
 
 export interface TripLink {
