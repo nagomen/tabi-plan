@@ -170,6 +170,11 @@ export function planCoverImage(meta: CoverMeta): string {
     return "./images/cover_fukuoka.webp";
   }
 
+  // それ以外の日本
+  if (/日本|国内|japan|jp|富士山|fuji|箱根|伊勢|金沢|広島|四国|九州|山陰|山陽|北陸|信州|甲信越|中部|中国地方|近畿|関西/.test(loc)) {
+    return "./images/cover_japan.webp";
+  }
+
   // デフォルト
   return "./images/cover_default.webp";
 }

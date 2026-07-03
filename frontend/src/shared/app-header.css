@@ -29,7 +29,7 @@
   border-bottom: 0;
   color: #fff;
   background:
-    linear-gradient(180deg, rgba(17, 25, 22, 0.10) 0%, rgba(17, 25, 22, 0.30) 45%, rgba(17, 25, 22, 0.78) 100%),
+    linear-gradient(180deg, rgba(17, 25, 22, 0.22) 0%, rgba(17, 25, 22, 0.40) 45%, rgba(17, 25, 22, 0.82) 100%),
     var(--ah-hero-image, none) center center / cover no-repeat,
     #17211d;
 }

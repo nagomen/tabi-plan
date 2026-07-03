@@ -203,6 +203,7 @@ export default defineConfig({
         index: resolve(rootDir, "index.html"),
         plans: resolve(rootDir, "plans.html"),
         mypage: resolve(rootDir, "mypage.html"),
+        person: resolve(rootDir, "person.html"),
         login: resolve(rootDir, "login.html"),
         planEditor: resolve(rootDir, "plan-editor.html"),
         expenseEntry: resolve(rootDir, "expense-entry.html"),

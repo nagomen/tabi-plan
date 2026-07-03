@@ -10,8 +10,8 @@
 <meta name="apple-mobile-web-app-title" content="旅行ダッシュボード">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <link rel="manifest" href="site.webmanifest">
-<link rel="icon" href="icon-32.png" type="image/png" sizes="32x32">
-<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="icon" href="icon-32.webp" type="image/webp" sizes="32x32">
+<link rel="apple-touch-icon" href="icon-192.webp">
 <title>旅行ダッシュボード</title>
 <style>
   html {
@@ -430,9 +430,86 @@
   .trip-live[data-section-view="plan"] [data-section-target]:not([data-section-target~="plan"]),
   .trip-live[data-section-view="map"] [data-section-target]:not([data-section-target~="map"]),
   .trip-live[data-section-view="money"] [data-section-target]:not([data-section-target~="money"]),
+  .trip-live[data-section-view="members"] [data-section-target]:not([data-section-target~="members"]),
   .trip-live[data-section-view="links"] [data-section-target]:not([data-section-target~="links"]) {
     display: none;
   }
+
+  /* メンバー画面（members ビューのときだけ表示。home では出さない） */
+  .tl-members { display: none; padding: 22px 0; }
+  .trip-live[data-section-view="members"] .tl-members { display: block; }
+  .tl-members-note { margin: 2px 0 16px; color: var(--muted); font-size: 13px; }
+  .tl-members-list { display: flex; flex-wrap: wrap; gap: 8px; }
+  .tl-member-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px 8px 10px;
+    border: 1px solid var(--line);
+    background: #fff;
+    font-size: 14px;
+    font-weight: 600;
+    color: inherit;
+    text-decoration: none;
+    cursor: pointer;
+    transition: border-color .12s ease, background-color .12s ease;
+  }
+  .tl-member-chip:hover { border-color: var(--green); background: var(--green-soft); }
+  .tl-member-avatar {
+    display: grid;
+    place-items: center;
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    background: var(--green);
+    color: #fff;
+    font-size: 13px;
+    font-weight: 700;
+  }
+  .tl-member-chip.is-self { border-color: var(--green); }
+  .tl-member-self-badge { color: var(--green); font-size: 11px; font-weight: 700; }
+  .tl-members-empty { color: var(--muted); font-size: 13px; }
+  .tl-members-invite {
+    margin-top: 22px;
+    padding-top: 18px;
+    border-top: 1px solid var(--line);
+    max-width: 460px;
+  }
+  .tl-members-field { display: grid; gap: 6px; margin-bottom: 12px; }
+  .tl-members-field span { color: var(--muted); font-size: 12px; font-weight: 700; }
+  .tl-members-field input {
+    min-height: 44px;
+    border: 1px solid var(--line-strong);
+    background: #fff;
+    color: var(--ink);
+    padding: 8px 12px;
+    font: inherit;
+    font-size: 15px;
+  }
+  .tl-members-field input:focus-visible { outline: none; border-color: var(--green); box-shadow: 0 0 0 3px var(--green-soft); }
+  .tl-members-invite-note { margin: 10px 0 0; color: var(--muted); font-size: 12px; }
+  .tl-members-leave {
+    margin-top: 22px;
+    padding-top: 16px;
+    border-top: 1px solid var(--line);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .tl-members-leave-btn {
+    appearance: none;
+    border: 1px solid var(--red);
+    background: #fff;
+    color: var(--red);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 700;
+    padding: 8px 14px;
+    cursor: pointer;
+  }
+  .tl-members-leave-btn:hover { background: var(--red); color: #fff; }
+  .tl-members-leave-note { color: var(--muted); font-size: 12px; }
 
   .trip-live[data-section-view="plan"] .tl-card-grid,
   .trip-live[data-section-view="money"] .tl-card-grid,
@@ -502,6 +579,55 @@
 
   .tl-day b { font-size: 13px; line-height: 1.2; }
   .tl-day small { font-size: 11px; opacity: .75; }
+
+  /* 日程スライドをヒーロー画像の上に白文字で重ねる（PC・スマホ共通）。
+     DOM 順は header → セクションタブ(.tl-actions) → 日程バー(.tl-days) だが、
+     flex order で日程バーをタブの前に出し、負マージンでヒーロー下部に重ねる。 */
+  #tripLive { display: flex; flex-direction: column; }
+  .trip-live > .ah { order: 1; }
+  .trip-live > .tl-days { order: 2; }
+  .trip-live > .tl-actions { order: 3; }
+  .trip-live > .tl-main { order: 4; }
+  .trip-live > .tl-foot { order: 5; }
+
+  #tripLive .ah--hero { min-height: 210px; padding-bottom: 64px; }
+
+  .tl-days {
+    position: relative;
+    z-index: 36;
+    margin-top: -58px;
+    border-top: 0;
+    border-bottom: 0;
+    background: linear-gradient(180deg, transparent 0%, rgba(17, 25, 22, 0.15) 30%, rgba(17, 25, 22, 0.6) 100%);
+  }
+  .tl-days .tl-daygroup { border-right-color: rgba(255, 255, 255, 0.28); }
+  .tl-days .tl-daygroup:last-child { border-right: 0; }
+  .tl-days .tl-daygroup-label { background: transparent; color: rgba(255, 255, 255, 0.92); }
+  .tl-days .tl-day { background: transparent; color: #fff; border-right-color: rgba(255, 255, 255, 0.22); }
+  .tl-days .tl-day b,
+  .tl-days .tl-day small { color: #fff; }
+  .tl-days .tl-day small { opacity: 0.85; }
+  .tl-days .tl-day[aria-selected="true"] { background: rgba(255, 255, 255, 0.24); color: #fff; }
+
+  /* セクションタブ（ホーム/予定/地図/費用/リンク）もヒーロー画像に重ねる */
+  .tl-actions { position: relative; z-index: 36; border-bottom: 0; }
+  .tl-actions .tl-action { background: rgba(17, 25, 22, 0.42); color: #fff; border-right-color: rgba(255, 255, 255, 0.18); }
+  .tl-actions .tl-action:hover { background: rgba(17, 25, 22, 0.58); }
+  .tl-actions .tl-action[aria-selected="true"] { background: rgba(17, 25, 22, 0.9); color: #fff; }
+
+  /* PC: ヒーローを高くして「日程バー＋セクションタブ」の両方を画像内に収める。
+     スマホはセクションタブ非表示なので日程バーのみ（ベース値のまま）。 */
+  @media (min-width: 621px) {
+    #tripLive .ah--hero { min-height: 264px; padding-bottom: 116px; }
+    .tl-days { margin-top: -110px; }
+    /* 費用・リンクは日程バーを出さない。日程バーの負マージンに便乗して
+       ヒーローに重なっていたセクションタブが、日程バーが消えると画像下の
+       灰色帯に落ちてしまうため、タブ自身を引き上げてヒーロー下部に重ねる。 */
+    .trip-live[data-section-view="money"] .tl-actions,
+    .trip-live[data-section-view="links"] .tl-actions {
+      margin-top: -50px;
+    }
+  }
 
   /* カードで囲わず、セクションは横罫線だけで仕切る */
   .tl-main {
@@ -1916,17 +2042,25 @@
     .tl-sub { gap: 8px 10px; font-size: 11px; }
     .tl-actions { display: none; }
     .tl-action { min-height: 54px; padding: 8px 7px; }
-    .tl-days {
-      grid-auto-columns: 82px;
-      position: sticky;
-      top: var(--tl-head-height, 86px);
-      z-index: 35;
-      border-top: 0;
-      scrollbar-width: none;
-    }
+    /* 重ね表示は共通ベースで対応済み。スマホは日タブのサイズ・左寄せだけ調整 */
+    /* ヘッダーを低くして上の余白を削り、タイトルを少し上へ。
+       スマホはセクションタブが非表示なので、日付バーの高さを固定して同じ値だけ
+       負マージンで引き上げ、ヒーロー下パディングも同値にすることで、日付バーの
+       下端をヒーロー画像の最下端にぴったり合わせる（下の余分な空白を無くす）。 */
+    #tripLive .ah--hero { min-height: 158px; padding-top: 10px; padding-bottom: 54px; }
+    #tripLive .tl-days { margin-top: -54px; height: 54px; }
+    /* モバイルは各日セルが地名を持つのでグループ見出しは省き、バー高さを一定にする */
+    .tl-days .tl-daygroup-label { display: none; }
+    .tl-days { grid-auto-columns: 82px; scrollbar-width: none; }
     .tl-days::-webkit-scrollbar { display: none; }
-    .tl-day { min-height: 38px; padding: 6px 8px; justify-content: flex-start; text-align: left; }
-    .tl-day b { font-size: 12px; }
+    .tl-days .tl-day {
+      min-height: 54px;
+      padding: 6px 8px;
+      justify-content: flex-start;
+      align-content: center;
+      text-align: left;
+    }
+    .tl-days .tl-day b { font-size: 12px; }
     .tl-main {
       display: block;
       padding: 0 16px 14px;
@@ -2029,6 +2163,29 @@
   <nav class="tl-days" data-days aria-label="日別旅程"></nav>
 
   <main class="tl-main">
+    <!-- メンバー（参加メンバーのみ表示。公開/非公開に関わらず非メンバーは見られない） -->
+    <section class="tl-panel tl-members" data-mobile-view="members" data-section-target="members">
+      <div class="tl-sec-head">
+        <span class="tl-sec-ic" data-ic="users"></span>
+        <h2>メンバー</h2>
+        <span class="tl-sec-meta" data-members-count></span>
+      </div>
+      <p class="tl-members-note">この旅行に参加しているメンバーです。招待した人だけがこの計画を見られます。</p>
+      <div class="tl-members-list" data-members-list></div>
+      <div class="tl-members-invite" data-members-invite hidden>
+        <label class="tl-members-field">
+          <span>名前で招待（任意）</span>
+          <input type="text" data-invite-name placeholder="招待する人の名前" autocomplete="off">
+        </label>
+        <button class="tl-button primary" type="button" data-invite-share>招待リンクを共有</button>
+        <p class="tl-members-invite-note">リンクを受け取った人がこの旅行に参加でき、メンバーとして追加されます。</p>
+      </div>
+      <div class="tl-members-leave" data-members-leave hidden>
+        <button class="tl-members-leave-btn" type="button" data-leave-trip>この旅行から脱退する</button>
+        <span class="tl-members-leave-note">脱退すると、この計画はあなたの「自分の計画」から外れます。</span>
+      </div>
+    </section>
+
     <section class="tl-panel tl-map-panel" data-mobile-view="home map" data-section-target="home map">
       <div class="tl-sec-head">
         <span class="tl-sec-ic" data-ic="map"></span>
@@ -2130,7 +2287,7 @@
   <nav class="tl-mobile-nav" aria-label="スマホ用ナビゲーション">
     <button type="button" data-mobile-nav="home" aria-selected="true">ホーム</button>
     <button type="button" data-mobile-nav="map" aria-selected="false">地図</button>
-    <button type="button" data-mobile-nav="plan" aria-selected="false">日程</button>
+    <button type="button" data-mobile-nav="members" aria-selected="false" data-members-nav>メンバー</button>
     <button type="button" data-mobile-nav="money" aria-selected="false">費用</button>
     <button type="button" data-mobile-nav="links" aria-selected="false">リンク</button>
   </nav>

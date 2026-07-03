@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0b5a42">
 <link rel="manifest" href="site.webmanifest">
-<link rel="icon" href="icon-32.png" type="image/png" sizes="32x32">
-<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="icon" href="icon-32.webp" type="image/webp" sizes="32x32">
+<link rel="apple-touch-icon" href="icon-192.webp">
 <title>マイページ | 旅行計画</title>
 <style>
   :root {
@@ -141,6 +141,16 @@
   .mp-account a { color: var(--green); font-weight: 700; text-decoration: none; }
   .mp-account a.danger { color: var(--red); }
   .mp-account .hi { width: 15px; height: 15px; vertical-align: -2px; }
+
+  /* 設定（旅行履歴の公開など） */
+  .mp-setting { display: flex; align-items: flex-start; gap: 10px; margin-top: 14px; cursor: pointer; }
+  .mp-setting input { flex: none; width: 18px; height: 18px; margin-top: 2px; accent-color: var(--green); cursor: pointer; }
+  .mp-setting input:disabled { cursor: not-allowed; }
+  .mp-setting-body { display: flex; flex-direction: column; min-width: 0; }
+  .mp-setting-title { font-size: 13.5px; font-weight: 700; color: var(--ink); }
+  .mp-setting-note { font-size: 12px; color: var(--muted); }
+  .mp-setting:has(input:disabled) { cursor: default; }
+  .mp-setting:has(input:disabled) .mp-setting-title { color: var(--muted); }
 
   /* タブ */
   .mp-tabs {
@@ -365,6 +375,14 @@
       </div>
       <p class="mp-profile-note" data-profile-note aria-live="polite">入力すると自動で保存されます</p>
       <div class="mp-account" data-account></div>
+
+      <label class="mp-setting">
+        <input type="checkbox" data-history-public>
+        <span class="mp-setting-body">
+          <span class="mp-setting-title">旅行履歴を公開する</span>
+          <span class="mp-setting-note" data-history-note>他の人があなたのアイコンから、行った場所やカレンダーを見られます</span>
+        </span>
+      </label>
     </div>
   </section>
 

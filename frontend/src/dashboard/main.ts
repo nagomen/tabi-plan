@@ -22,6 +22,8 @@ import { isMemberOf } from "../shared/membership";
 import { currentAccount } from "../shared/account-store";
 import { incrementView } from "../shared/views-store";
 import { planCoverImage } from "../shared/cover";
+import { splitNames } from "../shared/friend-store";
+import { buildInviteLink } from "../shared/invite";
 import * as ExpenseStore from "../shared/expense-store";
 import { escapeHtml, makeScopedQuery } from "../shared/dom";
 import {
@@ -1834,7 +1836,8 @@ function renderBase(): void {
 
   const tabs: { key: string; label: string; glyph: string }[] = [
     { key: "home", label: "ホーム", glyph: icon("home") },
-    { key: "plan", label: "予定", glyph: icon("calendarDays") },
+    // メンバーは参加メンバー（!READ_ONLY）だけに見せる
+    ...(READ_ONLY ? [] : [{ key: "members", label: "メンバー", glyph: icon("users") }]),
     { key: "map", label: "地図", glyph: icon("map") },
     { key: "money", label: "費用", glyph: icon("banknotes") },
     { key: "links", label: "リンク", glyph: icon("link") },
@@ -1847,6 +1850,8 @@ function renderBase(): void {
   qsa<HTMLElement>("[data-section-nav]").forEach((button) => {
     button.addEventListener("click", () => applyMobileView(button.dataset.sectionNav));
   });
+
+  renderMembers(data);
 
   qs<HTMLAnchorElement>("[data-my-maps]").href = linkByKey("maps").url || "#";
   qs<HTMLAnchorElement>("[data-photo-link]").href = linkByKey("photos").url || "#";
@@ -1882,6 +1887,116 @@ function renderBase(): void {
   const route = computeRoute();
   renderDayTabs(route);
   applyMobileView(mobileView);
+}
+
+// ---- メンバー（参加者一覧・招待） ---------------------------------------
+
+/** 参加メンバー一覧を描画。招待はローカル計画かつ参加メンバーのみ表示。 */
+function renderMembers(data: TripData): void {
+  const meta = TripPlans.get(CONFIG.tripSlug);
+  const membersStr = (meta && meta.members) || (data.trip && data.trip.members) || "";
+  const names = splitNames(membersStr);
+  const myName = getUser().name.trim();
+
+  const countEl = root.querySelector<HTMLElement>("[data-members-count]");
+  if (countEl) countEl.textContent = names.length ? `${names.length}人` : "";
+
+  const listEl = root.querySelector<HTMLElement>("[data-members-list]");
+  if (listEl) {
+    listEl.innerHTML = names.length
+      ? names
+          .map((n) => {
+            const self = Boolean(myName) && n === myName;
+            // アイコン/名前をタップするとその人の旅行履歴ページへ。
+            return (
+              `<a class="tl-member-chip${self ? " is-self" : ""}" href="person.html?name=${encodeURIComponent(n)}" title="${escapeHtml(n)}さんの旅行履歴を見る">` +
+              `<span class="tl-member-avatar">${escapeHtml(n.slice(0, 1) || "?")}</span>` +
+              `<span>${escapeHtml(n)}</span>` +
+              (self ? `<span class="tl-member-self-badge">自分</span>` : "") +
+              "</a>"
+            );
+          })
+          .join("")
+      : `<div class="tl-members-empty">まだメンバーがいません。下から招待できます。</div>`;
+  }
+
+  const inviteEl = root.querySelector<HTMLElement>("[data-members-invite]");
+  if (inviteEl) inviteEl.hidden = READ_ONLY || CONFIG.mode !== "local";
+
+  // 脱退は「名前を設定した参加メンバー」だけ（＝自分が一覧にいる）。
+  const leaveEl = root.querySelector<HTMLElement>("[data-members-leave]");
+  if (leaveEl) leaveEl.hidden = READ_ONLY || !myName || !names.includes(myName);
+}
+
+/** 自分をこの旅行のメンバーから外して一覧へ戻る（脱退）。 */
+function leaveTrip(): void {
+  const meta = TripPlans.get(CONFIG.tripSlug);
+  const myName = getUser().name.trim();
+  if (!meta || !myName) return;
+  const remaining = splitNames(meta.members || "").filter((n) => n !== myName);
+  const merged = remaining.join("、");
+  const data = TripPlans.getData(meta.slug);
+  if (meta.source === "local" && data) {
+    // ローカル計画: 本体データの members も更新（saveLocalPlan が meta も更新）
+    data.trip = { ...(data.trip || { title: "", dates: "", members: "", note: "" }), members: merged };
+    TripPlans.saveLocalPlan(meta.slug, data);
+  } else {
+    TripPlans.upsert({ slug: meta.slug, members: merged });
+  }
+  location.href = "plans.html";
+}
+
+function flashButton(btn: HTMLButtonElement, msg: string): void {
+  const orig = btn.textContent || "";
+  btn.textContent = msg;
+  btn.disabled = true;
+  window.setTimeout(() => {
+    btn.textContent = orig;
+    btn.disabled = false;
+  }, 1800);
+}
+
+/** 招待リンクを作成して共有／コピーする（ローカル計画のみ）。 */
+async function shareTripInvite(): Promise<void> {
+  const meta = TripPlans.get(CONFIG.tripSlug);
+  const planData = TripPlans.getData(CONFIG.tripSlug);
+  const btn = root.querySelector<HTMLButtonElement>("[data-invite-share]");
+  if (!meta || !planData) {
+    if (btn) flashButton(btn, "招待に未対応");
+    return;
+  }
+  const nameInput = root.querySelector<HTMLInputElement>("[data-invite-name]");
+  const name = (nameInput?.value || "").trim();
+  try {
+    const link = await buildInviteLink({
+      v: 1,
+      meta: { slug: meta.slug, title: meta.title, dates: meta.dates, members: meta.members, route: meta.route },
+      data: planData,
+      invitedName: name || undefined,
+    });
+    const shareData = {
+      title: meta.title || "旅行計画",
+      text: `「${meta.title || "旅行"}」に${name ? `${name}さんを` : ""}招待します`,
+      url: link,
+    };
+    if (navigator.share) {
+      try {
+        await navigator.share(shareData);
+      } catch {
+        /* 共有キャンセル */
+      }
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(link);
+      if (btn) flashButton(btn, "リンクをコピーしました");
+    } catch {
+      window.prompt("招待リンクをコピーしてください", link);
+    }
+    if (nameInput) nameInput.value = "";
+  } catch {
+    if (btn) flashButton(btn, "作成できませんでした");
+  }
 }
 
 function renderLocalInfo(rows: LocalInfoItem[]): void {
@@ -2448,6 +2563,32 @@ async function init(): Promise<void> {
         '<span class="tl-ro-badge">' + icon("eye") + "閲覧のみ</span>",
       );
     }
+    // 非メンバーはメンバー画面を見られない（下部ナビのメンバーも隠す）
+    const membersNav = root.querySelector<HTMLElement>("[data-members-nav]");
+    if (membersNav) membersNav.hidden = true;
+  }
+  // 招待リンクの共有ボタン（メンバー画面）
+  const inviteBtn = root.querySelector<HTMLButtonElement>("[data-invite-share]");
+  if (inviteBtn) inviteBtn.addEventListener("click", () => void shareTripInvite());
+  const inviteName = root.querySelector<HTMLInputElement>("[data-invite-name]");
+  if (inviteName) {
+    inviteName.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        void shareTripInvite();
+      }
+    });
+  }
+  // 脱退（この旅行のメンバーから自分を外す）
+  const leaveBtn = root.querySelector<HTMLButtonElement>("[data-leave-trip]");
+  if (leaveBtn) {
+    leaveBtn.addEventListener("click", () => {
+      const meta = TripPlans.get(CONFIG.tripSlug);
+      const title = (meta && meta.title) || "この旅行";
+      if (window.confirm(`「${title}」から脱退しますか？この操作でメンバーから外れます。`)) {
+        leaveTrip();
+      }
+    });
   }
   syncStickyOffsets();
   window.addEventListener("resize", syncStickyOffsets);

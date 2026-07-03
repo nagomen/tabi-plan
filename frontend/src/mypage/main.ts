@@ -12,6 +12,7 @@ import { isMemberOf } from "../shared/membership";
 import { friendCandidates } from "../shared/friend-store";
 import { getPayLink, setPayLink } from "../shared/payment-links";
 import { currentAccount, logOut, updateName, isLoggedIn } from "../shared/account-store";
+import { isHistoryPublic, setHistoryPublic } from "../shared/history-privacy";
 import { mountAppHeader } from "../shared/app-header";
 
 // ドロワー（右スライドイン）に埋め込まれている時は embed=1 で開かれる。
@@ -109,7 +110,25 @@ function renderProfile(): void {
   nameInput.value = user.name;
   avatarEl.textContent = avatarText(user.name);
   renderAccount();
+  renderHistorySetting();
 }
+
+// 旅行履歴の公開設定（名前キーで保存）。名前未設定なら無効化。
+const historyToggle = qs<HTMLInputElement>("[data-history-public]");
+const historyNote = qs<HTMLElement>("[data-history-note]");
+function renderHistorySetting(): void {
+  const name = getUser().name.trim();
+  historyToggle.disabled = !name;
+  historyToggle.checked = name ? isHistoryPublic(name) : false;
+  historyNote.textContent = name
+    ? "他の人があなたのアイコンから、行った場所やカレンダーを見られます"
+    : "名前を設定すると、旅行履歴の公開/非公開を選べます";
+}
+historyToggle.addEventListener("change", () => {
+  const name = getUser().name.trim();
+  if (!name) return;
+  setHistoryPublic(name, historyToggle.checked);
+});
 
 function renderAccount(): void {
   const account = currentAccount();
@@ -136,6 +155,7 @@ function commitName(): void {
   if (isLoggedIn()) updateName(user.name); // ログイン中はアカウントの表示名も更新
   avatarEl.textContent = avatarText(user.name);
   renderPlans();
+  renderHistorySetting();
   noteEl.textContent = user.name ? "保存しました" : "入力すると自動で保存されます";
   window.clearTimeout(noteTimer);
   if (user.name) noteTimer = window.setTimeout(() => { noteEl.textContent = ""; }, 2000);
