@@ -29,6 +29,7 @@ function readExpenseFormResponses_(formId: string | null): SheetRow[] {
       return row;
     }).filter(isExpenseRow_);
   } catch (error) {
+    Logger.log(`readExpenseFormResponses_ failed for formId=${formId}: ${errorMessage_(error)}`);
     return [];
   }
 }
@@ -126,30 +127,6 @@ function ensureExpenseLogSheet_(ss: Spreadsheet, participantNames: string[]): { 
   const tailHeaders = ['支払方法', 'レシート写真URL', 'メモ', '入力元', '確認済'];
   const requiredHeaders = baseHeaders.concat(individualHeaders, tailHeaders);
   const sheet = getOrCreateSheet_(ss, DEFAULT_CONFIG.sheets.expenseLog);
-
-  if (sheet.getLastRow() === 0) {
-    sheet.getRange(1, 1, 1, requiredHeaders.length).setValues([requiredHeaders]);
-    sheet.setFrozenRows(1);
-    sheet.autoResizeColumns(1, requiredHeaders.length);
-    return { sheet, headers: requiredHeaders };
-  }
-
-  let headers = sheet.getRange(1, 1, 1, Math.max(sheet.getLastColumn(), 1)).getDisplayValues()[0];
-  if (!headers.some(Boolean)) {
-    headers = requiredHeaders.slice();
-    sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
-    sheet.setFrozenRows(1);
-    return { sheet, headers };
-  }
-
-  requiredHeaders.forEach(header => {
-    if (headers.indexOf(header) !== -1) return;
-    headers.push(header);
-  });
-  if (sheet.getMaxColumns() < headers.length) {
-    sheet.insertColumnsAfter(sheet.getMaxColumns(), headers.length - sheet.getMaxColumns());
-  }
-  sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
-  sheet.setFrozenRows(1);
+  const headers = ensureHeaderRow_(sheet, 1, requiredHeaders);
   return { sheet, headers };
 }

@@ -51,6 +51,8 @@ export interface AppHeaderConfig {
   actions?: HeaderActionSpec[];
   /** 指定すると、その画像をヘッダー背景に敷いた「ヒーロー」表示にする（白文字＋スクリム）。 */
   hero?: string;
+  /** スマホ幅でヘッダーを上部固定する。固定が必要な一覧系ページだけ有効にする。 */
+  mobileFixed?: boolean;
 }
 
 /** " data-foo" のようなブール属性トークン（無指定なら空文字）。 */
@@ -95,10 +97,11 @@ export function renderAppHeaderHtml(config: AppHeaderConfig): string {
       ? `<div class="ah-actions">${config.actions.map(renderAction).join("")}</div>`
       : "";
   const heroCls = config.hero ? " ah--hero" : "";
+  const fixedCls = config.mobileFixed ? " ah--mobile-fixed" : "";
   const heroStyle = config.hero
     ? ` style="--ah-hero-image:url(&quot;${escapeHtml(config.hero)}&quot;)"`
     : "";
-  return `<header class="ah${heroCls}"${heroStyle}>${back}<div class="ah-main">${kicker}${title}${meta}</div>${actions}</header>`;
+  return `<header class="ah${heroCls}${fixedCls}"${heroStyle}>${back}<div class="ah-main">${kicker}${title}${meta}</div>${actions}</header>`;
 }
 
 /**

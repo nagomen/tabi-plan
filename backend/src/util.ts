@@ -1,6 +1,10 @@
 // 値のパース/正規化/フォーマットなどの小さなユーティリティ。
 
 
+function errorMessage_(error: unknown): string {
+  return (error instanceof Error && error.message) || String(error);
+}
+
 function valueByKeys_(row: SheetRow, keys: string[]): any {
   for (const key of keys) {
     if (row[key] !== undefined && row[key] !== '') return row[key];

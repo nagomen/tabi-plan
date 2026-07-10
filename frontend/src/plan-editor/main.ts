@@ -7,6 +7,7 @@
 
 import L from "leaflet";
 import "../shared/ui.css";
+import { initPageTransitions } from "../shared/page-transition";
 import "leaflet/dist/leaflet.css";
 import flatpickr from "flatpickr";
 import { Japanese } from "flatpickr/dist/l10n/ja.js";
@@ -26,6 +27,21 @@ import { friendCandidates, splitNames } from "../shared/friend-store";
 import { buildInviteLink } from "../shared/invite";
 import { gcalUrl, buildIcs, type CalEvent } from "../shared/calendar";
 import { mountAppHeader } from "../shared/app-header";
+import * as Permissions from "../shared/permissions-store";
+
+initPageTransitions();
+
+const CREATE_TRANSITION_KEY = "trip:create-plan-transition";
+
+try {
+  if (sessionStorage.getItem(CREATE_TRANSITION_KEY) === "1") {
+    sessionStorage.removeItem(CREATE_TRANSITION_KEY);
+    document.body.classList.add("is-plan-create-entry");
+    window.setTimeout(() => document.body.classList.remove("is-plan-create-entry"), 420);
+  }
+} catch {
+  // sessionStorage が使えない環境では通常表示に戻す。
+}
 
 // ---- モデル -------------------------------------------------------------
 
@@ -293,6 +309,22 @@ function rebuildDays(): void {
     guard++;
   }
   model.days = next;
+  applyCityDateDefaults();
+}
+
+function cityDateDefault(index: number): string {
+  const firstDay = model.days[0]?.date || model.startDate || "";
+  if (index <= 0) return firstDay;
+  const prev = model.cities[index - 1];
+  return prev?.toDate || prev?.fromDate || firstDay;
+}
+
+function applyCityDateDefaults(): void {
+  if (!model.days.length) return;
+  model.cities.forEach((city, index) => {
+    if (!city.fromDate) city.fromDate = cityDateDefault(index);
+    if (!city.toDate) city.toDate = city.fromDate;
+  });
 }
 
 // ---- 座標補完・ジオコーディング -----------------------------------------
@@ -428,12 +460,23 @@ function dayOptions(selected: string): string {
 /** 表示中のステップ（1=期間 / 2=目的地 / 3=行程）。0 は未初期化。 */
 let viewStep = 0;
 
-/** 作成ステップ（期間→目的地→行程）を実状態に連動させ、スマホでは該当パネルだけ表示。 */
-function updateSteps(): void {
+function stepCompletion(): boolean[] {
   const periodDone = Boolean(model.title.trim()) && model.days.length > 0;
   const placeDone = model.cities.length > 0;
   const planDone = model.days.some((d) => d.items.length > 0 || d.stay);
-  const done = [periodDone, placeDone, planDone];
+  return [periodDone, placeDone, planDone];
+}
+
+function scrollStepIntoView(): void {
+  const target = document.querySelector<HTMLElement>(".pe-setup");
+  if (!target) return;
+  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  window.setTimeout(() => target.scrollIntoView({ block: "start", behavior: reduce ? "auto" : "smooth" }), 0);
+}
+
+/** 作成ステップ（期間→目的地→行程）を実状態に連動させ、スマホでは該当パネルだけ表示。 */
+function updateSteps(): void {
+  const done = stepCompletion();
   if (viewStep === 0) {
     const natural = done.findIndex((d) => !d);
     viewStep = natural < 0 ? done.length : natural + 1;
@@ -447,16 +490,45 @@ function updateSteps(): void {
     const numEl = el.querySelector<HTMLElement>(".pe-step-n");
     if (numEl) numEl.innerHTML = isDone ? icon("check") : String(i + 1);
   });
+  const prevBtn = document.querySelector<HTMLButtonElement>("[data-step-prev]");
+  const nextBtn = document.querySelector<HTMLButtonElement>("[data-step-next]");
+  if (prevBtn) {
+    prevBtn.disabled = viewStep <= 1;
+    const label = viewStep <= 2 ? "戻る" : "目的地へ戻る";
+    prevBtn.innerHTML = icon("chevronLeft") + `<span>${label}</span>`;
+  }
+  if (nextBtn) {
+    nextBtn.hidden = false;
+    nextBtn.disabled = viewStep < 3 && !done[viewStep - 1];
+    const label = viewStep === 1 ? "目的地へ" : viewStep === 2 ? "行程へ" : "保存する";
+    const glyph = viewStep === 3 ? "bookmark" : "chevronRight";
+    nextBtn.innerHTML = `<span>${label}</span>` + icon(glyph);
+  }
 }
 
 /** ステップのタップで表示を切り替える（スマホのウィザード送り）。 */
 function setViewStep(step: number): void {
   viewStep = Math.min(3, Math.max(1, step));
   updateSteps();
+  scrollStepIntoView();
 }
 
 document.querySelectorAll<HTMLElement>(".pe-step").forEach((el, i) => {
   el.addEventListener("click", () => setViewStep(i + 1));
+});
+
+document.querySelector<HTMLButtonElement>("[data-step-prev]")?.addEventListener("click", () => {
+  setViewStep(viewStep - 1);
+});
+
+document.querySelector<HTMLButtonElement>("[data-step-next]")?.addEventListener("click", () => {
+  const done = stepCompletion();
+  if (viewStep >= 3) {
+    save();
+    return;
+  }
+  if (!done[viewStep - 1]) return;
+  setViewStep(viewStep + 1);
 });
 
 function renderCities(): void {
@@ -472,17 +544,18 @@ function renderCities(): void {
       const noGeo = hasLatLng(c.lat, c.lng) ? "" : " no-geo";
       const dateCtl = hasDays
         ? `<span class="pe-city-dates">` +
+          `<span class="pe-city-dateicon">${icon("calendarDays")}</span>` +
           `<select data-city-from="${c.id}" aria-label="開始日">${dayOptions(c.fromDate)}</select>` +
-          `<span class="pe-city-sep">〜</span>` +
+          `<span class="pe-city-sep">${icon("arrowLongRight")}</span>` +
           `<select data-city-to="${c.id}" aria-label="終了日">${dayOptions(c.toDate)}</select>` +
           `</span>`
         : "";
       return `<div class="pe-city${noGeo}" data-city="${c.id}">` +
         `<span class="pe-city-n">${i + 1}</span>` +
         `<input class="pe-city-name" data-city-name="${c.id}" value="${escapeHtml(c.name)}" placeholder="都市名" aria-label="都市名">` +
-        `<button class="pe-mini" type="button" data-city-geo="${c.id}" title="地図で探す">${icon("magnifyingGlass")}</button>` +
+        `<button class="pe-mini pe-city-action" type="button" data-city-geo="${c.id}" title="地図で探す" aria-label="地図で探す">${icon("mapPin")}</button>` +
         dateCtl +
-        `<button class="pe-icon-btn danger" type="button" data-city-del="${c.id}" aria-label="削除">${icon("xMark")}</button>` +
+        `<button class="pe-icon-btn danger pe-city-action" type="button" data-city-del="${c.id}" aria-label="削除">${icon("xCircle")}</button>` +
         `</div>`;
     })
     .join("");
@@ -492,7 +565,15 @@ async function addCity(name: string): Promise<void> {
   const trimmed = name.trim();
   if (!trimmed) return;
   const local = TripPlans.coordsFor(trimmed);
-  const city: City = { id: seq++, name: trimmed, lat: local ? String(local.lat) : "", lng: local ? String(local.lng) : "", fromDate: "", toDate: "" };
+  const fromDate = cityDateDefault(model.cities.length);
+  const city: City = {
+    id: seq++,
+    name: trimmed,
+    lat: local ? String(local.lat) : "",
+    lng: local ? String(local.lng) : "",
+    fromDate,
+    toDate: fromDate,
+  };
   model.cities.push(city);
   markDirty();
   renderCities();
@@ -842,7 +923,7 @@ function showCandidates(itemId: number, target: GeoTarget, results: GeoResult[])
     const marker = L.marker(ll, {
       icon: L.divIcon({ className: "", html: `<div class="pe-candpin">${i + 1}</div>`, iconSize: [28, 28], iconAnchor: [14, 14] }),
       zIndexOffset: 1000,
-    }).bindTooltip(`候補${i + 1}: ${r.label}`, { direction: "top" });
+    }).bindTooltip(`候補${i + 1}: ${escapeHtml(r.label)}`, { direction: "top" });
     marker.on("click", () => applyGeo(itemId, target, r));
     marker.addTo(candidateLayer!);
   });
@@ -865,7 +946,7 @@ function refreshMap(fit: boolean): void {
     if (!hasLatLng(c.lat, c.lng)) return;
     const ll: L.LatLngTuple = [num(c.lat), num(c.lng)];
     pts.push(ll);
-    L.marker(ll, { icon: pinIcon("#8a938d", String(i + 1)) }).bindTooltip(c.name).addTo(pinLayer!);
+    L.marker(ll, { icon: pinIcon("#8a938d", String(i + 1)) }).bindTooltip(escapeHtml(c.name)).addTo(pinLayer!);
   });
 
   // 各日の予定 + 宿泊。ルートも順につなぐ
@@ -875,7 +956,7 @@ function refreshMap(fit: boolean): void {
       if (!hasLatLng(lat, lng)) return;
       const ll: L.LatLngTuple = [num(lat), num(lng)];
       pts.push(ll); path.push(ll);
-      if (marker) L.marker(ll, { icon: pinIcon(color, label) }).bindTooltip(tip).addTo(pinLayer!);
+      if (marker) L.marker(ll, { icon: pinIcon(color, label) }).bindTooltip(escapeHtml(tip)).addTo(pinLayer!);
     };
     day.items.forEach((it) => {
       if (it.kind === "move") {
@@ -1446,6 +1527,7 @@ async function shareInvite(name: string): Promise<void> {
   if (!slug) { slug = TripPlans.uniqueSlug(model.title); model.slug = slug; }
   persist();
   const data = buildData();
+  const invite = Permissions.createInvite(slug, name, "editor");
   const link = await buildInviteLink({
     v: 1,
     meta: {
@@ -1457,6 +1539,8 @@ async function shareInvite(name: string): Promise<void> {
     },
     data,
     invitedName: name,
+    inviteId: invite?.id,
+    role: "editor",
   });
   const shareData = {
     title: model.title || "旅行計画",
@@ -1837,7 +1921,8 @@ function doSave(visibility: PlanVisibility): void {
   if (!slug) { slug = TripPlans.uniqueSlug(model.title || "trip"); model.slug = slug; }
   model.visibility = visibility;
   // 先に公開範囲をメタへ反映してから保存する（dev のファイル書き出しに visibility を含めるため）。
-  TripPlans.upsert({ slug, visibility });
+  TripPlans.upsert({ slug, visibility, published: true });
+  Permissions.ensureOwner(slug, model.members);
   TripPlans.saveLocalPlan(slug, buildData());
   TripPlans.setActiveSlug(slug);
   dirty = false;
@@ -1848,6 +1933,7 @@ function doSave(visibility: PlanVisibility): void {
   openLink.hidden = false;
   savebarNoteEl.textContent = `保存しました（${visLabel}）。右上の「表示」でダッシュボードを確認できます。`;
   try { history.replaceState(null, "", "plan-editor.html?plan=" + encodeURIComponent(slug)); } catch { /* ignore */ }
+  window.location.href = "index.html?plan=" + encodeURIComponent(slug);
 }
 
 function visOption(value: PlanVisibility, current: PlanVisibility, label: string, desc: string, glyph: IconName): string {

@@ -17,5 +17,11 @@ window.TRIP_CONFIG = {
     // Mapbox 公開トークン（pk.…）。設定すると計画エディタの場所検索が
     // Mapbox（多言語POI）になる。空なら OpenStreetMap(Nominatim) を使う。
     mapboxToken: ""
+  },
+  sharedBackend: {
+    // true にするとローカル計画・候補・投票・費用などを Apps Script の
+    // 共有ストアへ同期する。静的サイトでも別端末/別ブラウザで同じ計画を扱える。
+    enabled: true,
+    mode: "appsScript"
   }
 };

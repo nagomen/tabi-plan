@@ -4,6 +4,7 @@
 // 絞り込み・各行の表示上書き保存（itineraryUpdate）を行う。
 
 import "../shared/ui.css";
+import { initPageTransitions } from "../shared/page-transition";
 import {
   DEFAULT_CONFIG,
   mergeConfig,
@@ -23,12 +24,15 @@ import {
 } from "../shared/auth";
 import {
   callAppsScript as callAppsScriptShared,
+  postAppsScript as postAppsScriptShared,
   sha256Hex,
   isAuthError,
   type AppsScriptParams,
   type AppsScriptResponse,
 } from "../shared/apps-script";
 import { mountAppHeader } from "../shared/app-header";
+
+initPageTransitions();
 
 // ---- 補助型 -------------------------------------------------------------
 
@@ -84,6 +88,19 @@ mountAppHeader({
 const { qs, qsa } = makeScopedQuery(root);
 const callAppsScript = (params: AppsScriptParams): Promise<AppsScriptResponse> =>
   callAppsScriptShared(CONFIG.appsScriptUrl, params);
+/** 行程更新用の iframe POST。トークンや更新内容をクエリ文字列に残す GET/JSONP を避ける。
+ *  source は backend/src/main.ts の POST_ACTIONS と対応させること。 */
+const postItineraryUpdate = (params: AppsScriptParams): Promise<AppsScriptResponse> =>
+  postAppsScriptShared(
+    CONFIG.appsScriptUrl,
+    { ...params, action: "itineraryUpdate" },
+    {
+      source: "trip-itinerary-update",
+      idPrefix: "itinerary-update",
+      timeoutMessage: "通信がタイムアウトしました",
+      failMessage: "保存に失敗しました",
+    },
+  );
 const hasAuthSession = (): boolean => hasAuthSessionShared(CONFIG.auth);
 const getAuthToken = (): string => getAuthTokenShared(CONFIG.auth.storageKey);
 const saveAuthSession = (token?: string, expiresAt?: number): void =>
@@ -339,8 +356,7 @@ async function saveRow(event: Event): Promise<void> {
   if (button) button.disabled = true;
   setMsg("保存中", "");
   try {
-    const response = await callAppsScript({
-      action: "itineraryUpdate",
+    const response = await postItineraryUpdate({
       token: getAuthToken(),
       includeHidden: "true",
       rowNumber: form.dataset.rowNumber,

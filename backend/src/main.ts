@@ -2,33 +2,40 @@
 // レスポンス整形、レシート画像アップロードを担当する。
 
 
+// GET は読み取り専用アクションのみを扱う。シートを変更するアクションは
+// クエリ文字列にトークンや金額が残らないよう doPost 側（POST_ACTIONS）に置く。
+const GET_ACTIONS: Record<string, (params: Params) => any> = {
+  auth: handleAuth_,
+  data: handleData_,
+  storeDump: handleStoreDump_,
+  ping: () => ({ ok: true, now: Date.now() })
+};
+
+// POST は状態を変更するアクションを扱う。source は doPost 内の postMessage で
+// フロントエンドが応答を紐付けるために使う識別子。
+const POST_ACTIONS: Record<string, { handle: (params: Params) => any; source: string }> = {
+  receiptUpload: { handle: handleReceiptUpload_, source: 'trip-expense-receipt-upload' },
+  createTrip: { handle: handleCreateTrip_, source: 'trip-plan-publish' },
+  storeSet: { handle: handleStoreSet_, source: 'trip-shared-store' },
+  storeRemove: { handle: handleStoreRemove_, source: 'trip-shared-store' },
+  expense: { handle: handleExpense_, source: 'trip-expense-save' },
+  settlementComplete: { handle: handleSettlementComplete_, source: 'trip-settlement-complete' },
+  itineraryUpdate: { handle: handleItineraryUpdate_, source: 'trip-itinerary-update' }
+};
+
 function doGet(e: GoogleAppsScript.Events.DoGet): GoogleAppsScript.Content.TextOutput {
   const params: Params = e && e.parameter ? e.parameter : {};
   const callback = sanitizeCallback_(params.callback || '');
+  const action = params.action || 'data';
 
   try {
-    const action = params.action || 'data';
-    let result;
-
-    if (action === 'auth') {
-      result = handleAuth_(params);
-    } else if (action === 'data') {
-      result = handleData_(params);
-    } else if (action === 'expense') {
-      result = handleExpense_(params);
-    } else if (action === 'settlementComplete') {
-      result = handleSettlementComplete_(params);
-    } else if (action === 'itineraryUpdate') {
-      result = handleItineraryUpdate_(params);
-    } else if (action === 'ping') {
-      result = { ok: true, now: Date.now() };
-    } else {
-      throw new Error('Unknown action');
-    }
-
-    return respond_(result, callback);
+    const handler = GET_ACTIONS[action];
+    if (!handler) throw new Error('Unknown action');
+    return respond_(handler(params), callback);
   } catch (error) {
-    return respond_({ ok: false, error: (error as Error).message || String(error) }, callback);
+    const message = errorMessage_(error);
+    Logger.log(`doGet action=${action} failed: ${message}`);
+    return respond_({ ok: false, error: message }, callback);
   }
 }
 
@@ -36,22 +43,16 @@ function doPost(e: GoogleAppsScript.Events.DoPost): GoogleAppsScript.HTML.HtmlOu
   const params: Params = e && e.parameter ? e.parameter : {};
   const uploadId = String(params.uploadId || '');
   const action = params.action || '';
-  const source = action === 'createTrip' ? 'trip-plan-publish' : 'trip-expense-receipt-upload';
+  const entry = POST_ACTIONS[action];
+  const source = entry ? entry.source : 'trip-expense-receipt-upload';
 
   try {
-    let result;
-
-    if (action === 'receiptUpload') {
-      result = handleReceiptUpload_(params);
-    } else if (action === 'createTrip') {
-      result = handleCreateTrip_(params);
-    } else {
-      throw new Error('Unknown action');
-    }
-
-    return respondPostMessage_(result, uploadId, source);
+    if (!entry) throw new Error('Unknown action');
+    return respondPostMessage_(entry.handle(params), uploadId, source);
   } catch (error) {
-    return respondPostMessage_({ ok: false, error: (error as Error).message || String(error) }, uploadId, source);
+    const message = errorMessage_(error);
+    Logger.log(`doPost action=${action} failed: ${message}`);
+    return respondPostMessage_({ ok: false, error: message }, uploadId, source);
   }
 }
 
@@ -86,7 +87,7 @@ function handleAuth_(params: Params) {
   if (!expectedHash || !tokenSecret) {
     throw new Error('Apps Script secrets are not configured');
   }
-  if (!params.passwordHash || params.passwordHash !== expectedHash) {
+  if (!params.passwordHash || !constantTimeEqual_(params.passwordHash, expectedHash)) {
     throw new Error('Password is incorrect');
   }
 
@@ -140,15 +141,21 @@ function handleItineraryUpdate_(params: Params) {
   return mutateAndRespond_(params, ss => updateItineraryRow_(ss, params), options);
 }
 
+// TRIP_RECEIPT_PUBLIC_LINKS=true だと共有リンクが誰でも閲覧可能になるため、
+// image/svg+xml のようなスクリプト実行可能な形式を許可すると XSS の配布経路になりうる。
+// レシート用途で必要な形式のみを許可リストにする。
+const ALLOWED_RECEIPT_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'];
+const MAX_RECEIPT_BASE64_LENGTH = 7000000;
+
 function handleReceiptUpload_(params: Params) {
   const props = requireAuth_(params);
 
   const fileName = sanitizeDriveFileName_(params.fileName || 'receipt.jpg');
-  const mimeType = String(params.mimeType || 'image/jpeg').trim();
+  const mimeType = String(params.mimeType || 'image/jpeg').trim().toLowerCase();
   const data = String(params.data || '').replace(/^data:[^,]+,/, '');
   if (!data) throw new Error('写真データがありません');
-  if (!/^image\//.test(mimeType)) throw new Error('画像ファイルを選択してください');
-  if (data.length > 7000000) throw new Error('写真サイズが大きすぎます。小さめの画像で再試行してください');
+  if (ALLOWED_RECEIPT_MIME_TYPES.indexOf(mimeType) === -1) throw new Error('画像ファイル（JPEG/PNG/WebP/HEIC）を選択してください');
+  if (data.length > MAX_RECEIPT_BASE64_LENGTH) throw new Error('写真サイズが大きすぎます。小さめの画像で再試行してください');
 
   const bytes = Utilities.base64Decode(data);
   const folder = getReceiptFolder_(props);

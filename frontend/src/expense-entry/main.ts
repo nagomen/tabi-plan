@@ -4,6 +4,7 @@
 // レシート写真のリサイズ、認証、入力フォームの送信・キャッシュを行う。
 
 import "../shared/ui.css";
+import { initPageTransitions } from "../shared/page-transition";
 import {
   DEFAULT_CONFIG,
   mergeConfig,
@@ -27,9 +28,12 @@ import {
   type AppsScriptParams,
   type AppsScriptResponse,
 } from "../shared/apps-script";
+import { uploadReceiptPhoto as uploadReceiptPhotoShared } from "../shared/receipt-photo";
 import { icon } from "../shared/icons";
 import { mountAppHeader } from "../shared/app-header";
 import { currentAccount } from "../shared/account-store";
+
+initPageTransitions();
 
 // ---- 補助型 -------------------------------------------------------------
 
@@ -44,13 +48,6 @@ interface ExpenseCache {
   participants: string[];
   tripTitle?: string;
   savedAt?: string;
-}
-
-/** prepareReceiptPhoto が返すアップロード用ペイロード */
-interface PreparedPhoto {
-  fileName: string;
-  mimeType: string;
-  data: string;
 }
 
 /** init / renderExpenseEntry に渡す部分的な TripData 形状 */
@@ -108,13 +105,19 @@ const { qs } = makeScopedQuery(root);
 const callAppsScript = (params: AppsScriptParams): Promise<AppsScriptResponse> =>
   callAppsScriptShared(CONFIG.appsScriptUrl, params);
 
-const postAppsScript = (params: AppsScriptParams): Promise<AppsScriptResponse> =>
-  postAppsScriptShared(CONFIG.appsScriptUrl, params, {
-    source: "trip-expense-receipt-upload",
-    idPrefix: "receipt",
-    timeoutMessage: "写真アップロードがタイムアウトしました",
-    failMessage: "写真アップロードに失敗しました",
-  });
+/** 費用登録用の iframe POST。トークンや金額をクエリ文字列に残す GET/JSONP を避ける。
+ *  source は backend/src/main.ts の POST_ACTIONS と対応させること。 */
+const postExpenseAppsScript = (params: AppsScriptParams): Promise<AppsScriptResponse> =>
+  postAppsScriptShared(
+    CONFIG.appsScriptUrl,
+    { ...params, action: "expense" },
+    {
+      source: "trip-expense-save",
+      idPrefix: "expense",
+      timeoutMessage: "通信がタイムアウトしました",
+      failMessage: "保存に失敗しました",
+    },
+  );
 
 const hasAuthSession = (): boolean => hasAuthSessionShared(CONFIG.auth);
 
@@ -129,73 +132,8 @@ const state: AppState = { data: null, participants: FALLBACK_PARTICIPANTS };
 
 // ---- 画像処理 -----------------------------------------------------------
 
-function fileAsDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = (): void => resolve(String(reader.result || ""));
-    reader.onerror = (): void => reject(new Error("写真を読み込めませんでした"));
-    reader.readAsDataURL(file);
-  });
-}
-
-function imageFromDataUrl(dataUrl: string): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const image = new Image();
-    image.onload = (): void => resolve(image);
-    image.onerror = (): void => reject(new Error("写真を処理できませんでした"));
-    image.src = dataUrl;
-  });
-}
-
-async function prepareReceiptPhoto(file: File): Promise<PreparedPhoto> {
-  const originalDataUrl = await fileAsDataUrl(file);
-  if (!/^image\//.test(file.type || "")) {
-    throw new Error("画像ファイルを選択してください");
-  }
-
-  try {
-    const image = await imageFromDataUrl(originalDataUrl);
-    const maxSize = 1600;
-    const naturalWidth = image.naturalWidth || image.width;
-    const naturalHeight = image.naturalHeight || image.height;
-    const scale = Math.min(1, maxSize / Math.max(naturalWidth, naturalHeight));
-    const width = Math.max(1, Math.round(naturalWidth * scale));
-    const height = Math.max(1, Math.round(naturalHeight * scale));
-    const canvas = document.createElement("canvas");
-    canvas.width = width;
-    canvas.height = height;
-    const context = canvas.getContext("2d");
-    if (!context) throw new Error("canvas context を取得できませんでした");
-    context.drawImage(image, 0, 0, width, height);
-    const dataUrl = canvas.toDataURL("image/jpeg", 0.78);
-    return {
-      fileName: String(file.name || "receipt.jpg").replace(/\.[^.]+$/, "") + ".jpg",
-      mimeType: "image/jpeg",
-      data: dataUrl.split(",")[1] || "",
-    };
-  } catch (_) {
-    return {
-      fileName: file.name || "receipt.jpg",
-      mimeType: file.type || "image/jpeg",
-      data: originalDataUrl.split(",")[1] || "",
-    };
-  }
-}
-
-async function uploadReceiptPhoto(file: File): Promise<AppsScriptResponse> {
-  const prepared = await prepareReceiptPhoto(file);
-  if (!prepared.data) throw new Error("写真データがありません");
-  if (prepared.data.length > 7000000) {
-    throw new Error("写真サイズが大きすぎます。小さめの画像で再試行してください");
-  }
-  return postAppsScript({
-    action: "receiptUpload",
-    token: getAuthToken(),
-    fileName: prepared.fileName,
-    mimeType: prepared.mimeType,
-    data: prepared.data,
-  });
-}
+const uploadReceiptPhoto = (file: File): Promise<AppsScriptResponse> =>
+  uploadReceiptPhotoShared(CONFIG.appsScriptUrl, getAuthToken(), file);
 
 // ---- プロフィール -------------------------------------------------------
 
@@ -751,8 +689,7 @@ function setupExpenseEntryHandlers(form: HTMLFormElement, participants: string[]
         receiptUrl = upload.url || "";
         setStatus("保存中...", "");
       }
-      const response = await callAppsScript({
-        action: "expense",
+      const response = await postExpenseAppsScript({
         token: getAuthToken(),
         paidDate: inputControl(form, "paidDate").value,
         payer: selectControl(form, "payer").value,

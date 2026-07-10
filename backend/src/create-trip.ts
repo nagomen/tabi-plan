@@ -46,25 +46,7 @@ function provisionPlanSpreadsheet_(ss: Spreadsheet, plan: any): void {
   const trip = plan.trip || {};
   const itinerary: any[] = Array.isArray(plan.itinerary) ? plan.itinerary : [];
 
-  const itinHeader = ['日付', 'Day', '都市', '表示時刻', '種別', '表示ラベル', '表示タイトル', '表示場所', '地図検索', '緯度', '経度', '表示メモ', '公開ページに表示'];
-  const itinRows = itinerary.map(function (item) {
-    return [
-      normalizeDate_(item.date || ''),
-      item.day || '',
-      item.area || item.place || '',
-      item.time || '',
-      item.type || 'sight',
-      item.typeLabel || '',
-      item.title || '',
-      item.place || '',
-      item.mapQuery || item.place || '',
-      parseCoordinate_(item.lat),
-      parseCoordinate_(item.lng),
-      item.note || '',
-      'TRUE'
-    ];
-  });
-  writePlanSheet_(ss, '行程表', itinHeader, itinRows);
+  writePlanItinerarySheet_(ss, itinerary);
 
   const dateParts = String(trip.dates || '').split(/\s*-\s*/);
   writePlanSheet_(ss, '基本情報', ['key', 'value', '説明', '公開ページに表示'], [
@@ -89,6 +71,44 @@ function provisionPlanSpreadsheet_(ss: Spreadsheet, plan: any): void {
   writePlanSheet_(ss, 'チェックリスト', ['カテゴリ', '項目', '期限', '担当', '完了', 'メモ'], checkRows);
 
   removeDefaultSheet_(ss);
+}
+
+// ensureItinerarySheet_ と同じレイアウト（1行目空白/2行目ヘッダー/3行目以降データ）で行程表を書き出す。
+// ダッシュボードの buildDashboardData_ は常に headerRow=2 で読むため、レイアウトが
+// setupPlanningSheets 経由の行程表と食い違うと1件目が誤ってヘッダー扱いされる。
+function writePlanItinerarySheet_(ss: Spreadsheet, itinerary: any[]): Sheet {
+  const sheet = ensureItinerarySheet_(ss);
+  const headers = sheet.getRange(2, 1, 1, sheet.getLastColumn()).getDisplayValues()[0];
+
+  const rows = itinerary.map(function (item) {
+    const valuesByHeader: Record<string, string | number> = {
+      '日付': normalizeDate_(item.date || ''),
+      'Day': item.day || '',
+      '表示時刻': item.time || '',
+      '表示タイトル': item.title || '',
+      '表示場所': item.place || '',
+      '表示メモ': item.note || '',
+      '種別': item.type || 'sight',
+      '表示ラベル': item.typeLabel || '',
+      '都市': item.area || item.place || '',
+      '地図検索': item.mapQuery || item.place || '',
+      '緯度': parseCoordinate_(item.lat),
+      '経度': parseCoordinate_(item.lng),
+      '公開ページに表示': 'TRUE'
+    };
+    return headers.map(header => valuesByHeader[header] !== undefined ? valuesByHeader[header] : '');
+  });
+
+  if (rows.length) {
+    const requiredRows = 2 + rows.length;
+    if (sheet.getMaxRows() < requiredRows) {
+      sheet.insertRowsAfter(sheet.getMaxRows(), requiredRows - sheet.getMaxRows());
+    }
+    sheet.getRange(3, 1, rows.length, headers.length).setValues(rows);
+  }
+
+  applyItinerarySheetLayout_(ss);
+  return sheet;
 }
 
 function writePlanSheet_(ss: Spreadsheet, name: string, header: string[], rows: any[][]): Sheet {

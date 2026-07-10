@@ -3,6 +3,7 @@
 // 履歴の公開/非公開は history-privacy に従う（本人は常に閲覧可）。
 
 import "../shared/ui.css";
+import { initPageTransitions } from "../shared/page-transition";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { escapeHtml } from "../shared/dom";
@@ -14,6 +15,8 @@ import { personTrips, historyPins, distinctPlaceCount, countriesFromPins, type P
 import { countryOf } from "../shared/country";
 
 // ---- 対象の名前 ---------------------------------------------------------
+
+initPageTransitions();
 
 const params = new URLSearchParams(location.search);
 const personName = (params.get("name") || "").trim();

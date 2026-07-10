@@ -36,21 +36,40 @@ function getOrCreateSheet_(ss: Spreadsheet, name: string): Sheet {
   return ss.getSheetByName(name) || ss.insertSheet(name);
 }
 
-// 既存ヘッダー行に不足している列を末尾に追加する（既存データは保持）。
-function ensureHeaderColumns_(sheet: Sheet, required: string[]): void {
-  const headers = sheet.getRange(1, 1, 1, Math.max(sheet.getLastColumn(), 1)).getDisplayValues()[0];
-  let nextColumn = headers.length;
-  const missingCount = required.filter(header => headers.indexOf(header) === -1).length;
-  if (missingCount && sheet.getMaxColumns() < headers.length + missingCount) {
-    sheet.insertColumnsAfter(sheet.getMaxColumns(), headers.length + missingCount - sheet.getMaxColumns());
+// headerRow が空ならヘッダーを新規に書き込み、既にあれば不足分だけ末尾に追加する
+// （既存の列・データは保持）。ensureHeaderSheet_/ensureExpenseLogSheet_/
+// ensureSettlementCompletionsSheet_ など「ヘッダー行を整備してから使う」シート群の共通処理。
+// 返り値は書き込み後の実際のヘッダー配列（動的な追加列を含む）。
+function ensureHeaderRow_(sheet: Sheet, headerRow: number, requiredHeaders: string[]): string[] {
+  if (sheet.getMaxRows() < headerRow) {
+    sheet.insertRowsAfter(sheet.getMaxRows(), headerRow - sheet.getMaxRows());
   }
-  required.forEach(header => {
-    if (headers.indexOf(header) !== -1) return;
-    nextColumn += 1;
-    sheet.getRange(1, nextColumn).setValue(header);
-    headers.push(header);
-  });
-  sheet.setFrozenRows(1);
+  const headers = sheet.getRange(headerRow, 1, 1, Math.max(sheet.getLastColumn(), 1)).getDisplayValues()[0];
+
+  if (!headers.some(Boolean)) {
+    if (sheet.getMaxColumns() < requiredHeaders.length) {
+      sheet.insertColumnsAfter(sheet.getMaxColumns(), requiredHeaders.length - sheet.getMaxColumns());
+    }
+    sheet.getRange(headerRow, 1, 1, requiredHeaders.length).setValues([requiredHeaders]);
+    sheet.setFrozenRows(headerRow);
+    sheet.autoResizeColumns(1, requiredHeaders.length);
+    return requiredHeaders.slice();
+  }
+
+  const missing = requiredHeaders.filter(header => headers.indexOf(header) === -1);
+  if (missing.length) {
+    if (sheet.getMaxColumns() < headers.length + missing.length) {
+      sheet.insertColumnsAfter(sheet.getMaxColumns(), headers.length + missing.length - sheet.getMaxColumns());
+    }
+    let nextColumn = headers.length;
+    missing.forEach(header => {
+      nextColumn += 1;
+      sheet.getRange(headerRow, nextColumn).setValue(header);
+      headers.push(header);
+    });
+  }
+  sheet.setFrozenRows(headerRow);
+  return headers;
 }
 
 function ensureExchangeRatesSheet_(ss: Spreadsheet): void {
@@ -62,7 +81,7 @@ function ensureExchangeRatesSheet_(ss: Spreadsheet): void {
     sheet.autoResizeColumns(1, headers.length);
     return;
   }
-  ensureHeaderColumns_(sheet, headers);
+  ensureHeaderRow_(sheet, 1, headers);
 }
 
 function ensureLocalInfoSheet_(ss: Spreadsheet): void {
@@ -74,7 +93,7 @@ function ensureLocalInfoSheet_(ss: Spreadsheet): void {
     sheet.autoResizeColumns(1, values[0].length);
     return;
   }
-  ensureHeaderColumns_(sheet, values[0]);
+  ensureHeaderRow_(sheet, 1, values[0]);
 }
 
 function defaultLocalInfoRows_(): string[][] {
@@ -85,13 +104,7 @@ function defaultLocalInfoRows_(): string[][] {
 
 function ensureHeaderSheet_(ss: Spreadsheet, sheetName: string, headers: string[]): Sheet {
   const sheet = getOrCreateSheet_(ss, sheetName);
-  if (sheet.getMaxColumns() < headers.length) {
-    sheet.insertColumnsAfter(sheet.getMaxColumns(), headers.length - sheet.getMaxColumns());
-  }
-  if (sheet.getLastRow() === 0 || !sheet.getRange(1, 1, 1, Math.max(sheet.getLastColumn(), headers.length)).getDisplayValues()[0].some(Boolean)) {
-    sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
-    sheet.setFrozenRows(1);
-  }
+  ensureHeaderRow_(sheet, 1, headers);
   return sheet;
 }
 

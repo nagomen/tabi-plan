@@ -4,6 +4,7 @@
 // 中身は mypage.html?embed=1 を iframe で読み込み、既存のマイページ実装を再利用する。
 
 import { icon } from "./icons";
+import { logOut } from "./account-store";
 import "./mypage-drawer.css";
 
 let panelEl: HTMLElement | null = null;
@@ -33,6 +34,14 @@ function build(): void {
 
 function onKeydown(event: KeyboardEvent): void {
   if (event.key === "Escape") closeMypageDrawer();
+}
+
+function onMessage(event: MessageEvent): void {
+  const data = event.data as { type?: string } | null;
+  if (!data || data.type !== "trip-account-logout") return;
+  logOut();
+  closeMypageDrawer();
+  window.location.replace(new URL("plans.html", location.href).href);
 }
 
 export function openMypageDrawer(): void {
@@ -71,6 +80,7 @@ export function initMypageDrawer(): void {
   if (document.querySelector("[data-mp-drawer]")) return;
 
   build();
+  window.addEventListener("message", onMessage);
 
   document.addEventListener("click", (event) => {
     const target = event.target as Element | null;

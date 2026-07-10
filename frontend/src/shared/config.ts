@@ -63,6 +63,13 @@ export interface GeocodingConfig {
   mapboxToken: string;
 }
 
+export interface SharedBackendConfig {
+  /** local=端末保存のみ / appsScript=Apps Script の共有ストアへ同期 */
+  mode: "local" | "appsScript";
+  /** true のとき Apps Script から共有ストアを読み込む */
+  enabled: boolean;
+}
+
 export interface TripConfig {
   mode: TripMode;
   tripSlug: string;
@@ -85,6 +92,7 @@ export interface TripConfig {
   expenseCache: { storageKey: string };
   mapDefaults: MapDefaults;
   geocoding: GeocodingConfig;
+  sharedBackend: SharedBackendConfig;
 }
 
 export const DEFAULT_CONFIG: TripConfig = {
@@ -152,6 +160,10 @@ export const DEFAULT_CONFIG: TripConfig = {
   },
   geocoding: {
     mapboxToken: "",
+  },
+  sharedBackend: {
+    mode: "local",
+    enabled: false,
   },
 };
 

@@ -12,6 +12,7 @@ function getCachedDashboardData_(options: DataOptions): TripDashboardData | null
     const cached = CacheService.getScriptCache().get(key);
     return cached ? JSON.parse(cached) : null;
   } catch (error) {
+    Logger.log(`getCachedDashboardData_ failed: ${errorMessage_(error)}`);
     return null;
   }
 }
@@ -23,6 +24,7 @@ function putCachedDashboardData_(data: TripDashboardData, options: DataOptions) 
     CacheService.getScriptCache().put(key, JSON.stringify(data), 90);
   } catch (error) {
     // CacheService has a small value limit. Oversized trips should still load uncached.
+    Logger.log(`putCachedDashboardData_ failed (likely oversized trip): ${errorMessage_(error)}`);
   }
 }
 
@@ -33,6 +35,7 @@ function clearDashboardCache_() {
     LEGACY_DASHBOARD_CACHE_KEYS.forEach(key => cache.remove(key));
   } catch (error) {
     // Best-effort cache invalidation.
+    Logger.log(`clearDashboardCache_ failed: ${errorMessage_(error)}`);
   }
 }
 
@@ -58,10 +61,55 @@ function buildDashboardData_(options?: DataOptions): TripDashboardData {
   const settlementCompletionRows = readObjects_(ss.getSheetByName(DEFAULT_CONFIG.sheets.settlementLog), 1, 1, 8);
   const allowFxFetch = String(props.getProperty('TRIP_FX_FETCH_ON_LOAD') || '').toLowerCase() === 'true';
 
-  return buildTripData_(itineraryRows, budgetRows, spreadsheetId, basicInfo, linkRows, checklistRows, participantRows, expenseRows, exchangeRateRows, settlementCompletionRows, localInfoRows, options || {}, { allowFxFetch });
+  return buildTripData_({
+    itineraryRows,
+    budgetRows,
+    spreadsheetId,
+    basicInfo,
+    linkRows,
+    checklistRows,
+    participantRows,
+    expenseRows,
+    exchangeRateRows,
+    settlementCompletionRows,
+    localInfoRows,
+    options: options || {},
+    runtimeOptions: { allowFxFetch }
+  });
 }
 
-function buildTripData_(itineraryRows: SheetRow[], budgetRows: SheetRow[], spreadsheetId: string, basicInfo: Record<string, string>, linkRows: SheetRow[], checklistRows: SheetRow[], participantRows: SheetRow[], expenseRows: SheetRow[], exchangeRateRows: SheetRow[], settlementCompletionRows: SheetRow[], localInfoRows: SheetRow[], options: DataOptions, runtimeOptions: RuntimeOptions): TripDashboardData {
+interface BuildTripDataInput {
+  itineraryRows: SheetRow[];
+  budgetRows: SheetRow[];
+  spreadsheetId: string;
+  basicInfo: Record<string, string>;
+  linkRows: SheetRow[];
+  checklistRows: SheetRow[];
+  participantRows: SheetRow[];
+  expenseRows: SheetRow[];
+  exchangeRateRows: SheetRow[];
+  settlementCompletionRows: SheetRow[];
+  localInfoRows: SheetRow[];
+  options: DataOptions;
+  runtimeOptions: RuntimeOptions;
+}
+
+function buildTripData_(input: BuildTripDataInput): TripDashboardData {
+  const {
+    itineraryRows,
+    budgetRows,
+    spreadsheetId,
+    basicInfo,
+    linkRows,
+    checklistRows,
+    participantRows,
+    expenseRows,
+    exchangeRateRows,
+    settlementCompletionRows,
+    localInfoRows,
+    options,
+    runtimeOptions
+  } = input;
   const itinerary = itineraryRows
     .filter(row => row['日付'] && row['Day'])
     .filter(row => options.includeHidden || String(valueByKeys_(row, ['公開ページに表示', '表示', 'enabled']) || 'TRUE').toUpperCase() !== 'FALSE')

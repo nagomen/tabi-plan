@@ -148,6 +148,7 @@ export function isWeakPassword(password: string): boolean {
 
 /** メールアドレスで登録する。既存・不正値は Error を投げる。成功でログイン状態にする。 */
 export async function signUp(email: string, password: string, name: string): Promise<Account> {
+  await Backend.preload();
   const mail = normalizeEmail(email);
   if (!isValidEmail(mail)) throw new Error("メールアドレスの形式が正しくありません");
   if (isWeakPassword(password)) throw new Error("パスワードは8文字以上にしてください");
@@ -173,6 +174,7 @@ export async function signUp(email: string, password: string, name: string): Pro
 
 /** ログイン。資格情報が誤っていれば Error を投げる。 */
 export async function logIn(email: string, password: string): Promise<Account> {
+  await Backend.preload();
   const mail = normalizeEmail(email);
   const record = readAccounts().find((a) => normalizeEmail(a.email) === mail);
   // 存在しなくてもダミーで派生を回し、応答時間でユーザー有無を漏らさない
@@ -193,6 +195,8 @@ function startSession(record: AccountRecord): void {
 
 export function logOut(): void {
   writeSession(null);
+  // セッションだけ消すと、旧来の名前ベース判定が前ユーザーのまま残る。
+  setUserName("");
 }
 
 /** 現在ログイン中のアカウント（公開情報）。未ログインなら null。 */

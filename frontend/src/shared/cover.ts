@@ -10,6 +10,10 @@ type CoverMeta = Pick<PlanMeta, "slug" | "route" | "title" | "cover">;
 /** 旅行計画の初日の目的地を取得する（行程の先頭 → route → title の順）。 */
 export function firstDayLocation(meta: CoverMeta): string {
   const data = TripPlans.getData(meta.slug);
+  if (data && Array.isArray(data.cities) && data.cities.length > 0) {
+    const firstCity = data.cities.find((city) => (city.name || "").trim());
+    if (firstCity) return firstCity.name.trim();
+  }
   if (data && Array.isArray(data.itinerary) && data.itinerary.length > 0) {
     const first = data.itinerary[0];
     const loc = (first.area || first.place || first.title || "").trim();
@@ -66,7 +70,7 @@ export function planCoverImage(meta: CoverMeta): string {
     return "./images/cover_vietnam.webp";
   }
   // 中国
-  if (/中国|北京|beijing|上海|shanghai|香港|hong.*kong|マカオ|広州|深セン|西安|成都/.test(loc)) {
+  if (/中国|北京|beijing|上海|shanghai|香港|hong.*kong|マカオ|広州|深セン|西安|成都|ハルビン|哈爾浜|哈尔滨|harbin|延吉|yanji|長春|changchun|瀋陽|沈阳|shenyang|大連|大连|dalian/.test(loc)) {
     return "./images/cover_china.webp";
   }
   // 韓国

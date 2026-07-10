@@ -20,6 +20,8 @@ export interface InvitePayload {
   meta: InviteMeta;
   data: LocalPlanData;
   invitedName?: string;
+  inviteId?: string;
+  role?: "editor" | "viewer";
 }
 
 /** 圧縮版トークンの先頭マーカー（base64url の文字集合に含まれない記号） */

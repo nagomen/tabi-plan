@@ -93,7 +93,11 @@ window.TRIP_CONFIG = {
   schema: "trip",
   appsScriptUrl: "https://script.google.com/macros/s/.../exec",
   defaultParticipants: ["参加者A", "参加者B"],
-  currencies: ["JPY", "TWD", "USD"]
+  currencies: ["JPY", "TWD", "USD"],
+  sharedBackend: {
+    enabled: true,
+    mode: "appsScript"
+  }
 };
 ```
 
@@ -138,8 +142,67 @@ window.TRIP_CONFIG = {
 
 - 既存の `window.TRIP_CONFIG`（東北旅行など Sheets 連携の旅行）は、初回に「組み込みプラン」として一覧へ自動登録されます。従来どおりの表示は維持されます。
 - `mode: "local"` のプランは行程・地図・チェックリスト・リンクをこの端末だけで表示します。費用入力と精算は Google Sheets / Apps Script 連携の旅行で使えます。
+- `sharedBackend.enabled: true` かつ `mode: "appsScript"` にすると、ローカル計画・候補・投票・費用なども Apps Script の共有ストアへ同期します。計画一覧で共有パスワードを入力すると、別端末や別ブラウザでも同じ計画を読み込めます。
 - レジストリのキー: `trip-dashboard-plans`（一覧）、`trip-dashboard-plan-<slug>`（各データ）、`trip-dashboard-active-plan`（選択中）。
 - **開発時のファイル保存**：`npm run dev` の Vite サーバが、ローカルプランを `data/plans/<slug>.json` に読み書きします（保存時に自動で書き出し、ページ読込時に `window.__DEV_PLANS__` として注入して localStorage を再構築）。**ファイルが真実**なので別ブラウザでも同じ内容になり、Git で差分も見られます。本番ビルドには含まれません（将来は DB へ移行）。`data/plans/*.json` は既定で gitignore。
+
+### 共同計画・共有の本番運用
+
+旅行を計画してシェアする用途では、`appsScriptUrl` と `sharedBackend` を設定した Apps Script 運用を推奨します。
+
+| 目的 | 仕組み | 使い方 |
+| --- | --- | --- |
+| 別端末で同じ計画を見る | Apps Script 共有ストア | `sharedBackend.enabled: true` にし、計画一覧で共有パスワードを入力 |
+| 招待リンクで参加する | `plans.html#join=...` | 招待リンクを開くと計画を取り込み、既存計画なら候補の投票をマージ |
+| 候補・投票を残す | ローカル保存 + 共有ストア同期 | 候補ボードで追加・投票後、保存すると共有ストアにも反映 |
+| 公開用 Sheets に書き出す | `createTrip` | 計画一覧の「公開」で新しい Google スプレッドシートを作成 |
+| 権限を守る | 共有パスワード + Apps Script トークン | `TRIP_PASSWORD_HASH` / `TRIP_TOKEN_SECRET` を Apps Script に設定 |
+
+Apps Script は共有ストア用に `_AppStore` シートを自動作成します。専用の保存先を分けたい場合は Script Properties に `TRIP_STORE_SPREADSHEET_ID` を設定してください。未設定なら `TRIP_SPREADSHEET_ID` のスプレッドシートを使い、どちらも無い場合は「旅行ダッシュボード共有ストア」という新規スプレッドシートを作ります。
+
+### 権限モデル
+
+ユーザー権限は `trip-dashboard-permissions` というJSONに、DBテーブルへ移行しやすい形で保存します。開発時は `data/store/trip-dashboard-permissions.json`、共有バックエンド有効時は Apps Script 共有ストアへ同期されます。
+
+```json
+{
+  "version": 1,
+  "planPermissions": [
+    {
+      "id": "perm_xxx",
+      "planSlug": "2703-taiwan",
+      "subjectType": "account",
+      "subjectId": "usr_xxx",
+      "displayName": "参加者A",
+      "role": "owner",
+      "status": "active",
+      "source": "owner",
+      "inviteId": "inv_xxx",
+      "createdAt": "2026-07-08T00:00:00.000Z",
+      "updatedAt": "2026-07-08T00:00:00.000Z"
+    }
+  ],
+  "planInvites": [
+    {
+      "id": "inv_xxx",
+      "planSlug": "2703-taiwan",
+      "invitedName": "参加者B",
+      "role": "editor",
+      "status": "accepted",
+      "createdBySubjectType": "account",
+      "createdBySubjectId": "usr_owner",
+      "createdByName": "参加者A",
+      "acceptedBySubjectType": "account",
+      "acceptedBySubjectId": "usr_guest",
+      "acceptedByName": "参加者B",
+      "createdAt": "2026-07-08T00:00:00.000Z",
+      "acceptedAt": "2026-07-08T00:00:00.000Z"
+    }
+  ]
+}
+```
+
+`subjectType` はログイン済みなら `account`、未ログイン運用なら `name` です。`role` は `owner` / `editor` / `viewer`、`status` は有効・失効を表します。招待リンクを作ると `planInvites` に `pending` 行が作られ、リンクを開くと `accepted` になり、同時に `planPermissions` へ参加権限が追加されます。
 
 ### 計画エディタの場所検索
 

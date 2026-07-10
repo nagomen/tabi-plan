@@ -5,8 +5,17 @@
 
 import * as TripPlans from "../shared/plans-store";
 import "../shared/ui.css";
+import { initPageTransitions } from "../shared/page-transition";
+import L from "leaflet";
+import "leaflet/dist/leaflet.css";
 import type { PlanMeta, LocalPlanData, PlanSource } from "../shared/plans-store";
-import { readGlobalTripConfig } from "../shared/config";
+import {
+  DEFAULT_CONFIG,
+  mergeConfig,
+  normalizeTripConfig,
+  readGlobalTripConfig,
+  type TripConfig,
+} from "../shared/config";
 import { escapeHtml, errorMessage, makeScopedQuery } from "../shared/dom";
 import { registerServiceWorker } from "../shared/pwa";
 import { icon, type IconName } from "../shared/icons";
@@ -23,8 +32,17 @@ import {
   isAuthError,
   type AppsScriptResponse,
 } from "../shared/apps-script";
+import {
+  hasAuthSession as hasAuthSessionShared,
+  saveAuthSession as saveAuthSessionShared,
+} from "../shared/auth";
+import * as Backend from "../shared/backend";
+import * as Permissions from "../shared/permissions-store";
+import { isLoggedIn } from "../shared/account-store";
 
 // ---- 補助型 -------------------------------------------------------------
+
+initPageTransitions();
 
 /** ローカルストレージに保存する公開用認証セッション */
 interface PublishAuthSession {
@@ -42,18 +60,23 @@ interface PasswordPrompt {
 
 interface AppState {
   filter: string;
+  selectedLocation: string;
+  selectedPlanSlug: string;
 }
+
+type PlanTiming = "current" | "upcoming" | "past" | "undated";
+
+const CREATE_TRANSITION_KEY = "trip:create-plan-transition";
 
 // ---- DOM 取得ヘルパー ----------------------------------------------------
 
 mountAppHeader({
   kicker: "Travel Plans",
   title: "旅行計画",
-  meta: [
-    { attr: "data-count", text: "読み込み中" },
-    { text: "選んだ計画でダッシュボードが開きます" },
-  ],
+  meta: [],
+  mobileFixed: true,
   actions: [
+    { kind: "button", display: "icon", icon: "magnifyingGlass", label: "計画を検索", attr: "data-toggle-search" },
     { kind: "link", display: "icon", icon: "user", label: "マイページ", href: "mypage.html" },
   ],
 });
@@ -63,17 +86,72 @@ const { qs } = makeScopedQuery(document);
 const hub = qs<HTMLElement>(".hub");
 const gridMine = qs<HTMLElement>("[data-grid-mine]");
 const gridPublic = qs<HTMLElement>("[data-grid-public]");
+const discoverSectionEl = qs<HTMLElement>("[data-discover-section]");
+const toolbarEl = qs<HTMLElement>("[data-hub-toolbar]");
+const mineHeadEl = qs<HTMLElement>("[data-mine-head]");
 const publicHead = qs<HTMLElement>("[data-public-head]");
-const countEl = qs<HTMLElement>("[data-count]");
+const countEl = document.querySelector<HTMLElement>("[data-count]");
 const countMineEl = qs<HTMLElement>("[data-count-mine]");
 const countPublicEl = qs<HTMLElement>("[data-count-public]");
 const filterEl = qs<HTMLInputElement>("[data-filter]");
-const state: AppState = { filter: "" };
+const searchToggleEl = qs<HTMLButtonElement>("[data-toggle-search]");
+const createMainEl = qs<HTMLAnchorElement>("[data-create-main]");
+const jumpNewEl = qs<HTMLAnchorElement>("[data-jump-new]");
+const jumpMapEl = qs<HTMLAnchorElement>("[data-jump-map]");
+const statPublicEl = qs<HTMLElement>("[data-stat-public]");
+const statCitiesEl = qs<HTMLElement>("[data-stat-cities]");
+const statViewsEl = qs<HTMLElement>("[data-stat-views]");
+const inviteStripEl = qs<HTMLElement>("[data-invite-strip]");
+const inviteTitleEl = qs<HTMLElement>("[data-invite-title]");
+const inviteNoteEl = qs<HTMLElement>("[data-invite-note]");
+const rankingNewEl = qs<HTMLElement>("[data-ranking-new]");
+const rankingViewsEl = qs<HTMLElement>("[data-ranking-views]");
+const destinationsEl = qs<HTMLElement>("[data-destinations]");
+const locationSideEl = qs<HTMLElement>(".location-side");
+const locationHeadEl = qs<HTMLElement>("[data-location-head]");
+const locationPlansEl = qs<HTMLElement>("[data-location-plans]");
+const locationScheduleEl = qs<HTMLElement>("[data-location-schedule]");
+const mapBoardEl = qs<HTMLElement>("[data-map-board]");
+const newCountEl = qs<HTMLElement>("[data-new-count]");
+const viewsTotalEl = qs<HTMLElement>("[data-views-total]");
+const destinationCountEl = qs<HTMLElement>("[data-destination-count]");
+const mapCountEl = qs<HTMLElement>("[data-map-count]");
+const state: AppState = { filter: "", selectedLocation: "", selectedPlanSlug: "" };
+const locationMapState: { map: L.Map | null; layer: L.LayerGroup | null } = { map: null, layer: null };
+const CONFIG: TripConfig = normalizeTripConfig(
+  mergeConfig(
+    DEFAULT_CONFIG as unknown as Record<string, unknown>,
+    readGlobalTripConfig() as Record<string, unknown>,
+  ) as unknown as TripConfig,
+);
 
 // セクション見出しの heroicon を流し込む（HTML 側は data-ic="名前" のみ持つ）
 document.querySelectorAll<HTMLElement>("[data-ic]").forEach((el) => {
   const name = el.getAttribute("data-ic");
   if (name) el.insertAdjacentHTML("afterbegin", icon(name as IconName));
+});
+
+function setSearchOpen(open: boolean): void {
+  hub.classList.toggle("is-search-open", open);
+  searchToggleEl.setAttribute("aria-expanded", String(open));
+  if (open) window.setTimeout(() => filterEl.focus(), 0);
+}
+
+searchToggleEl.setAttribute("aria-expanded", "false");
+searchToggleEl.addEventListener("click", () => {
+  setSearchOpen(!hub.classList.contains("is-search-open"));
+});
+
+createMainEl.addEventListener("click", (event) => {
+  if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+  if (createMainEl.target && createMainEl.target !== "_self") return;
+  try { sessionStorage.setItem(CREATE_TRANSITION_KEY, "1"); } catch { /* ignore */ }
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  event.preventDefault();
+  document.body.classList.add("is-plan-create-leaving");
+  window.setTimeout(() => {
+    window.location.href = createMainEl.href;
+  }, 260);
 });
 
 const SOURCE_LABEL: Record<string, string> = {
@@ -91,16 +169,387 @@ function planText(meta: PlanMeta): string {
   return [meta.title, meta.route, meta.dates, meta.members].join(" ").toLowerCase();
 }
 
+function planHref(meta: PlanMeta, view = false): string {
+  return "index.html?plan=" + encodeURIComponent(meta.slug) + (view ? "&view=1" : "");
+}
+
+function timeValue(meta: PlanMeta): number {
+  const value = meta.updatedAt || meta.createdAt || "";
+  const t = value ? Date.parse(value) : 0;
+  return Number.isFinite(t) ? t : 0;
+}
+
+function dayStart(value: Date): number {
+  return new Date(value.getFullYear(), value.getMonth(), value.getDate()).getTime();
+}
+
+function parseLooseDate(token: string, fallbackYear?: number): Date | null {
+  const match = token.match(/(?:(\d{4})[\/.-])?\s*(\d{1,2})[\/.-](\d{1,2})/);
+  if (!match) return null;
+  const year = match[1] ? Number(match[1]) : fallbackYear;
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  if (!year || !month || !day) return null;
+  const date = new Date(year, month - 1, day);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function dateRange(meta: PlanMeta): { start: number; end: number } | null {
+  const raw = String(meta.dates || "");
+  if (!raw.trim()) return null;
+  const parts = raw.split(/\s*(?:-|–|—|〜|~|から|to)\s*/).filter(Boolean);
+  const startDate = parseLooseDate(parts[0] || raw);
+  if (!startDate) return null;
+  const endDate = parseLooseDate(parts[1] || "", startDate.getFullYear()) || startDate;
+  return { start: dayStart(startDate), end: dayStart(endDate) };
+}
+
+function planTiming(meta: PlanMeta, today = dayStart(new Date())): { kind: PlanTiming; distance: number } {
+  const range = dateRange(meta);
+  if (!range) return { kind: "undated", distance: Number.POSITIVE_INFINITY };
+  if (range.start <= today && today <= range.end) return { kind: "current", distance: 0 };
+  if (today < range.start) return { kind: "upcoming", distance: range.start - today };
+  return { kind: "past", distance: today - range.end };
+}
+
+function sortMinePlans(plans: PlanMeta[]): PlanMeta[] {
+  const rank: Record<PlanTiming, number> = { current: 0, upcoming: 1, undated: 2, past: 3 };
+  return [...plans].sort((a, b) => {
+    const ta = planTiming(a);
+    const tb = planTiming(b);
+    if (rank[ta.kind] !== rank[tb.kind]) return rank[ta.kind] - rank[tb.kind];
+    if (ta.distance !== tb.distance) return ta.distance - tb.distance;
+    return timeValue(b) - timeValue(a);
+  });
+}
+
+function highlightedMineSlugs(plans: PlanMeta[]): Map<string, PlanTiming> {
+  const result = new Map<string, PlanTiming>();
+  plans.forEach((meta) => {
+    if (planTiming(meta).kind === "current") result.set(meta.slug, "current");
+  });
+  if (!result.size) {
+    const next = plans.find((meta) => planTiming(meta).kind === "upcoming");
+    if (next) result.set(next.slug, "upcoming");
+  }
+  return result;
+}
+
+function emptyList(message: string): string {
+  return '<div class="hub-empty" style="border:0;background:#fff;padding:24px 14px;">' + escapeHtml(message) + "</div>";
+}
+
+function routeParts(meta: PlanMeta): string[] {
+  const source = [meta.route, meta.title].filter(Boolean).join("、");
+  return source
+    .split(/\s*(?:→|、|,|\/|・|\|)\s*/)
+    .map((part) => part.trim())
+    .filter((part) => part && !/旅行|計画|ダッシュボード|年|月/.test(part))
+    .slice(0, 8);
+}
+
+function destinationName(meta: PlanMeta): string {
+  const parts = routeParts(meta);
+  if (parts[0]) return parts[0];
+  return meta.title.replace(/旅行|計画|ダッシュボード/g, "").trim() || "行き先未定";
+}
+
+const LOCATION_ALIASES: [RegExp, string][] = [
+  [/羽田|成田|東京駅|品川|新宿|マンハッタン|リバティ島/i, "東京"],
+  [/関西国際空港|伊丹|新大阪/i, "大阪"],
+  [/京都駅/i, "京都"],
+  [/博多/i, "福岡"],
+  [/ホノルル/i, "ハワイ"],
+  [/london\s*hotel/i, "ロンドン"],
+  [/ベルリン|ドイツ/i, "ドイツ"],
+  [/バルセロナ|マドリード/i, "スペイン"],
+  [/デリー/i, "インド"],
+  [/ウランバートル/i, "モンゴル"],
+  [/台北/i, "台湾"],
+];
+
+function displayLocationName(name: string): string {
+  const raw = String(name || "").trim();
+  const hit = LOCATION_ALIASES.find(([pattern]) => pattern.test(raw));
+  if (hit) return hit[1];
+  return raw
+    .replace(/国際?空港|空港|駅|ホテル|hotel/gi, "")
+    .replace(/\s+/g, " ")
+    .trim() || raw;
+}
+
+function renderRankings(plans: PlanMeta[]): void {
+  const latest = [...plans].sort((a, b) => timeValue(b) - timeValue(a)).slice(0, 5);
+  const byViews = [...plans].sort((a, b) => getViews(b.slug) - getViews(a.slug) || timeValue(b) - timeValue(a)).slice(0, 5);
+  const discoverCard = (meta: PlanMeta, label: string): string => {
+    const views = getViews(meta.slug);
+    return (
+      '<a class="discover-trip-card" href="' + planHref(meta, !Permissions.canEdit(meta.slug)) + '">' +
+      '<span class="discover-card-badge">' + escapeHtml(label) + "</span>" +
+      '<span class="discover-trip-cover"><img src="' + planCoverImage(meta) + '" alt="' + escapeHtml(meta.title || "旅行画像") + '" loading="lazy">' +
+      '<span class="discover-trip-views">' + icon("eye") + views.toLocaleString("ja-JP") + '</span></span>' +
+      '<span class="discover-trip-title">' + escapeHtml(meta.title || "無題の旅行") + '</span>' +
+      '<span class="discover-trip-meta">' + escapeHtml([meta.dates, meta.route || destinationName(meta)].filter(Boolean).join(" ・ ")) + '</span>' +
+      '</a>'
+    );
+  };
+
+  rankingNewEl.innerHTML = latest.length
+    ? latest.map((meta, i) => discoverCard(meta, "NEW " + String(i + 1).padStart(2, "0"))).join("")
+    : emptyList("公開旅行はまだありません。最初の旅行を作って公開できます。");
+  rankingViewsEl.innerHTML = byViews.length
+    ? byViews.map((meta, i) => discoverCard(meta, "No." + String(i + 1) + " / " + getViews(meta.slug).toLocaleString("ja-JP") + " views")).join("")
+    : emptyList("観覧数ランキングは、公開旅行が閲覧されると表示されます。");
+  newCountEl.textContent = latest.length ? latest.length + "件" : "";
+  const totalViews = plans.reduce((sum, meta) => sum + getViews(meta.slug), 0);
+  viewsTotalEl.textContent = totalViews ? totalViews.toLocaleString("ja-JP") + " views" : "";
+}
+
+function locationNames(meta: PlanMeta): string[] {
+  const names = routeParts(meta);
+  const normalized = (names.length ? names : [destinationName(meta)]).map(displayLocationName).filter(Boolean);
+  return Array.from(new Set(normalized));
+}
+
+function hasLocation(meta: PlanMeta, location: string): boolean {
+  return locationNames(meta).includes(location);
+}
+
+function plansForLocation(plans: PlanMeta[], location: string): PlanMeta[] {
+  return plans.filter((meta) => hasLocation(meta, location));
+}
+
+function destinationRows(plans: PlanMeta[]): [string, number][] {
+  const counts = new Map<string, number>();
+  plans.forEach((meta) => {
+    locationNames(meta).forEach((name) => {
+      counts.set(name, (counts.get(name) || 0) + 1);
+    });
+  });
+  return [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "ja")).slice(0, 10);
+}
+
+function renderLocationCityList(plans: PlanMeta[]): void {
+  const rows = destinationRows(plans);
+  locationSideEl.classList.remove("is-plan-mode");
+  locationHeadEl.innerHTML =
+    '<p class="location-side-title">都市・国から選ぶ</p>' +
+    '<span class="location-side-note">左の一覧または地図のピンを選ぶと、旅行計画と日程を確認できます</span>';
+  locationPlansEl.hidden = true;
+  locationPlansEl.innerHTML = "";
+  destinationsEl.hidden = false;
+  destinationsEl.innerHTML = rows.length
+    ? rows.map(([name, count]) =>
+        '<a class="dest-row" href="#" data-dest-filter="' + escapeHtml(name) + '"><b>' +
+        escapeHtml(name) +
+        "</b><span>" +
+        count +
+        "件の旅行計画</span></a>",
+      ).join("")
+    : emptyList("行き先別の一覧は、公開旅行が増えると表示されます。");
+  destinationCountEl.textContent = rows.length ? rows.length + "地域" : "";
+  statCitiesEl.textContent = String(rows.length);
+}
+
+function renderLocationPlans(plans: PlanMeta[]): PlanMeta[] {
+  const selected = state.selectedLocation;
+  const rows = plansForLocation(plans, selected);
+  if (!state.selectedPlanSlug || !rows.some((meta) => meta.slug === state.selectedPlanSlug)) {
+    state.selectedPlanSlug = rows[0]?.slug || "";
+  }
+  locationSideEl.classList.add("is-plan-mode");
+  locationHeadEl.innerHTML =
+    '<button class="location-back" type="button" data-location-back>都市一覧へ戻る</button>' +
+    '<p class="location-side-title">' + escapeHtml(selected) + '</p>' +
+    '<span class="location-side-note">この都市の旅行計画 ' + rows.length + '件</span>';
+  destinationsEl.hidden = true;
+  locationPlansEl.hidden = false;
+  locationPlansEl.innerHTML = rows.length
+    ? rows.map((meta) =>
+        '<a class="location-plan-row' + (meta.slug === state.selectedPlanSlug ? " is-active" : "") +
+        '" href="#" data-location-plan="' + escapeHtml(meta.slug) + '">' +
+        '<span><b>' + escapeHtml(meta.title || "無題の旅行") + '</b><span>' +
+        escapeHtml([meta.dates, meta.route || selected].filter(Boolean).join(" ・ ")) +
+        '</span></span><em>日程</em></a>',
+      ).join("")
+    : emptyList("この場所の旅行計画はまだありません。");
+  return rows;
+}
+
+function itineraryFor(meta: PlanMeta | undefined): LocalPlanData | null {
+  if (!meta) return null;
+  return TripPlans.getData(meta.slug);
+}
+
+function itemTitle(item: LocalPlanData["itinerary"][number]): string {
+  return item.title || item.place || item.area || item.destination || item.origin || "予定";
+}
+
+function renderSchedule(plan: PlanMeta | undefined): void {
+  mapBoardEl.hidden = true;
+  locationScheduleEl.hidden = false;
+  if (!plan) {
+    locationScheduleEl.innerHTML = emptyList("旅行計画を選択してください。");
+    return;
+  }
+  const data = itineraryFor(plan);
+  const items = (data?.itinerary || []).slice(0, 18);
+  const head =
+    '<div class="schedule-head"><b>' + escapeHtml(plan.title || "無題の旅行") + '</b>' +
+    '<span>' + escapeHtml([plan.dates, plan.route].filter(Boolean).join(" ・ ") || "日程情報") + '</span>' +
+    '<a href="' + planHref(plan, !Permissions.canEdit(plan.slug)) + '">旅行計画を開く</a></div>';
+  if (!items.length) {
+    locationScheduleEl.innerHTML = head + emptyList("この計画の日程データはまだありません。");
+    return;
+  }
+  const groups = new Map<string, typeof items>();
+  items.forEach((item) => {
+    const key = [item.date, item.day].filter(Boolean).join(" ") || "日程未設定";
+    const arr = groups.get(key) || [];
+    arr.push(item);
+    groups.set(key, arr);
+  });
+  locationScheduleEl.innerHTML = head + '<div class="schedule-list">' +
+    [...groups.entries()].map(([date, rows]) =>
+      '<section class="schedule-day"><div class="schedule-date">' + escapeHtml(date) + '</div>' +
+      '<div class="schedule-items">' +
+      rows.map((item) =>
+        '<div class="schedule-item"><span class="schedule-time">' + escapeHtml(item.time || "") + '</span>' +
+        '<span class="schedule-main"><b>' + escapeHtml(itemTitle(item)) + '</b><span>' +
+        escapeHtml([item.place && item.place !== itemTitle(item) ? item.place : "", item.area, item.note].filter(Boolean).join(" ・ ")) +
+        '</span></span></div>',
+      ).join("") +
+      '</div></section>',
+    ).join("") +
+    '</div>';
+}
+
+function renderLocationMap(plans: PlanMeta[]): void {
+  const rows = destinationRows(plans).slice(0, 14);
+  const totalPlans = plans.length;
+  mapCountEl.textContent = totalPlans ? totalPlans + "件" : "";
+  locationScheduleEl.hidden = true;
+  locationScheduleEl.innerHTML = "";
+  mapBoardEl.hidden = false;
+  if (!rows.length) {
+    if (locationMapState.map) {
+      locationMapState.map.remove();
+      locationMapState.map = null;
+      locationMapState.layer = null;
+    }
+    mapBoardEl.innerHTML = '<div class="map-empty">公開旅行が増えると、ここに行き先のピンが並びます。</div>';
+    return;
+  }
+  const destinations = new Map<string, { name: string; coords: L.LatLngExpression; count: number }>();
+  rows.forEach(([name, count]) => {
+    const coords = TripPlans.coordsFor(name);
+    if (!coords) return;
+    const key = name + ":" + coords.lat.toFixed(3) + "," + coords.lng.toFixed(3);
+    destinations.set(key, { name, coords: [coords.lat, coords.lng], count });
+  });
+  const points = [...destinations.values()];
+  if (!points.length) {
+    if (locationMapState.map) {
+      locationMapState.map.remove();
+      locationMapState.map = null;
+      locationMapState.layer = null;
+    }
+    mapBoardEl.innerHTML = '<div class="map-empty">座標が分かる都市名があると、ここに地図ピンが表示されます。</div>';
+    return;
+  }
+
+  mapBoardEl.classList.add("has-leaflet");
+  if (!locationMapState.map) {
+    mapBoardEl.innerHTML = "";
+    locationMapState.map = L.map(mapBoardEl, {
+      scrollWheelZoom: false,
+      attributionControl: true,
+      zoomControl: true,
+    });
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 18,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+    }).addTo(locationMapState.map);
+  }
+  const map = locationMapState.map;
+  if (locationMapState.layer) locationMapState.layer.remove();
+  locationMapState.layer = L.layerGroup().addTo(map);
+  const bounds = L.latLngBounds([]);
+  points.forEach((point) => {
+    const shortName = point.name.replace(/\s+/g, "").slice(0, 4);
+    const marker = L.marker(point.coords, {
+      icon: L.divIcon({
+        className: "location-marker",
+        html: `<span>${escapeHtml(shortName)}${point.count > 1 ? `<b>${point.count}</b>` : ""}</span>`,
+        iconSize: [72, 34],
+        iconAnchor: [36, 17],
+      }),
+    }).addTo(locationMapState.layer!);
+    marker.bindTooltip(`${escapeHtml(point.name)} (${point.count}件)`, { direction: "top" });
+    marker.on("click", () => {
+      state.selectedLocation = point.name;
+      state.selectedPlanSlug = "";
+      renderDiscover(plans);
+    });
+    bounds.extend(point.coords);
+  });
+  window.setTimeout(() => {
+    map.invalidateSize();
+    if (bounds.isValid()) map.fitBounds(bounds, { padding: [42, 42], maxZoom: points.length === 1 ? 6 : 12 });
+  }, 0);
+}
+
+function renderLocationExplorer(plans: PlanMeta[]): void {
+  if (!state.selectedLocation || !plansForLocation(plans, state.selectedLocation).length) {
+    state.selectedLocation = "";
+    state.selectedPlanSlug = "";
+    renderLocationCityList(plans);
+    renderLocationMap(plans);
+    return;
+  }
+  const rows = renderLocationPlans(plans);
+  const selected = rows.find((meta) => meta.slug === state.selectedPlanSlug) || rows[0];
+  renderSchedule(selected);
+}
+
+function renderStart(publicPlans: PlanMeta[]): void {
+  const invites = Permissions.pendingInvitesForCurrentUser();
+  createMainEl.innerHTML = icon("plusCircle") + "<span>新しい旅行計画を作る</span>";
+  jumpNewEl.innerHTML = icon("sparkles") + "<span>公開旅行を見る</span>";
+  jumpMapEl.innerHTML = icon("map") + "<span>地図から探す</span>";
+  statPublicEl.textContent = String(publicPlans.length);
+  statViewsEl.textContent = publicPlans.reduce((sum, meta) => sum + getViews(meta.slug), 0).toLocaleString("ja-JP");
+  inviteStripEl.classList.toggle("is-visible", invites.length > 0);
+  if (invites.length) {
+    inviteTitleEl.textContent = "未参加の招待があります";
+    inviteNoteEl.textContent = invites.map((invite) => invite.invitedName || invite.planSlug).slice(0, 3).join("、");
+  }
+}
+
+function renderDiscover(publicPlans: PlanMeta[]): void {
+  renderRankings(publicPlans);
+  renderLocationExplorer(publicPlans);
+}
+
 type RowVariant = "mine" | "public";
 
 /** 1枚のカード（計画）の HTML を組み立てる。variant で「自分の計画」/「みんなの公開計画」を出し分ける。 */
-function rowHtml(meta: PlanMeta, variant: RowVariant, activeSlug: string): string {
+function rowHtml(meta: PlanMeta, variant: RowVariant, activeSlug: string, highlight?: PlanTiming): string {
   const src = sourceClass(meta.source);
   const isLocal = meta.source === "local";
   const isActive = meta.slug === activeSlug;
   const metaLine = [meta.dates, meta.members].filter(Boolean).map(escapeHtml).join(" · ");
-  const openHref =
-    "index.html?plan=" + encodeURIComponent(meta.slug) + (variant === "public" ? "&view=1" : "");
+  const openHref = planHref(meta, variant === "public" || !Permissions.canEdit(meta.slug));
+  const role = Permissions.permissionFor(meta.slug)?.role;
+  const roleBadge = role
+    ? '<span class="role-badge ' + role + '">' + escapeHtml(Permissions.roleLabel(role)) + "</span>"
+    : "";
+  const highlightBadge =
+    highlight === "current"
+      ? '<span class="plan-highlight-badge current">期間中</span>'
+      : highlight === "upcoming"
+        ? '<span class="plan-highlight-badge upcoming">直近</span>'
+        : "";
 
   const menuItems =
     variant === "public"
@@ -142,6 +591,7 @@ function rowHtml(meta: PlanMeta, variant: RowVariant, activeSlug: string): strin
   return (
     '<article class="plan-row' +
     (variant === "mine" && isActive ? " is-active" : "") +
+    (highlight ? " is-" + highlight : "") +
     '" data-slug="' +
     escapeHtml(meta.slug) +
     '" data-variant="' +
@@ -172,8 +622,12 @@ function rowHtml(meta: PlanMeta, variant: RowVariant, activeSlug: string): strin
     "</div>" +
     '<span class="plan-body">' +
     '<span class="plan-name">' +
+    '<span class="plan-name-text">' +
     escapeHtml(meta.title || "無題の旅行") +
     nameExtra +
+    "</span>" +
+    roleBadge +
+    highlightBadge +
     "</span>" +
     (metaLine ? '<span class="plan-meta">' + metaLine + "</span>" : "") +
     (meta.route ? '<span class="plan-route">' + escapeHtml(meta.route) + "</span>" : "") +
@@ -199,17 +653,40 @@ function render(): void {
   TripPlans.ensureSeed(readGlobalTripConfig());
   const activeSlug = TripPlans.getActiveSlug();
   const filter = state.filter.trim().toLowerCase();
+  const loggedIn = isLoggedIn();
 
-  const mine = TripPlans.listMine().filter((m) => matchesFilter(m, filter));
+  const all = TripPlans.list();
+  const mine = loggedIn ? sortMinePlans(TripPlans.listMine().filter((m) => matchesFilter(m, filter))) : [];
   const others = TripPlans.listPublic().filter((m) => matchesFilter(m, filter));
+  const discoverPlans = all.filter((m) => TripPlans.isPublished(m) && TripPlans.planVisibility(m) === "public" && m.source !== "sample");
+  const mineHighlights = highlightedMineSlugs(mine);
 
   const mineTotal = TripPlans.listMine().length;
-  countEl.textContent = mineTotal ? "自分の計画 " + mineTotal + "件" : "計画はまだありません";
+  if (loggedIn) {
+    inviteStripEl.after(toolbarEl);
+    toolbarEl.after(mineHeadEl);
+    mineHeadEl.after(gridMine);
+    gridMine.after(discoverSectionEl);
+  } else {
+    inviteStripEl.after(discoverSectionEl);
+    discoverSectionEl.after(toolbarEl);
+    toolbarEl.after(mineHeadEl);
+    mineHeadEl.after(gridMine);
+  }
+  mineHeadEl.hidden = !loggedIn;
+  gridMine.hidden = !loggedIn;
+
+  if (countEl) countEl.textContent = mineTotal ? "自分の計画 " + mineTotal + "件" : "計画はまだありません";
   countMineEl.textContent = mine.length ? mine.length + "件" : "";
+  renderStart(discoverPlans);
+  renderDiscover(discoverPlans);
 
   // --- 自分の計画 ---
-  if (mine.length) {
-    gridMine.innerHTML = mine.map((meta) => rowHtml(meta, "mine", activeSlug)).join("");
+  if (!loggedIn) {
+    gridMine.innerHTML = "";
+    countMineEl.textContent = "";
+  } else if (mine.length) {
+    gridMine.innerHTML = mine.map((meta) => rowHtml(meta, "mine", activeSlug, mineHighlights.get(meta.slug))).join("");
   } else {
     gridMine.innerHTML =
       '<div class="hub-empty">' +
@@ -269,6 +746,7 @@ function duplicateToMine(slug: string, fromPublic: boolean): void {
       }
     }
   }
+  Permissions.ensureOwner(copy.slug, copy.members);
   render();
   showToast(fromPublic ? "自分の計画に複製しました" : "計画を複製しました");
 }
@@ -519,9 +997,68 @@ function buildPlanJson(data: LocalPlanData): string {
   });
 }
 
+async function ensureSharedBackendAuth(): Promise<void> {
+  if (!CONFIG.sharedBackend.enabled || CONFIG.sharedBackend.mode !== "appsScript") return;
+  if (!CONFIG.auth.enabled || hasAuthSessionShared(CONFIG.auth)) return;
+  if (!CONFIG.appsScriptUrl) return;
+  const password = window.prompt("共有計画を同期するため、共有パスワードを入力してください");
+  if (password == null) return;
+  const passwordHash = await sha256Hex(password);
+  const response = await callAppsScript(CONFIG.appsScriptUrl, { action: "auth", passwordHash });
+  saveAuthSessionShared(CONFIG.auth, response.token, response.expiresAt);
+  await Backend.reload();
+}
+
 filterEl.addEventListener("input", (event) => {
   const target = event.target as HTMLInputElement | null;
   state.filter = (target && target.value) || "";
+  hub.classList.toggle("has-search-filter", Boolean(state.filter.trim()));
+  render();
+});
+
+destinationsEl.addEventListener("click", (event) => {
+  const target = event.target;
+  if (!(target instanceof Element)) return;
+  const link = target.closest<HTMLElement>("[data-dest-filter]");
+  if (!link) return;
+  event.preventDefault();
+  const value = link.dataset.destFilter || "";
+  state.selectedLocation = value;
+  state.selectedPlanSlug = "";
+  render();
+});
+
+locationHeadEl.addEventListener("click", (event) => {
+  const target = event.target;
+  if (!(target instanceof Element)) return;
+  if (!target.closest("[data-location-back]")) return;
+  event.preventDefault();
+  state.selectedLocation = "";
+  state.selectedPlanSlug = "";
+  render();
+});
+
+locationPlansEl.addEventListener("click", (event) => {
+  const target = event.target;
+  if (!(target instanceof Element)) return;
+  const link = target.closest<HTMLElement>("[data-location-plan]");
+  if (!link) return;
+  event.preventDefault();
+  state.selectedPlanSlug = link.dataset.locationPlan || "";
+  render();
+});
+
+window.addEventListener("trip-backend-sync", () => {
+  render();
+});
+
+window.addEventListener("trip-account-logout", () => {
+  state.filter = "";
+  state.selectedLocation = "";
+  state.selectedPlanSlug = "";
+  filterEl.value = "";
+  hub.classList.remove("is-search-open", "has-search-filter");
+  searchToggleEl.setAttribute("aria-expanded", "false");
   render();
 });
 
@@ -539,7 +1076,17 @@ async function handleJoinLink(): Promise<boolean> {
     return false;
   }
   const slug = TripPlans.safeSlug(payload.meta.slug || payload.meta.title || "trip");
+  Permissions.acceptInvite(slug, payload.inviteId, payload.invitedName);
   const { existed } = TripPlans.mergeLocalPlan(slug, payload.data);
+  const data = TripPlans.getData(slug);
+  const joinName = (Permissions.currentPrincipal(payload.invitedName)?.displayName || payload.invitedName || "").trim();
+  if (data && joinName) {
+    const names = splitNames(data.trip?.members || "");
+    if (!names.includes(joinName)) {
+      data.trip = { ...(data.trip || { title: "", dates: "", members: "", note: "" }), members: [...names, joinName].join("、") };
+      TripPlans.saveLocalPlan(slug, data);
+    }
+  }
   TripPlans.setActiveSlug(slug);
   // 既存を更新したときは、すぐ遷移せず一覧で結果を見せる
   if (existed) {
@@ -551,6 +1098,11 @@ async function handleJoinLink(): Promise<boolean> {
   return true;
 }
 
-void handleJoinLink().then((joined) => {
-  if (!joined) render();
-});
+void ensureSharedBackendAuth()
+  .catch((error) => {
+    showToast("共有計画の同期に失敗しました: " + errorMessage(error), true);
+  })
+  .then(() => handleJoinLink())
+  .then((joined) => {
+    if (!joined) render();
+  });

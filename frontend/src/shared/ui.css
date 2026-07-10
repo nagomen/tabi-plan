@@ -15,6 +15,41 @@
   background: rgba(11, 90, 66, 0.18);
 }
 
+html {
+  overflow-x: hidden;
+}
+
+body.ui-page-enter {
+  animation: uiPageEnter 0.28s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+body.ui-page-leave {
+  pointer-events: none;
+  animation: uiPageLeave 0.22s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+@keyframes uiPageEnter {
+  from {
+    opacity: 0;
+    transform: translateX(22px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes uiPageLeave {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(-18px);
+  }
+}
+
 /* モーション控えめ設定を尊重（読み込みアニメ・スムーススクロール等を停止） */
 @media (prefers-reduced-motion: reduce) {
   *,
@@ -24,6 +59,12 @@
     animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
     scroll-behavior: auto !important;
+  }
+
+  body.ui-page-enter,
+  body.ui-page-leave {
+    animation: none !important;
+    transform: none !important;
   }
 }
 

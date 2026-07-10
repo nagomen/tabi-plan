@@ -46,6 +46,27 @@
   }
 
   a { color: inherit; }
+
+  body.is-plan-create-entry .pe {
+    animation: planCreateEntry .34s cubic-bezier(.2, .8, .2, 1) both;
+  }
+
+  @keyframes planCreateEntry {
+    from {
+      opacity: 0;
+      transform: translateY(18px) scale(.985);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    body.is-plan-create-entry .pe {
+      animation: none;
+    }
+  }
   .hi { width: 1.15em; height: 1.15em; vertical-align: -0.18em; flex: none; }
 
   .pe {
@@ -305,6 +326,48 @@
     color: var(--green);
   }
   .pe-step.is-done + .pe-step::before { background: var(--green); }
+
+  .pe-stepnav {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 14px;
+  }
+
+  .pe-stepnav-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-height: 38px;
+    padding: 0 14px;
+    border: 1px solid var(--line-strong);
+    border-radius: 0;
+    background: #fff;
+    color: var(--ink);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .pe-stepnav-btn .hi {
+    width: 16px;
+    height: 16px;
+  }
+
+  .pe-stepnav-btn.primary {
+    border-color: var(--green);
+    background: var(--green);
+    color: #fff;
+  }
+
+  .pe-stepnav-btn:disabled {
+    opacity: .42;
+    cursor: not-allowed;
+  }
+  .pe-stepnav-btn[hidden] { display: none; }
 
   .pe-sec-title {
     display: flex;
@@ -955,28 +1018,115 @@
 
   @media (max-width: 680px) {
     body { background: #fff; }
-    .pe { min-height: 100dvh; }
+    :root { --head-h: 64px; }
+    .pe {
+      min-height: 100dvh;
+      padding-bottom: calc(72px + env(safe-area-inset-bottom));
+    }
+    .pe > .ah {
+      min-height: var(--head-h);
+      padding: 10px 16px;
+      gap: 8px;
+    }
+    .pe > .ah .ah-back {
+      width: 34px;
+      height: 34px;
+      margin-left: -6px;
+    }
+    .pe > .ah .ah-back svg { width: 20px; height: 20px; }
+    .pe > .ah .ah-kicker {
+      margin-bottom: 1px;
+      font-size: 10px;
+      font-weight: 620;
+      letter-spacing: .12em;
+    }
+    .pe > .ah .ah-title {
+      font-size: 18px;
+      font-weight: 680;
+      line-height: 1.18;
+    }
+    .pe > .ah .ah-meta {
+      margin-top: 3px;
+      font-size: 11px;
+      font-weight: 430;
+      gap: 3px 8px;
+    }
+    .pe > .ah .ah-act--icon {
+      width: 36px;
+      height: 36px;
+    }
+    .pe > .ah .ah-act--icon svg { width: 21px; height: 21px; }
     .pe-head {
       min-height: var(--head-h);
-      padding: 9px 12px;
+      padding: 8px 12px;
       gap: 8px;
     }
     .pe-head-kicker { display: none; }
-    .pe-head h1 { font-size: 18px; white-space: nowrap; }
-    .pe-meta { font-size: 11.5px; gap: 6px; }
-    .pe-setup { padding: 18px 14px 10px; background: #fff; border-bottom: 0; }
-    .pe-setup-top { margin-bottom: 14px; }
-    .pe-kicker { margin-bottom: 8px; font-size: 11px; }
-    .pe-setup-title { font-size: 21px; line-height: 1.22; }
-    .pe-setup-copy { margin-top: 6px; font-size: 13px; line-height: 1.55; }
+    .pe-head h1 { font-size: 17px; font-weight: 660; white-space: nowrap; }
+    .pe-meta { font-size: 10.5px; font-weight: 480; gap: 5px; }
+    .pe-back,
+    .pe-headbtn { width: 34px; height: 34px; }
+    .pe-back .hi,
+    .pe-headbtn .hi { width: 17px; height: 17px; }
+    .pe-setup { padding: 16px 14px 10px; background: #fff; border-bottom: 0; }
+    .pe-setup-top { margin-bottom: 12px; }
+    .pe-kicker {
+      margin-bottom: 8px;
+      padding: 3px 8px;
+      font-size: 10px;
+      font-weight: 560;
+      letter-spacing: .06em;
+    }
+    .pe-setup-title { font-size: 19px; line-height: 1.28; font-weight: 660; }
+    .pe-setup-copy { margin-top: 6px; font-size: 12px; line-height: 1.6; font-weight: 400; }
     /* スマホ: 3ステップを横並びの進行表（番号→ラベル→補足を縦積み）。タップで切替 */
-    .pe-steps { flex-direction: row; align-items: flex-start; gap: 0; margin-top: 16px; }
-    .pe-step { flex-direction: column; align-items: center; text-align: center; gap: 5px; padding: 2px 4px; cursor: pointer; }
-    .pe-step-n { width: 30px; height: 30px; font-size: 13px; }
+    .pe-steps { flex-direction: row; align-items: flex-start; gap: 0; margin-top: 14px; }
+    .pe-step { flex-direction: column; align-items: center; text-align: center; gap: 4px; padding: 2px 4px; cursor: pointer; }
+    .pe-step-n { width: 26px; height: 26px; font-size: 11.5px; font-weight: 650; }
     .pe-step-t { justify-items: center; }
-    .pe-step-t b { font-size: 12.5px; }
-    .pe-step-t small { display: block; font-size: 10px; line-height: 1.25; }
-    .pe-step + .pe-step::before { left: calc(-50% + 15px); right: auto; top: 17px; width: calc(100% - 30px); height: 2px; transform: none; }
+    .pe-step-t b { font-size: 11.5px; font-weight: 600; }
+    .pe-step-t small { display: block; font-size: 9.5px; line-height: 1.25; font-weight: 460; }
+    .pe-step + .pe-step::before { left: calc(-50% + 13px); right: auto; top: 15px; width: calc(100% - 26px); height: 2px; transform: none; }
+    .pe-stepnav {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 90;
+      width: min(100vw, var(--app-width));
+      margin: 0 auto;
+      padding: 9px 14px calc(9px + env(safe-area-inset-bottom));
+      border-top: 1px solid var(--line-strong);
+      background: #fff;
+    }
+    .pe-stepnav-btn {
+      flex: 1;
+      min-height: 42px;
+      border: 0;
+      background: transparent;
+      font-size: 12.5px;
+      font-weight: 620;
+    }
+    .pe-stepnav-btn.primary {
+      flex: 1.25;
+      color: var(--green);
+      background: transparent;
+    }
+    .pe-stepnav-btn {
+      position: relative;
+    }
+    .pe-stepnav-btn.primary::after {
+      content: "";
+      position: absolute;
+      left: 20%;
+      right: 20%;
+      bottom: 4px;
+      height: 2px;
+      background: var(--green);
+    }
+    .pe-stepnav-btn:disabled {
+      background: transparent;
+    }
 
     /* ウィザード: 現在のステップの内容だけを下に表示 */
     [data-step-panel] { display: none; }
@@ -986,42 +1136,295 @@
     .pe[data-step="3"] .pe-form-panel { display: none; }
     /* スマホはカードをやめてフラットに（入力欄を直接ページに置く） */
     .pe-form-panel { padding: 0; border: 0; border-radius: 0; box-shadow: none; background: transparent; }
-    .pe-grid { grid-template-columns: 1fr; gap: 12px; }
+    .pe-grid { grid-template-columns: 1fr; gap: 11px; }
     .pe-field.c2,
     .pe-field.c3,
     .pe-field.c6 { grid-column: 1; }
+    .pe-sec-title { font-size: 13px; font-weight: 620; gap: 7px; }
+    .pe-sec-title .hi { width: 16px; height: 16px; }
+    .pe-sec-note { margin-bottom: 10px; font-size: 11.5px; line-height: 1.55; font-weight: 430; }
+    .pe-field { gap: 5px; }
+    .pe-field > span { font-size: 12px; font-weight: 600; gap: 6px; }
+    .pe-field > span .hi { width: 15px; height: 15px; }
+    .pe-field > span em { font-size: 10.5px; font-weight: 400; }
     .pe-field input,
     .pe-field select,
-    .pe-field textarea { min-height: 48px; font-size: 16px; }
+    .pe-field textarea {
+      min-height: 40px;
+      padding: 8px 10px;
+      font-size: 13px;
+      font-weight: 400;
+    }
     .pe-route-add { grid-template-columns: 1fr auto; }
-    .pe-route-add input { min-height: 48px; font-size: 16px; }
+    .pe-route-add input {
+      min-height: 40px;
+      padding: 8px 10px;
+      font-size: 13px;
+      font-weight: 400;
+    }
     .pe-member-add { max-width: none; }
-    .pe-member-inputwrap input { min-height: 48px; font-size: 16px; }
+    .pe-member-inputwrap input {
+      min-height: 40px;
+      padding: 8px 10px;
+      font-size: 13px;
+      font-weight: 400;
+    }
+    .pe-mini,
+    .pe-calsync-btn {
+      min-height: 36px;
+      padding: 0 10px;
+      font-size: 11.5px;
+      font-weight: 560;
+    }
+    .pe-member-add { grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+    .pe-cover { gap: 10px; }
+    .pe-cover-preview { width: 176px; max-width: 48vw; }
+    .pe-cover-actions { gap: 6px; }
+    .pe-cover-note,
+    .pe-calsync-note { font-size: 10.5px; line-height: 1.5; font-weight: 430; }
+    .pe-calsync { gap: 8px; margin-top: 14px; padding-top: 14px; }
+    .pe-calsync-label { font-size: 12px; font-weight: 600; }
     .pe-route { margin-top: 0; padding-top: 0; border-top: 0; }
-    .pe-city { align-items: stretch; gap: 8px; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; background: transparent; padding: 10px 0; }
+    .pe-route-list {
+      gap: 0;
+      margin: 0 0 10px;
+      border-top: 1px solid var(--line);
+    }
+    .pe-city {
+      display: grid;
+      grid-template-columns: 28px minmax(0, 1fr) 36px 32px;
+      align-items: center;
+      gap: 7px 8px;
+      padding: 10px 0;
+      border: 0;
+      border-bottom: 1px solid var(--line);
+      border-radius: 0;
+      background: transparent;
+      font-size: 12px;
+      font-weight: 560;
+    }
+    .pe-city .pe-city-n {
+      grid-column: 1;
+      grid-row: 1 / 3;
+      align-self: start;
+      width: 26px;
+      height: 26px;
+      margin-top: 4px;
+      font-size: 11px;
+      font-weight: 620;
+    }
+    .pe-city-name {
+      grid-column: 2;
+      grid-row: 1;
+      min-width: 0;
+      min-height: 34px;
+      padding: 6px 9px;
+      border-color: transparent transparent var(--line-strong);
+      background: transparent;
+      font-size: 13px;
+      font-weight: 520;
+    }
+    .pe-city .pe-city-action {
+      grid-column: 3;
+      grid-row: 1;
+      width: 32px;
+      min-width: 0;
+      min-height: 32px;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      color: var(--green);
+    }
+    .pe-city .pe-city-action .hi {
+      width: 18px;
+      height: 18px;
+    }
+    .pe-city .pe-icon-btn[data-city-del] {
+      grid-column: 4;
+      grid-row: 1;
+      width: 32px;
+      min-width: 32px;
+      height: 34px;
+      min-height: 34px;
+      border: 0;
+      background: transparent;
+      color: var(--muted);
+    }
+    .pe-city .pe-icon-btn[data-city-del] .hi {
+      width: 18px;
+      height: 18px;
+    }
+    .pe-city .pe-icon-btn[data-city-del]:hover,
+    .pe-city .pe-icon-btn[data-city-del]:focus-visible {
+      color: var(--red);
+    }
+    .pe-city-dates {
+      grid-column: 2 / 5;
+      grid-row: 2;
+      display: grid;
+      grid-template-columns: 18px minmax(0, 1fr) 18px minmax(0, 1fr);
+      align-items: center;
+      gap: 6px;
+      width: auto;
+      margin-top: 1px;
+      color: var(--muted);
+    }
+    .pe-city-dateicon {
+      display: inline-grid;
+      place-items: center;
+      color: var(--green);
+    }
+    .pe-city-dateicon .hi {
+      width: 16px;
+      height: 16px;
+    }
+    .pe-city-dates select {
+      width: 100%;
+      min-width: 0;
+      min-height: 30px;
+      padding: 3px 6px;
+      border-color: transparent transparent var(--line);
+      background: transparent;
+      font-size: 11.5px;
+      font-weight: 500;
+    }
+    .pe-city-sep {
+      display: inline-grid;
+      place-items: center;
+      color: var(--muted);
+    }
+    .pe-city-sep .hi {
+      width: 15px;
+      height: 15px;
+    }
+    .pe-route-add {
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 7px;
+      margin-top: 10px;
+    }
+    .pe-route-add input {
+      min-height: 38px;
+      padding: 8px 10px;
+      border-color: var(--line);
+      font-size: 13px;
+    }
+    .pe-route-add .pe-mini {
+      min-height: 38px;
+      padding: 0 12px;
+      border-color: var(--green);
+      background: var(--green-soft);
+    }
     .pe-empty-cta { border: 0; background: transparent; padding: 32px 8px; }
-    .pe-city-name { min-width: calc(100% - 72px); }
-    .pe-city-dates { width: 100%; }
-    .pe-city-dates select { flex: 1; min-width: 0; }
     .pe-main > section[style] { padding: 12px 12px 0 !important; }
     .pe-days,
     .pe-daystrip,
     .pe-hint { padding-left: 12px; padding-right: 12px; }
-    .pe-days { gap: 12px; padding-top: 4px; padding-bottom: calc(24px + env(safe-area-inset-bottom)); }
-    .pe-daystrip { top: var(--head-h); padding-top: 8px; padding-bottom: 8px; }
-    .pe-day { border-right: 0; border-left: 0; border-radius: 0; }
-    .pe-day-head { grid-template-columns: auto minmax(0, 1fr); gap: 10px; }
-    .pe-day-tools { grid-column: 1 / -1; justify-content: flex-end; }
+    .pe-days { gap: 0; padding-top: 0; padding-bottom: calc(18px + env(safe-area-inset-bottom)); }
+    .pe-daystrip {
+      top: var(--head-h);
+      padding-top: 6px;
+      padding-bottom: 6px;
+      gap: 4px;
+      border-top: 1px solid var(--line);
+    }
+    .pe-daychip {
+      border: 0;
+      border-bottom: 2px solid transparent;
+      padding: 5px 9px;
+      background: transparent;
+    }
+    .pe-daychip:hover,
+    .pe-daychip:focus-visible {
+      border-color: var(--green);
+      outline: none;
+    }
+    .pe-cityband {
+      margin: 18px 0 0;
+      padding: 0 12px 9px;
+      border-bottom: 1px solid var(--line);
+    }
+    .pe-cityband b { font-size: 14px; font-weight: 650; }
+    .pe-cityband span { font-size: 11px; }
+    .pe-day {
+      border: 0;
+      border-bottom: 1px solid var(--line);
+      border-radius: 0;
+      box-shadow: none;
+      background: transparent;
+    }
+    .pe-day-head {
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      gap: 10px;
+      padding: 10px 0;
+      border-bottom: 0;
+      background: transparent;
+    }
+    .pe-day-badge {
+      min-width: 52px;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      justify-items: start;
+    }
+    .pe-day-badge b { font-size: 13px; }
+    .pe-day-badge span { font-size: 10px; }
+    .pe-day-body { padding: 0 0 13px; }
+    .pe-day-tools { justify-content: flex-end; }
+    .pe-day-tools .pe-icon-btn {
+      min-width: 30px;
+      min-height: 30px;
+      border: 0;
+      background: transparent;
+    }
     .pe-row {
       grid-template-columns: auto auto minmax(0, 1fr) auto;
       gap: 7px;
-      padding: 10px 9px;
+      padding: 9px 0;
+      border: 0;
+      border-bottom: 1px solid var(--line);
+      background: transparent;
     }
     .pe-row-time { display: none; }
     .pe-row-title { font-size: 13px; }
     .pe-seg { font-size: 12.5px; }
     .pe-quick { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-    .pe-q { justify-content: center; min-height: 42px; padding: 0 8px; border-radius: 0; }
+    .pe-q {
+      justify-content: center;
+      min-height: 38px;
+      padding: 0 8px;
+      border: 0;
+      border-bottom: 1px solid var(--line-strong);
+      border-radius: 0;
+      background: transparent;
+    }
+    .pe-cand {
+      margin-top: 18px;
+      padding: 18px 12px calc(84px + env(safe-area-inset-bottom));
+      border-top: 1px solid var(--line-strong);
+      background: transparent;
+    }
+    .pe-cand-add {
+      gap: 7px;
+      margin: 8px 0 12px;
+    }
+    .pe-cand-add input {
+      min-height: 38px;
+      border-color: transparent transparent var(--line-strong);
+      background: transparent;
+      font-size: 13px;
+    }
+    .pe-cand-row {
+      padding: 8px 0;
+      border: 0;
+      border-bottom: 1px solid var(--line);
+      background: transparent;
+    }
+    .pe-cand-vote,
+    .pe-cand-act {
+      border: 0;
+      background: transparent;
+      color: var(--green);
+    }
     .pe.map-collapsed .pe-mapwrap { display: none; }
     .pe:not(.map-collapsed) .pe-mapwrap {
       position: fixed;
@@ -1064,7 +1467,7 @@
     .pe.is-map-resizing .pe-map { pointer-events: none; }
     /* スマホは自動保存のみ。保存バー（フッター）は非表示にする */
     .pe-savebar { display: none; }
-    .pe-map-show { bottom: calc(16px + env(safe-area-inset-bottom)); }
+    .pe-map-show { display: none; }
   }
 </style>
 </head>
@@ -1146,6 +1549,10 @@
             </div>
           </div>
         </div>
+        <div class="pe-stepnav" aria-label="作成ステップの移動">
+          <button class="pe-stepnav-btn" type="button" data-step-prev>戻る</button>
+          <button class="pe-stepnav-btn primary" type="button" data-step-next>次へ</button>
+        </div>
         </div>
       </section>
 
@@ -1154,6 +1561,9 @@
         <h2 class="pe-sec-title" data-ic-days>行程 <span class="pe-days-count" data-day-count></span><span class="pe-trip-summary" data-trip-summary></span></h2>
         <p class="pe-sec-note">日ごとに予定を追加。観光・食事・移動・宿泊を選べます。</p>
       </section>
+      <nav class="pe-daystrip" data-daystrip aria-label="日へジャンプ"></nav>
+      <div class="pe-days" data-days></div>
+      <p class="pe-hint">場所を入力すると地図に表示されます。見つからない場合は予定内の「検索」「地図で指定」から。</p>
       <section class="pe-cand" data-cand-section>
         <h3 class="pe-sec-title" data-ic-cand>行きたい候補 <span class="pe-cand-count" data-cand-count></span></h3>
         <p class="pe-sec-note">行きたい場所を出し合って投票。決まったら「行程に追加」で日程に入れられます。</p>
@@ -1163,9 +1573,6 @@
         </div>
         <div class="pe-cand-list" data-candidates></div>
       </section>
-      <nav class="pe-daystrip" data-daystrip aria-label="日へジャンプ"></nav>
-      <div class="pe-days" data-days></div>
-      <p class="pe-hint">場所を入力すると地図に表示されます。見つからない場合は予定内の「検索」「地図で指定」から。</p>
       </div>
     </div>
 

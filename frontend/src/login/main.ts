@@ -2,9 +2,11 @@
 // データは backend 経由（dev: data/store/trip-dashboard-accounts.json、本番: localStorage）。
 
 import "../shared/ui.css";
+import { initPageTransitions } from "../shared/page-transition";
 import { icon } from "../shared/icons";
-import { makeScopedQuery, errorMessage } from "../shared/dom";
+import { makeScopedQuery, errorMessage, escapeHtml } from "../shared/dom";
 import { registerServiceWorker } from "../shared/pwa";
+import * as Backend from "../shared/backend";
 import {
   signUp,
   logIn,
@@ -13,6 +15,8 @@ import {
   isValidEmail,
   isWeakPassword,
 } from "../shared/account-store";
+
+initPageTransitions();
 
 const { qs } = makeScopedQuery(document);
 
@@ -34,6 +38,7 @@ const passwordInput = form.elements.namedItem("password") as HTMLInputElement;
 const nameInput = form.elements.namedItem("name") as HTMLInputElement;
 
 let mode: "login" | "signup" = "login";
+submitBtn.disabled = true;
 
 function showError(message: string): void {
   errorEl.textContent = message;
@@ -67,13 +72,15 @@ function renderLoggedIn(): void {
     return;
   }
   loggedBox.classList.add("is-shown");
-  loggedText.innerHTML = `${icon("user")} <span>${account.name}（${account.email}）でログイン中</span>　<a href="#" data-logout style="margin-left:auto;color:var(--red);font-weight:700">ログアウト</a>`;
+  loggedText.innerHTML =
+    `${icon("user")} <span>${escapeHtml(account.name)}（${escapeHtml(account.email)}）でログイン中</span>` +
+    `<a href="#" data-logout>ログアウト</a>`;
   const logout = loggedBox.querySelector<HTMLAnchorElement>("[data-logout]");
   if (logout) {
     logout.addEventListener("click", (e) => {
       e.preventDefault();
       logOut();
-      renderLoggedIn();
+      location.replace(new URL("plans.html", location.href).href);
     });
   }
 }
@@ -115,6 +122,12 @@ form.addEventListener("submit", async (event) => {
   }
 });
 
-registerServiceWorker();
-applyMode("login");
-renderLoggedIn();
+async function init(): Promise<void> {
+  await Backend.preload();
+  registerServiceWorker();
+  applyMode("login");
+  submitBtn.disabled = false;
+  renderLoggedIn();
+}
+
+void init();

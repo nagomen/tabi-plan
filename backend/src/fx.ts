@@ -90,6 +90,7 @@ function fetchHistoricalExchangeRate_(currency: string, paidDate: string): Excha
     CacheService.getScriptCache().put(`fx_${code}_${start}`, 'MISS', 21600);
   } catch (error) {
     // Best-effort miss cache.
+    Logger.log(`fetchHistoricalExchangeRate_ miss-cache write failed for ${code} ${start}: ${errorMessage_(error)}`);
   }
   return null;
 }

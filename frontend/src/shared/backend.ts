@@ -1,9 +1,9 @@
-// 永続化バックエンドの唯一の差し替え口（seam）。
+// 永続化バックエンドの唯一の差し替え口。
 //
-// 現在の実装: ブラウザの localStorage。
-// 将来: この1ファイルの中身を HTTP API / DB クライアントに差し替えれば、
-//       全ドメインデータ（プラン・費用・プロフィール・送金リンク）が
-//       そのままバックエンドへ移行できる。各ストア・各ページのコードは変更不要。
+// 現在の実装:
+//   - 既定はブラウザの localStorage。
+//   - sharedBackend.enabled=true かつ mode="appsScript" のときだけ、
+//     localStorage を即時キャッシュとして残しながら Apps Script の共有ストアへ同期する。
 //
 // ルール:
 //   - ドメインデータの読み書きは、各ストアが必ずこの backend 経由で行う
@@ -17,14 +17,51 @@
 //   - キャッシュ未満のキーは localStorage を直読みするフォールバックがあり、
 //     preload を呼ばなくても現状どおり動く（前方互換の保険）。
 //
-// API / DB バックエンドへ差し替えるときにやること（このファイルだけ）:
-//   1. preload() を「サーバーから全件取得してキャッシュに入れる」に変更。
-//   2. setJSON/removeJSON を「サーバーへ反映する」に変更（楽観更新でキャッシュも更新）。
-//   3. getJSON の localStorage フォールバックを削除し、各ページ起動で
-//      `await Backend.preload()` を必ず待つようにする。
+import {
+  DEFAULT_CONFIG,
+  mergeConfig,
+  normalizeTripConfig,
+  readGlobalTripConfig,
+  type TripConfig,
+} from "./config";
+import { callAppsScript, postAppsScript } from "./apps-script";
 
 const cache = new Map<string, unknown>();
 let preloaded = false;
+
+function config(): TripConfig {
+  return normalizeTripConfig(
+    mergeConfig(
+      DEFAULT_CONFIG as unknown as Record<string, unknown>,
+      readGlobalTripConfig() as Record<string, unknown>,
+    ) as unknown as TripConfig,
+  );
+}
+
+function remoteEnabled(): boolean {
+  const cfg = config();
+  return Boolean(cfg.sharedBackend?.enabled && cfg.sharedBackend.mode === "appsScript" && cfg.appsScriptUrl);
+}
+
+function authToken(): string {
+  const cfg = config();
+  try {
+    const raw = localStorage.getItem(cfg.auth.storageKey);
+    const session = raw ? (JSON.parse(raw) as { token?: string; expiresAt?: number }) : null;
+    if (session?.expiresAt && Date.now() > session.expiresAt) return "";
+    return session?.token || "";
+  } catch {
+    return "";
+  }
+}
+
+function emitSyncEvent(detail: Record<string, unknown>): void {
+  try {
+    window.dispatchEvent(new CustomEvent("trip-backend-sync", { detail }));
+  } catch {
+    /* ignore */
+  }
+}
 
 // 開発時のファイル保存（data/store/<key>.json）。
 // Vite の dev プラグインが window.__DEV_STORE__ を注入し、/api/store で読み書きする。
@@ -65,6 +102,71 @@ function devDelete(key: string): void {
   }
 }
 
+function remotePersist(key: string, value: unknown): void {
+  if (!remoteEnabled()) return;
+  const cfg = config();
+  try {
+    void postAppsScript(
+      cfg.appsScriptUrl,
+      {
+        action: "storeSet",
+        token: authToken(),
+        key,
+        value: JSON.stringify(value),
+      },
+      {
+        source: "trip-shared-store",
+        idPrefix: "store",
+        timeoutMs: 30000,
+        timeoutMessage: "共有ストアへの保存がタイムアウトしました",
+        failMessage: "共有ストアへの保存に失敗しました",
+      },
+    ).then(
+      () => emitSyncEvent({ ok: true, source: "appsScript", key }),
+      (error) => emitSyncEvent({
+        ok: false,
+        source: "appsScript",
+        key,
+        error: error instanceof Error ? error.message : String(error),
+      }),
+    );
+  } catch {
+    /* ignore */
+  }
+}
+
+function remoteDelete(key: string): void {
+  if (!remoteEnabled()) return;
+  const cfg = config();
+  try {
+    void postAppsScript(
+      cfg.appsScriptUrl,
+      {
+        action: "storeRemove",
+        token: authToken(),
+        key,
+      },
+      {
+        source: "trip-shared-store",
+        idPrefix: "store",
+        timeoutMs: 30000,
+        timeoutMessage: "共有ストアからの削除がタイムアウトしました",
+        failMessage: "共有ストアからの削除に失敗しました",
+      },
+    ).then(
+      () => emitSyncEvent({ ok: true, source: "appsScript", key }),
+      (error) => emitSyncEvent({
+        ok: false,
+        source: "appsScript",
+        key,
+        error: error instanceof Error ? error.message : String(error),
+      }),
+    );
+  } catch {
+    /* ignore */
+  }
+}
+
 /**
  * バックエンドの全データをメモリキャッシュへ読み込む。
  * localStorage 実装では同期的に完了する。API 実装ではここでサーバー取得する。
@@ -99,7 +201,40 @@ export async function preload(): Promise<void> {
       }
     }
   }
+  if (remoteEnabled()) {
+    const cfg = config();
+    try {
+      const response = await callAppsScript(cfg.appsScriptUrl, {
+        action: "storeDump",
+        token: authToken(),
+      });
+      const store = response.store;
+      if (store && typeof store === "object" && !Array.isArray(store)) {
+        for (const [key, value] of Object.entries(store as Record<string, unknown>)) {
+          cache.set(key, value);
+          try {
+            localStorage.setItem(key, JSON.stringify(value));
+          } catch {
+            /* ignore */
+          }
+        }
+        emitSyncEvent({ ok: true, source: "appsScript" });
+      }
+    } catch (error) {
+      emitSyncEvent({
+        ok: false,
+        source: "appsScript",
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
   preloaded = true;
+}
+
+/** 認証後などに共有ストアを明示的に再取得する。 */
+export async function reload(): Promise<void> {
+  preloaded = false;
+  await preload();
 }
 
 /** 同期読み取り。キャッシュ→localStorage の順で解決し、無ければ fallback。 */
@@ -128,6 +263,7 @@ export function setJSON(key: string, value: unknown): boolean {
     ok = false; // 容量超過など
   }
   devPersist(key, value); // 開発時は data/store/<key>.json にも保存
+  remotePersist(key, value);
   return ok;
 }
 
@@ -140,4 +276,5 @@ export function removeJSON(key: string): void {
     /* ignore */
   }
   devDelete(key);
+  remoteDelete(key);
 }

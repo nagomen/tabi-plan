@@ -89,6 +89,23 @@
     font-size: 13px; font-weight: 600;
   }
   .lg-logged.is-shown { display: flex; }
+  .lg-logged [data-logged-text] { display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; flex-wrap: wrap; }
+  .lg-logged [data-logged-text] span { min-width: 0; overflow-wrap: anywhere; }
+  .lg-logged [data-logout] { margin-left: auto; color: var(--red); font-weight: 700; }
+
+  @media (max-width: 520px) {
+    body { min-height: 100svh; padding: 0; align-items: stretch; }
+    .lg {
+      max-width: none;
+      min-height: 100svh;
+      border-right: 0;
+      border-left: 0;
+      padding: 22px 18px max(22px, env(safe-area-inset-bottom));
+    }
+    .lg-title { font-size: 21px; }
+    .lg-tabs { margin-bottom: 16px; }
+    .lg-logged [data-logout] { width: 100%; margin-left: 0; }
+  }
 </style>
 </head>
 <body>

@@ -6,6 +6,7 @@ import type { TripConfig, MapDefaults } from "./config";
 import { safeTripSlug } from "./config";
 import * as Backend from "./backend";
 import { getUser } from "./user-store";
+import * as Permissions from "./permissions-store";
 import type {
   TripData,
   TripInfo,
@@ -49,6 +50,11 @@ export interface PlanMeta {
 /** 公開範囲を返す（未設定は public）。 */
 export function planVisibility(meta: Pick<PlanMeta, "visibility">): PlanVisibility {
   return meta.visibility === "invite" ? "invite" : "public";
+}
+
+/** 完成品として公開/発見対象に出せる計画か。自動保存のみの新規計画は false。 */
+export function isPublished(meta: Pick<PlanMeta, "published">): boolean {
+  return meta.published !== false;
 }
 
 /** plan-editor が保存し、dashboard が local モードで読むプランデータ */
@@ -110,14 +116,15 @@ function planMembers(meta: PlanMeta): string[] {
 }
 
 function currentUserIsMember(meta: PlanMeta): boolean {
+  if (Permissions.isParticipant(meta.slug, planMembers(meta))) return true;
   const name = getUser().name;
   return Boolean(name) && planMembers(meta).includes(name);
 }
 
-/** 自分の計画: 現在ユーザーがメンバー。名前未設定時は端末ローカル計画を自分扱い。 */
+/** 自分の計画: 現在ユーザーがメンバー。ログアウト/名前未設定時は空。 */
 export function listMine(): PlanMeta[] {
   const name = getUser().name;
-  return list().filter((m) => (name ? currentUserIsMember(m) : m.source === "local"));
+  return name ? list().filter(currentUserIsMember) : [];
 }
 
 /**
@@ -127,7 +134,7 @@ export function listMine(): PlanMeta[] {
  */
 export function listPublic(): PlanMeta[] {
   return list().filter(
-    (m) => m.source === "local" && planVisibility(m) === "public" && !currentUserIsMember(m),
+    (m) => m.source === "local" && isPublished(m) && planVisibility(m) === "public" && !Permissions.canEdit(m.slug) && !currentUserIsMember(m),
   );
 }
 
@@ -314,7 +321,8 @@ function hydrateFromDevFiles(): void {
 export function saveLocalPlan(slug: string, data: LocalPlanData): PlanMeta | null {
   const target = safeSlug(slug);
   const trip = data.trip || ({} as TripInfo);
-  const areas: string[] = [];
+  const existing = get(target);
+  const areas: string[] = (data.cities || []).map((city) => city.name || "").filter(Boolean);
   (data.itinerary || []).forEach((item) => {
     const area = item.area || item.place || "";
     if (area && areas.indexOf(area) === -1) areas.push(area);
@@ -330,6 +338,7 @@ export function saveLocalPlan(slug: string, data: LocalPlanData): PlanMeta | nul
     route: areas.join("、"),
     source: "local",
     builtIn: false,
+    published: existing ? existing.published : false,
   });
   persistDevFile(target);
   return get(target);
@@ -447,8 +456,8 @@ export function toDashboardData(data: LocalPlanData | null): TripData {
 const COORDS: Record<string, [number, number]> = {
   東京: [35.6812, 139.7671], 東京駅: [35.6812, 139.7671],
   品川: [35.6285, 139.7387], 新宿: [35.6896, 139.7006],
-  羽田: [35.5494, 139.7798], 羽田空港: [35.5494, 139.7798],
-  成田: [35.772, 140.3929], 成田空港: [35.772, 140.3929],
+  羽田: [35.5494, 139.7798], 羽田空港: [35.5494, 139.7798], HND: [35.5494, 139.7798],
+  成田: [35.772, 140.3929], 成田空港: [35.772, 140.3929], NRT: [35.772, 140.3929],
   横浜: [35.4437, 139.638], 鎌倉: [35.3192, 139.5466],
   名古屋: [35.1815, 136.9066], 京都: [35.0116, 135.7681], 京都駅: [34.9858, 135.7588],
   大阪: [34.6937, 135.5023], 新大阪: [34.7335, 135.5002], 神戸: [34.6901, 135.1955],
@@ -462,6 +471,18 @@ const COORDS: Record<string, [number, number]> = {
   松島: [38.369, 141.0606], 那覇: [26.2124, 127.6792], 石垣: [24.3448, 124.1572],
   日光: [36.7198, 139.6982], 箱根: [35.2324, 139.1069], 軽井沢: [36.3486, 138.6359],
   高山: [36.1408, 137.252], 松本: [36.238, 137.972], 長野: [36.6485, 138.181],
+  ハワイ: [21.3069, -157.8583], ホノルル: [21.3069, -157.8583],
+  ニューヨーク: [40.7128, -74.006], マンハッタン: [40.7831, -73.9712], リバティ島: [40.6892, -74.0445],
+  ロサンゼルス: [34.0522, -118.2437], ロサ: [34.0522, -118.2437],
+  パリ: [48.8566, 2.3522], ロンドン: [51.5072, -0.1276], "london hotel": [51.5072, -0.1276],
+  ベルリン: [52.52, 13.405], ドイツ: [51.1657, 10.4515],
+  スペイン: [40.4168, -3.7038], マドリード: [40.4168, -3.7038], バルセロナ: [41.3874, 2.1686],
+  ローマ: [41.9028, 12.4964], ニース: [43.7102, 7.262], ヨーロッパ: [50.1109, 8.6821],
+  インド: [28.6139, 77.209], デリー: [28.6139, 77.209],
+  モンゴル: [47.8864, 106.9057], ウランバートル: [47.8864, 106.9057],
+  台北: [25.033, 121.5654], 台湾: [25.033, 121.5654], シドニー: [-33.8688, 151.2093],
+  ソウル: [37.5665, 126.978], バンコク: [13.7563, 100.5018],
+  サンフランシスコ: [37.7749, -122.4194], SFO: [37.6213, -122.379],
 };
 
 function normalizeName(name: string): string {

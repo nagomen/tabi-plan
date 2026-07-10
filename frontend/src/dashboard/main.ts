@@ -3,11 +3,13 @@
 // データ取得（sample / googleSheets / appsScript / local）、日別タイムライン、
 // Leaflet 地図、費用精算・明細、本人設定・認証、Service Worker 登録を担う。
 
-import L from "leaflet";
 import "../shared/ui.css";
+import { initPageTransitions } from "../shared/page-transition";
 import "leaflet/dist/leaflet.css";
 
 import { icon, type IconName } from "../shared/icons";
+
+initPageTransitions();
 
 import {
   DEFAULT_CONFIG,
@@ -18,12 +20,13 @@ import {
 } from "../shared/config";
 import * as TripPlans from "../shared/plans-store";
 import { getUser } from "../shared/user-store";
-import { isMemberOf } from "../shared/membership";
+import { canEditPlan } from "../shared/membership";
 import { currentAccount } from "../shared/account-store";
 import { incrementView } from "../shared/views-store";
 import { planCoverImage } from "../shared/cover";
 import { splitNames } from "../shared/friend-store";
 import { buildInviteLink } from "../shared/invite";
+import * as Permissions from "../shared/permissions-store";
 import * as ExpenseStore from "../shared/expense-store";
 import { escapeHtml, makeScopedQuery } from "../shared/dom";
 import {
@@ -40,6 +43,10 @@ import {
   type AppsScriptParams,
   type AppsScriptResponse,
 } from "../shared/apps-script";
+import { uploadReceiptPhoto as uploadReceiptPhotoShared } from "../shared/receipt-photo";
+import { loadData, normalizeDate, numberOrNaN, formatYen } from "./data-source";
+import { renderLeafletMap } from "./leaflet-map";
+import type { DayGroup, LeafletState } from "./types";
 import { registerServiceWorker } from "../shared/pwa";
 import { mountAppHeader } from "../shared/app-header";
 import { getPayLink, isPayUrl } from "../shared/payment-links";
@@ -51,9 +58,7 @@ import type {
   Settlement,
   SettlementTransfer,
   ExpenseDetail,
-  ChecklistItem,
   LocalInfoItem,
-  SheetRow,
   LatLng,
 } from "../shared/types";
 
@@ -65,41 +70,8 @@ interface ProfileRecord {
   savedAt?: string;
 }
 
-/** prepareReceiptPhoto が返すアップロード用ペイロード */
-interface PreparedPhoto {
-  fileName: string;
-  mimeType: string;
-  data: string;
-}
-
-/** 日別グループ（行程をその日の予定にまとめたもの） */
-interface DayGroup {
-  date: string;
-  day: string;
-  area: string;
-  weather: string;
-  items: ItineraryItem[];
-}
-
-/** 描画用に座標を持った行程ポイント */
-interface RoutePoint extends ItineraryItem {
-  role: string;
-  dayIndex: number;
-  dayLabel: string;
-  lat: number;
-  lng: number;
-}
-
 /** 地図に投影したプレースポイント（x/y は SVG 用の割合座標） */
 type ProjectedPlace = ItineraryItem & { x: number; y: number };
-
-/** stopGroups の集約形 */
-interface StopGroup extends RoutePoint {
-  dates: string[];
-  dayIndexes: number[];
-  places: Set<string>;
-  titles: string[];
-}
 
 interface AppState {
   data: TripData;
@@ -108,22 +80,6 @@ interface AppState {
   /** 「この日の予定」フィードで下に展開して表示している最後の日 index */
   viewEnd: number;
   source: string;
-}
-
-interface LeafletState {
-  map: L.Map | null;
-  layer: L.LayerGroup | null;
-  followActive: boolean;
-}
-
-/** gviz JSONP レスポンスの最小形 */
-interface GvizResponse {
-  status?: string;
-  errors?: { detailed_message?: string }[];
-  table?: {
-    cols: { label?: string; id?: string }[];
-    rows: { c: ({ f?: string; v?: unknown } | null)[] }[];
-  };
 }
 
 // ---- 設定 ---------------------------------------------------------------
@@ -262,87 +218,6 @@ function mapsSearch(query: string | undefined): string {
   return "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(query || "");
 }
 
-function valueByKeys(row: SheetRow, keys: string[]): string {
-  for (const key of keys) {
-    if (row[key] !== undefined && row[key] !== "") return row[key];
-  }
-  return "";
-}
-
-function numberOrNaN(value: unknown): number {
-  if (value === "" || value === null || value === undefined) return NaN;
-  const n = Number(value);
-  return Number.isFinite(n) ? n : NaN;
-}
-
-// ---- 地名→座標（ダッシュボード固有テーブル） ---------------------------
-
-const PLACE_COORDS: Record<string, LatLng> = {
-  "成田": { lat: 35.7720, lng: 140.3929 },
-  "成田空港": { lat: 35.7720, lng: 140.3929 },
-  "NRT": { lat: 35.7720, lng: 140.3929 },
-  "東京": { lat: 35.6812, lng: 139.7671 },
-  "東京駅": { lat: 35.6812, lng: 139.7671 },
-  "羽田": { lat: 35.5494, lng: 139.7798 },
-  "羽田空港": { lat: 35.5494, lng: 139.7798 },
-  "HND": { lat: 35.5494, lng: 139.7798 },
-  "京都": { lat: 35.0116, lng: 135.7681 },
-  "京都駅": { lat: 34.9858, lng: 135.7588 },
-  "大阪": { lat: 34.6937, lng: 135.5023 },
-  "新大阪": { lat: 34.7335, lng: 135.5002 },
-  "札幌": { lat: 43.0618, lng: 141.3545 },
-  "福岡": { lat: 33.5902, lng: 130.4017 },
-  "那覇": { lat: 26.2124, lng: 127.6792 },
-  "台北": { lat: 25.0330, lng: 121.5654 },
-  "ソウル": { lat: 37.5665, lng: 126.9780 },
-  "バンコク": { lat: 13.7563, lng: 100.5018 },
-  "サンフランシスコ": { lat: 37.7749, lng: -122.4194 },
-  "SFO": { lat: 37.6213, lng: -122.3790 },
-  "リマ": { lat: -12.0464, lng: -77.0428 },
-  "Lima": { lat: -12.0464, lng: -77.0428 },
-  "クスコ": { lat: -13.5319, lng: -71.9675 },
-  "Cusco": { lat: -13.5319, lng: -71.9675 },
-  "マチュピチュ方面": { lat: -13.1631, lng: -72.5450 },
-  "マチュピチュ村": { lat: -13.1547, lng: -72.5254 },
-  "アグアスカリエンテス": { lat: -13.1547, lng: -72.5254 },
-  "マチュピチュ": { lat: -13.1631, lng: -72.5450 },
-  "プエルトマルドナド": { lat: -12.5933, lng: -69.1891 },
-  "PMD": { lat: -12.5933, lng: -69.1891 },
-  "プーノ": { lat: -15.8402, lng: -70.0219 },
-  "ラパス": { lat: -16.4897, lng: -68.1193 },
-  "ウユニ": { lat: -20.4597, lng: -66.8250 },
-  "ビジャソン": { lat: -22.0866, lng: -65.5942 },
-  "ラキアカ": { lat: -22.1024, lng: -65.5920 },
-  "ビジャソン/ラキアカ": { lat: -22.0960, lng: -65.5930 },
-  "サルタ": { lat: -24.7821, lng: -65.4232 },
-  "イグアス": { lat: -25.5163, lng: -54.5854 },
-  "プエルトイグアス": { lat: -25.5972, lng: -54.5786 },
-  "FozdoIguacu/IGU": { lat: -25.6003, lng: -54.4850 },
-  "FozdoIguacuIGU": { lat: -25.6003, lng: -54.4850 },
-  "IGU": { lat: -25.6003, lng: -54.4850 },
-  "Yguazu": { lat: -25.4610, lng: -55.0000 },
-  "ColoniaYguazu": { lat: -25.4610, lng: -55.0000 },
-  "サンパウロ": { lat: -23.5558, lng: -46.6396 },
-  "サントス": { lat: -23.9608, lng: -46.3336 },
-  "リオデジャネイロ": { lat: -22.9068, lng: -43.1729 },
-  "モンテビデオ": { lat: -34.9011, lng: -56.1645 },
-  "ブエノスアイレス": { lat: -34.6037, lng: -58.3816 },
-};
-
-function normalizePlaceName(name: string | undefined): string {
-  return String(name || "")
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .replace(/\s+/g, "")
-    .replace(/・/g, "")
-    .replace(/方面$/, "方面")
-    .replace(/^移動中$/, "");
-}
-
-function coordsFor(name: string | undefined): LatLng | null {
-  return PLACE_COORDS[normalizePlaceName(name)] || null;
-}
-
 function mapsDir(places: ItineraryItem[]): string {
   const clean = places.map((p) => p.mapQuery || p.place).filter(Boolean) as string[];
   if (clean.length < 2) return mapsSearch(clean[0] || "");
@@ -395,84 +270,34 @@ function localSettlement(): Settlement {
 const callAppsScript = (params: AppsScriptParams): Promise<AppsScriptResponse> =>
   callAppsScriptShared(CONFIG.appsScriptUrl, params);
 
-/** shared/apps-script を CONFIG.appsScriptUrl にバインドしたレシート用 iframe POST */
-const postAppsScript = (params: AppsScriptParams): Promise<AppsScriptResponse> =>
-  postAppsScriptShared(CONFIG.appsScriptUrl, params, {
-    source: "trip-expense-receipt-upload",
-    idPrefix: "receipt",
-    timeoutMessage: "写真アップロードがタイムアウトしました",
-    failMessage: "写真アップロードに失敗しました",
-  });
+/** 費用登録・精算完了など、状態を変更するアクション用の iframe POST。
+ *  トークンや金額をクエリ文字列に残す GET/JSONP を避けるため POST で送る。
+ *  source は backend/src/main.ts の POST_ACTIONS と対応させること。 */
+const MUTATING_ACTION_SOURCE = {
+  expense: "trip-expense-save",
+  settlementComplete: "trip-settlement-complete",
+  itineraryUpdate: "trip-itinerary-update",
+} as const;
+
+const postAppsScriptAction = (
+  action: keyof typeof MUTATING_ACTION_SOURCE,
+  params: AppsScriptParams,
+): Promise<AppsScriptResponse> =>
+  postAppsScriptShared(
+    CONFIG.appsScriptUrl,
+    { ...params, action },
+    {
+      source: MUTATING_ACTION_SOURCE[action],
+      idPrefix: action,
+      timeoutMessage: "通信がタイムアウトしました",
+      failMessage: "保存に失敗しました",
+    },
+  );
 
 // ---- 画像処理 -----------------------------------------------------------
 
-function fileAsDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = (): void => resolve(String(reader.result || ""));
-    reader.onerror = (): void => reject(new Error("写真を読み込めませんでした"));
-    reader.readAsDataURL(file);
-  });
-}
-
-function imageFromDataUrl(dataUrl: string): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const image = new Image();
-    image.onload = (): void => resolve(image);
-    image.onerror = (): void => reject(new Error("写真を処理できませんでした"));
-    image.src = dataUrl;
-  });
-}
-
-async function prepareReceiptPhoto(file: File): Promise<PreparedPhoto> {
-  const originalDataUrl = await fileAsDataUrl(file);
-  if (!/^image\//.test(file.type || "")) {
-    throw new Error("画像ファイルを選択してください");
-  }
-
-  try {
-    const image = await imageFromDataUrl(originalDataUrl);
-    const maxSize = 1600;
-    const naturalWidth = image.naturalWidth || image.width;
-    const naturalHeight = image.naturalHeight || image.height;
-    const scale = Math.min(1, maxSize / Math.max(naturalWidth, naturalHeight));
-    const width = Math.max(1, Math.round(naturalWidth * scale));
-    const height = Math.max(1, Math.round(naturalHeight * scale));
-    const canvas = document.createElement("canvas");
-    canvas.width = width;
-    canvas.height = height;
-    const context = canvas.getContext("2d");
-    if (!context) throw new Error("canvas context を取得できませんでした");
-    context.drawImage(image, 0, 0, width, height);
-    const dataUrl = canvas.toDataURL("image/jpeg", 0.78);
-    return {
-      fileName: String(file.name || "receipt.jpg").replace(/\.[^.]+$/, "") + ".jpg",
-      mimeType: "image/jpeg",
-      data: dataUrl.split(",")[1] || "",
-    };
-  } catch {
-    return {
-      fileName: file.name || "receipt.jpg",
-      mimeType: file.type || "image/jpeg",
-      data: originalDataUrl.split(",")[1] || "",
-    };
-  }
-}
-
-async function uploadReceiptPhoto(file: File): Promise<AppsScriptResponse> {
-  const prepared = await prepareReceiptPhoto(file);
-  if (!prepared.data) throw new Error("写真データがありません");
-  if (prepared.data.length > 7000000) {
-    throw new Error("写真サイズが大きすぎます。小さめの画像で再試行してください");
-  }
-  return postAppsScript({
-    action: "receiptUpload",
-    token: getAuthToken(),
-    fileName: prepared.fileName,
-    mimeType: prepared.mimeType,
-    data: prepared.data,
-  });
-}
+const uploadReceiptPhoto = (file: File): Promise<AppsScriptResponse> =>
+  uploadReceiptPhotoShared(CONFIG.appsScriptUrl, getAuthToken(), file);
 
 // ---- 描画フロー ---------------------------------------------------------
 
@@ -735,16 +560,66 @@ function untilLabel(minutes: number): string {
   return mm ? `あと${h}時間${mm}分` : `あと${h}時間`;
 }
 
-function normalizeDate(value: unknown): string {
-  if (!value) return "";
-  if (value instanceof Date) return value.toISOString().slice(0, 10);
-  const text = String(value).trim().replace(/\//g, "-");
-  const match = text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
-  if (!match) return text;
-  return `${match[1]}-${match[2].padStart(2, "0")}-${match[3].padStart(2, "0")}`;
+function parseIsoDate(value: string): Date | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return null;
+  const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  return isNaN(date.getTime()) ? null : date;
 }
 
-function groupDays(itinerary: ItineraryItem[]): DayGroup[] {
+function addDays(date: Date, days: number): Date {
+  const next = new Date(date.getTime());
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
+function toIsoDate(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function tripDateRange(data: TripData): string[] {
+  const datesText = String(data.trip?.dates || "");
+  const parts = datesText.split(/\s+-\s+/);
+  let start = normalizeDate(parts[0]);
+  let end = normalizeDate(parts[1] || parts[0]);
+  if (start && end && /^\d{1,2}-\d{1,2}$/.test(end)) {
+    end = normalizeDate(`${start.slice(0, 4)}-${end}`);
+  }
+  if ((!start || !end) && data.cities && data.cities.length) {
+    const cityDates = data.cities.flatMap((city) => [normalizeDate(city.fromDate), normalizeDate(city.toDate)]).filter(Boolean).sort();
+    start = start || cityDates[0] || "";
+    end = end || cityDates[cityDates.length - 1] || "";
+  }
+  const a = parseIsoDate(start);
+  const b = parseIsoDate(end);
+  if (!a || !b || b < a) return [];
+  const dates: string[] = [];
+  let cursor = a;
+  let guard = 0;
+  while (cursor <= b && guard < 400) {
+    dates.push(toIsoDate(cursor));
+    cursor = addDays(cursor, 1);
+    guard++;
+  }
+  return dates;
+}
+
+function cityNameForDate(data: TripData, date: string): string {
+  const cities = data.cities || [];
+  let current = "";
+  let currentFrom = "";
+  cities.forEach((city) => {
+    const from = normalizeDate(city.fromDate);
+    const to = normalizeDate(city.toDate);
+    if (city.name && from && to && from <= date && date <= to && from >= currentFrom) {
+      current = city.name;
+      currentFrom = from;
+    }
+  });
+  return current;
+}
+
+function groupDays(itinerary: ItineraryItem[], data: TripData = state.data): DayGroup[] {
   const map = new Map<string, DayGroup>();
   itinerary
     .map((item) => ({ ...item, date: normalizeDate(item.date), lat: numberOrNaN(item.lat), lng: numberOrNaN(item.lng) }))
@@ -759,7 +634,22 @@ function groupDays(itinerary: ItineraryItem[]): DayGroup[] {
       day.area = day.area || item.area || item.place || "";
       day.weather = day.weather || item.weather || "";
     });
-  return Array.from(map.values());
+  tripDateRange(data).forEach((date) => {
+    if (!map.has(date)) {
+      map.set(date, { date, day: "", area: cityNameForDate(data, date), weather: "", items: [] });
+    }
+  });
+  return Array.from(map.values())
+    .sort((a, b) => {
+      if (a.date === "undated") return 1;
+      if (b.date === "undated") return -1;
+      return a.date.localeCompare(b.date);
+    })
+    .map((day, index) => ({
+      ...day,
+      day: day.day || `Day ${index + 1}`,
+      area: day.area || cityNameForDate(data, day.date),
+    }));
 }
 
 function chooseActive(days: DayGroup[]): number {
@@ -817,61 +707,6 @@ function projectPlaces(items: ItineraryItem[]): ProjectedPlace[] {
   return places.map((p, index) => ({ ...p, x: 12 + index * (76 / Math.max(1, places.length - 1)), y: index % 2 ? 42 : 58 }));
 }
 
-function shortDate(date: string | undefined): string {
-  return String(date || "").replace(/^\d{4}-0?/, "").replace("-", "/");
-}
-
-function compactDateRange(dates: string[]): string {
-  const cleanDates = Array.from(new Set((dates || []).filter(Boolean))).sort();
-  if (!cleanDates.length) return "";
-  const first = shortDate(cleanDates[0]);
-  const last = shortDate(cleanDates[cleanDates.length - 1]);
-  return first === last ? first : `${first}-${last}`;
-}
-
-function itineraryRoutePoints(): RoutePoint[] {
-  const points: RoutePoint[] = [];
-  const pushPoint = (
-    item: ItineraryItem,
-    day: DayGroup,
-    dayIndex: number,
-    lat: unknown,
-    lng: unknown,
-    place: string | undefined,
-    role: string,
-  ): void => {
-    const nextLat = Number(lat);
-    const nextLng = Number(lng);
-    if (!Number.isFinite(nextLat) || !Number.isFinite(nextLng)) return;
-    const previous = points[points.length - 1];
-    const sameAsPrevious = previous && Math.abs(previous.lat - nextLat) < .0001 && Math.abs(previous.lng - nextLng) < .0001;
-    if (sameAsPrevious && previous.dayIndex === dayIndex) return;
-    points.push({
-      ...item,
-      role,
-      dayIndex,
-      dayLabel: item.day || day.day || `Day ${dayIndex + 1}`,
-      date: item.date || day.date,
-      area: item.area || day.area,
-      place: place || item.place || item.area || item.title,
-      lat: nextLat,
-      lng: nextLng,
-    });
-  };
-
-  state.days.forEach((day, dayIndex) => {
-    day.items.forEach((item) => {
-      if (Number.isFinite(item.originLat) && Number.isFinite(item.originLng) && Number.isFinite(item.destinationLat) && Number.isFinite(item.destinationLng)) {
-        pushPoint(item, day, dayIndex, item.originLat, item.originLng, item.origin, "origin");
-        pushPoint(item, day, dayIndex, item.destinationLat, item.destinationLng, item.destination || item.place, "destination");
-        return;
-      }
-      pushPoint(item, day, dayIndex, item.lat, item.lng, item.place || item.area, "stay");
-    });
-  });
-  return points;
-}
-
 // ---- 表示モード（モバイル / セクション） --------------------------------
 
 function applyMobileView(view?: string): void {
@@ -917,25 +752,6 @@ function setExpenseSheet(open: boolean): void {
     );
     if (first) setTimeout(() => first.focus(), 60);
   }
-}
-
-// ---- Sheets / gviz ------------------------------------------------------
-
-function rowsFromGviz(response: GvizResponse): SheetRow[] {
-  if (!response || !response.table) return [];
-  const labels = response.table.cols.map((col, index) => col.label || col.id || `col${index}`);
-  return response.table.rows.map((row) => {
-    const obj: SheetRow = {};
-    labels.forEach((label, index) => {
-      const cell = row.c[index];
-      obj[label] = cell ? String(cell.f ?? cell.v ?? "") : "";
-    });
-    return obj;
-  });
-}
-
-function formatYen(value: number): string {
-  return value ? "¥" + Math.round(value).toLocaleString("ja-JP") : "未入力";
 }
 
 // ---- 費用・精算描画 -----------------------------------------------------
@@ -1018,8 +834,7 @@ function setupSettlementCompleteHandlers(mount: HTMLElement): void {
             note: `サイト上で${from}から${to}への精算完了`,
           });
         } else {
-          const response = await callAppsScript({
-            action: "settlementComplete",
+          const response = await postAppsScriptAction("settlementComplete", {
             token: getAuthToken(),
             from,
             to,
@@ -1397,8 +1212,7 @@ function setupExpenseEntryHandlers(form: HTMLFormElement, participants: string[]
           receiptUrl = upload.url || "";
           setStatus("保存中...", "");
         }
-        const response = await callAppsScript({
-          action: "expense",
+        const response = await postAppsScriptAction("expense", {
           token: getAuthToken(),
           paidDate: (field("paidDate") as HTMLInputElement).value,
           payer: (field("payer") as HTMLSelectElement).value,
@@ -1439,266 +1253,6 @@ function setupExpenseEntryHandlers(form: HTMLFormElement, participants: string[]
       button.disabled = false;
     }
   });
-}
-
-// ---- Sheets スキーマ別データ構築 ---------------------------------------
-
-interface BasicInfo {
-  [key: string]: string;
-}
-
-function makeSheetUrl(sheetName: string): string {
-  return "https://docs.google.com/spreadsheets/d/" + CONFIG.spreadsheetId + "/edit#gid=0&range=" + encodeURIComponent(sheetName + "!A1");
-}
-
-function buildBasicInfo(rows: SheetRow[]): BasicInfo {
-  const info: BasicInfo = {};
-  (rows || []).forEach((row) => {
-    const key = valueByKeys(row, ["key", "キー"]);
-    if (!key) return;
-    const visible = String(valueByKeys(row, ["公開ページに表示", "表示", "enabled"]) || "TRUE").toUpperCase() !== "FALSE";
-    if (!visible) return;
-    info[key] = valueByKeys(row, ["value", "値"]);
-  });
-  return info;
-}
-
-function buildTripLinks(linkRows: SheetRow[], fallbackLinks: TripLink[], basicInfo: BasicInfo): TripLink[] {
-  const rows = (linkRows || [])
-    .filter((row) => String(valueByKeys(row, ["enabled", "有効", "公開ページに表示"]) || "TRUE").toUpperCase() !== "FALSE")
-    .filter((row) => valueByKeys(row, ["key"]) || valueByKeys(row, ["label", "表示名"]));
-  if (!rows.length) return fallbackLinks;
-  return rows.map((row) => {
-    const key = valueByKeys(row, ["key"]);
-    let url = valueByKeys(row, ["url", "URL"]);
-    if (key === "maps" && basicInfo.myMapsUrl) url = basicInfo.myMapsUrl;
-    if (key === "photos" && basicInfo.photosUrl) url = basicInfo.photosUrl;
-    return {
-      key,
-      label: valueByKeys(row, ["label", "表示名"]) || key,
-      icon: valueByKeys(row, ["icon", "アイコン"]) || "↗",
-      url,
-      caption: valueByKeys(row, ["caption", "説明"]) || "",
-    };
-  });
-}
-
-function buildTripChecklist(rows: SheetRow[]): ChecklistItem[] {
-  return (rows || [])
-    .filter((row) => String(valueByKeys(row, ["有効", "enabled"]) || "TRUE").toUpperCase() !== "FALSE")
-    .map((row) => ({
-      label: valueByKeys(row, ["項目", "label", "チェック項目"]) || "",
-      done: valueByKeys(row, ["完了", "done"]) || false,
-    }))
-    .filter((row) => row.label);
-}
-
-function buildTripSheetData(
-  itineraryRows: SheetRow[],
-  _reservationRows: SheetRow[],
-  _budgetRows: SheetRow[],
-  basicInfoRows: SheetRow[],
-  linkRows: SheetRow[],
-  checklistRows: SheetRow[],
-): TripData {
-  const basicInfo = buildBasicInfo(basicInfoRows);
-  const tripSheetName = CONFIG.sheets.tripItinerary || CONFIG.sheets.southAmericaItinerary;
-  const sheetUrl = makeSheetUrl(tripSheetName);
-  const link = (key: keyof typeof CONFIG.linkOverrides, fallback: string): string => CONFIG.linkOverrides[key] || fallback || "";
-  const itinerary: ItineraryItem[] = itineraryRows
-    .filter((row) => row["日付"] && row["Day"])
-    .filter((row) => String(valueByKeys(row, ["公開ページに表示", "表示", "enabled"]) || "TRUE").toUpperCase() !== "FALSE")
-    .map((row) => {
-      const origin = valueByKeys(row, ["移動元", "出発地"]) || "";
-      const destination = valueByKeys(row, ["移動先", "到着地"]) || "";
-      const city = valueByKeys(row, ["都市", "宿泊地", "エリア"]) || destination || origin || "";
-      const purpose = valueByKeys(row, ["主目的", "目的"]) || "予定";
-      const displayTime = valueByKeys(row, ["表示時刻", "時刻", "開始時刻", "出発時刻", "集合時刻"]);
-      const displayPlace = valueByKeys(row, ["表示場所", "場所", "集合場所"]) || destination || city || origin;
-      const displayTitle = valueByKeys(row, ["表示タイトル", "タイトル", "予定名"]);
-      const displayNote = valueByKeys(row, ["表示メモ", "当日メモ", "メモ"]);
-      const needed = valueByKeys(row, ["必要情報", "当日必要情報", "持ち物/注意", "確認事項"]);
-      const weather = valueByKeys(row, ["天気", "気温", "weather"]);
-      const moving = origin && destination;
-      const type = valueByKeys(row, ["type", "種別"]) || (moving ? "move" : (purpose === "宿泊" ? "stay" : (purpose === "休養" ? "todo" : "sight")));
-      const title = displayTitle || (moving ? `${origin} → ${destination}` : `${city} / ${purpose}`);
-      const noteParts = displayNote ? [displayNote] : [
-        row["移動手段"],
-        row["所要時間"],
-        row["予約状況"],
-        row["確定度"],
-        row["メモ"],
-      ];
-      const rowLat = numberOrNaN(valueByKeys(row, ["lat", "緯度"]));
-      const rowLng = numberOrNaN(valueByKeys(row, ["lng", "経度"]));
-      const coords = Number.isFinite(rowLat) && Number.isFinite(rowLng) ? { lat: rowLat, lng: rowLng } : coordsFor(displayPlace);
-      const originCoords = coordsFor(origin);
-      const destinationCoords = coordsFor(destination || city);
-      return {
-        date: normalizeDate(row["日付"]),
-        day: row["Day"] || row["day"],
-        area: city,
-        time: displayTime,
-        type,
-        typeLabel: valueByKeys(row, ["表示ラベル", "ラベル"]) || (moving ? "移動" : purpose),
-        title,
-        place: displayPlace,
-        note: noteParts.filter(Boolean).join(" / "),
-        needed,
-        origin,
-        destination,
-        originLat: originCoords ? originCoords.lat : NaN,
-        originLng: originCoords ? originCoords.lng : NaN,
-        destinationLat: destinationCoords ? destinationCoords.lat : NaN,
-        destinationLng: destinationCoords ? destinationCoords.lng : NaN,
-        lat: coords ? coords.lat : NaN,
-        lng: coords ? coords.lng : NaN,
-        mapQuery: valueByKeys(row, ["地図検索", "mapQuery"]) || displayPlace,
-        weather,
-      };
-    });
-
-  const fallbackLinks: TripLink[] = [
-    { key: "itinerary", label: "旅程", icon: "旅", url: link("itinerary", sheetUrl), caption: "Google Sheets" },
-    { key: "maps", label: "My Maps", icon: "地", url: link("maps", basicInfo.myMapsUrl || "https://www.google.com/maps/d/"), caption: "Google My Maps" },
-    { key: "expenseSheet", label: "費用", icon: "￥", url: link("expenseSheet", makeSheetUrl(CONFIG.sheets.budget)), caption: "Google Sheets" },
-    { key: "photos", label: "写真", icon: "写", url: link("photos", basicInfo.photosUrl || "https://photos.google.com/"), caption: "Google Photos" },
-    { key: "reservations", label: "予約管理", icon: "予", url: makeSheetUrl(CONFIG.sheets.reservations), caption: "Google Sheets" },
-    { key: "budget", label: "予算", icon: "￥", url: makeSheetUrl(CONFIG.sheets.budget), caption: "Google Sheets" },
-  ];
-  const checklist = buildTripChecklist(checklistRows);
-
-  return {
-    trip: {
-      title: basicInfo.tripTitle || CONFIG.tripTitle || "旅行",
-      dates: basicInfo.dateStart && basicInfo.dateEnd ? `${normalizeDate(basicInfo.dateStart)} - ${normalizeDate(basicInfo.dateEnd)}` : (itinerary[0] && itinerary[itinerary.length - 1] ? `${itinerary[0].date} - ${itinerary[itinerary.length - 1].date}` : ""),
-      members: basicInfo.members || "共有メンバー",
-      note: basicInfo.dashboardNote ? `共有メモ: ${basicInfo.dashboardNote}` : "共有メモ: 詳細な予約番号や宿泊先住所は公開ページに載せず、スプレッドシート側で管理してください。",
-    },
-    links: buildTripLinks(linkRows, fallbackLinks, basicInfo),
-    settlement: {
-      paid: formatYen(0),
-      paidLabel: "精算額",
-      expenseTotal: "¥0",
-      expenseByPerson: {},
-      progress: 0,
-      yourPaid: "-",
-      yourDue: "精算不要",
-      photoTitle: basicInfo.photoTitle || `${CONFIG.tripTitle || "旅行"}アルバム`,
-      photoMeta: "Google Photos",
-    },
-    checklist: checklist.length ? checklist : [
-      { label: "航空券・宿の予約状況確認", done: false },
-      { label: "保険と緊急連絡先の確認", done: false },
-      { label: "パスポート・ビザ・入国条件の確認（海外のみ）", done: false },
-      { label: "現地通信手段の確認", done: false },
-    ],
-    localInfo: [],
-    itinerary,
-  };
-}
-
-function buildLocalInfo(rows: SheetRow[]): LocalInfoItem[] {
-  return (rows || [])
-    .filter((row) => String(valueByKeys(row, ["有効", "enabled"]) || "TRUE").toUpperCase() !== "FALSE")
-    .filter((row) => valueByKeys(row, ["国", "country"]))
-    .map((row) => ({
-      country: valueByKeys(row, ["国", "country"]),
-      currencyCode: valueByKeys(row, ["通貨コード", "currencyCode", "currency"]),
-      currencyName: valueByKeys(row, ["通貨名", "currencyName"]),
-      approxRate: valueByKeys(row, ["概算円レート", "rateToJpy", "円換算レート"]),
-      rateUpdatedAt: valueByKeys(row, ["レート更新日", "rateUpdatedAt", "更新日"]),
-      feeFreeAtm: valueByKeys(row, ["手数料無料ATM候補", "無料ATM候補", "feeFreeAtm"]),
-      atmBest: valueByKeys(row, ["ATMおすすめ", "atmBest"]),
-      atmFee: valueByKeys(row, ["ATM手数料目安", "atmFee"]),
-      atmNote: valueByKeys(row, ["避けたい/注意", "注意", "atmNote"]),
-      rideBest: valueByKeys(row, ["配車おすすめ", "rideBest"]),
-      rideAlt: valueByKeys(row, ["代替アプリ", "rideAlt"]),
-      paymentNote: valueByKeys(row, ["支払いメモ", "paymentNote"]),
-      source: valueByKeys(row, ["情報ソース", "source"]),
-      order: Number(valueByKeys(row, ["表示順", "order"]) || 999),
-    }))
-    .sort((a, b) => (a.order ?? 999) - (b.order ?? 999) || String(a.country).localeCompare(String(b.country), "ja"));
-}
-
-function loadGvizSheet(spreadsheetId: string, sheetName: string, range?: string): Promise<SheetRow[]> {
-  return new Promise((resolve, reject) => {
-    const callback = "__tripSheetCallback_" + Math.random().toString(36).slice(2);
-    const globalScope = window as unknown as Record<string, unknown>;
-    const script = document.createElement("script");
-    globalScope[callback] = (response: GvizResponse): void => {
-      delete globalScope[callback];
-      script.remove();
-      if (response.status && response.status !== "ok") {
-        reject(new Error(response.errors && response.errors[0] ? response.errors[0].detailed_message || "Google Sheets response error" : "Google Sheets response error"));
-        return;
-      }
-      resolve(rowsFromGviz(response));
-    };
-    const tqx = "out:json;responseHandler:" + callback;
-    script.src = "https://docs.google.com/spreadsheets/d/" + encodeURIComponent(spreadsheetId) +
-      "/gviz/tq?tqx=" + encodeURIComponent(tqx) +
-      "&sheet=" + encodeURIComponent(sheetName) +
-      (range ? "&range=" + encodeURIComponent(range) : "") +
-      "&cachebust=" + Date.now();
-    script.onerror = (): void => {
-      delete globalScope[callback];
-      script.remove();
-      reject(new Error("Google Sheetsを読み込めませんでした"));
-    };
-    document.head.appendChild(script);
-  });
-}
-
-async function loadData(): Promise<TripData> {
-  if (CONFIG.mode === "local") {
-    const local = TripPlans.getData(CONFIG.tripSlug);
-    return TripPlans.toDashboardData(local);
-  }
-  if (CONFIG.mode === "googleSheets" && CONFIG.spreadsheetId) {
-    if (CONFIG.schema === "trip" || CONFIG.schema === "southAmerica") {
-      const tripSheetName = CONFIG.sheets.tripItinerary || CONFIG.sheets.southAmericaItinerary;
-      const tripRange = CONFIG.ranges.tripItinerary || CONFIG.ranges.southAmericaItinerary;
-      const [itineraryRows, reservationRows, budgetRows, localInfoRows, basicInfoRows, linkRows, checklistRows] = await Promise.all([
-        loadGvizSheet(CONFIG.spreadsheetId, tripSheetName, tripRange),
-        loadGvizSheet(CONFIG.spreadsheetId, CONFIG.sheets.reservations, CONFIG.ranges.reservations),
-        loadGvizSheet(CONFIG.spreadsheetId, CONFIG.sheets.budget, CONFIG.ranges.budget),
-        loadGvizSheet(CONFIG.spreadsheetId, CONFIG.sheets.localInfo, CONFIG.ranges.localInfo).catch(() => [] as SheetRow[]),
-        loadGvizSheet(CONFIG.spreadsheetId, CONFIG.sheets.basicInfo, CONFIG.ranges.basicInfo).catch(() => [] as SheetRow[]),
-        loadGvizSheet(CONFIG.spreadsheetId, CONFIG.sheets.tripLinks, CONFIG.ranges.tripLinks).catch(() => [] as SheetRow[]),
-        loadGvizSheet(CONFIG.spreadsheetId, CONFIG.sheets.tripChecklist, CONFIG.ranges.tripChecklist).catch(() => [] as SheetRow[]),
-      ]);
-      const data = buildTripSheetData(itineraryRows, reservationRows, budgetRows, basicInfoRows, linkRows, checklistRows);
-      data.localInfo = buildLocalInfo(localInfoRows);
-      return data;
-    }
-    const [itinerary, links, settlementRows, checklist] = await Promise.all([
-      loadGvizSheet(CONFIG.spreadsheetId, CONFIG.sheets.itinerary),
-      loadGvizSheet(CONFIG.spreadsheetId, CONFIG.sheets.links),
-      loadGvizSheet(CONFIG.spreadsheetId, CONFIG.sheets.settlement),
-      loadGvizSheet(CONFIG.spreadsheetId, CONFIG.sheets.checklist),
-    ]);
-    const settlement: Record<string, string> = {};
-    settlementRows.forEach((row) => { settlement[row.key] = row.value; });
-    return {
-      trip: {
-        title: settlement.title || SAMPLE.trip.title,
-        dates: settlement.dates || SAMPLE.trip.dates,
-        members: settlement.members || SAMPLE.trip.members,
-        note: settlement.note || SAMPLE.trip.note,
-      },
-      itinerary: itinerary as unknown as ItineraryItem[],
-      links: links as unknown as TripLink[],
-      checklist: checklist as unknown as ChecklistItem[],
-      settlement: settlement as Settlement,
-      localInfo: [],
-    };
-  }
-  if (CONFIG.mode === "appsScript" && CONFIG.appsScriptUrl) {
-    const response = await callAppsScript({ action: "data", token: getAuthToken() });
-    return response.data || SAMPLE;
-  }
-  return SAMPLE;
 }
 
 // ---- 基本描画 -----------------------------------------------------------
@@ -1968,11 +1522,14 @@ async function shareTripInvite(): Promise<void> {
   const nameInput = root.querySelector<HTMLInputElement>("[data-invite-name]");
   const name = (nameInput?.value || "").trim();
   try {
+    const invite = Permissions.createInvite(meta.slug, name || undefined, "editor");
     const link = await buildInviteLink({
       v: 1,
       meta: { slug: meta.slug, title: meta.title, dates: meta.dates, members: meta.members, route: meta.route },
       data: planData,
       invitedName: name || undefined,
+      inviteId: invite?.id,
+      role: "editor",
     });
     const shareData = {
       title: meta.title || "旅行計画",
@@ -2246,7 +1803,7 @@ function renderActive(): void {
 
 // ---- 地図描画 -----------------------------------------------------------
 
-async function renderMapEmbed(activePlaces: ItineraryItem[], day: DayGroup): Promise<void> {
+async function renderMapEmbed(activePlaces: ItineraryItem[], _day: DayGroup): Promise<void> {
   const map = qs<HTMLElement>("[data-map]");
   const existing = root.querySelector(".tl-map-iframe");
   if (existing) existing.remove();
@@ -2260,7 +1817,7 @@ async function renderMapEmbed(activePlaces: ItineraryItem[], day: DayGroup): Pro
     src = mapsEmbedDirections(activePlaces);
   } else if (CONFIG.mapEmbed.mode === "leaflet") {
     try {
-      await renderLeafletMap(day);
+      await renderLeafletMap(map, leafletState, state.days, state.active, CONFIG.mapDefaults);
     } catch (error) {
       console.warn(error);
     }
@@ -2281,220 +1838,6 @@ async function renderMapEmbed(activePlaces: ItineraryItem[], day: DayGroup): Pro
   map.prepend(iframe);
 }
 
-type Segment = [[number, number], [number, number]];
-
-function splitAntimeridianSegment(from: { lat: number; lng: number }, to: { lat: number; lng: number }): Segment[] {
-  const start = { lat: Number(from.lat), lng: Number(from.lng) };
-  const end = { lat: Number(to.lat), lng: Number(to.lng) };
-  if (![start.lat, start.lng, end.lat, end.lng].every(Number.isFinite)) return [];
-  const delta = end.lng - start.lng;
-  if (Math.abs(delta) <= 180) return [[[start.lat, start.lng], [end.lat, end.lng]]];
-
-  const adjustedEndLng = delta > 180 ? end.lng - 360 : end.lng + 360;
-  const edgeLng = delta > 180 ? -180 : 180;
-  const wrappedEdgeLng = delta > 180 ? 180 : -180;
-  const ratio = (edgeLng - start.lng) / (adjustedEndLng - start.lng);
-  const edgeLat = start.lat + (end.lat - start.lat) * ratio;
-  return [
-    [[start.lat, start.lng], [edgeLat, edgeLng]],
-    [[edgeLat, wrappedEdgeLng], [end.lat, end.lng]],
-  ];
-}
-
-function addRoutePolylines(points: { lat: number; lng: number }[], options: L.PolylineOptions): void {
-  if (!leafletState.layer) return;
-  const layer = leafletState.layer;
-  for (let index = 0; index < points.length - 1; index++) {
-    splitAntimeridianSegment(points[index], points[index + 1]).forEach((segment) => {
-      L.polyline(segment, options).addTo(layer);
-    });
-  }
-}
-
-function crossesAntimeridian(points: { lng: number | string }[]): boolean {
-  return (points || []).some((point, index) => {
-    const next = points[index + 1];
-    return next ? Math.abs(Number(next.lng) - Number(point.lng)) > 180 : false;
-  });
-}
-
-function pacificMapPoint<T extends { lng: number }>(point: T, enabled: boolean): T {
-  if (!enabled || Number(point.lng) >= 0) return point;
-  return { ...point, lng: Number(point.lng) + 360 };
-}
-
-function boundsAroundPoint(point: { lat: number; lng: number } | undefined, radiusKm: number): L.LatLngBounds | null {
-  const lat = Number(point && point.lat);
-  const lng = Number(point && point.lng);
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-  const latDelta = radiusKm / 111.32;
-  const cosLat = Math.max(.18, Math.abs(Math.cos(lat * Math.PI / 180)));
-  const lngDelta = radiusKm / (111.32 * cosLat);
-  return L.latLngBounds([[lat - latDelta, lng - lngDelta], [lat + latDelta, lng + lngDelta]]);
-}
-
-function boundsAroundPoints(points: { lat: number; lng: number }[], radiusKm: number): L.LatLngBounds | null {
-  const validPoints = uniqueMapPoints(points);
-  if (!validPoints.length) return null;
-  if (validPoints.length === 1) return boundsAroundPoint(validPoints[0], radiusKm);
-  const pointBounds = L.latLngBounds(validPoints.map((point) => [point.lat, point.lng] as [number, number]));
-  const centerBounds = boundsAroundPoint(pointBounds.getCenter(), radiusKm);
-  if (centerBounds && centerBounds.contains(pointBounds.getSouthWest()) && centerBounds.contains(pointBounds.getNorthEast())) {
-    return centerBounds;
-  }
-  return pointBounds;
-}
-
-function uniqueMapPoints<T extends { lat: number; lng: number }>(points: T[]): T[] {
-  const seen = new Set<string>();
-  return (points || []).filter((point) => {
-    const lat = Number(point && point.lat);
-    const lng = Number(point && point.lng);
-    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false;
-    const key = `${lat.toFixed(3)},${lng.toFixed(3)}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
-}
-
-async function renderLeafletMap(_activeDay: DayGroup): Promise<void> {
-  const mapEl = qs<HTMLElement>("[data-map]");
-  mapEl.classList.remove("has-embed");
-  mapEl.classList.add("has-leaflet");
-  qsa(".tl-map-iframe").forEach((node) => node.remove());
-
-  let container = mapEl.querySelector<HTMLElement>(".tl-leaflet-map");
-  if (!container) {
-    container = document.createElement("div");
-    container.className = "tl-leaflet-map";
-    mapEl.prepend(container);
-  }
-
-  if (!leafletState.map) {
-    leafletState.map = L.map(container, {
-      zoomControl: true,
-      scrollWheelZoom: true,
-      attributionControl: true,
-    });
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      maxZoom: 18,
-      attribution: "&copy; OpenStreetMap",
-    }).addTo(leafletState.map);
-  }
-  const lmap = leafletState.map;
-
-  if (leafletState.layer) {
-    leafletState.layer.remove();
-  }
-  leafletState.layer = L.layerGroup().addTo(lmap);
-
-  const allPoints = itineraryRoutePoints();
-  const activeIndex = state.active;
-  const activePoints = allPoints.filter((point) => point.dayIndex === activeIndex);
-  const usePacificWorld = crossesAntimeridian(activePoints);
-  const displayAllPoints = allPoints.map((point) => pacificMapPoint(point, usePacificWorld));
-  const displayActivePoints = activePoints.map((point) => pacificMapPoint(point, usePacificWorld));
-  const activeLatLngs = displayActivePoints.map((point) => [point.lat, point.lng]);
-  const showActiveDetail = leafletState.followActive && activeLatLngs.length;
-
-  for (let index = 0; index < displayAllPoints.length - 1; index++) {
-    const point = displayAllPoints[index];
-    const next = displayAllPoints[index + 1];
-    addRoutePolylines([point, next], {
-      color: "#7b8f86",
-      weight: 2,
-      opacity: .55,
-      dashArray: "6 8",
-    });
-  }
-
-  if (showActiveDetail && activeLatLngs.length >= 2) {
-    addRoutePolylines(displayActivePoints, {
-      color: "#0b5a42",
-      weight: 4,
-      opacity: .95,
-    });
-  }
-
-  const stopGroups: StopGroup[] = [];
-  const stopByCoord = new Map<string, StopGroup>();
-  displayAllPoints.forEach((point) => {
-    const key = `${point.lat.toFixed(3)},${point.lng.toFixed(3)}`;
-    if (!stopByCoord.has(key)) {
-      const group: StopGroup = { ...point, dates: [], dayIndexes: [], places: new Set<string>(), titles: [] };
-      stopByCoord.set(key, group);
-      stopGroups.push(group);
-    }
-    const group = stopByCoord.get(key)!;
-    group.dates.push(point.date);
-    group.dayIndexes.push(point.dayIndex + 1);
-    if (point.place || point.area) group.places.add(point.place || point.area || "");
-    if (point.title) group.titles.push(point.title);
-  });
-
-  stopGroups.forEach((point) => {
-    const days = Array.from(new Set(point.dayIndexes)).sort((a, b) => a - b);
-    const dateLabel = compactDateRange(point.dates);
-    const placeLabel = Array.from(point.places)[0] || point.place || point.area || point.title || "";
-    const icon = L.divIcon({
-      className: "",
-      html: `<div class="tl-map-marker is-route-stop" tabindex="0" aria-label="${dateLabel} ${placeLabel}">
-        <span class="tl-map-marker-num">${shortDate(point.date) || days[0]}</span>
-      </div>`,
-      iconSize: [42, 26],
-      iconAnchor: [19, 15],
-    });
-    L.marker([point.lat, point.lng], { icon })
-      .bindPopup(`<b>${dateLabel} / ${placeLabel}</b><br>${point.titles.slice(0, 4).join("<br>")}`)
-      .addTo(leafletState.layer!);
-  });
-
-  if (showActiveDetail) {
-    displayActivePoints.forEach((point) => {
-      const icon = L.divIcon({
-        className: "",
-        html: `<div class="tl-map-marker is-active" tabindex="0" aria-label="${shortDate(point.date)} ${point.place || point.area || point.title}">
-          <span class="tl-map-marker-num">${shortDate(point.date) || point.dayIndex + 1}</span>
-        </div>`,
-        iconSize: [46, 28],
-        iconAnchor: [21, 16],
-      });
-      L.marker([point.lat, point.lng], { icon })
-        .bindPopup(`<b>${shortDate(point.date)} / ${point.place || point.area || ""}</b><br>${point.title || ""}<br>${point.note || ""}`)
-        .addTo(leafletState.layer!);
-    });
-  }
-
-  const defaultCenter: [number, number] = Array.isArray(CONFIG.mapDefaults.center) && CONFIG.mapDefaults.center.length === 2
-    ? CONFIG.mapDefaults.center
-    : [20, 0];
-  const defaultZoom = Number(CONFIG.mapDefaults.zoom) || 2;
-  const overviewRadiusKm = Number(CONFIG.mapDefaults.overviewRadiusKm) || 800;
-  // 日詳細のダッシュボードなので、まず選択中の日の地点の実範囲にフィットする
-  // （広い半径パディングは使わず、maxZoom で都市レベルに収める）。
-  // 当日の地点が無いときだけ全行程の概観にフォールバック。
-  let bounds: L.LatLngBounds | null = null;
-  let fitMaxZoom = 13;
-  if (activeLatLngs.length) {
-    bounds = L.latLngBounds(activeLatLngs as L.LatLngExpression[]);
-    fitMaxZoom = 13;
-  } else if (displayAllPoints.length) {
-    bounds = boundsAroundPoints(displayAllPoints, overviewRadiusKm);
-    fitMaxZoom = 16;
-  }
-  if (bounds && bounds.isValid()) {
-    lmap.fitBounds(bounds.pad(.35), {
-      animate: false,
-      maxZoom: fitMaxZoom,
-    });
-  } else {
-    lmap.setView(defaultCenter, defaultZoom, { animate: false });
-  }
-
-  setTimeout(() => lmap.invalidateSize(), 0);
-}
-
 // ---- 同期・初期化 -------------------------------------------------------
 
 function showError(error: unknown): void {
@@ -2509,7 +1852,7 @@ async function syncData(isInitial: boolean, didRetryAuth?: boolean): Promise<voi
 
   syncInFlight = (async (): Promise<void> => {
     try {
-      const data = await loadData();
+      const data = await loadData(CONFIG, SAMPLE);
       lastSyncAt = Date.now();
       renderData(data, CONFIG.mode);
       if (isInitial) setLoading(false);
@@ -2545,7 +1888,7 @@ function computeReadOnly(): boolean {
   const name = getUser().name;
   if (!name) return false;
   const meta = TripPlans.get(CONFIG.tripSlug);
-  return Boolean(meta) && !isMemberOf(meta!);
+  return Boolean(meta) && !canEditPlan(meta!);
 }
 
 const READ_ONLY = computeReadOnly();

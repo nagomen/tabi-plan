@@ -315,13 +315,6 @@ function appendSettlementCompletion_(ss: Spreadsheet, params: Params): void {
 function ensureSettlementCompletionsSheet_(ss: Spreadsheet): Sheet {
   const headers = ['タイムスタンプ', '支払者', '受取者', '精算額', '通貨', '対象ペア', '入力元', 'メモ'];
   const sheet = getOrCreateSheet_(ss, DEFAULT_CONFIG.sheets.settlementLog);
-  if (sheet.getLastRow() === 0) {
-    sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
-  } else {
-    const current = sheet.getRange(1, 1, 1, headers.length).getDisplayValues()[0];
-    if (!current.some(Boolean)) {
-      sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
-    }
-  }
+  ensureHeaderRow_(sheet, 1, headers);
   return sheet;
 }

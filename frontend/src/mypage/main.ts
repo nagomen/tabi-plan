@@ -2,9 +2,11 @@
 // データは localStorage(JSON): 計画は plans-store、ユーザーは user-store。
 
 import "../shared/ui.css";
+import { initPageTransitions } from "../shared/page-transition";
 import { icon, type IconName } from "../shared/icons";
 import { escapeHtml, makeScopedQuery } from "../shared/dom";
 import { registerServiceWorker } from "../shared/pwa";
+import * as Backend from "../shared/backend";
 import * as TripPlans from "../shared/plans-store";
 import type { PlanMeta } from "../shared/plans-store";
 import { getUser, setUserName } from "../shared/user-store";
@@ -14,6 +16,8 @@ import { getPayLink, setPayLink } from "../shared/payment-links";
 import { currentAccount, logOut, updateName, isLoggedIn } from "../shared/account-store";
 import { isHistoryPublic, setHistoryPublic } from "../shared/history-privacy";
 import { mountAppHeader } from "../shared/app-header";
+
+initPageTransitions();
 
 // ドロワー（右スライドイン）に埋め込まれている時は embed=1 で開かれる。
 // その場合は「戻る」を出さず（ドロワーの✕で閉じる）、計画リンクは最上位ウィンドウで開く。
@@ -135,12 +139,20 @@ function renderAccount(): void {
   if (account) {
     accountEl.innerHTML =
       `${icon("user")}<span>${escapeHtml(account.email)} でログイン中</span>` +
-      `<a href="#" class="danger" data-logout>ログアウト</a>`;
+      `<a href="plans.html" class="danger" data-logout data-no-transition="true">ログアウト</a>`;
     const logout = accountEl.querySelector<HTMLAnchorElement>("[data-logout]");
     logout?.addEventListener("click", (e) => {
       e.preventDefault();
+      if (isEmbedded) {
+        try {
+          window.parent?.postMessage({ type: "trip-account-logout" }, location.origin);
+        } catch {
+          /* ignore */
+        }
+        return;
+      }
       logOut();
-      renderAccount();
+      location.replace(new URL("plans.html", location.href).href);
     });
   } else {
     accountEl.innerHTML = `<a href="login.html">ログイン / 新規登録</a><span>すると別端末でも同じ名前で使えます（試作）</span>`;
@@ -176,12 +188,21 @@ const planCount = qs<HTMLElement>("[data-plan-count]");
 
 function planRow(plan: PlanMeta, allSlugs: string[]): string {
   const meta = [plan.dates, plan.members].filter(Boolean).map(escapeHtml).join(" ・ ");
+  const draft = !TripPlans.isPublished(plan);
+  const href = draft
+    ? `plan-editor.html?plan=${encodeURIComponent(plan.slug)}`
+    : `index.html?plan=${encodeURIComponent(plan.slug)}`;
+  const dotColor = draft ? "#b87418" : colorFor(plan.slug, allSlugs);
   return (
-    `<a class="mp-row" href="index.html?plan=${encodeURIComponent(plan.slug)}">` +
-    `<span class="mp-dot" style="background:${colorFor(plan.slug, allSlugs)}"></span>` +
+    `<a class="mp-row${draft ? " is-draft" : ""}" href="${href}">` +
+    `<span class="mp-dot" style="background:${dotColor}"></span>` +
     `<span class="mp-row-body">` +
-    `<span class="mp-row-name">${escapeHtml(plan.title || "無題の旅行")}</span>` +
+    `<span class="mp-row-name">` +
+    `<span>${escapeHtml(plan.title || "無題の旅行")}</span>` +
+    (draft ? `<span class="mp-draft-badge">${icon("pencilSquare")}作成中</span>` : "") +
+    `</span>` +
     (meta ? `<span class="mp-row-meta">${meta}</span>` : "") +
+    (draft ? `<span class="mp-row-meta mp-row-meta-draft">保存すると公開計画として扱われます</span>` : "") +
     `</span>` +
     `<span class="mp-chev">${icon("chevronRight")}</span>` +
     `</a>`
@@ -194,7 +215,8 @@ function renderPlans(): void {
   const allSlugs = all.map((p) => p.slug); // 色は全計画基準で安定させる
   const userName = getUser().name;
   const list = all.filter(isMemberOf);
-  planCount.textContent = list.length ? `${list.length}件` : "";
+  const draftCount = list.filter((p) => !TripPlans.isPublished(p)).length;
+  planCount.textContent = list.length ? `${list.length}件${draftCount ? `・作成中${draftCount}件` : ""}` : "";
 
   if (list.length) {
     planMount.innerHTML = list.map((p) => planRow(p, allSlugs)).join("");
@@ -364,9 +386,14 @@ payMount.addEventListener("input", (event) => {
 
 // ---- 起動 ---------------------------------------------------------------
 
-void dayKey; // 予約（将来の選択状態用）
-registerServiceWorker();
-renderProfile();
-renderPlans();
-renderCalendar(); // PC は左右2カラムで日程も常時表示するため初期描画する
-renderPayLinks(); // PC ではタブが無く常時表示されるため初期描画する
+async function init(): Promise<void> {
+  await Backend.preload();
+  void dayKey; // 予約（将来の選択状態用）
+  registerServiceWorker();
+  renderProfile();
+  renderPlans();
+  renderCalendar(); // PC は左右2カラムで日程も常時表示するため初期描画する
+  renderPayLinks(); // PC ではタブが無く常時表示されるため初期描画する
+}
+
+void init();

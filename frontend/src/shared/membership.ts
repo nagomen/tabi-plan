@@ -5,6 +5,7 @@
 import { splitNames } from "./friend-store";
 import { getUser } from "./user-store";
 import { planVisibility, type PlanMeta } from "./plans-store";
+import * as Permissions from "./permissions-store";
 
 /** 計画のメンバー名一覧（「、」「,」「/」「･」区切り）。 */
 export function membersOf(plan: PlanMeta): string[] {
@@ -13,18 +14,26 @@ export function membersOf(plan: PlanMeta): string[] {
 
 /** 現在のユーザー名がこの計画のメンバーに含まれるか。名前未設定なら常に false。 */
 export function isMemberOf(plan: PlanMeta): boolean {
+  if (Permissions.isParticipant(plan.slug, membersOf(plan))) return true;
   const name = getUser().name;
   return Boolean(name) && membersOf(plan).includes(name);
 }
 
 /**
  * この計画を「自分の計画」として扱うか。
- * 名前があれば厳密にメンバー判定。名前未設定のときはホームが空にならないよう、
- * 端末に保存されたローカル計画を自分扱いにフォールバックする。
+ * ログアウト/名前未設定の訪問者は「自分」を持たないので false。
  */
 export function isMine(plan: PlanMeta): boolean {
-  if (getUser().name) return isMemberOf(plan);
-  return plan.source === "local";
+  if (Permissions.canEdit(plan.slug)) return true;
+  return getUser().name ? isMemberOf(plan) : false;
+}
+
+export function canEditPlan(plan: PlanMeta): boolean {
+  return Permissions.canEdit(plan.slug) || isMemberOf(plan);
+}
+
+export function canViewPlan(plan: PlanMeta): boolean {
+  return Permissions.canView(plan.slug, planVisibility(plan)) || isMemberOf(plan);
 }
 
 /** planVisibility を再エクスポート（呼び出し側の import をまとめやすくする） */

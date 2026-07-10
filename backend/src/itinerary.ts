@@ -59,6 +59,8 @@ function ensureItinerarySheet_(ss: Spreadsheet): Sheet {
     '表示場所',
     '表示メモ',
     '必要情報',
+    '種別',
+    '表示ラベル',
     '国',
     '都市',
     '移動元',
@@ -101,7 +103,9 @@ function ensureItineraryDisplayColumns_(ss: Spreadsheet): void {
     '表示タイトル',
     '表示場所',
     '表示メモ',
-    '必要情報'
+    '必要情報',
+    '種別',
+    '表示ラベル'
   ];
   const auxiliaryHeaders = [
     '地図検索',
@@ -149,6 +153,8 @@ function applyItinerarySheetLayout_(ss: Spreadsheet): void {
     '表示場所': 160,
     '表示メモ': 320,
     '必要情報': 220,
+    '種別': 90,
+    '表示ラベル': 100,
     '国': 96,
     '都市': 150,
     '移動元': 150,
@@ -187,47 +193,44 @@ function applyItinerarySheetLayout_(ss: Spreadsheet): void {
   sheet.getRange(2, 1, lastRow - 1, lastColumn).createFilter();
 }
 
+// 成田/東京は国内発の旅行で共通して使う出発ハブなので既定値として持つ。
+// それ以外の地名は行程表シートの緯度/経度列（表示中の座標）か、
+// TRIP_PLACE_COORDS_JSON（{"地名":{"lat":0,"lng":0}, ...}）で旅行ごとに設定する。
+// コード側に旅行固有の地名を書き足さない（旅行が変わるたびにデプロイが必要になるため）。
+const DEFAULT_HUB_COORDS: Record<string, { lat: number; lng: number }> = {
+  '成田': { lat: 35.7720, lng: 140.3929 },
+  '成田空港': { lat: 35.7720, lng: 140.3929 },
+  'NRT': { lat: 35.7720, lng: 140.3929 },
+  '東京': { lat: 35.6812, lng: 139.7671 }
+};
+
+// 1回のダッシュボード構築で行程表の行数ぶん呼ばれるため、ScriptProperties の読み取り
+// と JSON.parse をリクエストごとに一度だけに抑える。
+let customPlaceCoordsCache_: Record<string, { lat: number; lng: number }> | null = null;
+
+function customPlaceCoords_(): Record<string, { lat: number; lng: number }> {
+  if (customPlaceCoordsCache_) return customPlaceCoordsCache_;
+  const raw = PropertiesService.getScriptProperties().getProperty('TRIP_PLACE_COORDS_JSON');
+  if (!raw) return (customPlaceCoordsCache_ = {});
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return (customPlaceCoordsCache_ = {});
+    return (customPlaceCoordsCache_ = Object.keys(parsed).reduce((acc: Record<string, { lat: number; lng: number }>, key) => {
+      const lat = parseCoordinate_(parsed[key] && parsed[key].lat);
+      const lng = parseCoordinate_(parsed[key] && parsed[key].lng);
+      if (lat !== '' && lng !== '') acc[normalizePlaceName_(key)] = { lat, lng };
+      return acc;
+    }, {}));
+  } catch (error) {
+    Logger.log(`customPlaceCoords_: TRIP_PLACE_COORDS_JSON is invalid JSON: ${errorMessage_(error)}`);
+    return (customPlaceCoordsCache_ = {});
+  }
+}
+
 function coordsFor_(name: any): { lat: number; lng: number } | null {
   const key = normalizePlaceName_(name);
   if (!key) return null;
-  const coords: Record<string, { lat: number; lng: number }> = {
-    '成田': { lat: 35.7720, lng: 140.3929 },
-    '成田空港': { lat: 35.7720, lng: 140.3929 },
-    'NRT': { lat: 35.7720, lng: 140.3929 },
-    '東京': { lat: 35.6812, lng: 139.7671 },
-    'サンフランシスコ': { lat: 37.7749, lng: -122.4194 },
-    'SFO': { lat: 37.6213, lng: -122.3790 },
-    'リマ': { lat: -12.0464, lng: -77.0428 },
-    'Lima': { lat: -12.0464, lng: -77.0428 },
-    'クスコ': { lat: -13.5319, lng: -71.9675 },
-    'Cusco': { lat: -13.5319, lng: -71.9675 },
-    'マチュピチュ方面': { lat: -13.1631, lng: -72.5450 },
-    'マチュピチュ村': { lat: -13.1547, lng: -72.5254 },
-    'アグアスカリエンテス': { lat: -13.1547, lng: -72.5254 },
-    'マチュピチュ': { lat: -13.1631, lng: -72.5450 },
-    'プエルトマルドナド': { lat: -12.5933, lng: -69.1891 },
-    'PMD': { lat: -12.5933, lng: -69.1891 },
-    'プーノ': { lat: -15.8402, lng: -70.0219 },
-    'ラパス': { lat: -16.4897, lng: -68.1193 },
-    'ウユニ': { lat: -20.4597, lng: -66.8250 },
-    'ビジャソン': { lat: -22.0866, lng: -65.5942 },
-    'ラキアカ': { lat: -22.1024, lng: -65.5920 },
-    'ビジャソン/ラキアカ': { lat: -22.0960, lng: -65.5930 },
-    'サルタ': { lat: -24.7821, lng: -65.4232 },
-    'イグアス': { lat: -25.5163, lng: -54.5854 },
-    'プエルトイグアス': { lat: -25.5972, lng: -54.5786 },
-    'FozdoIguacu/IGU': { lat: -25.6003, lng: -54.4850 },
-    'FozdoIguacuIGU': { lat: -25.6003, lng: -54.4850 },
-    'IGU': { lat: -25.6003, lng: -54.4850 },
-    'Yguazu': { lat: -25.4610, lng: -55.0000 },
-    'ColoniaYguazu': { lat: -25.4610, lng: -55.0000 },
-    'サンパウロ': { lat: -23.5558, lng: -46.6396 },
-    'サントス': { lat: -23.9608, lng: -46.3336 },
-    'リオデジャネイロ': { lat: -22.9068, lng: -43.1729 },
-    'モンテビデオ': { lat: -34.9011, lng: -56.1645 },
-    'ブエノスアイレス': { lat: -34.6037, lng: -58.3816 }
-  };
-  return coords[key] || null;
+  return customPlaceCoords_()[key] || DEFAULT_HUB_COORDS[key] || null;
 }
 
 function normalizePlaceName_(name: any): string {
