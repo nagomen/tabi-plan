@@ -3,7 +3,7 @@ name: Deploy GitHub Pages
 on:
   push:
     branches:
-      - main
+      - restructure-frontend-backend-ts
     paths:
       - "frontend/**"
       - "tools/build-trip-config.js"
