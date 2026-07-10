@@ -77,6 +77,11 @@ function renderAction(action: HeaderActionSpec): string {
   return `<button class="${cls}" type="button"${attrToken(action.attr)}${aria}${hidden}>${inner}</button>`;
 }
 
+function cssUrl(value: string): string {
+  const resolved = /^(?:data:|blob:|https?:|\/)/i.test(value) ? value : new URL(value, document.baseURI).href;
+  return `url(${JSON.stringify(resolved)})`;
+}
+
 /** ヘッダーの HTML 文字列を組み立てる（テスト・SSR 用に純粋関数として公開）。 */
 export function renderAppHeaderHtml(config: AppHeaderConfig): string {
   const back = config.back
@@ -113,7 +118,7 @@ export function mountAppHeader(config: AppHeaderConfig): HTMLElement {
   template.innerHTML = renderAppHeaderHtml(config).trim();
   const el = template.content.firstElementChild as HTMLElement;
   if (config.hero) {
-    el.style.setProperty("--ah-hero-image", `url("${config.hero.replace(/"/g, '\\"')}")`);
+    el.style.setProperty("--ah-hero-image", cssUrl(config.hero));
   }
   mount.replaceWith(el);
   // マイページのスライドインドロワーを全画面共通で設置（埋め込み時はスキップ）
