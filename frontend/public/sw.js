@@ -1,7 +1,7 @@
 // Vite がバンドルする JS/CSS（assets/*.HASH.js）はハッシュ名なので precache せず、
 // fetch ハンドラの cache-first で初回取得時にキャッシュする。
 // ここでは安定名の HTML と public 配下の静的ファイルだけを precache する。
-const CACHE_NAME = "travel-dashboard-v12";
+const CACHE_NAME = "travel-dashboard-v13";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -12,9 +12,9 @@ const APP_SHELL = [
   "./expense-entry.webmanifest",
   "./itinerary-editor.html",
   "./site.webmanifest",
-  "./icon-32.png",
-  "./icon-192.png",
-  "./icon-512.png"
+  "./icon-32.webp",
+  "./icon-192.webp",
+  "./icon-512.webp"
 ];
 
 self.addEventListener("install", (event) => {
