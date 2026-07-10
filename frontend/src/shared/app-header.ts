@@ -98,10 +98,7 @@ export function renderAppHeaderHtml(config: AppHeaderConfig): string {
       : "";
   const heroCls = config.hero ? " ah--hero" : "";
   const fixedCls = config.mobileFixed ? " ah--mobile-fixed" : "";
-  const heroStyle = config.hero
-    ? ` style="--ah-hero-image:url(&quot;${escapeHtml(config.hero)}&quot;)"`
-    : "";
-  return `<header class="ah${heroCls}${fixedCls}"${heroStyle}>${back}<div class="ah-main">${kicker}${title}${meta}</div>${actions}</header>`;
+  return `<header class="ah${heroCls}${fixedCls}">${back}<div class="ah-main">${kicker}${title}${meta}</div>${actions}</header>`;
 }
 
 /**
@@ -115,6 +112,9 @@ export function mountAppHeader(config: AppHeaderConfig): HTMLElement {
   const template = document.createElement("template");
   template.innerHTML = renderAppHeaderHtml(config).trim();
   const el = template.content.firstElementChild as HTMLElement;
+  if (config.hero) {
+    el.style.setProperty("--ah-hero-image", `url("${config.hero.replace(/"/g, '\\"')}")`);
+  }
   mount.replaceWith(el);
   // マイページのスライドインドロワーを全画面共通で設置（埋め込み時はスキップ）
   initMypageDrawer();
