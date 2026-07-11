@@ -2,6 +2,7 @@
 // データは backend 経由（dev: data/store/trip-dashboard-accounts.json、本番: localStorage）。
 
 import "../shared/ui.css";
+import "./style.css";
 import { initPageTransitions } from "../shared/page-transition";
 import { icon } from "../shared/icons";
 import { makeScopedQuery, errorMessage, escapeHtml } from "../shared/dom";

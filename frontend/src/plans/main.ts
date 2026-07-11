@@ -5,6 +5,7 @@
 
 import * as TripPlans from "../shared/plans-store";
 import "../shared/ui.css";
+import "./style.css";
 import { initPageTransitions } from "../shared/page-transition";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -22,7 +23,7 @@ import { icon, type IconName } from "../shared/icons";
 import { mountAppHeader } from "../shared/app-header";
 import { getUser } from "../shared/user-store";
 import { getViews } from "../shared/views-store";
-import { planCoverImage } from "../shared/cover";
+import { planCoverThumbnail } from "../shared/cover";
 import { splitNames } from "../shared/friend-store";
 import { decodeInvite } from "../shared/invite";
 import {
@@ -286,7 +287,7 @@ function renderRankings(plans: PlanMeta[]): void {
     return (
       '<a class="discover-trip-card" href="' + planHref(meta, !Permissions.canEdit(meta.slug)) + '">' +
       '<span class="discover-card-badge">' + escapeHtml(label) + "</span>" +
-      '<span class="discover-trip-cover"><img src="' + planCoverImage(meta) + '" alt="' + escapeHtml(meta.title || "旅行画像") + '" loading="lazy">' +
+      '<span class="discover-trip-cover"><img src="' + planCoverThumbnail(meta) + '" alt="' + escapeHtml(meta.title || "旅行画像") + '" loading="lazy">' +
       '<span class="discover-trip-views">' + icon("eye") + views.toLocaleString("ja-JP") + '</span></span>' +
       '<span class="discover-trip-title">' + escapeHtml(meta.title || "無題の旅行") + '</span>' +
       '<span class="discover-trip-meta">' + escapeHtml([meta.dates, meta.route || destinationName(meta)].filter(Boolean).join(" ・ ")) + '</span>' +
@@ -576,7 +577,7 @@ function rowHtml(meta: PlanMeta, variant: RowVariant, activeSlug: string, highli
         ? '<span class="plan-tag">表示中</span>'
         : "";
 
-  const coverSrc = planCoverImage(meta);
+  const coverSrc = planCoverThumbnail(meta);
   const sourceLabelText = SOURCE_LABEL[src] || src;
   const views = getViews(meta.slug);
   const viewsBadge =
@@ -690,7 +691,7 @@ function render(): void {
   } else {
     gridMine.innerHTML =
       '<div class="hub-empty">' +
-      '<img src="./images/cover_default.webp" alt="東北旅行" style="width: 140px; height: auto; margin: 0 auto 12px; opacity: 0.85;">' +
+      '<img src="./images/thumbs/cover_default.webp" alt="東北旅行" style="width: 140px; height: auto; margin: 0 auto 12px; opacity: 0.85;">' +
       (mineTotal
         ? "<b>該当する計画がありません</b><span>検索条件を変えてください</span>"
         : '<b>最初の計画を作りましょう</b><span>「新規計画」から行程を作成できます</span>') +

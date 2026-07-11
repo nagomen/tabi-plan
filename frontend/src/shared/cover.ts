@@ -182,3 +182,10 @@ export function planCoverImage(meta: CoverMeta): string {
   // デフォルト
   return "./images/cover_default.webp";
 }
+
+/** 一覧カードなど小さく表示する場所では、軽量サムネイル版を使う。 */
+export function planCoverThumbnail(meta: CoverMeta): string {
+  const src = planCoverImage(meta);
+  if (!src.startsWith("./images/cover_") || !src.endsWith(".webp")) return src;
+  return src.replace("./images/", "./images/thumbs/");
+}

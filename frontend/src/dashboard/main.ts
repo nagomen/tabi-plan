@@ -4,6 +4,7 @@
 // Leaflet 地図、費用精算・明細、本人設定・認証、Service Worker 登録を担う。
 
 import "../shared/ui.css";
+import "./style.css";
 import { initPageTransitions } from "../shared/page-transition";
 import "leaflet/dist/leaflet.css";
 

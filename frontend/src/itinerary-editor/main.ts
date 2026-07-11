@@ -4,6 +4,7 @@
 // 絞り込み・各行の表示上書き保存（itineraryUpdate）を行う。
 
 import "../shared/ui.css";
+import "./style.css";
 import { initPageTransitions } from "../shared/page-transition";
 import {
   DEFAULT_CONFIG,

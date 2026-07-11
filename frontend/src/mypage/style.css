@@ -1,0 +1,380 @@
+  :root {
+    --ink: #111916;
+    --muted: #66716b;
+    --line: #dfe4e0;
+    --line-strong: #c3ccc5;
+    --paper: #ffffff;
+    --wash: #f7f9f7;
+    --green: #0b5a42;
+    --green-soft: #e7f1ec;
+    --blue: #22719d;
+    --amber: #b87418;
+    --red: #cf4f3d;
+    --violet: #6246a6;
+  }
+  * { box-sizing: border-box; }
+  html { background: #fff; }
+  body {
+    margin: 0;
+    background: #fff;
+    color: var(--ink);
+    font-family: "Avenir Next", "Hiragino Sans", "Yu Gothic", Meiryo, sans-serif;
+    line-height: 1.55;
+  }
+  a { color: inherit; }
+  .hi { width: 1.15em; height: 1.15em; vertical-align: -0.18em; flex: none; }
+
+  .mp {
+    max-width: var(--app-width, 1120px);
+    margin: 0 auto;
+    min-height: 100vh;
+  }
+
+  /* ヘッダー（ダッシュボード流: 左に戻る → タイトル → 右にアイコン） */
+  .mp-head {
+    position: sticky;
+    top: 0;
+    z-index: 30;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--line);
+    background:
+      linear-gradient(90deg, rgba(11, 90, 66, .06), transparent 52%),
+      #fff;
+  }
+  .mp-headmain { flex: 1; min-width: 0; }
+  .mp-kicker {
+    margin: 0 0 2px;
+    color: var(--green);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+  }
+  .mp-head h1 { margin: 0; font-size: clamp(20px, 3vw, 26px); font-weight: 700; line-height: 1.15; }
+  .mp-back {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    width: 36px;
+    height: 36px;
+    margin-left: -7px;
+    border-radius: 50%;
+    color: var(--ink);
+    text-decoration: none;
+    transition: color .12s ease, background-color .12s ease;
+  }
+  .mp-back:hover, .mp-back:focus-visible { color: var(--green); background: var(--green-soft); }
+  .mp-back .hi { width: 18px; height: 18px; vertical-align: 0; }
+
+  /* プロフィール */
+  .mp-profile {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 22px 20px;
+    border-bottom: 1px solid var(--line);
+    background: #fff;
+  }
+  .mp-avatar {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    background: var(--green);
+    color: #fff;
+    font-size: 26px;
+    font-weight: 700;
+  }
+  .mp-profile-main { flex: 1; min-width: 0; }
+  .mp-profile-label { color: var(--muted); font-size: 12px; font-weight: 600; }
+  .mp-name-edit { display: flex; gap: 8px; margin-top: 5px; max-width: 420px; }
+  .mp-name-edit input {
+    flex: 1;
+    min-width: 0;
+    min-height: 44px;
+    border: 1px solid var(--line-strong);
+    border-radius: 0;
+    background: #fff;
+    color: var(--ink);
+    padding: 8px 12px;
+    font: inherit;
+    font-size: 16px;
+    font-weight: 600;
+  }
+  .mp-name-edit input:focus-visible { outline: none; border-color: var(--green); box-shadow: 0 0 0 3px var(--green-soft); }
+  .mp-name-save {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 44px;
+    padding: 0 16px;
+    border: 1px solid var(--green);
+    border-radius: 0;
+    background: var(--green);
+    color: #fff;
+    font: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .mp-name-save:hover { background: #0d6c4f; }
+  .mp-profile-note { margin: 6px 0 0; color: var(--green); font-size: 12px; font-weight: 600; min-height: 14px; }
+  .mp-account { margin-top: 8px; font-size: 12.5px; color: var(--muted); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .mp-account a { color: var(--green); font-weight: 700; text-decoration: none; }
+  .mp-account a.danger { color: var(--red); }
+  .mp-account .hi { width: 15px; height: 15px; vertical-align: -2px; }
+
+  /* 設定（旅行履歴の公開など） */
+  .mp-setting { display: flex; align-items: flex-start; gap: 10px; margin-top: 14px; cursor: pointer; }
+  .mp-setting input { flex: none; width: 18px; height: 18px; margin-top: 2px; accent-color: var(--green); cursor: pointer; }
+  .mp-setting input:disabled { cursor: not-allowed; }
+  .mp-setting-body { display: flex; flex-direction: column; min-width: 0; }
+  .mp-setting-title { font-size: 13.5px; font-weight: 700; color: var(--ink); }
+  .mp-setting-note { font-size: 12px; color: var(--muted); }
+  .mp-setting:has(input:disabled) { cursor: default; }
+  .mp-setting:has(input:disabled) .mp-setting-title { color: var(--muted); }
+
+  /* タブ */
+  .mp-tabs {
+    display: flex;
+    gap: 4px;
+    padding: 10px 20px 0;
+    border-bottom: 1px solid var(--line);
+    background: #fff;
+    position: sticky;
+    top: 64px;
+    z-index: 20;
+  }
+  .mp-tab {
+    appearance: none;
+    border: 0;
+    background: none;
+    padding: 10px 14px 12px;
+    margin-bottom: -1px;
+    border-bottom: 2px solid transparent;
+    color: var(--muted);
+    font: inherit;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .mp-tab.is-active { color: var(--green); border-bottom-color: var(--green); }
+
+  .mp-view { padding: 18px 20px 32px; }
+  .mp-view[hidden] { display: none; }
+
+  .mp-listhead {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 10px;
+  }
+  .mp-sec-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0;
+    font-size: 15px;
+    font-weight: 700;
+  }
+  .mp-sec-count { color: var(--muted); font-size: 12px; font-weight: 600; }
+
+  .mp-filters { display: inline-flex; gap: 6px; }
+  .mp-chip {
+    appearance: none;
+    border: 1px solid var(--line-strong);
+    background: #fff;
+    border-radius: 0;
+    padding: 6px 13px;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--muted);
+    cursor: pointer;
+  }
+  .mp-chip.is-active { background: var(--green-soft); border-color: rgba(11, 90, 66, .3); color: var(--green); }
+
+  .mp-badge {
+    margin-left: 8px;
+    padding: 1px 8px;
+    border-radius: 0;
+    background: var(--green-soft);
+    color: var(--green);
+    font-size: 10px;
+    font-weight: 700;
+    vertical-align: middle;
+  }
+
+  /* 計画リスト（フラット行） */
+  .mp-list { display: block; }
+  .mp-row {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    padding: 13px 6px 13px 12px;
+    border-bottom: 1px solid var(--line);
+    text-decoration: none;
+    color: inherit;
+  }
+  .mp-list .mp-row:first-child { border-top: 1px solid var(--line); }
+  .mp-row:hover, .mp-row:focus-visible { background: var(--wash); }
+  .mp-row.is-draft {
+    padding-left: 14px;
+    border-left: 3px solid #b87418;
+    background: #fffaf0;
+  }
+  .mp-row.is-draft:hover,
+  .mp-row.is-draft:focus-visible { background: #fff6df; }
+  .mp-dot { flex: none; width: 9px; height: 9px; border-radius: 50%; background: #68746e; }
+  .mp-row-body { min-width: 0; display: grid; gap: 2px; flex: 1; }
+  .mp-row-name {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 7px;
+    font-size: 15px;
+    font-weight: 600;
+    overflow-wrap: anywhere;
+  }
+  .mp-row-meta { color: var(--muted); font-size: 12.5px; font-weight: 400; }
+  .mp-row-meta-draft { color: #8a5a13; font-weight: 600; }
+  .mp-draft-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 7px;
+    border: 1px solid #d8bc80;
+    background: #fff6df;
+    color: #8a5a13;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1.2;
+  }
+  .mp-draft-badge .hi { width: 13px; height: 13px; }
+  .mp-chev { flex: none; display: inline-flex; color: var(--line-strong); }
+  .mp-chev .hi { width: 18px; height: 18px; vertical-align: 0; }
+
+  .mp-empty {
+    display: grid;
+    justify-items: center;
+    gap: 6px;
+    padding: 30px 18px;
+    border: 1px dashed var(--line-strong);
+    border-radius: 0;
+    background: #fff;
+    text-align: center;
+    color: var(--muted);
+    font-size: 13px;
+  }
+  .mp-empty b { color: var(--ink); font-size: 15px; font-weight: 700; }
+
+  /* カレンダー（日程） */
+  .mp-cal-head {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    margin-bottom: 12px;
+  }
+  .mp-cal-head b { font-size: 16px; font-weight: 700; min-width: 130px; text-align: center; }
+  .mp-cal-nav {
+    display: inline-grid;
+    place-items: center;
+    width: 38px;
+    height: 38px;
+    border: 1px solid var(--line-strong);
+    border-radius: 50%;
+    background: #fff;
+    color: var(--ink);
+    cursor: pointer;
+  }
+  .mp-cal-nav:hover { border-color: var(--green); color: var(--green); }
+  .mp-cal-nav .hi { width: 16px; height: 16px; vertical-align: 0; }
+
+  .mp-cal { display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 0; overflow: hidden; }
+  .mp-cal-dow { background: #fff; text-align: center; padding: 7px 0; color: var(--muted); font-size: 11px; font-weight: 700; }
+  .mp-cal-dow.sun { color: var(--red); }
+  .mp-cal-dow.sat { color: var(--blue); }
+  .mp-cell { background: #fff; min-height: 64px; padding: 5px 5px 4px; display: flex; flex-direction: column; gap: 3px; }
+  .mp-cell.is-out { background: #fff; }
+  .mp-cell-n { font-size: 11.5px; font-weight: 600; color: var(--ink); }
+  .mp-cell.is-out .mp-cell-n { color: var(--line-strong); }
+  .mp-cell.is-today .mp-cell-n {
+    display: inline-grid; place-items: center;
+    width: 20px; height: 20px; border-radius: 50%;
+    background: var(--green); color: #fff;
+  }
+  .mp-cell-bars { display: grid; gap: 2px; margin-top: auto; }
+  .mp-bar {
+    min-height: 14px;
+    border-radius: 0;
+    padding: 0 5px;
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 14px;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    cursor: pointer;
+    text-decoration: none;
+  }
+  .mp-bar.cont-l { border-top-left-radius: 0; border-bottom-left-radius: 0; }
+  .mp-bar.cont-r { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+  .mp-bar-more { font-size: 10px; font-weight: 700; color: var(--muted); }
+
+  /* 送金リンク登録 */
+  .mp-pay-help { margin: 0 0 14px; color: var(--muted); font-size: 12.5px; }
+  .mp-paylist { display: grid; gap: 10px; }
+  .mp-pay-row { display: grid; grid-template-columns: 130px minmax(0, 1fr); gap: 10px; align-items: center; }
+  .mp-pay-name { display: flex; align-items: center; gap: 7px; font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mp-pay-name .hi { width: 16px; height: 16px; vertical-align: 0; color: var(--muted); flex: none; }
+  .mp-pay-row input { min-width: 0; min-height: 42px; border: 1px solid var(--line-strong); border-radius: 0; background: #fff; color: var(--ink); padding: 8px 12px; font: inherit; font-size: 14px; }
+  .mp-pay-row input:focus-visible { outline: none; border-color: var(--green); box-shadow: 0 0 0 3px var(--green-soft); }
+  @media (max-width: 560px) { .mp-pay-row { grid-template-columns: 1fr; gap: 4px; } }
+
+  .mp-cal-legend { display: grid; gap: 7px; margin-top: 16px; }
+  .mp-legend-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 10px;
+    border: 1px solid var(--line);
+    border-radius: 0;
+    text-decoration: none;
+    color: inherit;
+  }
+  .mp-legend-row:hover { background: var(--wash); }
+  .mp-legend-sw { flex: none; width: 14px; height: 14px; border-radius: 0; }
+  .mp-legend-name { font-size: 14px; font-weight: 600; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mp-legend-dates { color: var(--muted); font-size: 12px; font-weight: 500; flex: none; }
+
+  /* PC: タブをやめ、左=計画 / 右=カレンダーの2カラムで横幅を活かす */
+  @media (min-width: 860px) {
+    .mp-tabs { display: none; }
+    .mp-body { display: grid; grid-template-columns: minmax(0, 400px) minmax(0, 1fr); align-items: start; }
+    .mp-view[hidden] { display: block; }
+    .mp-view[data-view="plans"] { border-right: 1px solid var(--line); min-height: 64vh; }
+  }
+
+  @media (max-width: 720px) {
+    .mp { border-left: 0; border-right: 0; }
+    .mp-head, .mp-profile, .mp-tabs, .mp-view { padding-left: 14px; padding-right: 14px; }
+    .mp-kicker { display: none; }
+    .mp-cell { min-height: 56px; }
+    .mp-bar { font-size: 9px; min-height: 13px; padding: 0 3px; line-height: 13px; }
+    .mp-legend-dates { font-size: 11px; }
+  }

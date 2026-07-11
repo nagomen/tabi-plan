@@ -4,6 +4,7 @@
 // レシート写真のリサイズ、認証、入力フォームの送信・キャッシュを行う。
 
 import "../shared/ui.css";
+import "./style.css";
 import { initPageTransitions } from "../shared/page-transition";
 import {
   DEFAULT_CONFIG,

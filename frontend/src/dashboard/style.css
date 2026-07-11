@@ -1,0 +1,2258 @@
+  html {
+    overflow-y: scroll;
+    scrollbar-gutter: stable;
+    background: #fff;
+  }
+
+  body {
+    margin: 0;
+    background: #fff;
+  }
+
+  .trip-live {
+    --ink: #111916;
+    --muted: #66716b;
+    --line: #dfe4e0;
+    --line-strong: #c3ccc5;
+    --paper: #ffffff;
+    --wash: #f7f9f7;
+    --green: #0b5a42;
+    --green-soft: #e7f1ec;
+    --blue: #22719d;
+    --amber: #b87418;
+    --red: #cf4f3d;
+    --violet: #6246a6;
+    color: var(--ink);
+    width: 100%;
+    max-width: var(--app-width, 1120px);
+    margin-inline: auto;
+    font-family: "Avenir Next", "Hiragino Sans", "Yu Gothic", Meiryo, sans-serif;
+    line-height: 1.55;
+  }
+
+  .trip-live * { box-sizing: border-box; }
+  .trip-live a { color: inherit; }
+
+  .hi { width: 1.15em; height: 1.15em; vertical-align: -0.18em; flex: none; }
+
+  .tl-loading {
+    position: fixed;
+    inset: 0;
+    z-index: 9000;
+    display: none;
+    place-items: center;
+    padding: 24px;
+    background:
+      linear-gradient(180deg, rgba(231, 241, 236, .92), rgba(255, 255, 255, .98)),
+      #fff;
+  }
+
+  .trip-live.is-loading .tl-loading {
+    display: grid;
+  }
+
+  .tl-loading-card {
+    display: grid;
+    justify-items: center;
+    gap: 14px;
+    color: var(--green);
+    text-align: center;
+  }
+
+  .tl-loading-plane {
+    width: 54px;
+    height: 54px;
+    animation: tl-plane 1.05s ease-in-out infinite;
+  }
+
+  .tl-loading-card b {
+    color: var(--ink);
+    font-size: 17px;
+    font-weight: 680;
+  }
+
+  .tl-loading-card span {
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 620;
+  }
+
+  @keyframes tl-plane {
+    0%, 100% { transform: translate3d(-4px, 3px, 0) rotate(-8deg); opacity: .72; }
+    50% { transform: translate3d(5px, -4px, 0) rotate(4deg); opacity: 1; }
+  }
+
+  .tl-auth {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    display: grid;
+    place-items: center;
+    padding: 18px;
+    background: rgba(255, 255, 255, .96);
+  }
+
+  .tl-auth,
+  .tl-auth * {
+    box-sizing: border-box;
+  }
+
+  .tl-auth-box {
+    width: min(420px, 100%);
+    border: 1px solid var(--line-strong, #c3ccc5);
+    background: #fff;
+  }
+
+  .tl-auth-box h2 {
+    margin: 0;
+    padding: 16px 18px 12px;
+    border-bottom: 1px solid var(--line, #dfe4e0);
+    font-size: 18px;
+    font-weight: 720;
+    letter-spacing: 0;
+  }
+
+  .tl-auth-body {
+    display: grid;
+    gap: 12px;
+    padding: 16px 18px 18px;
+  }
+
+  .tl-auth-body p {
+    margin: 0;
+    color: var(--muted, #66716b);
+    font-size: 13px;
+  }
+
+  .tl-auth-body label {
+    display: grid;
+    gap: 6px;
+    color: var(--ink, #111916);
+    font-size: 13px;
+    font-weight: 640;
+  }
+
+  .tl-auth-body input {
+    width: 100%;
+    min-height: 48px;
+    border: 2px solid var(--green, #0b5a42);
+    background: #fff;
+    color: var(--ink, #111916);
+    padding: 10px 12px;
+    font: inherit;
+    font-size: 16px;
+    outline: none;
+  }
+
+  .tl-auth-body input:focus {
+    border-color: var(--ink, #111916);
+    background: #fff;
+    box-shadow: 0 0 0 3px rgba(11, 90, 66, .16);
+  }
+
+  .tl-auth-body button {
+    appearance: none;
+    -webkit-appearance: none;
+    min-height: 48px;
+    border: 1px solid var(--green, #0b5a42);
+    background-color: var(--green, #0b5a42);
+    color: #fff;
+    font: inherit;
+    font-size: 15px;
+    font-weight: 640;
+    cursor: pointer;
+  }
+
+  .tl-auth-body button:focus-visible {
+    outline: 3px solid rgba(11, 90, 66, .25);
+    outline-offset: 2px;
+  }
+
+  .tl-auth-error {
+    min-height: 18px;
+    color: var(--red, #cf4f3d);
+    font-size: 12px;
+    font-weight: 620;
+  }
+
+  .tl-identity-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 9998;
+    display: grid;
+    place-items: center;
+    padding: 18px;
+    background:
+      linear-gradient(135deg, rgba(17, 25, 22, .16), rgba(11, 90, 66, .28)),
+      rgba(247, 249, 247, .84);
+  }
+
+  .tl-identity-card {
+    width: min(460px, 100%);
+    border: 1px solid rgba(11, 90, 66, .28);
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, .98), rgba(247, 249, 247, .98));
+  }
+
+  .tl-identity-card header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 14px;
+    align-items: start;
+    padding: 20px 20px 14px;
+    border-bottom: 1px solid var(--line, #dfe4e0);
+  }
+
+  .tl-identity-card h2 {
+    margin: 0;
+    font-size: 22px;
+    font-weight: 720;
+    line-height: 1.3;
+    letter-spacing: 0;
+  }
+
+  .tl-identity-card p {
+    margin: 6px 0 0;
+    color: var(--muted, #66716b);
+    font-size: 13px;
+  }
+
+  .tl-identity-mark {
+    display: grid;
+    place-items: center;
+    width: 46px;
+    height: 46px;
+    border: 1px solid rgba(11, 90, 66, .32);
+    background: var(--green-soft, #e7f1ec);
+    color: var(--green, #0b5a42);
+    font-size: 16px;
+    font-weight: 760;
+  }
+
+  .tl-identity-body {
+    display: grid;
+    gap: 14px;
+    padding: 18px 20px 20px;
+  }
+
+  .tl-identity-field {
+    display: grid;
+    gap: 7px;
+  }
+
+  .tl-identity-field span {
+    color: var(--muted, #66716b);
+    font-size: 12px;
+    font-weight: 640;
+  }
+
+  .tl-identity-field select {
+    width: 100%;
+    min-height: 50px;
+    border: 2px solid var(--green, #0b5a42);
+    background: #fff;
+    color: var(--ink, #111916);
+    padding: 10px 12px;
+    font: inherit;
+    font-size: 16px;
+    outline: none;
+  }
+
+  .tl-identity-field select:focus {
+    border-color: var(--ink, #111916);
+    box-shadow: 0 0 0 3px rgba(11, 90, 66, .16);
+  }
+
+  .tl-identity-actions {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    gap: 10px;
+    align-items: center;
+  }
+
+  .tl-identity-note {
+    color: var(--muted, #66716b);
+    font-size: 12px;
+    font-weight: 560;
+  }
+
+  .tl-identity-actions button {
+    appearance: none;
+    -webkit-appearance: none;
+    border: 1px solid var(--green, #0b5a42);
+    font: inherit;
+    cursor: pointer;
+    min-height: 42px;
+    background-color: var(--green, #0b5a42);
+    color: #fff;
+    padding: 0 18px;
+    font-size: 13px;
+    font-weight: 680;
+  }
+
+  .tl-identity-actions button.secondary {
+    background-color: #fff;
+    color: var(--green, #0b5a42);
+  }
+
+  .tl-head {
+    display: block;
+    padding: 24px 0;
+    border-bottom: 1px solid var(--line);
+    background:
+      linear-gradient(90deg, rgba(11, 90, 66, .06), transparent 52%),
+      #fff;
+  }
+
+  /* ヘッダーもメインも全幅。共通の左右ガターで揃える */
+  .tl-titlewrap {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding-inline: 22px;
+  }
+  .tl-headmain { flex: 1; min-width: 0; }
+
+  /* タイトル左の戻る（< → 計画一覧へ）と、右上の編集・マイページ（アイコンのみ） */
+  .tl-back,
+  .tl-edit,
+  .tl-mypage {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    color: var(--muted);
+    text-decoration: none;
+    transition: color .12s ease, background-color .12s ease;
+  }
+  .tl-back { margin-left: -7px; color: var(--ink); }
+  .tl-edit, .tl-mypage { align-self: flex-start; }
+  .tl-edit[hidden] { display: none; }
+  .tl-mypage { appearance: none; -webkit-appearance: none; border: 0; background: none; cursor: pointer; }
+  .tl-back svg, .tl-edit svg, .tl-mypage svg { width: 18px; height: 18px; }
+  .tl-back:hover, .tl-back:focus-visible,
+  .tl-edit:hover, .tl-edit:focus-visible,
+  .tl-mypage:hover, .tl-mypage:focus-visible {
+    color: var(--green);
+    background: var(--green-soft);
+    outline: none;
+  }
+  .tl-back:active, .tl-edit:active, .tl-mypage:active { color: #084935; }
+
+  .tl-kicker {
+    margin: 0 0 3px;
+    color: var(--green);
+    font-size: 12px;
+    font-weight: 900;
+    letter-spacing: .13em;
+    text-transform: uppercase;
+  }
+
+  .tl-title {
+    margin: 0;
+    overflow-wrap: anywhere;
+    font-size: clamp(20px, 2.8vw, 30px);
+    font-weight: 950;
+    letter-spacing: 0;
+    line-height: 1.1;
+  }
+
+  .tl-sub {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 4px 16px;
+    margin-left: auto;
+    color: var(--muted);
+    font-size: 13px;
+    font-weight: 750;
+  }
+
+  .tl-source {
+    display: contents;
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 750;
+  }
+
+  .tl-source b {
+    color: var(--green);
+    font-size: 13px;
+  }
+
+  .tl-actions {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(78px, 1fr));
+    border-bottom: 1px solid var(--line);
+  }
+
+  .tl-action {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-height: 50px;
+    padding: 10px;
+    border-right: 1px solid var(--line);
+    background: #fff;
+    color: var(--ink);
+    font: inherit;
+    font-size: 14px;
+    font-weight: 850;
+    text-align: center;
+    cursor: pointer;
+  }
+
+  .tl-action:last-child { border-right: 0; }
+  .tl-action:hover { background: var(--wash); }
+  .tl-action[aria-selected="true"] { background: var(--green); color: #fff; }
+
+  .trip-live[data-section-view="plan"] [data-section-target]:not([data-section-target~="plan"]),
+  .trip-live[data-section-view="map"] [data-section-target]:not([data-section-target~="map"]),
+  .trip-live[data-section-view="money"] [data-section-target]:not([data-section-target~="money"]),
+  .trip-live[data-section-view="members"] [data-section-target]:not([data-section-target~="members"]),
+  .trip-live[data-section-view="links"] [data-section-target]:not([data-section-target~="links"]) {
+    display: none;
+  }
+
+  /* メンバー画面（members ビューのときだけ表示。home では出さない） */
+  .tl-members { display: none; padding: 22px 0; }
+  .trip-live[data-section-view="members"] .tl-members { display: block; }
+  .tl-members-note { margin: 2px 0 16px; color: var(--muted); font-size: 13px; }
+  .tl-members-list { display: flex; flex-wrap: wrap; gap: 8px; }
+  .tl-member-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px 8px 10px;
+    border: 1px solid var(--line);
+    background: #fff;
+    font-size: 14px;
+    font-weight: 600;
+    color: inherit;
+    text-decoration: none;
+    cursor: pointer;
+    transition: border-color .12s ease, background-color .12s ease;
+  }
+  .tl-member-chip:hover { border-color: var(--green); background: var(--green-soft); }
+  .tl-member-avatar {
+    display: grid;
+    place-items: center;
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    background: var(--green);
+    color: #fff;
+    font-size: 13px;
+    font-weight: 700;
+  }
+  .tl-member-chip.is-self { border-color: var(--green); }
+  .tl-member-self-badge { color: var(--green); font-size: 11px; font-weight: 700; }
+  .tl-members-empty { color: var(--muted); font-size: 13px; }
+  .tl-members-invite {
+    margin-top: 22px;
+    padding-top: 18px;
+    border-top: 1px solid var(--line);
+    max-width: 460px;
+  }
+  .tl-members-field { display: grid; gap: 6px; margin-bottom: 12px; }
+  .tl-members-field span { color: var(--muted); font-size: 12px; font-weight: 700; }
+  .tl-members-field input {
+    min-height: 44px;
+    border: 1px solid var(--line-strong);
+    background: #fff;
+    color: var(--ink);
+    padding: 8px 12px;
+    font: inherit;
+    font-size: 15px;
+  }
+  .tl-members-field input:focus-visible { outline: none; border-color: var(--green); box-shadow: 0 0 0 3px var(--green-soft); }
+  .tl-members-invite-note { margin: 10px 0 0; color: var(--muted); font-size: 12px; }
+  .tl-members-leave {
+    margin-top: 22px;
+    padding-top: 16px;
+    border-top: 1px solid var(--line);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .tl-members-leave-btn {
+    appearance: none;
+    border: 1px solid var(--red);
+    background: #fff;
+    color: var(--red);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 700;
+    padding: 8px 14px;
+    cursor: pointer;
+  }
+  .tl-members-leave-btn:hover { background: var(--red); color: #fff; }
+  .tl-members-leave-note { color: var(--muted); font-size: 12px; }
+
+  .trip-live[data-section-view="plan"] .tl-card-grid,
+  .trip-live[data-section-view="money"] .tl-card-grid,
+  .trip-live[data-section-view="links"] .tl-card-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .tl-days {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(116px, 1fr);
+    overflow-x: auto;
+    border-bottom: 1px solid var(--line);
+    background: #fff;
+  }
+
+  /* 都市でグループ化した日タブ */
+  .tl-days:has(.tl-daygroup) { display: flex; }
+  .tl-daygroup { flex: none; display: flex; flex-direction: column; border-right: 1px solid var(--line-strong); }
+  .tl-daygroup:last-child { border-right: 0; }
+  .tl-daygroup-label {
+    padding: 4px 10px;
+    background: var(--c, #0b5a42);
+    color: #fff;
+    font-size: 13px;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .tl-daygroup-days { display: flex; }
+  .tl-daygroup .tl-day { min-width: 84px; }
+
+  .trip-live[data-section-view="money"] .tl-days,
+  .trip-live[data-section-view="links"] .tl-days {
+    display: none;
+  }
+
+  .tl-day {
+    appearance: none;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: center;
+    gap: 0 6px;
+    min-height: 36px;
+    padding: 7px 10px;
+    border: 0;
+    border-right: 1px solid var(--line);
+    background: #fff;
+    color: var(--ink);
+    cursor: pointer;
+    text-align: center;
+  }
+
+  .tl-day[aria-selected="true"] {
+    background: var(--c, var(--green));
+    color: #fff;
+  }
+
+  .tl-day b,
+  .tl-day small {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .tl-day b { font-size: 13px; line-height: 1.2; }
+  .tl-day small { font-size: 11px; opacity: .75; }
+
+  /* 日程スライドをヒーロー画像の上に白文字で重ねる（PC・スマホ共通）。
+     DOM 順は header → セクションタブ(.tl-actions) → 日程バー(.tl-days) だが、
+     flex order で日程バーをタブの前に出し、負マージンでヒーロー下部に重ねる。 */
+  #tripLive { display: flex; flex-direction: column; }
+  .trip-live > .ah { order: 1; }
+  .trip-live > .tl-days { order: 2; }
+  .trip-live > .tl-actions { order: 3; }
+  .trip-live > .tl-main { order: 4; }
+  .trip-live > .tl-foot { order: 5; }
+
+  #tripLive .ah--hero { min-height: 210px; padding-bottom: 64px; }
+
+  .tl-days {
+    position: relative;
+    z-index: 36;
+    margin-top: -58px;
+    border-top: 0;
+    border-bottom: 0;
+    background: linear-gradient(180deg, transparent 0%, rgba(17, 25, 22, 0.15) 30%, rgba(17, 25, 22, 0.6) 100%);
+  }
+  .tl-days .tl-daygroup { border-right-color: rgba(255, 255, 255, 0.28); }
+  .tl-days .tl-daygroup:last-child { border-right: 0; }
+  .tl-days .tl-daygroup-label { background: transparent; color: rgba(255, 255, 255, 0.92); }
+  .tl-days .tl-day { background: transparent; color: #fff; border-right-color: rgba(255, 255, 255, 0.22); }
+  .tl-days .tl-day b,
+  .tl-days .tl-day small { color: #fff; }
+  .tl-days .tl-day small { opacity: 0.85; }
+  .tl-days .tl-day[aria-selected="true"] { background: rgba(255, 255, 255, 0.24); color: #fff; }
+
+  /* セクションタブ（ホーム/予定/地図/費用/リンク）もヒーロー画像に重ねる */
+  .tl-actions { position: relative; z-index: 36; border-bottom: 0; }
+  .tl-actions .tl-action { background: rgba(17, 25, 22, 0.42); color: #fff; border-right-color: rgba(255, 255, 255, 0.18); }
+  .tl-actions .tl-action:hover { background: rgba(17, 25, 22, 0.58); }
+  .tl-actions .tl-action[aria-selected="true"] { background: rgba(17, 25, 22, 0.9); color: #fff; }
+
+  /* PC: ヒーローを高くして「日程バー＋セクションタブ」の両方を画像内に収める。
+     スマホはセクションタブ非表示なので日程バーのみ（ベース値のまま）。 */
+  @media (min-width: 621px) {
+    #tripLive .ah--hero { min-height: 264px; padding-bottom: 116px; }
+    .tl-days { margin-top: -110px; }
+    /* 費用・リンクは日程バーを出さない。日程バーの負マージンに便乗して
+       ヒーローに重なっていたセクションタブが、日程バーが消えると画像下の
+       灰色帯に落ちてしまうため、タブ自身を引き上げてヒーロー下部に重ねる。 */
+    .trip-live[data-section-view="money"] .tl-actions,
+    .trip-live[data-section-view="links"] .tl-actions {
+      margin-top: -50px;
+    }
+  }
+
+  /* カードで囲わず、セクションは横罫線だけで仕切る */
+  .tl-main {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    padding: 0 32px;
+    background: #fff;
+  }
+
+  .tl-main > .tl-panel,
+  .tl-main > .tl-card-grid {
+    padding: 24px 0;
+  }
+  .tl-main > .tl-panel + .tl-panel,
+  .tl-main > .tl-panel + .tl-card-grid,
+  .tl-main > .tl-card-grid + .tl-panel {
+    border-top: 1px solid var(--line);
+  }
+
+  .tl-panel {
+    min-width: 0;
+  }
+
+  .tl-map-panel {
+    grid-column: 1 / -1;
+  }
+
+  /* 共通セクション見出し: heroicon + タイトル（＋右寄せリンク/メタ） */
+  .tl-sec-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 0 0 14px;
+  }
+
+  .tl-sec-head h2 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 800;
+    letter-spacing: .01em;
+    line-height: 1.2;
+  }
+
+  .tl-sec-ic {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    color: var(--green);
+  }
+  .tl-sec-ic .hi,
+  .tl-sec-ic svg { width: 21px; height: 21px; }
+
+  /* 見出し右側のアクション/メタ（Google My Maps へ 等） */
+  .tl-sec-link,
+  .tl-sec-meta {
+    margin-left: auto;
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 700;
+    text-align: right;
+    text-decoration: none;
+    white-space: nowrap;
+  }
+  .tl-sec-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--green);
+  }
+  .tl-sec-link:hover,
+  .tl-sec-link:focus-visible { text-decoration: underline; outline: none; }
+  .tl-sec-link .hi,
+  .tl-sec-link svg { width: 15px; height: 15px; }
+
+  .tl-map {
+    position: relative;
+    min-height: 260px;
+    max-height: 430px;
+    aspect-ratio: 21 / 8;
+    overflow: hidden;
+    background:
+      linear-gradient(90deg, rgba(11, 90, 66, .04) 1px, transparent 1px),
+      linear-gradient(0deg, rgba(11, 90, 66, .035) 1px, transparent 1px),
+      linear-gradient(120deg, rgba(34, 113, 157, .08), transparent 46%),
+      #f8faf8;
+    background-size: 34px 34px, 34px 34px, auto, auto;
+  }
+
+  .tl-map-land {
+    position: absolute;
+    inset: 38px 34px 58px;
+    border: 1px solid rgba(11, 90, 66, .08);
+    background: linear-gradient(140deg, rgba(255, 255, 255, .96), rgba(227, 235, 229, .88));
+    clip-path: polygon(5% 42%, 22% 28%, 45% 30%, 66% 20%, 90% 36%, 82% 63%, 60% 70%, 42% 62%, 22% 74%, 12% 56%);
+  }
+
+  .tl-map-iframe {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    width: 100%;
+    height: 100%;
+    border: 0;
+  }
+
+  .tl-map.has-embed .tl-map-land,
+  .tl-map.has-embed .tl-route-svg,
+  .tl-map.has-embed .tl-pin {
+    display: none;
+  }
+
+  .tl-map.has-leaflet .tl-map-land,
+  .tl-map.has-leaflet .tl-route-svg,
+  .tl-map.has-leaflet .tl-pin {
+    display: none;
+  }
+
+  .tl-leaflet-map {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    background: #eef3ef;
+  }
+
+  .tl-leaflet-map .leaflet-control-attribution {
+    font-size: 10px;
+  }
+
+  .tl-map-marker {
+    display: grid;
+    grid-template-columns: 34px;
+    align-items: center;
+  }
+
+  .tl-map-marker.is-active {
+    grid-template-columns: 42px;
+  }
+
+  .tl-map-marker.is-route-stop {
+    grid-template-columns: 38px;
+  }
+
+  .tl-map-marker-num {
+    display: grid;
+    place-items: center;
+    width: 34px;
+    height: 20px;
+    border: 2px solid #fff;
+    background: #6d7b74;
+    color: #fff;
+    font-size: 9px;
+    font-weight: 600;
+    line-height: 1;
+  }
+
+  .tl-map-marker.is-active .tl-map-marker-num {
+    width: 42px;
+    height: 24px;
+    background: var(--red);
+    font-size: 10px;
+  }
+
+  .tl-map-marker.is-route-stop .tl-map-marker-num {
+    width: 38px;
+    height: 22px;
+    background: var(--green);
+    font-size: 9px;
+  }
+
+  .tl-route-svg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+  }
+
+  .tl-route-svg polyline {
+    fill: none;
+    stroke: rgba(11, 90, 66, .82);
+    stroke-width: 3;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-dasharray: 7 7;
+  }
+
+  .tl-pin {
+    position: absolute;
+    z-index: 2;
+    display: grid;
+    grid-template-columns: 30px minmax(0, max-content);
+    gap: 7px;
+    align-items: center;
+    max-width: 190px;
+    transform: translate(-50%, -50%);
+    text-decoration: none;
+  }
+
+  .tl-pin-num {
+    display: grid;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    border: 2px solid #fff;
+    background: var(--green);
+    color: #fff;
+    font-size: 13px;
+    font-weight: 950;
+  }
+
+  .tl-pin.is-active .tl-pin-num {
+    background: var(--red);
+  }
+
+  .tl-pin-name {
+    max-width: 136px;
+    overflow: hidden;
+    padding: 5px 8px;
+    border: 1px solid var(--line);
+    background: rgba(255, 255, 255, .92);
+    font-size: 12px;
+    font-weight: 900;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .tl-map-status {
+    position: absolute;
+    left: 14px;
+    right: 14px;
+    bottom: 14px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px;
+    align-items: center;
+    padding: 10px 12px;
+    border: 1px solid var(--line);
+    background: rgba(255, 255, 255, .94);
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 850;
+  }
+
+  .tl-map-status b { color: var(--ink); }
+  .tl-map-status a { display: inline-flex; align-items: center; gap: 6px; color: var(--green); text-decoration: none; white-space: nowrap; }
+
+  .tl-timeline {
+    padding: 0;
+  }
+
+  .tl-day-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 14px;
+  }
+
+  .tl-day-title > span {
+    margin-left: auto;
+  }
+
+  .tl-day-title h2 {
+    margin: 0;
+    font-size: 16px;
+    letter-spacing: 0;
+    line-height: 1.25;
+  }
+
+  .tl-day-title h2 span {
+    display: block;
+  }
+
+  .tl-day-heading-meta {
+    margin-top: 2px;
+    font-size: 13px;
+    font-weight: 800;
+    color: var(--muted);
+  }
+
+  .tl-day-title > span {
+    color: var(--amber);
+    font-size: 12px;
+    font-weight: 900;
+    white-space: nowrap;
+  }
+
+  .tl-item {
+    display: grid;
+    grid-template-columns: 50px 24px minmax(0, 1fr);
+    gap: 9px;
+    min-width: 0;
+    padding: 0 0 16px;
+  }
+
+  .tl-time {
+    color: var(--ink);
+    font-size: 13px;
+    font-weight: 900;
+    line-height: 1.25;
+    overflow-wrap: anywhere;
+    padding-top: 4px;
+    text-align: right;
+  }
+
+  .tl-rail {
+    position: relative;
+    display: flex;
+    justify-content: center;
+  }
+
+  .tl-rail:before {
+    content: "";
+    position: absolute;
+    top: 24px;
+    bottom: -14px;
+    width: 2px;
+    background: rgba(11, 90, 66, .22);
+  }
+
+  .tl-item:last-child .tl-rail:before { display: none; }
+
+  /* 種別アイコンのドット（色＝種別） */
+  .tl-dot {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    place-items: center;
+    width: 24px;
+    height: 24px;
+    margin-top: 2px;
+    border-radius: 50%;
+    background: var(--green);
+    color: #fff;
+    align-self: start;
+  }
+  .tl-dot svg, .tl-dot .hi { width: 14px; height: 14px; }
+  .tl-dot.move { background: var(--blue); }
+  .tl-dot.food { background: var(--amber); }
+  .tl-dot.sight { background: var(--green); }
+  .tl-dot.stay { background: var(--red); }
+  .tl-dot.todo { background: #68746e; }
+  .tl-dot.form { background: var(--violet); }
+
+  /* カードに頼らず、種別は左の色アイコンと小さな色ラベルで示す（帯で囲わない）。 */
+
+  /* 種別ラベル（塗りチップではなく、色付きの小さな文字） */
+  .tl-kind {
+    flex: none;
+    align-self: center;
+    font-size: 11px;
+    font-weight: 950;
+    letter-spacing: .02em;
+  }
+  .tl-kind.move { color: var(--blue); }
+  .tl-kind.food { color: var(--amber); }
+  .tl-kind.sight { color: var(--green); }
+  .tl-kind.stay { color: var(--red); }
+  .tl-kind.todo { color: #68746e; }
+  .tl-kind.form { color: var(--violet); }
+
+  /* メタ行（場所・メモ ＋ 控えめな地図リンク） */
+  .tl-meta {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 3px 10px;
+    margin: 4px 0 0;
+  }
+  .tl-meta-text { min-width: 0; color: var(--muted); font-size: 12px; }
+
+  /* 移動セグメント（出発 → 到着） */
+  .tl-seg {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    min-width: 0;
+    flex-wrap: wrap;
+    font-weight: 900;
+    font-size: 14px;
+    color: var(--ink);
+  }
+  .tl-seg-arr {
+    display: inline-flex;
+    color: var(--blue);
+  }
+  .tl-seg-arr svg, .tl-seg-arr .hi { width: 18px; height: 18px; }
+
+  /* 宿泊（その日の宿）。塗りの箱ではなく、左の細い色罫＋アイコンで上品に。 */
+  .tl-stay {
+    --stay-accent: #c2543f;
+    display: flex;
+    align-items: center;
+    gap: 13px;
+    margin: 0 0 18px;
+    padding: 4px 2px 14px 14px;
+    border-left: 2px solid var(--stay-accent);
+  }
+  .tl-stay.is-empty { --stay-accent: #c9cdca; }
+  .tl-stay.is-prev { --stay-accent: #aab0ab; }
+  .tl-stay + .tl-stay { margin-top: -8px; }
+  .tl-stay-ic {
+    display: grid;
+    place-items: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 0;
+    background: color-mix(in srgb, var(--stay-accent) 14%, #fff);
+    color: var(--stay-accent);
+    flex: none;
+  }
+  .tl-stay-ic svg, .tl-stay-ic .hi { width: 19px; height: 19px; }
+  .tl-stay-body { display: flex; flex-direction: column; gap: 1px; min-width: 0; flex: 1; }
+  .tl-stay-label { font-size: 11px; font-weight: 800; color: var(--stay-accent); letter-spacing: .04em; }
+  .tl-stay-name { font-size: 16px; font-weight: 900; color: var(--ink); line-height: 1.25; overflow-wrap: anywhere; }
+  .tl-stay-muted { color: #8a908a; font-weight: 800; }
+  .tl-stay-place { margin-top: 1px; font-size: 12px; color: var(--muted); }
+  .tl-stay-map { flex: none; align-self: center; margin-left: auto; font-size: 12px; font-weight: 800; color: var(--green); white-space: nowrap; display: inline-flex; align-items: center; gap: 4px; text-decoration: none; }
+  .tl-stay-map:hover { text-decoration: underline; }
+  .tl-stay-map svg, .tl-stay-map .hi { width: 13px; height: 13px; }
+
+  .tl-plan { min-width: 0; }
+
+  .tl-plan-line {
+    display: flex;
+    gap: 7px;
+    align-items: center;
+    min-width: 0;
+  }
+
+
+  .tl-plan h3 {
+    min-width: 0;
+    margin: 0;
+    overflow: hidden;
+    font-size: 15px;
+    font-weight: 900;
+    letter-spacing: 0;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+
+  .tl-needed {
+    margin: 4px 0 0;
+    color: var(--ink);
+    font-size: 12px;
+    font-weight: 850;
+  }
+
+  .tl-maplink {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--green);
+    font-size: 12px;
+    font-weight: 800;
+    text-decoration: none;
+    white-space: nowrap;
+  }
+  .tl-maplink svg, .tl-maplink .hi { width: 13px; height: 13px; }
+  .tl-maplink:hover { text-decoration: underline; }
+
+  /* 費用 / リンク / 写真 の情報行: カード枠なし、列の間は縦罫線だけ */
+  .tl-card-grid {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    column-gap: 26px;
+  }
+
+  .tl-box {
+    min-width: 0;
+  }
+
+  .tl-card-grid > .tl-box + .tl-box {
+    padding-left: 26px;
+    border-left: 1px solid var(--line);
+  }
+
+  .tl-box h2 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 800;
+    letter-spacing: .01em;
+  }
+
+  /* 「この日の予定」フィードの各日ブロック */
+  .tl-dayblock { scroll-margin-top: 124px; }
+  .tl-dayblock + .tl-dayblock {
+    margin-top: 20px;
+    padding-top: 18px;
+    border-top: 1px solid var(--line);
+  }
+  .tl-dayblock-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+    margin: 0 0 13px;
+    font-size: 13px;
+    font-weight: 900;
+    color: var(--ink);
+  }
+  .tl-dayblock-weather { color: var(--amber); font-size: 12px; font-weight: 800; white-space: nowrap; }
+  .tl-dayblock-weather:empty { display: none; }
+  .tl-dayblock-empty { margin: 2px 0 4px; color: var(--muted); font-size: 13px; }
+
+  /* 旅行中の「いま / 次の予定」— 箱で囲わず、小見出し＋罫線で構成する */
+  .tl-now { margin: 0 0 6px; }
+  .tl-now-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0 0 2px;
+    color: var(--green);
+    font-size: 11.5px;
+    font-weight: 800;
+    letter-spacing: .04em;
+  }
+  .tl-now-head .hi { width: 15px; height: 15px; vertical-align: 0; }
+  .tl-now-line {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    padding: 8px 0;
+    border-top: 1px solid var(--line);
+    font-size: 15px;
+  }
+  .tl-now-lead {
+    flex: none;
+    min-width: 30px;
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 700;
+  }
+  .tl-now-line b { font-weight: 700; overflow-wrap: anywhere; }
+  .tl-now-until {
+    margin-left: auto;
+    flex: none;
+    color: var(--green);
+    font-size: 12.5px;
+    font-weight: 800;
+    white-space: nowrap;
+  }
+
+  /* 「次の日を表示」「全て見る」— 箱で囲わない、破線＋テキストの控えめな展開 */
+  .tl-more-wrap {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 4px 20px;
+    margin: 18px 0 2px;
+    padding-top: 13px;
+    border-top: 1px dashed var(--line-strong);
+  }
+  .tl-more {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 6px 0;
+    border: 0;
+    background: none;
+    color: var(--green);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 800;
+    cursor: pointer;
+  }
+  .tl-more:hover,
+  .tl-more:focus-visible { color: #084935; outline: none; }
+  .tl-more-ic { display: inline-flex; }
+  .tl-more-ic svg, .tl-more-ic .hi { width: 17px; height: 17px; }
+  .tl-more-all {
+    padding: 6px 0;
+    border: 0;
+    background: none;
+    color: var(--muted);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 800;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    cursor: pointer;
+  }
+  .tl-more-all:hover,
+  .tl-more-all:focus-visible { color: var(--green); outline: none; }
+
+  .tl-settle {
+    padding: 0;
+  }
+
+  /* 主役は「自分の精算額」。総額・立替は補助に降格。 */
+  .tl-settle-hero {
+    display: grid;
+    gap: 3px;
+    padding: 2px 0 4px;
+  }
+
+  .tl-settle-label {
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 500;
+  }
+
+  .tl-settle-amount {
+    font-size: 32px;
+    font-weight: 700;
+    line-height: 1.1;
+    letter-spacing: .01em;
+  }
+
+  .tl-settle-sub {
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 400;
+  }
+
+  .tl-settle-sub b {
+    color: var(--ink);
+    font-weight: 600;
+  }
+
+  .tl-settle-sub i {
+    margin: 0 8px;
+    font-style: normal;
+    color: var(--line-strong);
+  }
+
+  .tl-transfer-list {
+    display: grid;
+    gap: 7px;
+    margin-top: 13px;
+    padding-top: 12px;
+    border-top: 1px solid var(--line);
+  }
+
+  .tl-transfer-list h3 {
+    margin: 0;
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  .tl-transfer-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+    align-items: center;
+    min-height: 44px;
+    padding: 8px 10px;
+    border: 1px solid var(--line);
+    border-radius: 0;
+    background: #fff;
+    font-size: 13px;
+    font-weight: 500;
+  }
+
+  .tl-transfer-act {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .tl-transfer-row b {
+    color: var(--green);
+    font-size: 15px;
+    font-weight: 700;
+  }
+
+  .tl-transfer-row button.tl-paypay {
+    border-color: #ff0033;
+    background: #ff0033;
+  }
+
+  .tl-transfer-row small {
+    grid-column: 1 / -1;
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 560;
+  }
+
+  .tl-transfer-row button {
+    min-height: 44px;
+    border: 1px solid var(--green);
+    border-radius: 0;
+    background: var(--green);
+    color: #fff;
+    padding: 0 12px;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .tl-transfer-row button:disabled {
+    border-color: var(--line-strong);
+    background: var(--line);
+    color: var(--muted);
+    cursor: wait;
+  }
+
+  .tl-buttons {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 8px;
+    margin-top: 14px;
+  }
+
+  /* 読み取り専用（他人の公開計画）ビューのバッジ */
+  .tl-ro-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: 4px;
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 700;
+  }
+  .tl-ro-badge svg, .tl-ro-badge .hi { width: 14px; height: 14px; }
+
+  .tl-btn-ic { display: inline-flex; align-items: center; }
+  .tl-btn-ic .hi,
+  .tl-btn-ic svg { width: 17px; height: 17px; }
+
+  .tl-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    min-height: 44px;
+    border: 1px solid rgba(11, 90, 66, .36);
+    border-radius: 0;
+    background: #fff;
+    color: var(--green);
+    font: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    text-align: center;
+    text-decoration: none;
+    cursor: pointer;
+    transition: background .15s ease, border-color .15s ease;
+  }
+
+  /* 主操作（費用を追加）は塗りで強調 */
+  .tl-button.primary {
+    min-height: 48px;
+    border-color: var(--green);
+    background: var(--green);
+    color: #fff;
+  }
+
+  .tl-button.primary:hover,
+  .tl-button.primary:focus-visible {
+    background: #0d6c4f;
+  }
+
+  /* セカンダリ（費用明細を見る など）は控えめに */
+  .tl-button.ghost {
+    border-color: var(--line-strong);
+    color: var(--ink);
+    font-weight: 500;
+  }
+
+  .tl-button.ghost:hover,
+  .tl-button.ghost:focus-visible {
+    border-color: var(--green);
+    color: var(--green);
+  }
+
+  .tl-expense-details {
+    display: none;
+    margin-top: 12px;
+    border: 1px solid var(--line);
+    background: #fff;
+  }
+
+  .tl-expense-details.is-visible {
+    display: block;
+  }
+
+  .tl-expense-details-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    align-items: baseline;
+    padding: 10px 11px;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .tl-expense-details-head b {
+    font-size: 13px;
+    font-weight: 760;
+  }
+
+  .tl-expense-details-head span {
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 620;
+  }
+
+  .tl-expense-table-wrap {
+    overflow-x: auto;
+  }
+
+  .tl-expense-table {
+    width: 100%;
+    min-width: 680px;
+    border-collapse: collapse;
+    font-size: 12px;
+  }
+
+  .tl-expense-table th,
+  .tl-expense-table td {
+    padding: 8px 9px;
+    border-bottom: 1px solid var(--line);
+    text-align: left;
+    vertical-align: top;
+  }
+
+  .tl-expense-table th {
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 760;
+    white-space: nowrap;
+  }
+
+  .tl-expense-table td {
+    font-weight: 560;
+  }
+
+  .tl-expense-table td:last-child,
+  .tl-expense-table th:last-child {
+    text-align: right;
+    white-space: nowrap;
+  }
+
+  .tl-expense-empty {
+    padding: 12px;
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 620;
+  }
+
+  .tl-expense-entry {
+    display: grid;
+    gap: 12px;
+  }
+
+  .tl-expense-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: flex-end;
+  }
+
+  .tl-expense-head a {
+    color: var(--green);
+    font-size: 12px;
+    font-weight: 600;
+    text-decoration: underline;
+    white-space: nowrap;
+  }
+
+  .tl-expense-form {
+    display: grid;
+    gap: 10px;
+  }
+
+  .tl-expense-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 9px;
+  }
+
+  .tl-field {
+    display: grid;
+    gap: 5px;
+    min-width: 0;
+  }
+
+  .tl-field.wide {
+    grid-column: 1 / -1;
+  }
+
+  .tl-field span,
+  .tl-split-label {
+    color: var(--ink);
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  .tl-required-mark {
+    color: var(--red);
+    font-weight: 900;
+  }
+
+  .tl-field input,
+  .tl-field select,
+  .tl-field textarea {
+    width: 100%;
+    min-width: 0;
+    min-height: 44px;
+    border: 1px solid var(--line-strong);
+    border-radius: 0;
+    background: #fff;
+    color: var(--ink);
+    font: inherit;
+    font-size: 14px;
+    font-weight: 500;
+  }
+
+  .tl-field input:focus-visible,
+  .tl-field select:focus-visible,
+  .tl-field textarea:focus-visible {
+    outline: none;
+    border-color: var(--green);
+    box-shadow: 0 0 0 3px var(--green-soft);
+  }
+
+  .tl-field input,
+  .tl-field select {
+    padding: 9px 11px;
+  }
+
+  .tl-field textarea {
+    min-height: 64px;
+    padding: 8px 9px;
+    resize: vertical;
+  }
+
+  .tl-photo-field {
+    padding: 10px;
+    border: 1px solid var(--line);
+    background: #fff;
+  }
+
+  .tl-photo-field input[type="file"] {
+    min-height: 0;
+    border: 0;
+    background: transparent;
+    padding: 0;
+    font-size: 13px;
+  }
+
+  .tl-split {
+    display: grid;
+    gap: 7px;
+  }
+
+  .tl-segments {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1px;
+    border: 1px solid var(--line-strong);
+    background: var(--line-strong);
+  }
+
+  .tl-segment {
+    display: grid;
+    min-width: 0;
+    min-height: 44px;
+    background: #fff;
+    cursor: pointer;
+  }
+
+  .tl-segment input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .tl-segment span {
+    display: grid;
+    place-items: center;
+    padding: 7px 8px;
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 620;
+    line-height: 1.25;
+    text-align: center;
+  }
+
+  .tl-segment input:checked + span {
+    background: var(--green);
+    color: #fff;
+  }
+
+  .tl-split-detail {
+    display: none;
+    gap: 8px;
+    padding: 10px;
+    border: 1px solid var(--line);
+    background: #fff;
+  }
+
+  .tl-split-detail.is-visible {
+    display: grid;
+  }
+
+  .tl-participant-picks {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 7px;
+  }
+
+  .tl-pick {
+    display: grid;
+    min-width: 0;
+    cursor: pointer;
+  }
+
+  .tl-pick input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .tl-pick span {
+    display: grid;
+    place-items: center;
+    min-height: 34px;
+    border: 1px solid var(--line-strong);
+    background: #fff;
+    color: var(--ink);
+    font-size: 12px;
+    font-weight: 620;
+  }
+
+  .tl-pick input:checked + span {
+    border-color: var(--green);
+    background: var(--green-soft);
+    color: var(--green);
+  }
+
+  .tl-individual-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .tl-share-total {
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 620;
+  }
+
+  .tl-expense-submit {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px;
+    align-items: center;
+  }
+
+  .tl-expense-submit button {
+    min-height: 48px;
+    border: 1px solid var(--green);
+    border-radius: 0;
+    background: var(--green);
+    color: #fff;
+    padding: 0 24px;
+    font: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .tl-expense-submit button:disabled {
+    border-color: var(--line-strong);
+    background: var(--line);
+    color: var(--muted);
+    cursor: wait;
+  }
+
+  .tl-expense-status {
+    min-width: 0;
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 620;
+  }
+
+  .tl-expense-status.is-error {
+    color: var(--red);
+  }
+
+  .tl-expense-status.is-ok {
+    color: var(--green);
+  }
+
+  /* 費用入力ボトムシート（読む画面と書く画面の分離） */
+  .tl-sheet {
+    position: fixed;
+    inset: 0;
+    z-index: 9990;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+  }
+
+  .tl-sheet[hidden] { display: none; }
+
+  .tl-sheet-scrim {
+    position: absolute;
+    inset: 0;
+    background: rgba(17, 25, 22, .45);
+    animation: tl-fade .18s ease;
+  }
+
+  .tl-sheet-panel {
+    position: relative;
+    width: 100%;
+    max-height: 88vh;
+    display: flex;
+    flex-direction: column;
+    background: #fff;
+    border-radius: 0;
+    border-top: 1px solid var(--line-strong);
+    animation: tl-slide-up .22s ease;
+  }
+
+  .tl-sheet-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 8px 14px 18px;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .tl-sheet-head b {
+    font-size: 16px;
+    font-weight: 700;
+  }
+
+  .tl-sheet-close {
+    width: 44px;
+    height: 44px;
+    display: grid;
+    place-items: center;
+    border: 0;
+    background: none;
+    color: var(--muted);
+    font-size: 18px;
+    cursor: pointer;
+  }
+
+  .tl-sheet-close:hover,
+  .tl-sheet-close:focus-visible { color: var(--ink); }
+
+  .tl-sheet-body {
+    padding: 16px 18px calc(20px + env(safe-area-inset-bottom));
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  @media (min-width: 721px) {
+    .tl-sheet { align-items: center; padding: 24px; }
+    .tl-sheet-panel { max-width: 560px; max-height: 90vh; border-radius: 0; animation: tl-fade .2s ease; }
+  }
+
+  @keyframes tl-fade { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes tl-slide-up { from { transform: translateY(100%); } to { transform: translateY(0); } }
+
+  .tl-docs {
+    display: grid;
+  }
+
+  .tl-doc {
+    display: grid;
+    grid-template-columns: 30px minmax(0, 1fr) auto;
+    gap: 8px;
+    align-items: center;
+    min-height: 46px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--line);
+    text-decoration: none;
+  }
+
+  .tl-doc:last-child { border-bottom: 0; }
+  .tl-doc-icon { display: grid; place-items: center; width: 28px; height: 28px; background: var(--green-soft); color: var(--green); font-size: 12px; font-weight: 950; }
+  .tl-doc b { min-width: 0; overflow: hidden; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+  .tl-doc span:last-child { display: inline-flex; align-items: center; color: var(--muted); font-weight: 950; }
+
+  .tl-checks {
+    display: grid;
+    gap: 7px;
+    padding: 12px 0 0;
+    margin-top: 12px;
+    border-top: 1px solid var(--line);
+  }
+
+  .tl-checks label {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 8px;
+    align-items: center;
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 750;
+  }
+
+  .tl-checks input {
+    width: 15px;
+    height: 15px;
+    accent-color: var(--green);
+  }
+
+  .tl-local-info {
+    grid-column: 1 / -1;
+  }
+
+  .tl-local-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .tl-local-card {
+    display: grid;
+    gap: 10px;
+    min-width: 0;
+    padding: 13px 14px 14px;
+    border-right: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+  }
+
+  .tl-local-card:nth-child(3n) { border-right: 0; }
+
+  .tl-local-top {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px;
+    align-items: start;
+  }
+
+  .tl-local-country {
+    min-width: 0;
+    font-size: 15px;
+    font-weight: 950;
+  }
+
+  .tl-local-currency {
+    color: var(--green);
+    font-size: 12px;
+    font-weight: 950;
+    text-align: right;
+  }
+
+  .tl-local-meta {
+    display: grid;
+    gap: 6px;
+  }
+
+  .tl-local-meta div {
+    display: grid;
+    gap: 2px;
+  }
+
+  .tl-local-meta dt {
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 850;
+  }
+
+  .tl-local-meta dd {
+    margin: 0;
+    color: var(--ink);
+    font-size: 12px;
+    font-weight: 620;
+  }
+
+  .tl-local-note {
+    margin: 0;
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 620;
+  }
+
+  .tl-photo-body {
+    display: grid;
+    gap: 10px;
+    padding: 0;
+  }
+
+  .tl-photo-art {
+    min-height: 122px;
+    border: 1px solid var(--line);
+    background:
+      linear-gradient(155deg, transparent 48%, rgba(255, 255, 255, .86) 49% 51%, transparent 52%),
+      linear-gradient(160deg, #2f6b89 0 32%, #b9cbbf 33% 46%, #bf7044 47% 62%, #e7c57d 63% 100%);
+  }
+
+  .tl-photo-body b,
+  .tl-photo-body span {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .tl-photo-body b { font-size: 14px; }
+  .tl-photo-body span { color: var(--muted); font-size: 12px; }
+
+  .tl-foot {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 12px;
+    padding: 11px 32px;
+    border-top: 1px solid var(--line);
+    background: #fff;
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 800;
+  }
+
+  .tl-foot a {
+    color: var(--green);
+    text-decoration: none;
+  }
+
+  .tl-error {
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--line);
+    background: #fff7ed;
+    color: #8a3d0d;
+    font-size: 13px;
+    font-weight: 850;
+  }
+
+  .tl-mobile-nav {
+    display: none;
+  }
+
+  .tl-title { font-weight: 680; }
+  .tl-kicker,
+  .tl-source b,
+  .tl-day b,
+  .tl-panel-head h2,
+  .tl-day-title h2,
+  .tl-box h2,
+  .tl-money strong {
+    font-weight: 640;
+  }
+
+  .tl-action,
+  .tl-sub,
+  .tl-source,
+  .tl-panel-head span,
+  .tl-panel-head a,
+  .tl-pin-name,
+  .tl-map-status,
+  .tl-time,
+  .tl-plan h3,
+  .tl-maplink,
+  .tl-upcoming-date,
+  .tl-upcoming-title,
+  .tl-money span,
+  .tl-button,
+  .tl-doc b,
+  .tl-doc-icon,
+  .tl-doc span:last-child,
+  .tl-checks label,
+  .tl-foot,
+  .tl-error {
+    font-weight: 560;
+  }
+
+  .tl-chip,
+  .tl-pin-num {
+    font-weight: 620;
+  }
+
+  @media (max-width: 960px) {
+    .tl-main { grid-template-columns: 1fr; }
+    .tl-card-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    /* 2カラム時: 左端の列には縦罫線を出さず、2行目には横罫線を渡す */
+    .tl-card-grid > .tl-box:nth-child(odd) { border-left: 0; padding-left: 0; }
+    .tl-card-grid > .tl-box:nth-child(n + 3) {
+      margin-top: 20px;
+      padding-top: 20px;
+      border-top: 1px solid var(--line);
+    }
+    .tl-local-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .tl-local-card:nth-child(3n) { border-right: 1px solid var(--line); }
+    .tl-local-card:nth-child(2n) { border-right: 0; }
+  }
+
+  @media (max-width: 620px) {
+    .trip-live {
+      max-width: none;
+      min-height: 100vh;
+      min-height: 100dvh;
+      border: 0;
+      padding-bottom: calc(68px + env(safe-area-inset-bottom));
+    }
+
+    .trip-live.is-mobile-responsive [data-mobile-view]:not(.is-mobile-active) {
+      display: none;
+    }
+
+    .tl-head {
+      position: sticky;
+      top: 0;
+      z-index: 40;
+      gap: 12px;
+      padding: 13px 0 10px;
+      background: #fff;
+    }
+    .tl-titlewrap { padding-inline: 16px; }
+    .tl-sub { flex-basis: 100%; margin-top: 2px; }
+    .tl-kicker { display: none; }
+    .tl-title { font-size: 20px; line-height: 1.05; }
+    .tl-sub { gap: 8px 10px; font-size: 11px; }
+    .tl-actions { display: none; }
+    .tl-action { min-height: 54px; padding: 8px 7px; }
+    /* 重ね表示は共通ベースで対応済み。スマホは日タブのサイズ・左寄せだけ調整 */
+    /* ヘッダーを低くして上の余白を削り、タイトルを少し上へ。
+       スマホはセクションタブが非表示なので、日付バーの高さを固定して同じ値だけ
+       負マージンで引き上げ、ヒーロー下パディングも同値にすることで、日付バーの
+       下端をヒーロー画像の最下端にぴったり合わせる（下の余分な空白を無くす）。 */
+    #tripLive .ah--hero { min-height: 172px; padding-top: 10px; padding-bottom: 70px; }
+    #tripLive .tl-days { margin-top: -70px; height: 70px; }
+    /* 複数都市の計画では、都市名ラベルを日付タブの上に残す */
+    .tl-days .tl-daygroup-label {
+      display: block;
+      min-height: 18px;
+      padding: 2px 8px 0;
+      color: rgba(255,255,255,.9);
+      font-size: 10px;
+      line-height: 1.3;
+      font-weight: 620;
+    }
+    .tl-days { grid-auto-columns: 82px; scrollbar-width: none; }
+    .tl-days::-webkit-scrollbar { display: none; }
+    .tl-daygroup .tl-day { min-width: 76px; }
+    .tl-days .tl-day {
+      min-height: 52px;
+      padding: 5px 8px;
+      justify-content: flex-start;
+      align-content: center;
+      text-align: left;
+    }
+    .tl-days .tl-day b { font-size: 12px; }
+    .tl-main {
+      display: block;
+      padding: 0 16px 14px;
+    }
+    .tl-main > .tl-panel,
+    .tl-main > .tl-card-grid {
+      padding: 18px 0;
+    }
+    /* モバイルは1カラム縦積み。列の縦罫線はやめ、箱の間は横罫線で仕切る */
+    .tl-card-grid > .tl-box + .tl-box {
+      border-left: 0;
+      padding-left: 0;
+      margin-top: 20px;
+      padding-top: 20px;
+      border-top: 1px solid var(--line);
+    }
+    .tl-sec-head {
+      flex-wrap: wrap;
+      row-gap: 2px;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+    .tl-sec-head h2 {
+      font-size: 14px;
+      line-height: 1.35;
+      font-weight: 680;
+    }
+    .tl-sec-ic .hi,
+    .tl-sec-ic svg {
+      width: 17px;
+      height: 17px;
+    }
+    .tl-sec-link,
+    .tl-sec-meta {
+      font-size: 11px;
+      font-weight: 560;
+    }
+    .tl-sec-link .hi,
+    .tl-sec-link svg {
+      width: 13px;
+      height: 13px;
+    }
+    .tl-map {
+      min-height: 0;
+      max-height: 260px;
+      aspect-ratio: 16 / 9;
+    }
+    .trip-live[data-mobile-view="map"] .tl-map {
+      min-height: calc(100dvh - 230px);
+      max-height: none;
+      aspect-ratio: auto;
+    }
+    .tl-pin { grid-template-columns: 28px; }
+    .tl-pin-name { display: none; }
+    .tl-map-status { grid-template-columns: 1fr; }
+    .tl-timeline { padding: 0; }
+    .tl-day-title {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr);
+      align-items: center;
+      scroll-margin-top: 128px;
+      margin-bottom: 10px;
+    }
+    .tl-day-title > span {
+      grid-column: 1 / -1;
+      margin-left: 0;
+      justify-self: end;
+      font-size: 11px;
+      font-weight: 620;
+    }
+    .tl-day-title h2 {
+      font-size: 14px;
+      line-height: 1.35;
+      font-weight: 680;
+    }
+    .tl-day-heading-meta {
+      font-size: 11px;
+      font-weight: 560;
+    }
+    .tl-item {
+      grid-template-columns: 42px 22px minmax(0, 1fr);
+      gap: 6px;
+      padding: 10px 0;
+    }
+    .tl-time {
+      font-size: 11px;
+      font-weight: 560;
+      padding-top: 3px;
+    }
+    .tl-dot {
+      width: 22px;
+      height: 22px;
+    }
+    .tl-dot svg,
+    .tl-dot .hi {
+      width: 12px;
+      height: 12px;
+    }
+    .tl-kind {
+      font-size: 10.5px;
+      font-weight: 620;
+    }
+    .tl-plan-line {
+      gap: 6px;
+    }
+    .tl-plan h3 {
+      font-size: 13.5px;
+      line-height: 1.35;
+      font-weight: 680;
+    }
+    .tl-meta {
+      margin-top: 3px;
+      gap: 2px 8px;
+    }
+    .tl-meta-text,
+    .tl-needed,
+    .tl-maplink {
+      font-size: 11px;
+      font-weight: 560;
+    }
+    .tl-seg {
+      gap: 5px;
+      font-size: 13px;
+      font-weight: 680;
+    }
+    .tl-stay {
+      gap: 10px;
+      margin-bottom: 14px;
+      padding: 3px 0 12px 12px;
+    }
+    .tl-stay-ic {
+      width: 32px;
+      height: 32px;
+    }
+    .tl-stay-ic svg,
+    .tl-stay-ic .hi {
+      width: 16px;
+      height: 16px;
+    }
+    .tl-stay-label {
+      font-size: 10.5px;
+      font-weight: 620;
+    }
+    .tl-stay-name {
+      font-size: 13.5px;
+      font-weight: 680;
+      line-height: 1.35;
+    }
+    .tl-stay-place,
+    .tl-stay-map {
+      font-size: 11px;
+      font-weight: 560;
+    }
+    .tl-meta { row-gap: 6px; }
+    .tl-card-grid { display: block; }
+    .tl-local-grid { display: block; }
+    .tl-local-card,
+    .tl-local-card:nth-child(2n),
+    .tl-local-card:nth-child(3n) {
+      border-right: 0;
+    }
+    .tl-buttons { grid-template-columns: 1fr; }
+    .tl-expense-grid,
+    .tl-individual-grid,
+    .tl-expense-submit {
+      grid-template-columns: 1fr;
+    }
+    .tl-participant-picks,
+    .tl-segments {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .tl-foot { grid-template-columns: 1fr; padding: 11px 12px; }
+    .tl-mobile-nav {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 80;
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 0;
+      padding: 7px 8px calc(7px + env(safe-area-inset-bottom));
+      border-top: 1px solid var(--line-strong);
+      background: #fff;
+    }
+    .tl-mobile-nav button {
+      display: grid;
+      place-items: center;
+      min-width: 0;
+      height: 46px;
+      border: 0;
+      background: transparent;
+      color: var(--muted);
+      font: inherit;
+      font-size: 12px;
+      font-weight: 560;
+    }
+    .tl-mobile-nav button[aria-selected="true"] {
+      background: var(--green);
+      color: #fff;
+    }
+  }

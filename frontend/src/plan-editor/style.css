@@ -1,0 +1,1566 @@
+  :root {
+    --ink: #17211d;
+    --muted: #66736e;
+    --line: #e3e8e4;
+    --line-strong: #c5d0c9;
+    --paper: #ffffff;
+    --wash: #f6f8f5;
+    --wash-2: #edf4ef;
+    --green: #075f46;
+    --green-deep: #063f32;
+    --green-soft: #e4f2ec;
+    --blue: #1e6f96;
+    --blue-soft: #e6f1f6;
+    --amber: #b66d10;
+    --amber-soft: #fbf1dd;
+    --red: #cf4f3d;
+    --violet: #6246a6;
+    --gray: #68746e;
+    --shadow: none;
+    --shadow-soft: none;
+    --radius: 0;
+    --radius-lg: 0;
+    --head-h: 72px;
+  }
+
+  html { background: #fff; }
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: #fff;
+    color: var(--ink);
+    font-family: "Avenir Next", "Hiragino Sans", "Yu Gothic", Meiryo, sans-serif;
+    line-height: 1.55;
+  }
+
+  a { color: inherit; }
+
+  body.is-plan-create-entry .pe {
+    animation: planCreateEntry .34s cubic-bezier(.2, .8, .2, 1) both;
+  }
+
+  @keyframes planCreateEntry {
+    from {
+      opacity: 0;
+      transform: translateY(18px) scale(.985);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    body.is-plan-create-entry .pe {
+      animation: none;
+    }
+  }
+  .hi { width: 1.15em; height: 1.15em; vertical-align: -0.18em; flex: none; }
+
+  .pe {
+    max-width: var(--app-width, 1120px);
+    margin: 0 auto;
+    min-height: 100vh;
+  }
+
+  /* ヘッダー（ダッシュボード流: 左に戻る< → タイトル → 右にアイコンのみ） */
+  .pe-head {
+    position: sticky;
+    top: 0;
+    z-index: 40;
+    min-height: var(--head-h);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 22px;
+    border-bottom: 1px solid var(--line);
+    background:
+      linear-gradient(90deg, rgba(7, 95, 70, .06), transparent 52%),
+      #fff;
+  }
+
+  .pe-headmain { flex: 1; min-width: 0; }
+
+  .pe-head-kicker {
+    margin: 0 0 2px;
+    color: var(--green);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .13em;
+    text-transform: uppercase;
+  }
+
+  .pe-head h1 {
+    margin: 0;
+    font-size: clamp(18px, 2.4vw, 22px);
+    font-weight: 700;
+    line-height: 1.15;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* 左の戻る・右のアクションはアイコンのみの丸ボタン */
+  .pe-back,
+  .pe-headbtn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    width: 36px;
+    height: 36px;
+    border: 0;
+    border-radius: 50%;
+    background: none;
+    color: var(--muted);
+    text-decoration: none;
+    cursor: pointer;
+    transition: color .12s ease, background-color .12s ease;
+  }
+  .pe-back { margin-left: -7px; color: var(--ink); }
+  .pe-headbtn[hidden] { display: none; }
+  .pe-back .hi, .pe-headbtn .hi { width: 18px; height: 18px; vertical-align: 0; }
+  .pe-back:hover, .pe-back:focus-visible,
+  .pe-headbtn:hover, .pe-headbtn:focus-visible {
+    color: var(--green);
+    background: var(--green-soft);
+  }
+
+  .pe-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 2px;
+    color: var(--green);
+    font-size: 12px;
+    font-weight: 500;
+  }
+
+  .pe-meta .is-dirty { color: var(--amber); }
+  .pe-meta .is-ok { color: var(--green); }
+
+  .pe-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-height: 40px;
+    padding: 0 15px;
+    border: 1px solid var(--line-strong);
+    background: #fff;
+    color: var(--ink);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    text-decoration: none;
+    white-space: nowrap;
+    cursor: pointer;
+    border-radius: 0;
+  }
+
+  .pe-btn[hidden] { display: none; }
+  .pe-btn:hover { border-color: var(--green); }
+  .pe-btn.green { border-color: rgba(7, 95, 70, .32); background: var(--green-soft); color: var(--green); }
+  .pe-btn.primary { border-color: var(--green); background: var(--green); color: #fff; }
+  .pe-btn:disabled { opacity: .5; cursor: not-allowed; }
+
+  /* 2ペイン */
+  .pe-stage {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(360px, 430px);
+    align-items: start;
+  }
+
+  .pe-main { min-width: 0; border-right: 1px solid var(--line); }
+
+  .pe-mapwrap {
+    position: sticky;
+    top: var(--head-h);
+    align-self: start;
+    height: calc(100vh - var(--head-h));
+    display: grid;
+    grid-template-rows: 1fr auto;
+    background: #e8efe9;
+  }
+
+  .pe-map { width: 100%; height: 100%; min-height: 320px; background: #e8efe9; }
+
+  /* 地図の高さ変更グリップ（スマホのボトムシートでのみ表示） */
+  .pe-map-grip { display: none; }
+  .pe-map-close { display: none; }
+  .pe-map-foot {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 12px;
+    padding: 9px 12px;
+    border-top: 1px solid var(--line);
+    background: #fff;
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 500;
+  }
+  .pe-legend { display: inline-flex; align-items: center; gap: 5px; }
+  .pe-legend i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+  .pe-map-hint { color: var(--green); font-weight: 600; }
+
+  /* セクション共通 */
+  .pe-setup {
+    padding: 30px 22px 26px;
+    border-bottom: 1px solid var(--line);
+    background: #fff;
+  }
+
+  .pe-setup-inner { max-width: 840px; margin: 0 auto; }
+
+  .pe-setup-top {
+    margin-bottom: 18px;
+  }
+
+  .pe-kicker {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    margin: 0 0 10px;
+    padding: 4px 11px 4px 9px;
+    border-radius: 0;
+    background: #fff;
+    border: 1px solid var(--green-soft);
+    color: var(--green);
+    font-size: 11.5px;
+    font-weight: 600;
+    letter-spacing: .04em;
+  }
+
+  .pe-setup-title {
+    margin: 0;
+    color: var(--ink);
+    font-size: clamp(22px, 3vw, 30px);
+    font-weight: 700;
+    line-height: 1.15;
+    letter-spacing: .01em;
+  }
+
+  .pe-setup-copy {
+    max-width: 560px;
+    margin: 8px 0 0;
+    color: var(--muted);
+    font-size: 14px;
+    font-weight: 400;
+  }
+
+  /* ステップレール（実状態に連動: is-current / is-done） */
+  .pe-steps {
+    list-style: none;
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+    margin: 18px 0 0;
+    padding: 0;
+  }
+
+  .pe-step {
+    position: relative;
+    flex: 1 1 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+    padding: 4px 6px;
+    color: var(--muted);
+  }
+
+  /* ステップ間のコネクタ（横並び） */
+  .pe-step + .pe-step::before {
+    content: "";
+    position: absolute;
+    left: -8px;
+    top: 50%;
+    width: 16px;
+    height: 2px;
+    transform: translateY(-50%);
+    background: var(--line-strong);
+  }
+
+  .pe-step-n {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    border: 1.5px solid var(--line-strong);
+    background: #fff;
+    color: var(--muted);
+    font-size: 13px;
+    font-weight: 700;
+    transition: background .18s ease, border-color .18s ease, color .18s ease;
+  }
+  .pe-step-n .hi { width: 16px; height: 16px; vertical-align: 0; }
+  .pe-step-t { display: grid; gap: 1px; min-width: 0; }
+  .pe-step-t b { color: var(--ink); font-size: 13px; font-weight: 600; line-height: 1.2; }
+  .pe-step-t small { font-size: 10.5px; font-weight: 500; color: var(--muted); }
+
+  .pe-step.is-current .pe-step-n {
+    border-color: var(--green);
+    background: var(--green);
+    color: #fff;
+    box-shadow: 0 0 0 4px var(--green-soft);
+  }
+  .pe-step.is-current .pe-step-t b { color: var(--green); }
+
+  .pe-step.is-done .pe-step-n {
+    border-color: var(--green);
+    background: var(--green-soft);
+    color: var(--green);
+  }
+  .pe-step.is-done + .pe-step::before { background: var(--green); }
+
+  .pe-stepnav {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 14px;
+  }
+
+  .pe-stepnav-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-height: 38px;
+    padding: 0 14px;
+    border: 1px solid var(--line-strong);
+    border-radius: 0;
+    background: #fff;
+    color: var(--ink);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .pe-stepnav-btn .hi {
+    width: 16px;
+    height: 16px;
+  }
+
+  .pe-stepnav-btn.primary {
+    border-color: var(--green);
+    background: var(--green);
+    color: #fff;
+  }
+
+  .pe-stepnav-btn:disabled {
+    opacity: .42;
+    cursor: not-allowed;
+  }
+  .pe-stepnav-btn[hidden] { display: none; }
+  .pe-step-reason {
+    min-height: 18px;
+    margin: 8px 0 0;
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 500;
+    text-align: right;
+  }
+  .pe-step-reason:empty { display: none; }
+
+  .pe-sec-title {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    margin: 0 0 8px;
+    color: var(--green);
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0;
+    text-transform: none;
+  }
+
+  .pe-sec-note { margin: 0 0 14px; color: var(--muted); font-size: 13px; font-weight: 500; }
+  .pe-sec-note b { font-weight: 600; }
+
+  .pe-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 11px; }
+  .pe-field { display: grid; gap: 6px; min-width: 0; align-content: start; }
+  .pe-field.c2 { grid-column: span 2; }
+  .pe-field.c3 { grid-column: span 3; }
+  .pe-field.c6 { grid-column: 1 / -1; }
+
+  .pe-field > span {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--ink);
+    font-size: 12.5px;
+    font-weight: 600;
+  }
+  .pe-field > span em { font-style: normal; color: var(--muted); font-size: 11px; font-weight: 400; }
+  .pe-req { padding: 1px 7px; border-radius: 0; background: var(--green-soft); color: var(--green); font-size: 10px; font-weight: 600; letter-spacing: .02em; }
+
+  .pe-field input,
+  .pe-field select,
+  .pe-field textarea {
+    width: 100%;
+    min-width: 0;
+    min-height: 46px;
+    border: 1px solid var(--line-strong);
+    background: #fff;
+    color: var(--ink);
+    padding: 10px 12px;
+    font: inherit;
+    font-size: 14px;
+    border-radius: 0;
+  }
+  .pe-field textarea { min-height: 54px; resize: vertical; }
+  .pe-field input:focus,
+  .pe-field select:focus,
+  .pe-field textarea:focus {
+    outline: none;
+    border-color: var(--green);
+    box-shadow: 0 0 0 3px rgba(11, 90, 66, .14);
+  }
+  .pe-daterange-warn { color: var(--red); font-size: 12px; font-weight: 600; margin: 10px 0 0; }
+
+  /* サムネ画像 */
+  .pe-cover { display: flex; gap: 12px; align-items: flex-start; }
+  .pe-cover-preview {
+    flex: none;
+    width: 200px;
+    max-width: 46vw;
+    aspect-ratio: 16 / 9;
+    background: var(--wash) center / cover no-repeat;
+    border: 1px solid var(--line-strong);
+  }
+  .pe-cover-preview.is-custom { border-color: var(--green); }
+  .pe-cover-actions { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding-top: 2px; }
+  .pe-cover-pick { cursor: pointer; }
+  .pe-cover-note { color: var(--muted); font-size: 11px; font-weight: 500; }
+  /* .pe-mini は display:inline-flex なので hidden 属性が効かない。明示的に隠す。 */
+  .pe-mini[hidden] { display: none; }
+
+  /* カレンダー連携 */
+  .pe-calsync {
+    display: grid;
+    gap: 8px;
+    margin-top: 16px;
+    padding: 14px;
+    border: 1px solid var(--line);
+    border-radius: 0;
+    background: #fff;
+  }
+  .pe-calsync-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    color: var(--green);
+    font-size: 13px;
+    font-weight: 700;
+  }
+  .pe-calsync-label .hi { width: 16px; height: 16px; vertical-align: 0; }
+  .pe-calsync-btns { display: flex; flex-wrap: wrap; gap: 8px; }
+  .pe-calsync-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    min-height: 42px;
+    padding: 0 16px;
+    border: 1px solid var(--line-strong);
+    border-radius: 0;
+    background: #fff;
+    color: var(--ink);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .pe-calsync-btn:hover { border-color: var(--green); color: var(--green); }
+  .pe-calsync-btn.primary { border-color: var(--green); background: var(--green); color: #fff; }
+  .pe-calsync-btn.primary:hover { background: var(--green-deep); color: #fff; }
+  .pe-calsync-btn .hi { width: 16px; height: 16px; vertical-align: 0; }
+  .pe-calsync-btn:disabled { opacity: .5; cursor: not-allowed; }
+  .pe-calsync-note { color: var(--muted); font-size: 11.5px; font-weight: 500; }
+  .pe-calsync-final { margin: 12px 18px 88px; }
+
+  /* メンバー（チップ＋候補＋招待） */
+  .pe-members { display: flex; flex-wrap: wrap; gap: 7px; }
+  .pe-members:empty { display: none; }
+  .pe-chip-m {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 6px 5px 12px;
+    border: 1px solid var(--line-strong);
+    border-radius: 0;
+    background: #fff;
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .pe-chip-m.is-self { background: var(--green-soft); border-color: rgba(7, 95, 70, .3); color: var(--green); }
+  .pe-chip-m > .hi { width: 15px; height: 15px; vertical-align: 0; }
+  .pe-chip-self { font-size: 10px; font-weight: 700; color: var(--green); }
+  .pe-chip-ic {
+    display: inline-grid;
+    place-items: center;
+    width: 24px;
+    height: 24px;
+    border: 0;
+    border-radius: 50%;
+    background: none;
+    color: var(--muted);
+    cursor: pointer;
+  }
+  .pe-chip-ic:hover { background: rgba(0, 0, 0, .05); color: var(--ink); }
+  .pe-chip-ic.invite:hover { color: var(--green); }
+  .pe-chip-ic.del:hover { color: var(--red); }
+  .pe-chip-ic .hi { width: 15px; height: 15px; vertical-align: 0; }
+
+  .pe-member-add { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; margin-top: 9px; max-width: 480px; }
+  .pe-member-inputwrap { position: relative; min-width: 0; }
+  .pe-member-inputwrap input { width: 100%; min-height: 44px; border: 1px solid var(--line-strong); border-radius: 0; padding: 9px 12px; font: inherit; font-size: 14px; }
+  .pe-member-inputwrap input:focus { outline: none; border-color: var(--green); box-shadow: 0 0 0 3px rgba(7, 95, 70, .14); }
+  .pe-member-suggest {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: calc(100% + 4px);
+    z-index: 30;
+    max-height: 230px;
+    overflow-y: auto;
+    background: #fff;
+    border: 1px solid var(--line-strong);
+    border-radius: 0;
+  }
+  .pe-member-suggest[hidden] { display: none; }
+  .pe-suggest-head { padding: 8px 12px 4px; color: var(--muted); font-size: 11px; font-weight: 700; letter-spacing: .04em; }
+  .pe-suggest-item { display: flex; align-items: center; gap: 9px; width: 100%; padding: 10px 12px; border: 0; border-top: 1px solid var(--line); background: #fff; font: inherit; font-size: 14px; font-weight: 600; text-align: left; cursor: pointer; }
+  .pe-suggest-item:hover, .pe-suggest-item.is-active { background: var(--green-soft); color: var(--green); }
+  .pe-suggest-item .hi { color: var(--green); width: 16px; height: 16px; vertical-align: 0; }
+
+  /* 名前登録モーダル */
+  .pe-modal { position: fixed; inset: 0; z-index: 9999; display: grid; place-items: center; padding: 18px; background: rgba(17, 25, 22, .45); }
+  .pe-modal-box { width: min(420px, 100%); background: #fff; border: 1px solid var(--line-strong); border-radius: 0; overflow: hidden; }
+  .pe-modal-box h2 { margin: 0; padding: 20px 22px 4px; font-size: 18px; font-weight: 700; }
+  .pe-modal-box p { margin: 0; padding: 0 22px; color: var(--muted); font-size: 13px; }
+  .pe-modal-body { padding: 16px 22px 20px; display: grid; gap: 12px; }
+  .pe-modal-body input { min-height: 48px; border: 1px solid var(--line-strong); border-radius: 0; padding: 10px 12px; font: inherit; font-size: 16px; }
+  .pe-modal-body input:focus { outline: none; border-color: var(--green); box-shadow: 0 0 0 3px rgba(7, 95, 70, .14); }
+  .pe-modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
+  .pe-modal-btn { min-height: 44px; padding: 0 18px; border: 1px solid var(--green); border-radius: 0; background: var(--green); color: #fff; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
+  .pe-modal-btn.ghost { background: #fff; color: var(--ink); border-color: var(--line-strong); }
+  .pe-modal-sub { padding-top: 4px !important; }
+
+  /* 公開範囲チューザー */
+  .pe-vis-options { display: grid; gap: 10px; padding: 14px 22px 8px; }
+  .pe-vis-opt { display: flex; align-items: flex-start; gap: 12px; padding: 12px 13px; border: 1px solid var(--line-strong); border-radius: 0; cursor: pointer; }
+  .pe-vis-opt:hover { border-color: var(--green); }
+  .pe-vis-opt input { margin-top: 2px; width: 18px; height: 18px; flex: none; accent-color: var(--green); }
+  .pe-vis-opt:has(input:checked) { border-color: var(--green); background: var(--green-soft); }
+  .pe-vis-ic { flex: none; color: var(--green); }
+  .pe-vis-ic .hi { width: 20px; height: 20px; vertical-align: 0; }
+  .pe-vis-main { display: grid; gap: 2px; min-width: 0; }
+  .pe-vis-main b { font-size: 14.5px; font-weight: 700; }
+  .pe-vis-main small { color: var(--muted); font-size: 12px; }
+  .pe-modal-box .pe-modal-actions { padding: 6px 22px 20px; }
+
+  /* トースト */
+  .pe-toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 9998; max-width: 88%; padding: 11px 16px; border-radius: 0; background: var(--ink); color: #fff; font-size: 13px; font-weight: 600; }
+
+  /* ルート（大まかな場所） */
+  .pe-form-panel {
+    padding: 22px;
+    border: 1px solid var(--line);
+    border-radius: 0;
+    background: #fff;
+    box-shadow: var(--shadow-soft);
+  }
+
+  .pe-route {
+    margin-top: 14px;
+    padding-top: 16px;
+    border-top: 1px solid var(--line);
+  }
+  .pe-route-list { display: grid; gap: 7px; margin-bottom: 9px; }
+  .pe-city {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 7px 9px 7px 11px;
+    border: 1px solid var(--line);
+    border-radius: 0;
+    background: #fff;
+    font-size: 13px;
+    font-weight: 600;
+    flex-wrap: wrap;
+  }
+  .pe-city .pe-city-n { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--green); color: #fff; font-size: 11px; font-weight: 600; flex: none; }
+  .pe-city-name { flex: 1; min-width: 120px; min-height: 36px; border: 1px solid var(--line-strong); border-radius: 0; background: #fff; padding: 6px 9px; font: inherit; font-size: 13px; font-weight: 500; }
+  .pe-city-name:focus { outline: none; border-color: var(--green); box-shadow: 0 0 0 3px rgba(11, 90, 66, .14); }
+  .pe-city-dates { display: inline-flex; align-items: center; gap: 6px; }
+  .pe-city-dates select { min-height: 34px; border: 1px solid var(--line-strong); border-radius: 0; background: #fff; padding: 4px 6px; font: inherit; font-size: 12px; }
+  .pe-city-sep { color: var(--muted); }
+  .pe-city.no-geo { border-style: dashed; }
+  .pe-city.no-geo .pe-city-name { color: var(--muted); }
+  .pe-city button[data-act="city-del"] { border: 0; background: none; color: var(--muted); cursor: pointer; display: inline-grid; place-items: center; padding: 2px; flex: none; }
+  .pe-city button[data-act="city-del"]:hover { color: var(--red); }
+
+  /* 都市バンド（日のグループ見出し） */
+  .pe-cityband { display: flex; align-items: baseline; gap: 8px; margin: 8px 0 -8px; padding: 2px 2px; color: var(--green); }
+  .pe-cityband .hi { align-self: center; }
+  .pe-cityband b { font-size: 15px; font-weight: 700; }
+  .pe-cityband span { color: var(--muted); font-size: 12px; font-weight: 500; }
+  .pe-route-add { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; max-width: 560px; }
+  .pe-route-add input { flex: 1; min-height: 44px; border: 1px solid var(--line-strong); border-radius: 0; padding: 9px 12px; font: inherit; font-size: 14px; }
+  .pe-route-empty {
+    display: block;
+    padding: 13px 14px;
+    border: 1px dashed var(--line-strong);
+    border-radius: 0;
+    background: #fff;
+    color: var(--muted);
+    font-size: 12.5px;
+    font-weight: 500;
+  }
+
+  /* 行程：日 */
+  .pe-days { display: grid; gap: 18px; padding: 8px 22px 8px; }
+  .pe-days-count { color: var(--muted); font-size: 12px; font-weight: 500; }
+  .pe-trip-summary { color: var(--muted); font-size: 11px; font-weight: 500; letter-spacing: 0; text-transform: none; }
+
+  /* 行きたい候補（投票ボード） */
+  .pe-cand { padding: 8px 18px 4px; }
+  .pe-cand-count { color: var(--muted); font-size: 12px; font-weight: 500; }
+  .pe-cand-add { display: flex; gap: 8px; margin: 8px 0 12px; }
+  .pe-cand-add input {
+    flex: 1; min-width: 0; min-height: 42px;
+    border: 1px solid var(--line-strong); border-radius: 0;
+    background: #fff; color: var(--ink); padding: 8px 12px; font: inherit; font-size: 15px;
+  }
+  .pe-cand-add input:focus-visible { outline: none; border-color: var(--green); box-shadow: 0 0 0 3px var(--green-soft); }
+  .pe-cand-list { display: grid; gap: 8px; }
+  .pe-cand-list:empty { display: none; }
+  .pe-cand-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 11px; border: 1px solid var(--line); border-radius: 0; background: #fff;
+  }
+  .pe-cand-row.is-adopted { opacity: .55; }
+  .pe-cand-vote {
+    appearance: none; flex: none; display: inline-flex; align-items: center; gap: 5px;
+    min-height: 36px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: 0;
+    background: #fff; color: var(--muted); font: inherit; font-size: 13px; font-weight: 700; cursor: pointer;
+  }
+  .pe-cand-vote .hi { width: 15px; height: 15px; vertical-align: 0; }
+  .pe-cand-vote.is-voted { background: var(--green-soft); border-color: rgba(11, 90, 66, .35); color: var(--green); }
+  .pe-cand-body { flex: 1; min-width: 0; display: grid; gap: 1px; }
+  .pe-cand-title { font-size: 14.5px; font-weight: 600; overflow-wrap: anywhere; }
+  .pe-cand-sub { color: var(--muted); font-size: 12px; }
+  .pe-cand-day {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--muted);
+    font-size: 11.5px;
+    font-weight: 600;
+  }
+  .pe-cand-day select {
+    min-height: 34px;
+    max-width: 170px;
+    border: 1px solid var(--line-strong);
+    border-radius: 0;
+    background: #fff;
+    color: var(--ink);
+    padding: 0 8px;
+    font: inherit;
+    font-size: 12px;
+  }
+  .pe-cand-act {
+    appearance: none; flex: none; display: inline-flex; align-items: center; gap: 5px;
+    min-height: 34px; padding: 0 10px; border: 1px solid var(--green); border-radius: 0;
+    background: var(--green); color: #fff; font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer;
+  }
+  .pe-cand-act:disabled { opacity: .5; cursor: default; }
+  .pe-cand-act .hi { width: 14px; height: 14px; vertical-align: 0; }
+  .pe-cand-del {
+    appearance: none; flex: none; display: inline-grid; place-items: center;
+    width: 32px; height: 32px; border: 0; border-radius: 0; background: none; color: var(--muted); cursor: pointer;
+  }
+  .pe-cand-del:hover { color: var(--red); background: rgba(207, 79, 61, .08); }
+  .pe-cand-del .hi { width: 16px; height: 16px; vertical-align: 0; }
+
+  /* 日へジャンプするストリップ */
+  .pe-daystrip {
+    position: sticky;
+    top: var(--head-h);
+    z-index: 20;
+    display: flex;
+    gap: 7px;
+    overflow-x: auto;
+    padding: 10px 22px;
+    border-bottom: 1px solid var(--line);
+    background: #fff;
+  }
+  .pe-daystrip:empty { display: none; }
+  .pe-daychip {
+    flex: none;
+    display: inline-flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1px;
+    padding: 5px 11px;
+    border: 1px solid var(--line);
+    border-radius: 0;
+    background: #fff;
+    font: inherit;
+    cursor: pointer;
+    line-height: 1.15;
+  }
+  .pe-daychip b { font-size: 12px; font-weight: 600; }
+  .pe-daychip span { font-size: 10px; font-weight: 500; color: var(--muted); }
+  .pe-daychip:hover { border-color: var(--green); }
+
+  /* 地図トグル */
+  .pe-map-toggle {
+    margin-left: auto;
+    border: 1px solid var(--line-strong);
+    background: #fff;
+    color: var(--muted);
+    font: inherit;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 4px 9px;
+    cursor: pointer;
+    border-radius: 0;
+  }
+  .pe-map-toggle:hover { color: var(--ink); }
+  .pe-map-show {
+    position: fixed;
+    right: 16px;
+    bottom: 74px;
+    z-index: 36;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 9px 14px;
+    border: 1px solid var(--green);
+    border-radius: 0;
+    background: var(--green);
+    color: #fff;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .pe-map-show[hidden] { display: none; }
+  .pe.map-collapsed .pe-stage { grid-template-columns: 1fr; }
+  .pe.map-collapsed .pe-mapwrap { display: none; }
+
+  .pe-local-note { display: inline-flex; align-items: center; gap: 5px; color: var(--muted); font-size: 11.5px; font-weight: 500; }
+  .pe-row:focus-visible,
+  .pe-q:focus-visible,
+  .pe-daychip:focus-visible,
+  .pe-btn:focus-visible { outline: 3px solid rgba(11, 90, 66, .3); outline-offset: 2px; }
+
+  .pe-empty-cta {
+    display: grid;
+    justify-items: center;
+    gap: 6px;
+    padding: 40px 22px;
+    border: 1px dashed var(--line-strong);
+    border-radius: 0;
+    background: #fff;
+    text-align: center;
+  }
+  .pe-empty-cta::before {
+    content: "";
+    width: 44px;
+    height: 44px;
+    margin-bottom: 6px;
+    border-radius: 0;
+    background: var(--green-soft);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23075f46' stroke-width='1.6'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: 24px;
+  }
+  .pe-empty-cta b { font-size: 16px; font-weight: 700; }
+  .pe-empty-cta span { color: var(--muted); font-size: 13px; font-weight: 400; }
+
+  .pe-day {
+    border: 1px solid var(--line);
+    border-radius: 0;
+    background: #fff;
+    box-shadow: var(--shadow-soft);
+    overflow: hidden;
+  }
+
+  .pe-day-head {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 12px;
+    align-items: center;
+    padding: 11px 13px;
+    border-bottom: 1px solid var(--line);
+    background: #fff;
+  }
+  .pe-day-badge { display: grid; justify-items: center; min-width: 62px; padding: 7px 10px; border: 1px solid rgba(7, 95, 70, .28); border-radius: 0; background: var(--green-soft); color: var(--green); }
+  .pe-day-badge b { font-size: 14px; font-weight: 700; line-height: 1; }
+  .pe-day-badge span { font-size: 10.5px; font-weight: 500; }
+  .pe-day-route { min-width: 0; display: grid; gap: 2px; }
+  .pe-day-route b { font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pe-day-route span { color: var(--muted); font-size: 11.5px; font-weight: 500; display: inline-flex; align-items: center; gap: 5px; }
+  .pe-day-tools { display: flex; gap: 6px; }
+  .pe-icon-btn { display: inline-grid; place-items: center; min-width: 32px; min-height: 32px; border: 1px solid var(--line-strong); border-radius: 0; background: #fff; color: var(--muted); cursor: pointer; }
+  .pe-icon-btn:hover { color: var(--ink); }
+  .pe-icon-btn.danger:hover { border-color: var(--red); color: var(--red); }
+  .pe-icon-btn:disabled { opacity: .3; cursor: not-allowed; }
+
+  .pe-day-body { padding: 8px 13px 13px; }
+
+  /* タイムライン */
+  .pe-timeline { display: grid; gap: 0; }
+  .pe-node { position: relative; padding-left: 30px; }
+  .pe-node::before { content: ""; position: absolute; left: 9px; top: 0; bottom: 0; width: 2px; background: var(--line); }
+  .pe-node:first-child::before { top: 16px; }
+  .pe-node:last-child::before { bottom: calc(100% - 16px); }
+  .pe-node > .pe-dot { position: absolute; left: 4px; top: 11px; width: 12px; height: 12px; border-radius: 50%; background: var(--gray); border: 2px solid #fff; box-shadow: 0 0 0 1px var(--line-strong); }
+
+  .pe-node[data-kind="sight"] > .pe-dot { background: var(--green); }
+  .pe-node[data-kind="food"] > .pe-dot { background: var(--amber); }
+  .pe-node[data-kind="move"] > .pe-dot { background: var(--blue); }
+  .pe-node[data-kind="todo"] > .pe-dot { background: var(--gray); }
+  .pe-node[data-kind="form"] > .pe-dot { background: var(--violet); }
+
+  /* 折りたたみ行（サマリ） */
+  .pe-row {
+    display: grid;
+    grid-template-columns: auto auto auto minmax(0, 1fr) auto auto;
+    align-items: center;
+    gap: 9px;
+    width: 100%;
+    padding: 9px 10px;
+    margin: 5px 0;
+    border: 1px solid var(--line);
+    border-radius: 0;
+    background: #fff;
+    text-align: left;
+    font: inherit;
+    cursor: pointer;
+  }
+  .pe-grip { display: inline-grid; place-items: center; color: var(--line-strong); cursor: grab; touch-action: none; }
+  .pe-grip:active { cursor: grabbing; }
+  .pe-grip:hover { color: var(--muted); }
+  .pe-drag-ghost { opacity: .4; }
+  .pe-drag-chosen { outline: 2px solid var(--green); }
+  .pe-row:hover { border-color: var(--line-strong); }
+  .pe-node.is-open > .pe-row { border-color: var(--green); border-bottom-color: var(--line); }
+  .pe-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 8px;
+    border-radius: 0;
+    color: #fff;
+    font-size: 11px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .pe-chip[data-kind="sight"] { background: var(--green); }
+  .pe-chip[data-kind="food"] { background: var(--amber); }
+  .pe-chip[data-kind="move"] { background: var(--blue); }
+  .pe-chip[data-kind="stay"] { background: var(--red); }
+  .pe-chip[data-kind="todo"] { background: var(--gray); }
+  .pe-chip[data-kind="form"] { background: var(--violet); }
+  .pe-row-time { color: var(--muted); font-size: 12px; font-weight: 600; min-width: 42px; }
+  .pe-row-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 500; }
+  .pe-row-title small { color: var(--muted); font-weight: 500; }
+  .pe-row-title.is-empty { color: var(--muted); font-weight: 500; }
+  .pe-row-caret { color: var(--muted); }
+  .pe-row-remove {
+    appearance: none;
+    display: inline-grid;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+  }
+  .pe-row-remove:hover,
+  .pe-row-remove:focus-visible {
+    color: var(--red);
+    background: rgba(207, 79, 61, .08);
+    outline: none;
+  }
+  .pe-row-remove .hi { width: 16px; height: 16px; vertical-align: 0; }
+
+  /* 展開フォーム */
+  .pe-edit { display: none; padding: 10px; border: 1px solid var(--green); border-top: 0; border-radius: 0; margin: -5px 0 5px; background: #fff; }
+  .pe-node.is-open > .pe-edit { display: block; }
+  .pe-edit-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+  .pe-edit-grid .c2 { grid-column: span 2; }
+  .pe-edit-grid .c4 { grid-column: 1 / -1; }
+  .pe-edit .pe-field input,
+  .pe-edit .pe-field select,
+  .pe-edit .pe-field textarea { min-height: 38px; }
+  .pe-edit-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; }
+
+  .pe-place-tools { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 6px; }
+  .pe-mini { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-height: 38px; padding: 0 11px; border: 1px solid var(--green); border-radius: 0; background: var(--green-soft); color: var(--green); font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+  .pe-mini:hover { background: #fff; }
+  .pe-mini.is-armed { background: var(--green); color: #fff; }
+  .pe-geo-status { display: flex; align-items: flex-start; gap: 5px; min-height: 14px; margin-top: 4px; color: var(--muted); font-size: 11px; font-weight: 500; line-height: 1.45; }
+  .pe-geo-status span { min-width: 0; overflow-wrap: anywhere; }
+  .pe-geo-status.is-ok { color: var(--green); }
+  .pe-geo-status.is-warn { color: var(--red); }
+  .pe-geo-results { margin-top: 6px; border: 1px solid var(--line-strong); }
+  .pe-geo-results button { display: block; width: 100%; text-align: left; padding: 8px 10px; border: 0; border-bottom: 1px solid var(--line); background: #fff; font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; }
+  .pe-geo-results button:last-child { border-bottom: 0; }
+  .pe-geo-results button:hover { background: var(--green-soft); }
+  .pe-geo-results small { display: block; color: var(--muted); font-weight: 600; }
+
+  /* 移動（区間） */
+  .pe-node[data-kind="move"] > .pe-row { background: var(--blue-soft); border-style: dashed; border-color: var(--blue); }
+  .pe-seg { display: inline-flex; align-items: center; gap: 7px; min-width: 0; font-size: 13.5px; font-weight: 500; }
+  .pe-seg .ep { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pe-seg .mid { display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px; border-radius: 0; background: var(--blue); color: #fff; font-size: 11px; font-weight: 600; }
+  .pe-seg .arr { color: var(--blue); }
+
+  /* 宿泊（その日の錨） */
+  .pe-stay {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 11px;
+    margin-top: 10px;
+    padding: 11px 13px;
+    border: 1px solid var(--red);
+    border-radius: 0;
+    background: #fdf3f1;
+  }
+  .pe-stay-ic { display: inline-grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; background: var(--red); color: #fff; }
+  .pe-stay-main { min-width: 0; display: grid; gap: 1px; }
+  .pe-stay-main b { font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pe-stay-main b.is-empty { color: var(--muted); font-weight: 500; }
+  .pe-stay-main span { color: var(--muted); font-size: 11.5px; font-weight: 500; }
+  .pe-stay-edit { color: var(--red); border-color: rgba(207, 79, 61, .4); }
+
+  /* 連泊の継続日 */
+  .pe-stay.pe-stay-cont {
+    grid-template-columns: auto minmax(0, 1fr);
+    background: #fcf1ef;
+    border-style: dashed;
+  }
+  .pe-stay-cont .pe-stay-ic { background: #d98e84; }
+
+  /* クイック追加 */
+  .pe-quick { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 12px; }
+  .pe-q {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 38px;
+    padding: 0 13px;
+    border: 1px solid var(--line-strong);
+    border-radius: 0;
+    background: #fff;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .pe-q[data-kind="sight"]:hover { border-color: var(--green); color: var(--green); }
+  .pe-q[data-kind="food"]:hover { border-color: var(--amber); color: var(--amber); }
+  .pe-q[data-kind="move"]:hover { border-color: var(--blue); color: var(--blue); }
+  .pe-q[data-kind="stay"]:hover { border-color: var(--red); color: var(--red); }
+  .pe-q[data-kind="todo"]:hover,
+  .pe-q[data-kind="form"]:hover { border-color: var(--ink); }
+
+  /* 前泊からの出発（日跨ぎ） */
+  .pe-start {
+    position: relative;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 10px;
+    margin: 2px 0 8px;
+    padding-left: 30px;
+  }
+  .pe-start::before { content: ""; position: absolute; left: 9px; top: 16px; bottom: -8px; width: 2px; background: var(--line); }
+  .pe-start-ic { display: inline-grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: #fdece9; color: var(--red); border: 1px dashed var(--red); }
+  .pe-start-main b { font-size: 12px; font-weight: 600; color: var(--muted); }
+  .pe-start-main span { color: var(--ink); font-size: 13px; font-weight: 500; }
+
+  .pe-day-empty { color: var(--muted); font-size: 12.5px; font-weight: 500; padding: 8px 2px 2px; }
+
+  /* flatpickr 微調整 */
+  .flatpickr-day.selected,
+  .flatpickr-day.startRange,
+  .flatpickr-day.endRange,
+  .flatpickr-day.inRange { background: var(--green); border-color: var(--green); }
+  .flatpickr-day.inRange { background: var(--green-soft); border-color: var(--green-soft); color: var(--ink); box-shadow: -5px 0 0 var(--green-soft), 5px 0 0 var(--green-soft); }
+
+  .pe-hint { margin: 0; padding: 4px 22px 22px; color: var(--muted); font-size: 12px; font-weight: 500; }
+
+  /* 保存バー */
+  .pe-savebar {
+    position: sticky;
+    bottom: 0;
+    z-index: 35;
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 14px;
+    padding: 12px 22px calc(12px + env(safe-area-inset-bottom));
+    border-top: 1px solid var(--line);
+    background: #fff;
+  }
+  .pe-savebar span { color: var(--muted); font-size: 12.5px; font-weight: 400; margin-right: auto; }
+  .pe-savebar span:empty { display: none; }
+  .pe-savebar .pe-btn.primary { min-width: 168px; min-height: 46px; font-size: 14px; }
+  .pe-savebar .pe-btn.primary:hover { background: var(--green-deep); }
+
+  /* Leaflet マーカーラベル */
+  .pe-pin { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; transform: rotate(-45deg); color: #fff; font-size: 11px; font-weight: 600; }
+  .pe-pin span { transform: rotate(45deg); }
+  /* 検索候補ピン（クリックで採用） */
+  .pe-candpin {
+    display: grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: #b87418;
+    color: #fff;
+    font-size: 13px;
+    font-weight: 600;
+    border: 2px solid #fff;
+    cursor: pointer;
+  }
+  .pe-candpin:hover { background: #0b5a42; }
+  @media (max-width: 980px) {
+    :root { --head-h: 70px; }
+    .pe { border-right: 0; border-left: 0; box-shadow: none; }
+    .pe-stage { grid-template-columns: 1fr; }
+    .pe-main { border-right: 0; }
+    .pe-mapwrap { position: static; height: auto; order: -1; border-bottom: 1px solid var(--line); }
+    .pe-map { height: 240px; }
+    .pe-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .pe-field.c3 { grid-column: span 2; }
+    .pe-field.c6 { grid-column: 1 / -1; }
+    .pe-edit-grid { grid-template-columns: 1fr; }
+    .pe-edit-grid .c2 { grid-column: 1; }
+  }
+
+  @media (max-width: 680px) {
+    body { background: #fff; }
+    :root { --head-h: 64px; }
+    .pe {
+      min-height: 100dvh;
+      padding-bottom: calc(72px + env(safe-area-inset-bottom));
+    }
+    .pe > .ah {
+      min-height: var(--head-h);
+      padding: 10px 16px;
+      gap: 8px;
+    }
+    .pe > .ah .ah-back {
+      width: 34px;
+      height: 34px;
+      margin-left: -6px;
+    }
+    .pe > .ah .ah-back svg { width: 20px; height: 20px; }
+    .pe > .ah .ah-kicker {
+      margin-bottom: 1px;
+      font-size: 10px;
+      font-weight: 620;
+      letter-spacing: .12em;
+    }
+    .pe > .ah .ah-title {
+      font-size: 18px;
+      font-weight: 680;
+      line-height: 1.18;
+    }
+    .pe > .ah .ah-meta {
+      margin-top: 3px;
+      font-size: 11px;
+      font-weight: 430;
+      gap: 3px 8px;
+    }
+    .pe > .ah .ah-act--icon {
+      width: 36px;
+      height: 36px;
+    }
+    .pe > .ah .ah-act--icon svg { width: 21px; height: 21px; }
+    .pe-head {
+      min-height: var(--head-h);
+      padding: 8px 12px;
+      gap: 8px;
+    }
+    .pe-head-kicker { display: none; }
+    .pe-head h1 { font-size: 17px; font-weight: 660; white-space: nowrap; }
+    .pe-meta { font-size: 10.5px; font-weight: 480; gap: 5px; }
+    .pe-back,
+    .pe-headbtn { width: 34px; height: 34px; }
+    .pe-back .hi,
+    .pe-headbtn .hi { width: 17px; height: 17px; }
+    .pe-setup { padding: 16px 14px 10px; background: #fff; border-bottom: 0; }
+    .pe-setup-top { margin-bottom: 12px; }
+    .pe-kicker {
+      margin-bottom: 8px;
+      padding: 3px 8px;
+      font-size: 10px;
+      font-weight: 560;
+      letter-spacing: .06em;
+    }
+    .pe-setup-title { font-size: 19px; line-height: 1.28; font-weight: 660; }
+    .pe-setup-copy { margin-top: 6px; font-size: 12px; line-height: 1.6; font-weight: 400; }
+    /* スマホ: 3ステップを横並びの進行表（番号→ラベル→補足を縦積み）。タップで切替 */
+    .pe-steps { flex-direction: row; align-items: flex-start; gap: 0; margin-top: 14px; }
+    .pe-step { flex-direction: column; align-items: center; text-align: center; gap: 4px; padding: 2px 4px; cursor: pointer; }
+    .pe-step-n { width: 26px; height: 26px; font-size: 11.5px; font-weight: 650; }
+    .pe-step-t { justify-items: center; }
+    .pe-step-t b { font-size: 11.5px; font-weight: 600; }
+    .pe-step-t small { display: block; font-size: 9.5px; line-height: 1.25; font-weight: 460; }
+    .pe-step + .pe-step::before { left: calc(-50% + 13px); right: auto; top: 15px; width: calc(100% - 26px); height: 2px; transform: none; }
+    .pe-stepnav {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 90;
+      width: min(100vw, var(--app-width));
+      margin: 0 auto;
+      padding: 9px 14px calc(9px + env(safe-area-inset-bottom));
+      border-top: 1px solid var(--line-strong);
+      background: #fff;
+    }
+    .pe-stepnav-btn {
+      flex: 1;
+      min-height: 42px;
+      border: 0;
+      background: transparent;
+      font-size: 12.5px;
+      font-weight: 620;
+    }
+    .pe-stepnav-btn.primary {
+      flex: 1.25;
+      color: var(--green);
+      background: transparent;
+    }
+    .pe-stepnav-btn {
+      position: relative;
+    }
+    .pe-stepnav-btn.primary::after {
+      content: "";
+      position: absolute;
+      left: 20%;
+      right: 20%;
+      bottom: 4px;
+      height: 2px;
+      background: var(--green);
+    }
+    .pe-stepnav-btn:disabled {
+      background: transparent;
+    }
+    .pe-step-reason {
+      position: fixed;
+      left: 14px;
+      right: 14px;
+      bottom: calc(56px + env(safe-area-inset-bottom));
+      z-index: 91;
+      margin: 0 auto;
+      max-width: calc(var(--app-width) - 28px);
+      text-align: center;
+      font-size: 11px;
+    }
+
+    /* ウィザード: 現在のステップの内容だけを下に表示 */
+    [data-step-panel] { display: none; }
+    .pe[data-step="1"] [data-step-panel="1"],
+    .pe[data-step="2"] [data-step-panel="2"],
+    .pe[data-step="3"] [data-step-panel="3"] { display: block; }
+    .pe[data-step="3"] .pe-form-panel { display: none; }
+    /* スマホはカードをやめてフラットに（入力欄を直接ページに置く） */
+    .pe-form-panel { padding: 0; border: 0; border-radius: 0; box-shadow: none; background: transparent; }
+    .pe-grid { grid-template-columns: 1fr; gap: 11px; }
+    .pe-field.c2,
+    .pe-field.c3,
+    .pe-field.c6 { grid-column: 1; }
+    .pe-sec-title { font-size: 13px; font-weight: 620; gap: 7px; }
+    .pe-sec-title .hi { width: 16px; height: 16px; }
+    .pe-sec-note { margin-bottom: 10px; font-size: 11.5px; line-height: 1.55; font-weight: 430; }
+    .pe-field { gap: 5px; }
+    .pe-field > span { font-size: 12px; font-weight: 600; gap: 6px; }
+    .pe-field > span .hi { width: 15px; height: 15px; }
+    .pe-field > span em { font-size: 10.5px; font-weight: 400; }
+    .pe-field input,
+    .pe-field select,
+    .pe-field textarea {
+      min-height: 40px;
+      padding: 8px 10px;
+      font-size: 13px;
+      font-weight: 400;
+    }
+    .pe-route-add { grid-template-columns: 1fr auto; }
+    .pe-route-add input {
+      min-height: 40px;
+      padding: 8px 10px;
+      font-size: 13px;
+      font-weight: 400;
+    }
+    .pe-member-add { max-width: none; }
+    .pe-member-inputwrap input {
+      min-height: 40px;
+      padding: 8px 10px;
+      font-size: 13px;
+      font-weight: 400;
+    }
+    .pe-mini,
+    .pe-calsync-btn {
+      min-height: 36px;
+      padding: 0 10px;
+      font-size: 11.5px;
+      font-weight: 560;
+    }
+    .pe-member-add { grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+    .pe-cover { gap: 10px; }
+    .pe-cover-preview { width: 176px; max-width: 48vw; }
+    .pe-cover-actions { gap: 6px; }
+    .pe-cover-note,
+    .pe-calsync-note { font-size: 10.5px; line-height: 1.5; font-weight: 430; }
+    .pe-calsync { gap: 8px; margin-top: 14px; padding-top: 14px; }
+    .pe-calsync-final { margin: 14px 12px calc(86px + env(safe-area-inset-bottom)); }
+    .pe-calsync-label { font-size: 12px; font-weight: 600; }
+    .pe-route { margin-top: 0; padding-top: 0; border-top: 0; }
+    .pe-route-list {
+      gap: 0;
+      margin: 0 0 10px;
+      border-top: 1px solid var(--line);
+    }
+    .pe-city {
+      display: grid;
+      grid-template-columns: 28px minmax(0, 1fr) 36px 32px;
+      align-items: center;
+      gap: 7px 8px;
+      padding: 10px 0;
+      border: 0;
+      border-bottom: 1px solid var(--line);
+      border-radius: 0;
+      background: transparent;
+      font-size: 12px;
+      font-weight: 560;
+    }
+    .pe-city .pe-city-n {
+      grid-column: 1;
+      grid-row: 1 / 3;
+      align-self: start;
+      width: 26px;
+      height: 26px;
+      margin-top: 4px;
+      font-size: 11px;
+      font-weight: 620;
+    }
+    .pe-city-name {
+      grid-column: 2;
+      grid-row: 1;
+      min-width: 0;
+      min-height: 34px;
+      padding: 6px 9px;
+      border-color: transparent transparent var(--line-strong);
+      background: transparent;
+      font-size: 13px;
+      font-weight: 520;
+    }
+    .pe-city .pe-city-action {
+      grid-column: 3;
+      grid-row: 1;
+      width: 32px;
+      min-width: 0;
+      min-height: 32px;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      color: var(--green);
+    }
+    .pe-city .pe-city-action .hi {
+      width: 18px;
+      height: 18px;
+    }
+    .pe-city .pe-icon-btn[data-city-del] {
+      grid-column: 4;
+      grid-row: 1;
+      width: 32px;
+      min-width: 32px;
+      height: 34px;
+      min-height: 34px;
+      border: 0;
+      background: transparent;
+      color: var(--muted);
+    }
+    .pe-city .pe-icon-btn[data-city-del] .hi {
+      width: 18px;
+      height: 18px;
+    }
+    .pe-city .pe-icon-btn[data-city-del]:hover,
+    .pe-city .pe-icon-btn[data-city-del]:focus-visible {
+      color: var(--red);
+    }
+    .pe-city-dates {
+      grid-column: 2 / 5;
+      grid-row: 2;
+      display: grid;
+      grid-template-columns: 18px minmax(0, 1fr) 18px minmax(0, 1fr);
+      align-items: center;
+      gap: 6px;
+      width: auto;
+      margin-top: 1px;
+      color: var(--muted);
+    }
+    .pe-city-dateicon {
+      display: inline-grid;
+      place-items: center;
+      color: var(--green);
+    }
+    .pe-city-dateicon .hi {
+      width: 16px;
+      height: 16px;
+    }
+    .pe-city-dates select {
+      width: 100%;
+      min-width: 0;
+      min-height: 30px;
+      padding: 3px 6px;
+      border-color: transparent transparent var(--line);
+      background: transparent;
+      font-size: 11.5px;
+      font-weight: 500;
+    }
+    .pe-city-sep {
+      display: inline-grid;
+      place-items: center;
+      color: var(--muted);
+    }
+    .pe-city-sep .hi {
+      width: 15px;
+      height: 15px;
+    }
+    .pe-route-add {
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 7px;
+      margin-top: 10px;
+    }
+    .pe-route-add input {
+      min-height: 38px;
+      padding: 8px 10px;
+      border-color: var(--line);
+      font-size: 13px;
+    }
+    .pe-route-add .pe-mini {
+      min-height: 38px;
+      padding: 0 12px;
+      border-color: var(--green);
+      background: var(--green-soft);
+    }
+    .pe-empty-cta { border: 0; background: transparent; padding: 32px 8px; }
+    .pe-main > section[style] { padding: 12px 12px 0 !important; }
+    .pe-days,
+    .pe-daystrip,
+    .pe-hint { padding-left: 12px; padding-right: 12px; }
+    .pe-days { gap: 0; padding-top: 0; padding-bottom: calc(18px + env(safe-area-inset-bottom)); }
+    .pe-daystrip {
+      position: static;
+      top: auto;
+      padding-top: 6px;
+      padding-bottom: 6px;
+      gap: 4px;
+      border-top: 1px solid var(--line);
+    }
+    .pe-daychip {
+      border: 0;
+      border-bottom: 2px solid transparent;
+      padding: 5px 9px;
+      background: transparent;
+    }
+    .pe-daychip:hover,
+    .pe-daychip:focus-visible {
+      border-color: var(--green);
+      outline: none;
+    }
+    .pe-cityband {
+      margin: 18px 0 0;
+      padding: 0 12px 9px;
+      border-bottom: 1px solid var(--line);
+    }
+    .pe-cityband b { font-size: 14px; font-weight: 650; }
+    .pe-cityband span { font-size: 11px; }
+    .pe-day {
+      border: 0;
+      border-bottom: 1px solid var(--line);
+      border-radius: 0;
+      box-shadow: none;
+      background: transparent;
+    }
+    .pe-day-head {
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      gap: 10px;
+      padding: 10px 0;
+      border-bottom: 0;
+      background: transparent;
+    }
+    .pe-day-badge {
+      min-width: 52px;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      justify-items: start;
+    }
+    .pe-day-badge b { font-size: 13px; }
+    .pe-day-badge span { font-size: 10px; }
+    .pe-day-body { padding: 0 0 13px; }
+    .pe-day-tools { justify-content: flex-end; }
+    .pe-day-tools .pe-icon-btn {
+      min-width: 30px;
+      min-height: 30px;
+      border: 0;
+      background: transparent;
+    }
+    .pe-row {
+      grid-template-columns: auto auto minmax(0, 1fr) auto auto;
+      gap: 7px;
+      padding: 9px 0;
+      border: 0;
+      border-bottom: 1px solid var(--line);
+      background: transparent;
+    }
+    .pe-row-time { display: none; }
+    .pe-row-title { font-size: 13px; }
+    .pe-seg { font-size: 12.5px; }
+    .pe-quick { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+    .pe-q {
+      justify-content: center;
+      min-height: 38px;
+      padding: 0 8px;
+      border: 0;
+      border-bottom: 1px solid var(--line-strong);
+      border-radius: 0;
+      background: transparent;
+    }
+    .pe-cand {
+      margin-top: 18px;
+      padding: 18px 12px;
+      border-top: 1px solid var(--line-strong);
+      background: transparent;
+    }
+    .pe-cand-add {
+      gap: 7px;
+      margin: 8px 0 12px;
+    }
+    .pe-cand-add input {
+      min-height: 38px;
+      border-color: transparent transparent var(--line-strong);
+      background: transparent;
+      font-size: 13px;
+    }
+    .pe-cand-row {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      gap: 7px;
+      padding: 8px 0;
+      border: 0;
+      border-bottom: 1px solid var(--line);
+      background: transparent;
+    }
+    .pe-cand-day {
+      grid-column: 2 / 4;
+      justify-content: flex-start;
+    }
+    .pe-cand-day select {
+      max-width: min(210px, 58vw);
+      border-color: transparent transparent var(--line-strong);
+      background: transparent;
+    }
+    .pe-cand-vote,
+    .pe-cand-act {
+      border: 0;
+      background: transparent;
+      color: var(--green);
+    }
+    .pe.map-collapsed .pe-mapwrap { display: none; }
+    .pe:not(.map-collapsed) .pe-mapwrap {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      top: auto;
+      z-index: 60;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      height: var(--pe-map-h, min(58dvh, 430px));
+      border-top: 1px solid var(--line-strong);
+      border-radius: 0;
+      background: #fff;
+      overflow: hidden;
+    }
+    .pe:not(.map-collapsed) .pe-map { height: auto; min-height: 0; }
+    .pe:not(.map-collapsed) .pe-map-foot { align-content: start; }
+    /* ドラッグで地図の境界（高さ）を上下に移動 */
+    .pe:not(.map-collapsed) .pe-map-grip {
+      position: relative;
+      display: grid;
+      place-items: center;
+      height: 26px;
+      border-bottom: 1px solid var(--line);
+      background: #fff;
+      cursor: row-resize;
+      touch-action: none;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+    .pe:not(.map-collapsed) .pe-map-grip > span {
+      width: 44px;
+      height: 5px;
+      border-radius: 0;
+      background: var(--line-strong);
+    }
+    .pe:not(.map-collapsed) .pe-map-close {
+      position: absolute;
+      right: 8px;
+      top: 50%;
+      transform: translateY(-50%);
+      display: inline-grid;
+      place-items: center;
+      width: 30px;
+      height: 24px;
+      border: 0;
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+    }
+    .pe:not(.map-collapsed) .pe-map-close .hi {
+      width: 18px;
+      height: 18px;
+    }
+    .pe:not(.map-collapsed) .pe-map-close:hover,
+    .pe:not(.map-collapsed) .pe-map-close:focus-visible {
+      color: var(--green);
+      outline: none;
+    }
+    .pe:not(.map-collapsed) .pe-map-grip:hover > span,
+    .pe.is-map-resizing .pe-map-grip > span { background: var(--green); }
+    .pe.is-map-resizing { cursor: row-resize; }
+    .pe.is-map-resizing .pe-map { pointer-events: none; }
+    /* スマホは自動保存のみ。保存バー（フッター）は非表示にする */
+    .pe-savebar { display: none; }
+    .pe-map-show {
+      display: inline-flex;
+      right: 14px;
+      bottom: calc(72px + env(safe-area-inset-bottom));
+      z-index: 92;
+    }
+    .pe-map-show[hidden] { display: none; }
+  }

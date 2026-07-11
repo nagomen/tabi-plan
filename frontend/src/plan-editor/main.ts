@@ -7,6 +7,7 @@
 
 import L from "leaflet";
 import "../shared/ui.css";
+import "./style.css";
 import { initPageTransitions } from "../shared/page-transition";
 import "leaflet/dist/leaflet.css";
 import flatpickr from "flatpickr";
@@ -20,7 +21,7 @@ import type { ItineraryItem, ItemType, Candidate } from "../shared/types";
 import { readGlobalTripConfig } from "../shared/config";
 import { escapeHtml, errorMessage } from "../shared/dom";
 import { icon, type IconName } from "../shared/icons";
-import { planCoverImage } from "../shared/cover";
+import { planCoverThumbnail } from "../shared/cover";
 import { registerServiceWorker } from "../shared/pwa";
 import { getUser, setUserName } from "../shared/user-store";
 import { friendCandidates, splitNames } from "../shared/friend-store";
@@ -177,6 +178,7 @@ const openLink = qs<HTMLAnchorElement>(root, "[data-open]");
 const warnEl = qs<HTMLElement>(root, "[data-daterange-warn]");
 const dayCountEl = qs<HTMLElement>(root, "[data-day-count]");
 const savebarNoteEl = qs<HTMLElement>(root, "[data-savebar-note]");
+const stepReasonEl = qs<HTMLElement>(root, "[data-step-reason]");
 const citiesEl = qs<HTMLElement>(root, "[data-cities]");
 const cityInput = qs<HTMLInputElement>(root, "[data-city-input]");
 const cityOptions = qs<HTMLDataListElement>(document, "#pe-city-options");
@@ -349,13 +351,124 @@ function latLngKeys(target: GeoTarget): [ItemStrKey, ItemStrKey] {
 }
 
 interface GeoResult { label: string; lat: number; lng: number; }
+interface GeoContext { cityName?: string; cityAliases?: string[]; lat?: number; lng?: number; requireNearby?: boolean; }
 
 // Mapbox トークンがあれば Mapbox（多言語POIに強い）、無ければ Nominatim を使う。
 const MAPBOX_TOKEN = readGlobalTripConfig().geocoding?.mapboxToken || "";
 
 let lastGeoAt = 0;
-async function geocodeSearch(query: string): Promise<GeoResult[]> {
-  if (MAPBOX_TOKEN) return geocodeMapbox(query);
+async function geocodeSearch(query: string, context?: GeoContext): Promise<GeoResult[]> {
+  const trimmed = query.trim();
+  const cityName = context?.cityName?.trim() || "";
+  const queryVariants = uniqueStrings([trimmed, geoQueryAlias(trimmed)]);
+  const cityVariants = uniqueStrings([cityName, ...(context?.cityAliases || [])]);
+  const searches = uniqueStrings([
+    ...queryVariants.flatMap((q) => cityVariants.length && !cityVariants.some((city) => searchTextIncludes(q, city))
+      ? cityVariants.map((city) => `${q} ${city}`)
+      : [q]),
+    ...queryVariants,
+  ]);
+  const collected: GeoResult[] = [];
+  for (const q of searches) {
+    const results = MAPBOX_TOKEN ? await geocodeMapbox(q, context) : await geocodeNominatim(q);
+    results.forEach((result) => {
+      if (!collected.some((existing) => sameGeoResult(existing, result))) collected.push(result);
+    });
+    if (nearContextResults(results, context).length >= 5) break;
+  }
+  const ranked = rankGeoResults(collected, context);
+  const nearby = nearContextResults(ranked, context);
+  return (nearby.length || context?.requireNearby ? nearby : ranked).slice(0, 5);
+}
+
+function uniqueStrings(values: string[]): string[] {
+  const seen = new Set<string>();
+  return values
+    .map((value) => value.trim())
+    .filter((value) => {
+      const key = compactSearchText(value);
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
+const GEO_QUERY_ALIASES: Array<[RegExp, string]> = [
+  [/マリオット/gi, "Marriott"],
+  [/アパホテル|apaホテル|アパ/gi, "APA Hotel"],
+  [/ヒルトン/gi, "Hilton"],
+  [/ハイアット/gi, "Hyatt"],
+  [/シェラトン/gi, "Sheraton"],
+  [/ウェスティン/gi, "Westin"],
+];
+
+function geoQueryAlias(query: string): string {
+  return GEO_QUERY_ALIASES.reduce((next, [pattern, replacement]) => next.replace(pattern, replacement), query);
+}
+
+const CITY_ALIASES: Record<string, string[]> = {
+  バンコク: ["Bangkok", "Krung Thep Maha Nakhon", "Thailand"],
+  東京: ["Tokyo"],
+  ニューヨーク: ["New York", "NYC"],
+  長野: ["Nagano"],
+  ソウル: ["Seoul"],
+  台北: ["Taipei"],
+  上海: ["Shanghai"],
+  香港: ["Hong Kong"],
+  シンガポール: ["Singapore"],
+};
+
+function cityAliasesFor(name: string): string[] {
+  const key = Object.keys(CITY_ALIASES).find((city) => searchTextIncludes(name, city));
+  return key ? CITY_ALIASES[key] : [];
+}
+
+function compactSearchText(value: string): string {
+  return value.toLocaleLowerCase().replace(/[\s,./・、。／-]+/g, "");
+}
+
+function searchTextIncludes(query: string, part: string): boolean {
+  const q = compactSearchText(query);
+  const p = compactSearchText(part);
+  return Boolean(q && p && q.includes(p));
+}
+
+function sameGeoResult(a: GeoResult, b: GeoResult): boolean {
+  return Math.abs(a.lat - b.lat) < 0.0002 && Math.abs(a.lng - b.lng) < 0.0002;
+}
+
+function distanceKm(aLat: number, aLng: number, bLat: number, bLng: number): number {
+  const rad = Math.PI / 180;
+  const dLat = (bLat - aLat) * rad;
+  const dLng = (bLng - aLng) * rad;
+  const lat1 = aLat * rad;
+  const lat2 = bLat * rad;
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+  return 6371 * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+}
+
+function rankGeoResults(results: GeoResult[], context?: GeoContext): GeoResult[] {
+  if (!context?.cityName && (!Number.isFinite(context?.lat) || !Number.isFinite(context?.lng))) return results;
+  return results
+    .map((result, index) => {
+      let score = -index;
+      if (context?.cityName && searchTextIncludes(result.label, context.cityName)) score += 100;
+      if (Number.isFinite(context?.lat) && Number.isFinite(context?.lng)) {
+        const km = distanceKm(context!.lat!, context!.lng!, result.lat, result.lng);
+        score += Math.max(0, 80 - km);
+      }
+      return { result, score };
+    })
+    .sort((a, b) => b.score - a.score)
+    .map((entry) => entry.result);
+}
+
+function nearContextResults(results: GeoResult[], context?: GeoContext): GeoResult[] {
+  if (!Number.isFinite(context?.lat) || !Number.isFinite(context?.lng)) return results;
+  return results.filter((result) => distanceKm(context!.lat!, context!.lng!, result.lat, result.lng) <= 180);
+}
+
+async function geocodeNominatim(query: string): Promise<GeoResult[]> {
   // Nominatim は規約順守のため最短 1.1 秒間隔
   const wait = 1100 - (Date.now() - lastGeoAt);
   if (wait > 0) await new Promise((r) => window.setTimeout(r, wait));
@@ -369,16 +482,49 @@ async function geocodeSearch(query: string): Promise<GeoResult[]> {
     .filter((r) => Number.isFinite(r.lat) && Number.isFinite(r.lng));
 }
 
+async function reverseGeocode(lat: number, lng: number): Promise<string> {
+  if (MAPBOX_TOKEN) {
+    try {
+      const url =
+        "https://api.mapbox.com/geocoding/v5/mapbox.places/" +
+        encodeURIComponent(`${lng},${lat}`) +
+        ".json?language=ja&limit=1&access_token=" + encodeURIComponent(MAPBOX_TOKEN);
+      const res = await fetch(url);
+      if (res.ok) {
+        const data = (await res.json()) as { features?: Array<{ place_name?: string; text?: string }> };
+        const hit = data.features && data.features[0];
+        const label = hit && (hit.place_name || hit.text);
+        if (label) return label;
+      }
+    } catch {
+      // Mapbox の逆引きに失敗した場合は Nominatim にフォールバックする。
+    }
+  }
+  const wait = 1100 - (Date.now() - lastGeoAt);
+  if (wait > 0) await new Promise((r) => window.setTimeout(r, wait));
+  lastGeoAt = Date.now();
+  const url =
+    "https://nominatim.openstreetmap.org/reverse?format=json&accept-language=ja&lat=" +
+    encodeURIComponent(String(lat)) + "&lon=" + encodeURIComponent(String(lng));
+  const res = await fetch(url, { headers: { Accept: "application/json" } });
+  if (!res.ok) throw new Error("住所確認に失敗しました (" + res.status + ")");
+  const data = (await res.json()) as { display_name?: string };
+  return String(data.display_name || "").trim();
+}
+
 interface MapboxFeature {
   properties?: { name?: string; name_preferred?: string; place_formatted?: string; full_address?: string };
   geometry?: { coordinates?: [number, number] };
 }
 
 // Mapbox Search Box API（POI/施設名・多言語に強い）。
-async function geocodeMapbox(query: string): Promise<GeoResult[]> {
+async function geocodeMapbox(query: string, context?: GeoContext): Promise<GeoResult[]> {
+  const proximity = Number.isFinite(context?.lat) && Number.isFinite(context?.lng)
+    ? "&proximity=" + encodeURIComponent(`${context!.lng},${context!.lat}`)
+    : "";
   const url =
     "https://api.mapbox.com/search/searchbox/v1/forward?q=" + encodeURIComponent(query) +
-    "&language=ja&limit=5&access_token=" + encodeURIComponent(MAPBOX_TOKEN);
+    "&language=ja&limit=5" + proximity + "&access_token=" + encodeURIComponent(MAPBOX_TOKEN);
   const res = await fetch(url);
   if (!res.ok) throw new Error("検索に失敗しました (" + res.status + ")");
   const data = (await res.json()) as { features?: MapboxFeature[] };
@@ -405,6 +551,69 @@ function findItem(id: number): Found | null {
     if (day.stay && day.stay.id === id) return { day, item: day.stay };
   }
   return null;
+}
+
+function geocodeContextForDay(day: Day, item?: Item, target?: GeoTarget): GeoContext | undefined {
+  const city = cityForDate(day.date);
+  const cityName = (city?.name || day.area || "").trim();
+  const hasCityCoords = city ? hasLatLng(city.lat, city.lng) : false;
+  if (!cityName && !hasCityCoords) return undefined;
+  return {
+    cityName,
+    cityAliases: cityAliasesFor(cityName),
+    lat: hasCityCoords ? num(city!.lat) : undefined,
+    lng: hasCityCoords ? num(city!.lng) : undefined,
+    requireNearby: item?.kind === "stay" && target === "place",
+  };
+}
+
+function inclusiveDateCount(from: string, to: string): number {
+  const a = parseISO(from);
+  const b = parseISO(to);
+  if (!a || !b || b < a) return 1;
+  return Math.floor((b.getTime() - a.getTime()) / 86400000) + 1;
+}
+
+function stayNightLimits(item: Item): { cityMax: number; tripMax: number; cityName: string } {
+  const found = findItem(item.id);
+  if (!found) {
+    const tripMax = Math.max(model.days.length, 1);
+    item.nights = Math.max(1, Math.min(tripMax, Number(item.nights) || 1));
+    return { cityMax: tripMax, tripMax, cityName: "" };
+  }
+  const dayIndex = model.days.indexOf(found.day);
+  const city = cityForDate(found.day.date);
+  const tripMax = Math.max(1, model.days.length - Math.max(0, dayIndex));
+  const cityMax = city
+    ? inclusiveDateCount(found.day.date, city.toDate)
+    : tripMax;
+  item.nights = Math.max(1, Math.min(tripMax, Number(item.nights) || 1));
+  return { cityMax: Math.max(1, Math.min(cityMax, tripMax)), tripMax, cityName: city?.name || "" };
+}
+
+function stayNightOptions(item: Item): string {
+  const limits = stayNightLimits(item);
+  return Array.from({ length: limits.tripMax }, (_, i) => i + 1)
+    .map((n) => {
+      const note = limits.cityName && n === limits.cityMax
+        ? `（${limits.cityName}滞在の最大）`
+        : limits.cityName && n > limits.cityMax
+          ? "（滞在都市を超える）"
+          : "";
+      return `<option value="${n}"${item.nights === n ? " selected" : ""}>${n}泊${note}</option>`;
+    })
+    .join("");
+}
+
+function geoQueryForItem(item: Item, target: GeoTarget): string {
+  if (target === "from") return item.from.trim();
+  if (target === "to") return item.to.trim();
+  if (item.kind === "stay") return (item.place || item.mapQuery || item.title).trim();
+  return (item.mapQuery || item.place || item.title).trim();
+}
+
+function conciseGeoLabel(label: string): string {
+  return String(label || "").split(" / ")[0]?.trim() || String(label || "").trim();
 }
 
 let persistTimer = 0;
@@ -467,6 +676,16 @@ function stepCompletion(): boolean[] {
   return [periodDone, placeDone, planDone];
 }
 
+function stepBlockReason(step: number): string {
+  if (step === 1) {
+    if (!model.title.trim() && !model.days.length) return "旅行名と期間を入れると目的地へ進めます。";
+    if (!model.title.trim()) return "旅行名を入れると目的地へ進めます。";
+    if (!model.days.length) return "期間を選択すると目的地へ進めます。";
+  }
+  if (step === 2 && !model.cities.length) return "訪問する都市・エリアを1つ以上追加すると行程へ進めます。";
+  return "";
+}
+
 function scrollStepIntoView(): void {
   const target = document.querySelector<HTMLElement>(".pe-setup");
   if (!target) return;
@@ -504,6 +723,7 @@ function updateSteps(): void {
     const glyph = viewStep === 3 ? "bookmark" : "chevronRight";
     nextBtn.innerHTML = `<span>${label}</span>` + icon(glyph);
   }
+  stepReasonEl.textContent = viewStep < 3 && !done[viewStep - 1] ? stepBlockReason(viewStep) : "";
 }
 
 /** ステップのタップで表示を切り替える（スマホのウィザード送り）。 */
@@ -595,7 +815,7 @@ function dayHeader(day: Day, index: number): string {
   const dayName = `Day ${index + 1}`;
   const cover = stayCovering(index);
   const city = cityForDate(day.date);
-  const area = day.area || (city ? city.name : "") || (cover && cover.stay.title ? cover.stay.title : "") || "エリア未設定";
+  const area = (city ? city.name : "") || day.area || (cover && cover.stay.title ? cover.stay.title : "") || "エリア未設定";
   const stay = cover && cover.stay.title
     ? cover.stay.title + (cover.stay.nights > 1 ? `（${cover.stay.nights}泊）` : "")
     : "宿 未定";
@@ -633,13 +853,39 @@ function rowSummary(item: Item): string {
   }
   const title = item.title || item.place;
   const titleCls = title ? "" : " is-empty";
-  const titleText = title || "タイトル未入力";
+  const titleText = title || `${itemNameLabel(item.kind)}未入力`;
   const sub = item.place && item.title ? ` <small>${escapeHtml(item.place)}</small>` : "";
   return (
     `<span class="pe-chip" data-kind="${item.kind}">${icon(k.icon)}${k.label}</span>` +
     `<span class="pe-row-time">${escapeHtml(item.time)}</span>` +
     `<span class="pe-row-title${titleCls}">${escapeHtml(titleText)}${sub}</span>` +
     `<span class="pe-row-caret">${icon("chevronDown")}</span>`
+  );
+}
+
+function itemNameLabel(kind: ItemKind): string {
+  if (kind === "stay") return "ホテル名";
+  if (kind === "sight") return "観光地名";
+  if (kind === "food") return "店名・食事名";
+  if (kind === "todo") return "予定名";
+  if (kind === "form") return "手続き名";
+  return "タイトル";
+}
+
+function itemNamePlaceholder(kind: ItemKind): string {
+  if (kind === "stay") return "例: 八戸グランドホテル";
+  if (kind === "sight") return "例: エッフェル塔";
+  if (kind === "food") return "例: 〇〇レストラン / 海鮮丼";
+  if (kind === "todo") return "例: 予約確認";
+  if (kind === "form") return "例: 入国書類の提出";
+  return "例: 中尊寺を拝観";
+}
+
+function rowControls(item: Item): string {
+  return (
+    `<span class="pe-grip" data-grip aria-label="ドラッグで並べ替え">${icon("bars3")}</span>` +
+    rowSummary(item) +
+    `<button class="pe-row-remove" type="button" data-act="remove" data-item="${item.id}" title="削除" aria-label="削除">${icon("trash")}</button>`
   );
 }
 
@@ -681,15 +927,16 @@ function editForm(item: Item): string {
     );
   }
   const timeLabel = item.kind === "food" ? "時刻 / 朝昼夜" : item.kind === "stay" ? "チェックイン" : "時刻";
+  const nameLabel = itemNameLabel(item.kind);
+  const namePlaceholder = itemNamePlaceholder(item.kind);
   const nightsSelect = item.kind === "stay"
     ? `<label class="pe-field"><span>泊数</span><select data-field="nights" data-item="${item.id}">` +
-      Array.from({ length: Math.max(model.days.length, 1) }, (_, i) => i + 1)
-        .map((n) => `<option value="${n}"${item.nights === n ? " selected" : ""}>${n}泊</option>`).join("") +
+      stayNightOptions(item) +
       `</select></label>`
     : "";
   return (
     g +
-    `<label class="pe-field c2"><span>タイトル</span>${fieldInput(item, "title", item.kind === "stay" ? "例: 八戸グランドホテル" : item.kind === "food" ? "例: 夕食 / 海鮮丼" : "例: 中尊寺を拝観")}</label>` +
+    `<label class="pe-field c2"><span>${nameLabel}</span>${fieldInput(item, "title", namePlaceholder)}</label>` +
     `<label class="pe-field"><span>${timeLabel} <em>任意</em></span>${fieldInput(item, "time", item.kind === "food" ? "例: 夜" : "例: 10:00")}</label>` +
     nightsSelect +
     placeBlock(item, "place", "場所", "例: 平泉 / 中尊寺") +
@@ -704,8 +951,7 @@ function timelineNode(item: Item): string {
     `<div class="pe-node${open}" data-kind="${item.kind}" data-node="${item.id}">` +
     `<span class="pe-dot"></span>` +
     `<div class="pe-row" role="button" tabindex="0" data-act="toggle" data-item="${item.id}">` +
-    `<span class="pe-grip" data-grip aria-label="ドラッグで並べ替え">${icon("bars3")}</span>` +
-    rowSummary(item) +
+    rowControls(item) +
     `</div>` +
     `<div class="pe-edit">${editForm(item)}</div>` +
     `</div>`
@@ -726,7 +972,7 @@ function stayBand(index: number): string {
   }
   const stay = cover.stay;
   const open = openItemId === stay.id ? " is-open" : "";
-  const title = stay.title || "宿泊先未入力";
+  const title = stay.title || "ホテル名未入力";
   const titleCls = stay.title ? "" : " is-empty";
   const meta = [stay.time ? `IN ${stay.time}` : "", stay.nights > 1 ? `${stay.nights}泊` : "", stay.place].filter(Boolean).join(" ・ ");
   return (
@@ -800,14 +1046,11 @@ function renderDays(): void {
       const band = city && city.id !== (prevCity ? prevCity.id : -1)
         ? `<div class="pe-cityband">${icon("mapPin")}<b>${escapeHtml(city.name)}</b><span>${cityRangeLabel(city)}</span></div>`
         : "";
-      const areaPlaceholder = city ? city.name : "例: 盛岡";
       return (
         band +
         `<article class="pe-day" data-day="${index}">` +
         dayHeader(day, index) +
         `<div class="pe-day-body">` +
-        `<label class="pe-field" style="margin-bottom:10px;"><span>この日の拠点エリア <em>${city ? "都市から自動・上書き可" : "任意"}</em></span>` +
-        `<input data-area="${index}" list="pe-city-options" value="${escapeHtml(day.area)}" placeholder="${escapeHtml(areaPlaceholder)}"></label>` +
         startBanner +
         `<div class="pe-timeline">${items}</div>` +
         empty +
@@ -866,13 +1109,13 @@ function refreshNode(item: Item): void {
   if (item.kind === "stay") {
     const main = node.querySelector<HTMLElement>(".pe-stay-main");
     if (main) {
-    const title = item.title || "宿泊先未入力";
-      const meta = [item.time ? `IN ${item.time}` : "", item.place].filter(Boolean).join(" ・ ");
+      const title = item.title || "ホテル名未入力";
+      const meta = [item.time ? `IN ${item.time}` : "", item.nights > 1 ? `${item.nights}泊` : "", item.place].filter(Boolean).join(" ・ ");
       main.innerHTML = `<b class="${item.title ? "" : "is-empty"}">${escapeHtml(title)}</b><span>${escapeHtml(meta || "この日の宿泊先")}</span>`;
     }
   } else {
     const row = node.querySelector<HTMLElement>(".pe-row");
-    if (row) row.innerHTML = rowSummary(item);
+    if (row) row.innerHTML = rowControls(item);
   }
 }
 
@@ -980,17 +1223,38 @@ function refreshMap(fit: boolean): void {
   }
 }
 
-function onMapClick(latlng: L.LatLng): void {
+function geoAppliedMessage(label: string): string {
+  const clean = label.trim();
+  return clean
+    ? `設定先: ${clean}。違う場合は再検索、または地図で指定し直してください。`
+    : "設定先: 住所未確認。違う場合は再検索、または地図で指定し直してください。";
+}
+
+function formatLatLng(lat: number, lng: number): string {
+  return `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+}
+
+async function onMapClick(latlng: L.LatLng): Promise<void> {
   if (!armed) return;
-  const found = findItem(armed.itemId);
+  const itemId = armed.itemId;
+  const target = armed.target;
+  const found = findItem(itemId);
   if (!found) return;
-  const [latKey, lngKey] = latLngKeys(armed.target);
-  found.item[latKey] = latlng.lat.toFixed(6);
-  found.item[lngKey] = latlng.lng.toFixed(6);
-  setGeoStatus(armed.itemId, armed.target, "地図で位置を指定しました", "ok");
+  const lat = latlng.lat;
+  const lng = latlng.lng;
+  const [latKey, lngKey] = latLngKeys(target);
+  found.item[latKey] = lat.toFixed(6);
+  found.item[lngKey] = lng.toFixed(6);
+  setGeoStatus(itemId, target, "設定先の住所を確認中…", "ok");
   disarm();
   markDirty();
   refreshMap(false);
+  try {
+    const label = await reverseGeocode(lat, lng);
+    setGeoStatus(itemId, target, geoAppliedMessage(label || formatLatLng(lat, lng)), "ok");
+  } catch {
+    setGeoStatus(itemId, target, geoAppliedMessage(formatLatLng(lat, lng)), "ok");
+  }
 }
 
 function disarm(): void {
@@ -1020,20 +1284,26 @@ function setGeoStatus(itemId: number, target: GeoTarget, text: string, kind?: "o
   el.className = "pe-geo-status" + (kind ? " is-" + kind : "");
 }
 
-async function runGeocode(itemId: number, target: GeoTarget): Promise<void> {
+async function runGeocode(itemId: number, target: GeoTarget, options: { autoApplySingle?: boolean; quiet?: boolean } = {}): Promise<void> {
+  const autoApplySingle = options.autoApplySingle !== false;
   const found = findItem(itemId);
   if (!found) return;
   const item = found.item;
-  const query = (target === "from" ? item.from : target === "to" ? item.to : (item.mapQuery || item.place)).trim();
+  const query = geoQueryForItem(item, target);
+  const context = geocodeContextForDay(found.day, item, target);
   const resultsEl = daysEl.querySelector<HTMLElement>(`[data-geores="${itemId}-${target}"]`);
-  if (!query) { setGeoStatus(itemId, target, "場所名を入力してください", "warn"); return; }
-  setGeoStatus(itemId, target, "検索中…");
+  if (!query) { if (!options.quiet) setGeoStatus(itemId, target, "場所名を入力してください", "warn"); return; }
+  setGeoStatus(itemId, target, context?.cityName ? `${context.cityName}を優先して検索中…` : "検索中…");
   clearCandidates();
   if (resultsEl) { resultsEl.hidden = true; resultsEl.innerHTML = ""; }
   try {
-    const results = await geocodeSearch(query);
-    if (!results.length) { setGeoStatus(itemId, target, "見つかりませんでした。表記を変えて再検索を", "warn"); return; }
-    if (results.length === 1) { applyGeo(itemId, target, results[0]); return; }
+    const results = await geocodeSearch(query, context);
+    if (!results.length) {
+      const area = context?.requireNearby && context.cityName ? `${context.cityName}周辺で` : "";
+      setGeoStatus(itemId, target, `${area}見つかりませんでした。ホテル名や英字表記を変えて再検索を`, "warn");
+      return;
+    }
+    if (results.length === 1 && autoApplySingle) { applyGeo(itemId, target, results[0]); return; }
     geoCache.set(`${itemId}-${target}`, results);
     showCandidates(itemId, target, results);
     if (resultsEl) {
@@ -1049,6 +1319,27 @@ async function runGeocode(itemId: number, target: GeoTarget): Promise<void> {
 }
 
 const geoCache = new Map<string, GeoResult[]>();
+const geoSuggestTimers = new Map<number, number>();
+
+function clearGeoResults(itemId: number, target: GeoTarget): void {
+  const resultsEl = daysEl.querySelector<HTMLElement>(`[data-geores="${itemId}-${target}"]`);
+  if (resultsEl) { resultsEl.hidden = true; resultsEl.innerHTML = ""; }
+  geoCache.delete(`${itemId}-${target}`);
+}
+
+function scheduleSightPlaceSuggest(item: Item): void {
+  const existing = geoSuggestTimers.get(item.id);
+  if (existing) window.clearTimeout(existing);
+  if (item.kind !== "sight" || item.place.trim() || item.title.trim().length < 2) {
+    clearGeoResults(item.id, "place");
+    return;
+  }
+  const timer = window.setTimeout(() => {
+    geoSuggestTimers.delete(item.id);
+    void runGeocode(item.id, "place", { autoApplySingle: false, quiet: true });
+  }, 650);
+  geoSuggestTimers.set(item.id, timer);
+}
 
 function applyGeo(itemId: number, target: GeoTarget, r: GeoResult): void {
   const found = findItem(itemId);
@@ -1056,12 +1347,20 @@ function applyGeo(itemId: number, target: GeoTarget, r: GeoResult): void {
   const [latKey, lngKey] = latLngKeys(target);
   found.item[latKey] = String(r.lat);
   found.item[lngKey] = String(r.lng);
+  if (target === "place") {
+    found.item.mapQuery = r.label;
+    if (!found.item.place.trim()) found.item.place = conciseGeoLabel(r.label);
+    const placeInput = daysEl.querySelector<HTMLInputElement>(`[data-field="place"][data-item="${itemId}"]`);
+    if (placeInput) placeInput.value = found.item.place;
+  }
   const resultsEl = daysEl.querySelector<HTMLElement>(`[data-geores="${itemId}-${target}"]`);
   if (resultsEl) { resultsEl.hidden = true; resultsEl.innerHTML = ""; }
   clearCandidates();
   mapHintEl.textContent = "";
-  setGeoStatus(itemId, target, "位置を設定しました", "ok");
+  setGeoStatus(itemId, target, geoAppliedMessage(r.label || formatLatLng(r.lat, r.lng)), "ok");
   markDirty();
+  refreshNode(found.item);
+  refreshDayHeader(model.days.indexOf(found.day));
   refreshMap(true);
 }
 
@@ -1157,7 +1456,7 @@ daysEl.addEventListener("input", (event) => {
 
   // 泊数（数値・連泊範囲が変わるので全再描画）
   if (fieldName === "nights") {
-    found.item.nights = Math.max(1, Number(target.value) || 1);
+    found.item.nights = Math.max(1, Math.min(stayNightLimits(found.item).tripMax, Number(target.value) || 1));
     markDirty();
     renderDays();
     refreshMap(false);
@@ -1171,6 +1470,12 @@ daysEl.addEventListener("input", (event) => {
   if (field === "place" || field === "mapQuery") autoCoords(found.item, "place");
   if (field === "from") autoCoords(found.item, "from");
   if (field === "to") autoCoords(found.item, "to");
+  if (field === "title") scheduleSightPlaceSuggest(found.item);
+  if (field === "place") {
+    const timer = geoSuggestTimers.get(found.item.id);
+    if (timer) window.clearTimeout(timer);
+    geoSuggestTimers.delete(found.item.id);
+  }
 
   refreshNode(found.item);
   const di = model.days.indexOf(found.day);
@@ -1242,7 +1547,7 @@ function fileToWebpDataUrl(file: File, maxSize = 1000, quality = 0.82): Promise<
 
 /** プレビューに使う画像（手動設定があればそれ、無ければ目的地から自動/デフォルト）。 */
 function previewCoverSrc(): string {
-  return planCoverImage({
+  return planCoverThumbnail({
     slug: model.slug,
     route: model.cities.map((c) => c.name).filter(Boolean).join("、"),
     title: model.title,
@@ -1398,6 +1703,19 @@ function sortedCandidates(): Candidate[] {
     .map((x) => x.c);
 }
 
+function candidateDayOptions(): string {
+  return model.days
+    .map((day, index) => {
+      const dt = parseISO(day.date);
+      const date = dt ? `${dt.getMonth() + 1}/${dt.getDate()}` : day.date;
+      const city = cityForDate(day.date);
+      const area = city?.name || day.area || "";
+      const label = [`Day ${index + 1}`, date, area].filter(Boolean).join(" / ");
+      return `<option value="${index}">${escapeHtml(label)}</option>`;
+    })
+    .join("");
+}
+
 function renderCandidates(): void {
   const me = getUser().name.trim();
   const list = sortedCandidates();
@@ -1412,13 +1730,17 @@ function renderCandidates(): void {
       const voted = Boolean(me) && (c.votes || []).includes(me);
       const n = (c.votes || []).length;
       const sub = [c.place, c.proposer ? `提案: ${c.proposer}` : ""].filter(Boolean).join(" ・ ");
+      const adoptControls = canAdopt
+        ? `<label class="pe-cand-day"><span>追加先</span><select data-cand-day="${escapeHtml(c.id)}">${candidateDayOptions()}</select></label>` +
+          `<button class="pe-cand-act" type="button" data-cand-adopt="${escapeHtml(c.id)}">${icon("plus")}行程に追加</button>`
+        : `<button class="pe-cand-act" type="button" data-cand-adopt="${escapeHtml(c.id)}" disabled title="先に日程を作ってください">${icon("plus")}行程に追加</button>`;
       return (
         `<div class="pe-cand-row${c.adopted ? " is-adopted" : ""}" data-cand="${escapeHtml(c.id)}">` +
         `<button class="pe-cand-vote${voted ? " is-voted" : ""}" type="button" data-cand-vote="${escapeHtml(c.id)}" aria-pressed="${voted}" title="行きたい">${icon("star")}<span>${n}</span></button>` +
         `<span class="pe-cand-body"><span class="pe-cand-title">${escapeHtml(c.title)}</span>${sub ? `<span class="pe-cand-sub">${escapeHtml(sub)}</span>` : ""}</span>` +
         (c.adopted
           ? `<span class="pe-cand-sub">追加済み</span>`
-          : `<button class="pe-cand-act" type="button" data-cand-adopt="${escapeHtml(c.id)}"${canAdopt ? "" : ' disabled title="先に日程を作ってください"'}>${icon("plus")}行程に追加</button>`) +
+          : adoptControls) +
         `<button class="pe-cand-del" type="button" data-cand-del="${escapeHtml(c.id)}" aria-label="削除">${icon("xMark")}</button>` +
         `</div>`
       );
@@ -1457,13 +1779,14 @@ function toggleVote(id: string): void {
   renderCandidates();
 }
 
-function adoptCandidate(id: string): void {
+function adoptCandidate(id: string, dayIndex = 0): void {
   const c = model.candidates.find((x) => x.id === id);
   if (!c) return;
   if (!model.days.length) {
     toast("先に日程（期間）を作ってください");
     return;
   }
+  const targetIndex = Math.max(0, Math.min(model.days.length - 1, dayIndex));
   const kind = normalizeKind(c.type);
   const it = newItem(kind, {
     title: c.title,
@@ -1473,13 +1796,13 @@ function adoptCandidate(id: string): void {
     lng: c.lng != null ? String(c.lng) : "",
     mapQuery: c.place || c.title || "",
   });
-  model.days[0].items.push(it);
+  model.days[targetIndex].items.push(it);
   c.adopted = true;
   markDirty();
   renderCandidates();
   renderDays();
   refreshMap(false);
-  toast("Day 1 に追加しました。ドラッグで日や順番を調整できます");
+  toast(`Day ${targetIndex + 1} に追加しました。ドラッグで日や順番を調整できます`);
 }
 
 function removeCandidate(id: string): void {
@@ -1498,7 +1821,9 @@ candMount.addEventListener("click", (event) => {
   }
   const adopt = t.closest<HTMLElement>("[data-cand-adopt]");
   if (adopt) {
-    adoptCandidate(adopt.dataset.candAdopt || "");
+    const row = t.closest<HTMLElement>("[data-cand]");
+    const daySelect = row?.querySelector<HTMLSelectElement>("[data-cand-day]");
+    adoptCandidate(adopt.dataset.candAdopt || "", Number(daySelect?.value || 0));
     return;
   }
   const del = t.closest<HTMLElement>("[data-cand-del]");
@@ -1789,9 +2114,11 @@ function buildData(): LocalPlanData {
   const itinerary: ItineraryItem[] = [];
   model.days.forEach((day, di) => {
     const dayLabel = `Day ${di + 1}`;
+    const city = cityForDate(day.date);
+    const dayArea = city?.name || day.area || "";
     const flush = (it: Item): void => {
       const base: ItineraryItem = {
-        date: day.date, day: dayLabel, area: day.area || it.place || "",
+        date: day.date, day: dayLabel, area: dayArea || it.place || "",
         time: it.time || "", type: it.kind as ItemType, typeLabel: KINDS[it.kind].label,
         title: it.title || (it.kind === "move" ? `${it.from} → ${it.to}` : ""),
         place: it.place || (it.kind === "move" ? it.to : ""),
@@ -2005,7 +2332,9 @@ exportBtn.addEventListener("click", exportJson);
 // 地図の表示/非表示
 const mapToggle = qs<HTMLButtonElement>(root, "[data-map-toggle]");
 const mapShow = qs<HTMLButtonElement>(root, "[data-map-show]");
+const mapClose = qs<HTMLButtonElement>(root, "[data-map-close]");
 mapShow.innerHTML = icon("map") + "<span>地図を表示</span>";
+mapClose.innerHTML = icon("xMark");
 function setMapCollapsed(collapsed: boolean): void {
   root!.classList.toggle("map-collapsed", collapsed);
   mapShow.hidden = !collapsed;
@@ -2015,6 +2344,8 @@ function setMapCollapsed(collapsed: boolean): void {
 }
 mapToggle.addEventListener("click", () => setMapCollapsed(!root!.classList.contains("map-collapsed")));
 mapShow.addEventListener("click", () => setMapCollapsed(false));
+mapClose.addEventListener("pointerdown", (event) => event.stopPropagation());
+mapClose.addEventListener("click", (event) => { event.stopPropagation(); setMapCollapsed(true); });
 
 // スマホ: 地図ボトムシートの境界をドラッグして高さを変更
 const mapGrip = root!.querySelector<HTMLElement>("[data-map-grip]");

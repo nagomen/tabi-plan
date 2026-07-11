@@ -2,6 +2,7 @@
 // データは localStorage(JSON): 計画は plans-store、ユーザーは user-store。
 
 import "../shared/ui.css";
+import "./style.css";
 import { initPageTransitions } from "../shared/page-transition";
 import { icon, type IconName } from "../shared/icons";
 import { escapeHtml, makeScopedQuery } from "../shared/dom";
