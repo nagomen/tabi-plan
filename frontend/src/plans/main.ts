@@ -66,6 +66,18 @@ interface AppState {
 }
 
 type PlanTiming = "current" | "upcoming" | "past" | "undated";
+type LocationTransition = "forward" | "back" | "swap";
+
+interface LocationEntry {
+  name: string;
+  coords?: L.LatLngTuple;
+}
+
+interface DestinationRow {
+  name: string;
+  count: number;
+  coords?: L.LatLngTuple;
+}
 
 const CREATE_TRANSITION_KEY = "trip:create-plan-transition";
 
@@ -108,6 +120,7 @@ const inviteNoteEl = qs<HTMLElement>("[data-invite-note]");
 const rankingNewEl = qs<HTMLElement>("[data-ranking-new]");
 const rankingViewsEl = qs<HTMLElement>("[data-ranking-views]");
 const destinationsEl = qs<HTMLElement>("[data-destinations]");
+const locationExplorerEl = qs<HTMLElement>(".location-explorer");
 const locationSideEl = qs<HTMLElement>(".location-side");
 const locationHeadEl = qs<HTMLElement>("[data-location-head]");
 const locationPlansEl = qs<HTMLElement>("[data-location-plans]");
@@ -118,6 +131,8 @@ const viewsTotalEl = qs<HTMLElement>("[data-views-total]");
 const destinationCountEl = qs<HTMLElement>("[data-destination-count]");
 const mapCountEl = qs<HTMLElement>("[data-map-count]");
 const state: AppState = { filter: "", selectedLocation: "", selectedPlanSlug: "" };
+let pendingLocationTransition: LocationTransition | "" = "";
+let locationTransitionTimer = 0;
 const locationMapState: { map: L.Map | null; layer: L.LayerGroup | null } = { map: null, layer: null };
 const CONFIG: TripConfig = normalizeTripConfig(
   mergeConfig(
@@ -167,7 +182,7 @@ function sourceClass(source: PlanSource | string): string {
 }
 
 function planText(meta: PlanMeta): string {
-  return [meta.title, meta.route, meta.dates, meta.members].join(" ").toLowerCase();
+  return [meta.title, locationLabel(meta), meta.route, meta.dates, meta.members].join(" ").toLowerCase();
 }
 
 function planHref(meta: PlanMeta, view = false): string {
@@ -279,6 +294,63 @@ function displayLocationName(name: string): string {
     .trim() || raw;
 }
 
+function numeric(value: number | string | undefined): number | null {
+  if (value === undefined || value === "") return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+const planDataCache = new Map<string, LocalPlanData | null>();
+
+function dataForPlan(meta: PlanMeta): LocalPlanData | null {
+  if (!planDataCache.has(meta.slug)) {
+    planDataCache.set(meta.slug, TripPlans.getData(meta.slug));
+  }
+  return planDataCache.get(meta.slug) || null;
+}
+
+function uniqueLocationEntries(entries: LocationEntry[]): LocationEntry[] {
+  const byName = new Map<string, LocationEntry>();
+  entries.forEach((entry) => {
+    const name = displayLocationName(entry.name);
+    if (!name) return;
+    const existing = byName.get(name);
+    if (!existing || (!existing.coords && entry.coords)) byName.set(name, { name, coords: entry.coords });
+  });
+  return [...byName.values()];
+}
+
+function locationEntries(meta: PlanMeta): LocationEntry[] {
+  const data = dataForPlan(meta);
+  const cityEntries = uniqueLocationEntries((data?.cities || [])
+    .map((city) => {
+      const lat = numeric(city.lat);
+      const lng = numeric(city.lng);
+      return {
+        name: city.name || "",
+        coords: lat !== null && lng !== null ? [lat, lng] as L.LatLngTuple : undefined,
+      };
+    }));
+  if (cityEntries.length) return cityEntries;
+
+  const areaEntries = uniqueLocationEntries((data?.itinerary || [])
+    .map((item) => ({ name: item.area || "" })));
+  if (areaEntries.length) return areaEntries;
+
+  const routeEntries = uniqueLocationEntries(routeParts(meta).map((name) => ({ name })));
+  if (routeEntries.length) return routeEntries;
+
+  return uniqueLocationEntries([{ name: destinationName(meta) }]);
+}
+
+function locationNames(meta: PlanMeta): string[] {
+  return locationEntries(meta).map((entry) => entry.name);
+}
+
+function locationLabel(meta: PlanMeta): string {
+  return locationNames(meta).join("、") || meta.route || destinationName(meta);
+}
+
 function renderRankings(plans: PlanMeta[]): void {
   const latest = [...plans].sort((a, b) => timeValue(b) - timeValue(a)).slice(0, 5);
   const byViews = [...plans].sort((a, b) => getViews(b.slug) - getViews(a.slug) || timeValue(b) - timeValue(a)).slice(0, 5);
@@ -290,7 +362,7 @@ function renderRankings(plans: PlanMeta[]): void {
       '<span class="discover-trip-cover"><img src="' + planCoverThumbnail(meta) + '" alt="' + escapeHtml(meta.title || "旅行画像") + '" loading="lazy">' +
       '<span class="discover-trip-views">' + icon("eye") + views.toLocaleString("ja-JP") + '</span></span>' +
       '<span class="discover-trip-title">' + escapeHtml(meta.title || "無題の旅行") + '</span>' +
-      '<span class="discover-trip-meta">' + escapeHtml([meta.dates, meta.route || destinationName(meta)].filter(Boolean).join(" ・ ")) + '</span>' +
+      '<span class="discover-trip-meta">' + escapeHtml([meta.dates, locationLabel(meta)].filter(Boolean).join(" ・ ")) + '</span>' +
       '</a>'
     );
   };
@@ -306,12 +378,6 @@ function renderRankings(plans: PlanMeta[]): void {
   viewsTotalEl.textContent = totalViews ? totalViews.toLocaleString("ja-JP") + " views" : "";
 }
 
-function locationNames(meta: PlanMeta): string[] {
-  const names = routeParts(meta);
-  const normalized = (names.length ? names : [destinationName(meta)]).map(displayLocationName).filter(Boolean);
-  return Array.from(new Set(normalized));
-}
-
 function hasLocation(meta: PlanMeta, location: string): boolean {
   return locationNames(meta).includes(location);
 }
@@ -320,31 +386,37 @@ function plansForLocation(plans: PlanMeta[], location: string): PlanMeta[] {
   return plans.filter((meta) => hasLocation(meta, location));
 }
 
-function destinationRows(plans: PlanMeta[]): [string, number][] {
-  const counts = new Map<string, number>();
+function destinationRows(plans: PlanMeta[]): DestinationRow[] {
+  const rows = new Map<string, DestinationRow>();
   plans.forEach((meta) => {
-    locationNames(meta).forEach((name) => {
-      counts.set(name, (counts.get(name) || 0) + 1);
+    locationEntries(meta).forEach((entry) => {
+      const row = rows.get(entry.name) || { name: entry.name, count: 0 };
+      row.count += 1;
+      if (!row.coords && entry.coords) row.coords = entry.coords;
+      rows.set(entry.name, row);
     });
   });
-  return [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "ja")).slice(0, 10);
+  return [...rows.values()].sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, "ja")).slice(0, 10);
 }
 
 function renderLocationCityList(plans: PlanMeta[]): void {
   const rows = destinationRows(plans);
+  locationExplorerEl.classList.remove("is-plan-mode");
   locationSideEl.classList.remove("is-plan-mode");
   locationHeadEl.innerHTML =
+    '<div class="location-head-main"><span class="location-head-ic">' + icon("globeAlt") + '</span>' +
+    '<span class="location-head-copy"><span class="location-head-kicker">Destinations</span>' +
     '<p class="location-side-title">都市・国から選ぶ</p>' +
-    '<span class="location-side-note">左の一覧または地図のピンを選ぶと、旅行計画と日程を確認できます</span>';
+    '<span class="location-side-note">一覧または地図のピンから旅行計画を確認</span></span></div>';
   locationPlansEl.hidden = true;
   locationPlansEl.innerHTML = "";
   destinationsEl.hidden = false;
   destinationsEl.innerHTML = rows.length
-    ? rows.map(([name, count]) =>
-        '<a class="dest-row" href="#" data-dest-filter="' + escapeHtml(name) + '"><b>' +
-        escapeHtml(name) +
+    ? rows.map((row) =>
+        '<a class="dest-row" href="#" data-no-transition="true" data-dest-filter="' + escapeHtml(row.name) + '"><b>' +
+        escapeHtml(row.name) +
         "</b><span>" +
-        count +
+        row.count +
         "件の旅行計画</span></a>",
       ).join("")
     : emptyList("行き先別の一覧は、公開旅行が増えると表示されます。");
@@ -358,20 +430,23 @@ function renderLocationPlans(plans: PlanMeta[]): PlanMeta[] {
   if (!state.selectedPlanSlug || !rows.some((meta) => meta.slug === state.selectedPlanSlug)) {
     state.selectedPlanSlug = rows[0]?.slug || "";
   }
+  locationExplorerEl.classList.add("is-plan-mode");
   locationSideEl.classList.add("is-plan-mode");
   locationHeadEl.innerHTML =
-    '<button class="location-back" type="button" data-location-back>都市一覧へ戻る</button>' +
+    '<div class="location-head-main"><span class="location-head-ic">' + icon("mapPin") + '</span>' +
+    '<span class="location-head-copy"><span class="location-head-kicker">Selected Area</span>' +
     '<p class="location-side-title">' + escapeHtml(selected) + '</p>' +
-    '<span class="location-side-note">この都市の旅行計画 ' + rows.length + '件</span>';
+    '<span class="location-side-note">この都市の旅行計画 ' + rows.length + '件</span></span></div>' +
+    '<button class="location-back" type="button" data-location-back>' + icon("arrowLeft") + '<span>一覧へ戻る</span></button>';
   destinationsEl.hidden = true;
   locationPlansEl.hidden = false;
   locationPlansEl.innerHTML = rows.length
     ? rows.map((meta) =>
         '<a class="location-plan-row' + (meta.slug === state.selectedPlanSlug ? " is-active" : "") +
-        '" href="#" data-location-plan="' + escapeHtml(meta.slug) + '">' +
+        '" href="#" data-no-transition="true" data-location-plan="' + escapeHtml(meta.slug) + '">' +
         '<span><b>' + escapeHtml(meta.title || "無題の旅行") + '</b><span>' +
-        escapeHtml([meta.dates, meta.route || selected].filter(Boolean).join(" ・ ")) +
-        '</span></span><em>日程</em></a>',
+        escapeHtml([meta.dates, locationLabel(meta) || selected].filter(Boolean).join(" ・ ")) +
+        '</span></span><em>' + (meta.slug === state.selectedPlanSlug ? "表示中" : "日程") + '</em></a>',
       ).join("")
     : emptyList("この場所の旅行計画はまだありません。");
   return rows;
@@ -386,6 +461,101 @@ function itemTitle(item: LocalPlanData["itinerary"][number]): string {
   return item.title || item.place || item.area || item.destination || item.origin || "予定";
 }
 
+function mdLabel(iso: string | undefined): string {
+  const m = /^\d{4}-(\d{2})-(\d{2})/.exec(iso || "");
+  return m ? `${Number(m[1])}/${Number(m[2])}` : iso || "";
+}
+
+function mapsSearch(query: string | undefined): string {
+  return "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(query || "");
+}
+
+const SCHEDULE_KIND_ICON: Record<string, IconName> = {
+  sight: "camera",
+  food: "cake",
+  move: "arrowsRightLeft",
+  stay: "buildingOffice2",
+  todo: "check",
+  form: "documentText",
+};
+
+function scheduleKindClass(type: string | undefined): string {
+  const normalized = String(type || "todo");
+  return SCHEDULE_KIND_ICON[normalized] ? normalized : "todo";
+}
+
+function scheduleKindIcon(type: string | undefined): string {
+  return icon(SCHEDULE_KIND_ICON[String(type || "")] || "check");
+}
+
+function scheduleMapLink(query: string | undefined): string {
+  return '<a class="schedule-maplink" href="' + mapsSearch(query) + '" target="_blank" rel="noopener">地図 ' +
+    icon("arrowTopRightOnSquare") + '</a>';
+}
+
+function scheduleMetaText(item: LocalPlanData["itinerary"][number]): string {
+  const title = itemTitle(item);
+  const place = item.place && item.place !== title ? "場所: " + item.place : "";
+  return [place, item.note].filter(Boolean).join(" / ");
+}
+
+function scheduleDayHead(rows: LocalPlanData["itinerary"], index: number): string {
+  const first = rows[0];
+  const day = first?.day || "Day " + (index + 1);
+  const area = first?.area || "";
+  const date = mdLabel(first?.date);
+  const title = [day, area, date].filter(Boolean).join(" ・ ");
+  const weather = rows.find((row) => row.weather)?.weather || "";
+  return '<div class="schedule-dayblock-head"><b>' + escapeHtml(title || "日程") + '</b>' +
+    (weather ? '<span class="schedule-weather">' + escapeHtml(weather) + '</span>' : "") + '</div>';
+}
+
+function scheduleStayHtml(item: LocalPlanData["itinerary"][number]): string {
+  const title = itemTitle(item) || "宿泊先";
+  const place = item.place && item.place !== title ? item.place : "";
+  return '<div class="schedule-stay">' +
+    '<span class="schedule-stay-ic">' + icon("buildingOffice2") + '</span>' +
+    '<div class="schedule-stay-body">' +
+    '<span class="schedule-stay-label">' + escapeHtml(item.typeLabel || "宿泊") + '</span>' +
+    '<span class="schedule-stay-name">' + escapeHtml(title) + '</span>' +
+    (place ? '<span class="schedule-stay-place">' + escapeHtml(place) + '</span>' : "") +
+    '</div>' +
+    scheduleMapLink(item.mapQuery || item.place || title) +
+    '</div>';
+}
+
+function scheduleItemHtml(item: LocalPlanData["itinerary"][number]): string {
+  const type = String(item.type || "todo");
+  const kind = scheduleKindClass(type);
+  const label = '<span class="schedule-kind ' + kind + '">' +
+    escapeHtml(item.typeLabel || type || "予定") + '</span>';
+  let segA = item.origin || "";
+  let segB = item.destination || "";
+  if (kind === "move" && (!segA || !segB) && /→|->/.test(item.title || "")) {
+    const parts = (item.title || "").split(/→|->/);
+    segA = segA || (parts[0] || "").trim();
+    segB = segB || (parts[1] || "").trim();
+  }
+  const title = kind === "move" && (segA || segB)
+    ? '<div class="schedule-seg"><span>' + escapeHtml(segA || "出発") + '</span>' +
+      '<span class="schedule-seg-arr">' + icon("arrowLongRight") + '</span>' +
+      '<span>' + escapeHtml(segB || "到着") + '</span></div>'
+    : '<h3>' + escapeHtml(itemTitle(item)) + '</h3>';
+  const meta = scheduleMetaText(item);
+  return '<article class="schedule-tl-item" data-kind="' + kind + '">' +
+    '<time class="schedule-time">' + escapeHtml(item.time || "") + '</time>' +
+    '<span class="schedule-rail"><span class="schedule-dot ' + kind + '">' + scheduleKindIcon(type) + '</span></span>' +
+    '<div class="schedule-plan">' +
+    '<div class="schedule-plan-line">' + label + title + '</div>' +
+    (item.needed ? '<p class="schedule-needed">' + escapeHtml(item.needed) + '</p>' : "") +
+    '<p class="schedule-meta">' +
+    (meta ? '<span class="schedule-meta-text">' + escapeHtml(meta) + '</span>' : "") +
+    scheduleMapLink(item.mapQuery || item.place || item.title) +
+    '</p>' +
+    '</div>' +
+    '</article>';
+}
+
 function renderSchedule(plan: PlanMeta | undefined): void {
   mapBoardEl.hidden = true;
   locationScheduleEl.hidden = false;
@@ -396,9 +566,11 @@ function renderSchedule(plan: PlanMeta | undefined): void {
   const data = itineraryFor(plan);
   const items = (data?.itinerary || []).slice(0, 18);
   const head =
-    '<div class="schedule-head"><b>' + escapeHtml(plan.title || "無題の旅行") + '</b>' +
-    '<span>' + escapeHtml([plan.dates, plan.route].filter(Boolean).join(" ・ ") || "日程情報") + '</span>' +
-    '<a href="' + planHref(plan, !Permissions.canEdit(plan.slug)) + '">旅行計画を開く</a></div>';
+    '<div class="schedule-head"><span class="schedule-head-ic">' + icon("calendarDays") + '</span>' +
+    '<div class="schedule-head-main"><span class="schedule-head-kicker">Itinerary</span>' +
+    '<b>' + escapeHtml(plan.title || "無題の旅行") + '</b>' +
+    '<span class="schedule-head-meta">' + escapeHtml([plan.dates, locationLabel(plan)].filter(Boolean).join(" ・ ") || "日程情報") + '</span></div>' +
+    '<a href="' + planHref(plan, !Permissions.canEdit(plan.slug)) + '">旅行計画を開く ' + icon("arrowTopRightOnSquare") + '</a></div>';
   if (!items.length) {
     locationScheduleEl.innerHTML = head + emptyList("この計画の日程データはまだありません。");
     return;
@@ -411,16 +583,14 @@ function renderSchedule(plan: PlanMeta | undefined): void {
     groups.set(key, arr);
   });
   locationScheduleEl.innerHTML = head + '<div class="schedule-list">' +
-    [...groups.entries()].map(([date, rows]) =>
-      '<section class="schedule-day"><div class="schedule-date">' + escapeHtml(date) + '</div>' +
-      '<div class="schedule-items">' +
-      rows.map((item) =>
-        '<div class="schedule-item"><span class="schedule-time">' + escapeHtml(item.time || "") + '</span>' +
-        '<span class="schedule-main"><b>' + escapeHtml(itemTitle(item)) + '</b><span>' +
-        escapeHtml([item.place && item.place !== itemTitle(item) ? item.place : "", item.area, item.note].filter(Boolean).join(" ・ ")) +
-        '</span></span></div>',
-      ).join("") +
-      '</div></section>',
+    [...groups.values()].map((rows, index) =>
+      '<section class="schedule-dayblock">' +
+      scheduleDayHead(rows, index) +
+      rows.filter((item) => String(item.type) === "stay").map(scheduleStayHtml).join("") +
+      '<div class="schedule-timeline">' +
+      rows.filter((item) => String(item.type) !== "stay").map(scheduleItemHtml).join("") +
+      '</div>' +
+      '</section>',
     ).join("") +
     '</div>';
 }
@@ -441,12 +611,13 @@ function renderLocationMap(plans: PlanMeta[]): void {
     mapBoardEl.innerHTML = '<div class="map-empty">公開旅行が増えると、ここに行き先のピンが並びます。</div>';
     return;
   }
-  const destinations = new Map<string, { name: string; coords: L.LatLngExpression; count: number }>();
-  rows.forEach(([name, count]) => {
-    const coords = TripPlans.coordsFor(name);
+  const destinations = new Map<string, { name: string; coords: L.LatLngTuple; count: number }>();
+  rows.forEach((row) => {
+    const fallback = TripPlans.coordsFor(row.name);
+    const coords = row.coords || (fallback ? [fallback.lat, fallback.lng] as L.LatLngTuple : undefined);
     if (!coords) return;
-    const key = name + ":" + coords.lat.toFixed(3) + "," + coords.lng.toFixed(3);
-    destinations.set(key, { name, coords: [coords.lat, coords.lng], count });
+    const key = row.name + ":" + coords[0].toFixed(3) + "," + coords[1].toFixed(3);
+    destinations.set(key, { name: row.name, coords, count: row.count });
   });
   const points = [...destinations.values()];
   if (!points.length) {
@@ -488,6 +659,7 @@ function renderLocationMap(plans: PlanMeta[]): void {
     }).addTo(locationMapState.layer!);
     marker.bindTooltip(`${escapeHtml(point.name)} (${point.count}件)`, { direction: "top" });
     marker.on("click", () => {
+      queueLocationTransition("forward");
       state.selectedLocation = point.name;
       state.selectedPlanSlug = "";
       renderDiscover(plans);
@@ -500,17 +672,46 @@ function renderLocationMap(plans: PlanMeta[]): void {
   }, 0);
 }
 
+function queueLocationTransition(direction: LocationTransition): void {
+  pendingLocationTransition = direction;
+}
+
+function playLocationTransition(): void {
+  const direction = pendingLocationTransition;
+  pendingLocationTransition = "";
+  if (!direction) return;
+  window.clearTimeout(locationTransitionTimer);
+  locationExplorerEl.classList.remove(
+    "is-location-animating",
+    "is-location-forward",
+    "is-location-back",
+    "is-location-swap",
+  );
+  void locationExplorerEl.offsetWidth;
+  locationExplorerEl.classList.add("is-location-animating", "is-location-" + direction);
+  locationTransitionTimer = window.setTimeout(() => {
+    locationExplorerEl.classList.remove(
+      "is-location-animating",
+      "is-location-forward",
+      "is-location-back",
+      "is-location-swap",
+    );
+  }, 340);
+}
+
 function renderLocationExplorer(plans: PlanMeta[]): void {
   if (!state.selectedLocation || !plansForLocation(plans, state.selectedLocation).length) {
     state.selectedLocation = "";
     state.selectedPlanSlug = "";
     renderLocationCityList(plans);
     renderLocationMap(plans);
+    playLocationTransition();
     return;
   }
   const rows = renderLocationPlans(plans);
   const selected = rows.find((meta) => meta.slug === state.selectedPlanSlug) || rows[0];
   renderSchedule(selected);
+  playLocationTransition();
 }
 
 function renderStart(publicPlans: PlanMeta[]): void {
@@ -631,7 +832,7 @@ function rowHtml(meta: PlanMeta, variant: RowVariant, activeSlug: string, highli
     highlightBadge +
     "</span>" +
     (metaLine ? '<span class="plan-meta">' + metaLine + "</span>" : "") +
-    (meta.route ? '<span class="plan-route">' + escapeHtml(meta.route) + "</span>" : "") +
+    (locationLabel(meta) ? '<span class="plan-route">' + escapeHtml(locationLabel(meta)) + "</span>" : "") +
     "</span>" +
     "</a>" +
     '<div class="plan-tools">' +
@@ -652,6 +853,7 @@ function matchesFilter(meta: PlanMeta, filter: string): boolean {
 
 function render(): void {
   TripPlans.ensureSeed(readGlobalTripConfig());
+  planDataCache.clear();
   const activeSlug = TripPlans.getActiveSlug();
   const filter = state.filter.trim().toLowerCase();
   const loggedIn = isLoggedIn();
@@ -1024,6 +1226,7 @@ destinationsEl.addEventListener("click", (event) => {
   if (!link) return;
   event.preventDefault();
   const value = link.dataset.destFilter || "";
+  queueLocationTransition("forward");
   state.selectedLocation = value;
   state.selectedPlanSlug = "";
   render();
@@ -1034,6 +1237,7 @@ locationHeadEl.addEventListener("click", (event) => {
   if (!(target instanceof Element)) return;
   if (!target.closest("[data-location-back]")) return;
   event.preventDefault();
+  queueLocationTransition("back");
   state.selectedLocation = "";
   state.selectedPlanSlug = "";
   render();
@@ -1045,6 +1249,7 @@ locationPlansEl.addEventListener("click", (event) => {
   const link = target.closest<HTMLElement>("[data-location-plan]");
   if (!link) return;
   event.preventDefault();
+  queueLocationTransition("swap");
   state.selectedPlanSlug = link.dataset.locationPlan || "";
   render();
 });

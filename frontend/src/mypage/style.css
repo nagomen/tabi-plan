@@ -362,6 +362,58 @@
   .mp-legend-name { font-size: 14px; font-weight: 600; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .mp-legend-dates { color: var(--muted); font-size: 12px; font-weight: 500; flex: none; }
 
+  /* 友達（検索・申請・一覧） */
+  .mp-friend-search { display: flex; gap: 8px; margin-bottom: 6px; }
+  .mp-friend-search input {
+    flex: 1;
+    min-width: 0;
+    min-height: 42px;
+    border: 1px solid var(--line-strong);
+    border-radius: 0;
+    background: #fff;
+    color: var(--ink);
+    padding: 8px 12px;
+    font: inherit;
+    font-size: 14px;
+  }
+  .mp-friend-search input:focus-visible { outline: none; border-color: var(--green); box-shadow: 0 0 0 3px var(--green-soft); }
+  .mp-friend-search button {
+    flex: none;
+    appearance: none;
+    border: 1px solid var(--green);
+    background: var(--green);
+    color: #fff;
+    border-radius: 0;
+    padding: 0 16px;
+    font: inherit;
+    font-size: 13.5px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  .mp-friend-note { margin: 0 0 10px; min-height: 14px; color: var(--muted); font-size: 12px; font-weight: 600; }
+  .mp-row.mp-row-static { cursor: default; }
+  .mp-row-actions { flex: none; display: flex; gap: 6px; }
+  .mp-friend-btn {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    appearance: none;
+    border: 1px solid var(--line-strong);
+    background: #fff;
+    border-radius: 0;
+    padding: 6px 12px;
+    font: inherit;
+    font-size: 12.5px;
+    font-weight: 700;
+    color: var(--ink);
+    cursor: pointer;
+  }
+  .mp-friend-btn:hover, .mp-friend-btn:focus-visible { border-color: var(--green); color: var(--green); }
+  .mp-friend-btn.danger { color: var(--red); }
+  .mp-friend-btn.danger:hover, .mp-friend-btn.danger:focus-visible { border-color: var(--red); }
+  .mp-friend-btn .hi { width: 14px; height: 14px; vertical-align: -2px; }
+
   /* PC: タブをやめ、左=計画 / 右=カレンダーの2カラムで横幅を活かす */
   @media (min-width: 860px) {
     .mp-tabs { display: none; }

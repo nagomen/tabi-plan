@@ -18,47 +18,47 @@
       <section class="pe-setup">
         <div class="pe-setup-inner">
         <div class="pe-setup-top">
-          <p class="pe-kicker" data-ic-setup>計画の作成</p>
-          <h2 class="pe-setup-title">旅の基本を決めましょう</h2>
-          <p class="pe-setup-copy">旅行名と期間を入れるだけで、すぐに計画を始められます。</p>
           <ol class="pe-steps" aria-label="作成ステップ">
-            <li class="pe-step is-current"><span class="pe-step-n">1</span><span class="pe-step-t"><b>期間</b><small>旅行名・期間</small></span></li>
-            <li class="pe-step"><span class="pe-step-n">2</span><span class="pe-step-t"><b>目的地</b><small>訪問する場所</small></span></li>
-            <li class="pe-step"><span class="pe-step-n">3</span><span class="pe-step-t"><b>行程</b><small>日ごとの予定</small></span></li>
+            <li class="pe-step is-current"><span class="pe-step-n">1</span><span class="pe-step-t"><b>期間</b></span></li>
+            <li class="pe-step"><span class="pe-step-n">2</span><span class="pe-step-t"><b>目的地</b></span></li>
+            <li class="pe-step"><span class="pe-step-n">3</span><span class="pe-step-t"><b>行程</b></span></li>
           </ol>
         </div>
         <div class="pe-form-panel">
           <div data-step-panel="1">
-          <div class="pe-grid">
-            <label class="pe-field c3">
+          <div class="pe-grid pe-basic-grid">
+            <label class="pe-field pe-primary-field c3">
               <span data-ic-name>旅行名 <span class="pe-req">必須</span></span>
               <input data-f="title" placeholder="例: 2026年8月 東北旅行">
             </label>
-            <label class="pe-field c3">
+            <div class="pe-field pe-primary-field c3">
               <span data-ic-period>期間 <em>カレンダーで開始日→終了日を選択</em></span>
-              <input data-range placeholder="期間を選択" readonly>
-            </label>
-            <div class="pe-field c6">
-              <span data-ic-members>メンバー <em>任意・友達は候補から選べます</em></span>
+              <button class="pe-range-button" type="button" data-range-trigger aria-haspopup="dialog" aria-expanded="false">
+                <span data-range-label>期間を選択</span>
+              </button>
+              <input data-range type="text" tabindex="-1" aria-hidden="true" hidden>
+            </div>
+            <div class="pe-field pe-member-field c6" data-member-field hidden>
+              <span data-ic-members>メンバー <em>友達から選択・任意</em></span>
               <div class="pe-members" data-members></div>
               <div class="pe-member-add">
                 <div class="pe-member-inputwrap">
-                  <input data-member-input type="text" autocomplete="off" placeholder="名前を入力して追加" aria-label="メンバーを追加">
-                  <div class="pe-member-suggest" data-member-suggest hidden></div>
+                  <select data-member-select aria-label="追加するメンバーを選択"></select>
                 </div>
                 <button class="pe-mini" type="button" data-member-add data-ic-memberadd>追加</button>
               </div>
+              <p class="pe-member-hint" data-member-hint hidden>友達がまだいません。<a href="mypage.html">マイページ</a>から友達を追加すると、ここで選んで招待できます。</p>
             </div>
-            <label class="pe-field c6">
+            <label class="pe-field pe-soft-field c6">
               <span data-ic-note>共有メモ <em>任意</em></span>
               <input data-f="note" placeholder="共有しておきたいメモ">
             </label>
-            <div class="pe-field c6">
+            <div class="pe-field pe-soft-field c6">
               <span data-ic-cover>サムネ画像 <em>任意・未設定なら目的地から自動／デフォルト画像</em></span>
               <div class="pe-cover">
                 <div class="pe-cover-preview" data-cover-preview aria-hidden="true"></div>
                 <div class="pe-cover-actions">
-                  <label class="pe-mini pe-cover-pick">画像を選ぶ<input type="file" accept="image/*" data-cover-input hidden></label>
+                  <label class="pe-mini pe-cover-pick" data-ic-coverpick>画像を選ぶ<input type="file" accept="image/*" data-cover-input hidden></label>
                   <button class="pe-mini" type="button" data-cover-clear hidden>デフォルトに戻す</button>
                   <span class="pe-cover-note">選んだ画像は WebP に変換して保存されます</span>
                 </div>

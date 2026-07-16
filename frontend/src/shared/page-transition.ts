@@ -11,7 +11,7 @@ function sameDocumentHash(url: URL): boolean {
     url.origin === location.origin &&
     url.pathname === location.pathname &&
     url.search === location.search &&
-    !!url.hash
+    (url.hash !== "" || url.href.endsWith("#"))
   );
 }
 

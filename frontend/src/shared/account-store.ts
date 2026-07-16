@@ -213,6 +213,33 @@ export function isLoggedIn(): boolean {
   return readSession() != null;
 }
 
+/** メールアドレス完全一致でアカウントを探す（友達申請の宛先探索用）。 */
+export function findAccountByEmail(email: string): Account | null {
+  const mail = normalizeEmail(email);
+  if (!mail) return null;
+  const record = readAccounts().find((a) => normalizeEmail(a.email) === mail);
+  return record ? toPublic(record) : null;
+}
+
+/** id 指定でアカウントを探す（友達一覧の表示情報解決用）。 */
+export function findAccountById(id: string): Account | null {
+  if (!id) return null;
+  const record = readAccounts().find((a) => a.id === id);
+  return record ? toPublic(record) : null;
+}
+
+/** 名前/メールの部分一致でアカウントを検索する（友達申請の候補探し用）。 */
+export function searchAccounts(query: string, opts: { excludeSelf?: boolean } = {}): Account[] {
+  const q = String(query || "").trim().toLowerCase();
+  if (!q) return [];
+  const selfId = opts.excludeSelf ? currentAccount()?.id : undefined;
+  return readAccounts()
+    .filter((a) => a.id !== selfId)
+    .filter((a) => a.name.toLowerCase().includes(q) || normalizeEmail(a.email).includes(q))
+    .slice(0, 20)
+    .map(toPublic);
+}
+
 /** ログイン中アカウントの表示名を更新する（プロフィール編集用）。 */
 export function updateName(name: string): Account | null {
   const session = readSession();

@@ -14,15 +14,19 @@
   <div data-app-header></div>
 
   <section class="pv-head">
-    <h1 class="pv-name" data-name>—</h1>
-    <div class="pv-flags" data-flags hidden></div>
+    <div class="pv-avatar" data-avatar aria-hidden="true">—</div>
+    <div class="pv-head-main">
+      <p class="pv-eyebrow">Member history</p>
+      <h1 class="pv-name" data-name>—</h1>
+      <div class="pv-flags" data-flags hidden></div>
+    </div>
   </section>
 
   <section class="pv-stats" data-stats hidden>
-    <div class="pv-stat"><span class="pv-stat-num" data-country-count>0</span><span class="pv-stat-label">訪問国</span></div>
-    <div class="pv-stat"><span class="pv-stat-num" data-trip-count>0</span><span class="pv-stat-label">旅行</span></div>
-    <div class="pv-stat"><span class="pv-stat-num" data-place-count>0</span><span class="pv-stat-label">訪問地</span></div>
-    <div class="pv-stat"><span class="pv-stat-num" data-day-count>0</span><span class="pv-stat-label">旅した日数</span></div>
+    <div class="pv-stat" data-stat-icon="globeAlt"><span class="pv-stat-icon" aria-hidden="true"></span><span class="pv-stat-body"><span class="pv-stat-num" data-country-count>0</span><span class="pv-stat-label">訪問国</span></span></div>
+    <div class="pv-stat" data-stat-icon="briefcase"><span class="pv-stat-icon" aria-hidden="true"></span><span class="pv-stat-body"><span class="pv-stat-num" data-trip-count>0</span><span class="pv-stat-label">旅行</span></span></div>
+    <div class="pv-stat" data-stat-icon="mapPin"><span class="pv-stat-icon" aria-hidden="true"></span><span class="pv-stat-body"><span class="pv-stat-num" data-place-count>0</span><span class="pv-stat-label">訪問地</span></span></div>
+    <div class="pv-stat" data-stat-icon="calendarDays"><span class="pv-stat-icon" aria-hidden="true"></span><span class="pv-stat-body"><span class="pv-stat-num" data-day-count>0</span><span class="pv-stat-label">旅した日数</span></span></div>
   </section>
 
   <!-- 非公開 -->

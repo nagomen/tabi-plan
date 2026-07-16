@@ -323,10 +323,12 @@ export function saveLocalPlan(slug: string, data: LocalPlanData): PlanMeta | nul
   const trip = data.trip || ({} as TripInfo);
   const existing = get(target);
   const areas: string[] = (data.cities || []).map((city) => city.name || "").filter(Boolean);
-  (data.itinerary || []).forEach((item) => {
-    const area = item.area || item.place || "";
-    if (area && areas.indexOf(area) === -1) areas.push(area);
-  });
+  if (!areas.length) {
+    (data.itinerary || []).forEach((item) => {
+      const area = item.area || "";
+      if (area && areas.indexOf(area) === -1) areas.push(area);
+    });
+  }
   saveData(target, data);
   upsert({
     slug: target,

@@ -60,7 +60,9 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
-    body.is-plan-create-leaving .hub {
+    body.is-plan-create-leaving .hub,
+    .location-explorer.is-location-animating .location-side,
+    .location-explorer.is-location-animating .location-detail {
       animation: none;
     }
   }
@@ -308,6 +310,42 @@
     border-top: 1px solid var(--line);
     border-bottom: 1px solid var(--line);
   }
+  .location-explorer.is-location-forward .location-side {
+    --location-slide-x: -22px;
+  }
+  .location-explorer.is-location-forward .location-detail {
+    --location-slide-x: 34px;
+  }
+  .location-explorer.is-location-back .location-side {
+    --location-slide-x: 22px;
+  }
+  .location-explorer.is-location-back .location-detail {
+    --location-slide-x: -34px;
+  }
+  .location-explorer.is-location-swap .location-side {
+    --location-slide-x: 0;
+  }
+  .location-explorer.is-location-swap .location-detail {
+    --location-slide-x: 24px;
+  }
+  .location-explorer.is-location-animating .location-side,
+  .location-explorer.is-location-animating .location-detail {
+    animation: location-panel-slide .3s cubic-bezier(.2, .8, .2, 1) both;
+    will-change: transform, opacity;
+  }
+  .location-explorer.is-location-swap .location-side {
+    animation-duration: .18s;
+  }
+  @keyframes location-panel-slide {
+    from {
+      opacity: .001;
+      transform: translate3d(var(--location-slide-x, 0), var(--location-slide-y, 0), 0);
+    }
+    to {
+      opacity: 1;
+      transform: translate3d(0, 0, 0);
+    }
+  }
   .location-side {
     display: grid;
     grid-template-rows: auto minmax(0, 1fr);
@@ -319,33 +357,94 @@
   }
   .location-side-head {
     display: grid;
-    gap: 5px;
-    padding: 14px 18px;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 12px;
+    min-height: 74px;
+    padding: 16px 18px;
     border-bottom: 1px solid var(--line);
-    background: #fafcfb;
+    background:
+      linear-gradient(90deg, rgba(98, 70, 166, .055), transparent 68%),
+      #fff;
+  }
+  .location-head-main {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 11px;
+  }
+  .location-head-ic {
+    flex: none;
+    display: inline-grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    color: var(--violet);
+  }
+  .location-head-ic svg,
+  .location-head-ic .hi {
+    width: 25px;
+    height: 25px;
+  }
+  .location-head-copy {
+    min-width: 0;
+    display: grid;
+    gap: 2px;
+  }
+  .location-head-kicker {
+    color: var(--green);
+    font-size: 10px;
+    font-weight: 900;
+    letter-spacing: .13em;
+    line-height: 1;
+    text-transform: uppercase;
   }
   .location-back {
     justify-self: start;
     appearance: none;
-    border: 1px solid var(--line-strong);
-    background: #fff;
-    color: var(--green);
-    min-height: 30px;
-    padding: 0 10px;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    border: 0;
+    background: transparent;
+    color: var(--muted);
+    min-height: 32px;
+    padding: 0;
     font: inherit;
     font-size: 12px;
-    font-weight: 600;
+    font-weight: 760;
     cursor: pointer;
+  }
+  .location-back:hover,
+  .location-back:focus-visible {
+    color: var(--green);
+    outline: none;
+  }
+  .location-back svg,
+  .location-back .hi {
+    width: 16px;
+    height: 16px;
   }
   .location-side-title {
     margin: 0;
-    font-size: 18px;
-    font-weight: 680;
+    overflow: hidden;
+    color: var(--ink);
+    font-size: 19px;
+    line-height: 1.15;
+    font-weight: 850;
+    letter-spacing: 0;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .location-side-note {
+    min-width: 0;
+    overflow: hidden;
     color: var(--muted);
     font-size: 12px;
-    font-weight: 520;
+    font-weight: 650;
+    line-height: 1.35;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .location-explorer .dest-list,
   .location-plan-list {
@@ -358,19 +457,15 @@
   .location-explorer .dest-list[hidden],
   .location-plan-list[hidden] { display: none; }
   .location-side.is-plan-mode {
-    background: #fbfdfb;
+    background: #fff;
   }
   .location-side.is-plan-mode .location-side-head {
-    background: #10201a;
-    color: #fff;
+    background:
+      linear-gradient(90deg, rgba(11, 90, 66, .07), transparent 68%),
+      #fff;
   }
-  .location-side.is-plan-mode .location-side-note {
-    color: rgba(255,255,255,.72);
-  }
-  .location-side.is-plan-mode .location-back {
-    border-color: rgba(255,255,255,.44);
-    background: transparent;
-    color: #fff;
+  .location-side.is-plan-mode .location-head-ic {
+    color: var(--green);
   }
   .location-explorer .map-board {
     height: 100%;
@@ -431,74 +526,311 @@
   }
   .schedule-head {
     display: grid;
-    gap: 6px;
-    padding: 16px 18px;
+    grid-template-columns: 34px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 12px;
+    padding: 18px 22px;
     border-bottom: 1px solid var(--line);
-    background: #10201a;
-    color: #fff;
+    background:
+      linear-gradient(90deg, rgba(11, 90, 66, .06), transparent 62%),
+      #fff;
+    color: var(--ink);
+  }
+  .schedule-head-ic {
+    display: inline-grid;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    color: var(--green);
+  }
+  .schedule-head-ic svg,
+  .schedule-head-ic .hi { width: 24px; height: 24px; }
+  .schedule-head-main {
+    min-width: 0;
+    display: grid;
+    gap: 2px;
+  }
+  .schedule-head-kicker {
+    color: var(--green);
+    font-size: 11px;
+    font-weight: 900;
+    letter-spacing: .13em;
+    line-height: 1;
+    text-transform: uppercase;
   }
   .schedule-head b {
-    font-size: 20px;
-    line-height: 1.2;
-    font-weight: 680;
+    min-width: 0;
+    overflow: hidden;
+    font-size: 24px;
+    line-height: 1.12;
+    font-weight: 900;
+    letter-spacing: 0;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
-  .schedule-head span {
-    color: rgba(255,255,255,.76);
-    font-size: 12px;
-    font-weight: 520;
+  .schedule-head-meta {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--muted);
+    font-size: 13px;
+    font-weight: 720;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .schedule-head a {
-    justify-self: start;
-    min-height: 32px;
+    justify-self: end;
+    min-height: 34px;
     display: inline-flex;
     align-items: center;
-    padding: 0 10px;
-    border: 1px solid rgba(255,255,255,.56);
-    color: #fff;
+    gap: 5px;
+    padding: 0 12px;
+    border: 1px solid var(--line-strong);
+    color: var(--green);
     font-size: 12px;
-    font-weight: 620;
+    font-weight: 800;
     text-decoration: none;
+    white-space: nowrap;
+  }
+  .schedule-head a:hover,
+  .schedule-head a:focus-visible {
+    border-color: var(--green);
+    background: var(--green-soft);
+    outline: none;
+  }
+  .schedule-head a svg,
+  .schedule-head a .hi {
+    width: 14px;
+    height: 14px;
   }
   .schedule-list {
     display: grid;
   }
-  .schedule-day {
-    display: grid;
-    grid-template-columns: 96px minmax(0, 1fr);
+  .schedule-dayblock {
+    padding: 20px 22px 22px;
     border-bottom: 1px solid var(--line);
   }
-  .schedule-date {
-    padding: 14px 12px 14px 18px;
-    border-right: 1px solid var(--line);
-    color: var(--green);
+  .schedule-dayblock-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    margin: 0 0 16px;
+  }
+  .schedule-dayblock-head b {
+    min-width: 0;
+    color: var(--ink);
+    font-size: 17px;
+    line-height: 1.25;
+    font-weight: 850;
+    overflow-wrap: anywhere;
+  }
+  .schedule-weather {
+    flex: none;
+    color: var(--amber);
     font-size: 12px;
-    font-weight: 620;
+    font-weight: 800;
+    white-space: nowrap;
   }
-  .schedule-items {
+  .schedule-stay {
+    --stay-accent: #c2543f;
+    display: flex;
+    align-items: center;
+    gap: 13px;
+    margin: 0 0 18px;
+    padding: 4px 2px 14px 14px;
+    border-left: 2px solid var(--stay-accent);
+  }
+  .schedule-stay-ic {
+    flex: none;
     display: grid;
+    place-items: center;
+    width: 36px;
+    height: 36px;
+    background: color-mix(in srgb, var(--stay-accent) 14%, #fff);
+    color: var(--stay-accent);
   }
-  .schedule-item {
-    display: grid;
-    grid-template-columns: 58px minmax(0, 1fr);
-    gap: 10px;
-    padding: 12px 14px;
-    border-bottom: 1px solid var(--line);
+  .schedule-stay-ic svg,
+  .schedule-stay-ic .hi {
+    width: 19px;
+    height: 19px;
   }
-  .schedule-item:last-child { border-bottom: 0; }
-  .schedule-time {
-    color: var(--muted);
+  .schedule-stay-body {
+    min-width: 0;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+  .schedule-stay-label {
+    color: var(--stay-accent);
     font-size: 11px;
+    font-weight: 800;
+    letter-spacing: .04em;
+  }
+  .schedule-stay-name {
+    color: var(--ink);
+    font-size: 16px;
+    line-height: 1.25;
+    font-weight: 850;
+    overflow-wrap: anywhere;
+  }
+  .schedule-stay-place {
+    margin-top: 1px;
+    color: var(--muted);
+    font-size: 12px;
     font-weight: 560;
   }
-  .schedule-main b {
-    display: block;
-    font-size: 13px;
-    font-weight: 650;
+  .schedule-timeline {
+    display: grid;
   }
-  .schedule-main span {
+  .schedule-tl-item {
+    display: grid;
+    grid-template-columns: 50px 24px minmax(0, 1fr);
+    gap: 9px;
+    min-width: 0;
+    padding: 0 0 16px;
+  }
+  .schedule-tl-item:last-child {
+    padding-bottom: 0;
+  }
+  .schedule-time {
+    padding-top: 4px;
+    color: var(--ink);
+    font-size: 13px;
+    line-height: 1.25;
+    font-weight: 820;
+    text-align: right;
+    overflow-wrap: anywhere;
+  }
+  .schedule-rail {
+    position: relative;
+    display: flex;
+    justify-content: center;
+  }
+  .schedule-rail:before {
+    content: "";
+    position: absolute;
+    top: 24px;
+    bottom: -14px;
+    width: 2px;
+    background: rgba(11, 90, 66, .22);
+  }
+  .schedule-tl-item:last-child .schedule-rail:before {
+    display: none;
+  }
+  .schedule-dot {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    place-items: center;
+    width: 24px;
+    height: 24px;
+    margin-top: 2px;
+    border-radius: 50%;
+    background: var(--green);
+    color: #fff;
+  }
+  .schedule-dot svg,
+  .schedule-dot .hi {
+    width: 14px;
+    height: 14px;
+  }
+  .schedule-dot.move { background: var(--blue); }
+  .schedule-dot.food { background: var(--amber); }
+  .schedule-dot.sight { background: var(--green); }
+  .schedule-dot.stay { background: var(--red); }
+  .schedule-dot.todo { background: #68746e; }
+  .schedule-dot.form { background: var(--violet); }
+  .schedule-plan {
+    min-width: 0;
+  }
+  .schedule-plan-line {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    min-width: 0;
+  }
+  .schedule-kind {
+    flex: none;
+    align-self: center;
+    font-size: 11px;
+    font-weight: 850;
+    letter-spacing: .02em;
+  }
+  .schedule-kind.move { color: var(--blue); }
+  .schedule-kind.food { color: var(--amber); }
+  .schedule-kind.sight { color: var(--green); }
+  .schedule-kind.stay { color: var(--red); }
+  .schedule-kind.todo { color: #68746e; }
+  .schedule-kind.form { color: var(--violet); }
+  .schedule-plan h3 {
+    min-width: 0;
+    margin: 0;
+    overflow: hidden;
+    color: var(--ink);
+    font-size: 15px;
+    line-height: 1.25;
+    font-weight: 850;
+    letter-spacing: 0;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .schedule-seg {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 7px;
+    min-width: 0;
+    color: var(--ink);
+    font-size: 14px;
+    line-height: 1.3;
+    font-weight: 850;
+  }
+  .schedule-seg-arr {
+    display: inline-flex;
+    color: var(--blue);
+  }
+  .schedule-seg-arr svg,
+  .schedule-seg-arr .hi {
+    width: 18px;
+    height: 18px;
+  }
+  .schedule-needed {
+    margin: 4px 0 0;
+    color: var(--ink);
+    font-size: 12px;
+    font-weight: 760;
+  }
+  .schedule-meta {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 3px 10px;
+    margin: 4px 0 0;
+  }
+  .schedule-meta-text {
+    min-width: 0;
     color: var(--muted);
-    font-size: 11.5px;
-    font-weight: 520;
+    font-size: 12px;
+    font-weight: 560;
+  }
+  .schedule-maplink {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--green);
+    font-size: 12px;
+    font-weight: 800;
+    text-decoration: none;
+    white-space: nowrap;
+  }
+  .schedule-maplink:hover {
+    text-decoration: underline;
+  }
+  .schedule-maplink svg,
+  .schedule-maplink .hi {
+    width: 13px;
+    height: 13px;
   }
 
   .discover-head {
@@ -1314,6 +1646,178 @@
     margin-top: 4px;
   }
 
+  @media (min-width: 861px) {
+    [data-mine-head] {
+      min-height: 58px;
+      padding: 0 24px;
+      border-top: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+      background: #fff;
+    }
+    [data-mine-head] .hub-sec-ic {
+      color: var(--amber);
+    }
+    [data-mine-head] h2 {
+      font-size: 22px;
+      font-weight: 720;
+      letter-spacing: 0;
+    }
+    [data-mine-head] .hub-sec-count {
+      margin-left: auto;
+      padding: 0;
+      background: transparent;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 620;
+      letter-spacing: .03em;
+      text-transform: uppercase;
+    }
+
+    .hub-grid[data-grid-mine] {
+      grid-auto-flow: column;
+      grid-auto-columns: 220px;
+      grid-template-columns: none;
+      gap: 18px;
+      overflow-x: auto;
+      overscroll-behavior-inline: contain;
+      scroll-snap-type: inline proximity;
+      padding: 16px 24px 26px;
+      background: #fff;
+    }
+    .hub-grid[data-grid-mine] .hub-empty {
+      grid-column: auto;
+      width: min(520px, calc(100vw - 48px));
+    }
+    .hub-grid[data-grid-mine] .plan-row {
+      scroll-snap-align: start;
+      display: grid;
+      min-width: 0;
+      border: 0;
+      background: transparent;
+      box-shadow: none;
+      overflow: visible;
+      transition: none;
+    }
+    .hub-grid[data-grid-mine] .plan-row:hover {
+      transform: none;
+      box-shadow: none;
+      border-color: transparent;
+    }
+    .hub-grid[data-grid-mine] .plan-row.is-active,
+    .hub-grid[data-grid-mine] .plan-row.is-current,
+    .hub-grid[data-grid-mine] .plan-row.is-upcoming {
+      border: 0;
+      background: transparent;
+      box-shadow: none;
+    }
+    .hub-grid[data-grid-mine] .plan-row.is-active .plan-cover,
+    .hub-grid[data-grid-mine] .plan-row.is-current .plan-cover,
+    .hub-grid[data-grid-mine] .plan-row.is-upcoming .plan-cover {
+      border-color: var(--amber);
+      box-shadow: inset 0 0 0 2px rgba(184, 116, 24, .16);
+    }
+    .hub-grid[data-grid-mine] .plan-open {
+      display: grid;
+      gap: 8px;
+      padding: 0;
+      text-decoration: none;
+    }
+    .hub-grid[data-grid-mine] .plan-cover {
+      width: 100%;
+      height: auto;
+      aspect-ratio: 16 / 9;
+      border: 1px solid var(--line);
+      background: var(--wash);
+    }
+    .hub-grid[data-grid-mine] .plan-row:hover .plan-cover img,
+    .hub-grid[data-grid-mine] .plan-open:focus-visible .plan-cover img {
+      transform: scale(1.03);
+    }
+    .hub-grid[data-grid-mine] .plan-body {
+      gap: 5px;
+    }
+    .hub-grid[data-grid-mine] .plan-name {
+      display: -webkit-box;
+      min-height: 2.45em;
+      overflow: hidden;
+      color: var(--ink);
+      font-size: 15px;
+      line-height: 1.25;
+      font-weight: 950;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+    }
+    .hub-grid[data-grid-mine] .plan-name-text {
+      display: contents;
+    }
+    .hub-grid[data-grid-mine] .plan-meta,
+    .hub-grid[data-grid-mine] .plan-route {
+      display: -webkit-box;
+      overflow: hidden;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+      font-weight: 750;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+    }
+    .hub-grid[data-grid-mine] .plan-dot-badge,
+    .hub-grid[data-grid-mine] .role-badge {
+      display: none;
+    }
+    .hub-grid[data-grid-mine] .plan-tag,
+    .hub-grid[data-grid-mine] .plan-highlight-badge {
+      display: inline-flex;
+      align-items: center;
+      min-height: 18px;
+      margin-left: 6px;
+      padding: 0 6px;
+      border: 1px solid #d4b36e;
+      background: #fff;
+      color: #8a5f12;
+      font-size: 10px;
+      font-weight: 800;
+      vertical-align: 1px;
+    }
+    .hub-grid[data-grid-mine] .plan-highlight-badge.current {
+      border-color: var(--amber);
+      background: var(--amber);
+      color: #fff;
+    }
+    .hub-grid[data-grid-mine] .plan-views-badge {
+      right: 8px;
+      bottom: 8px;
+      min-height: 24px;
+      padding: 0 8px;
+      background: rgba(17,25,22,.72);
+      color: #fff;
+      font-size: 11px;
+      font-weight: 900;
+    }
+    .hub-grid[data-grid-mine] .plan-tools {
+      top: 8px;
+      right: 8px;
+    }
+    .hub-grid[data-grid-mine] .plan-menu-btn {
+      width: 30px;
+      height: 30px;
+      border: 1px solid rgba(255,255,255,.74);
+      background: rgba(17,25,22,.64);
+      color: #fff;
+    }
+    .hub-grid[data-grid-mine] .plan-menu-btn:hover,
+    .hub-grid[data-grid-mine] .plan-menu-btn:focus-visible,
+    .hub-grid[data-grid-mine] .plan-menu-btn[aria-expanded="true"] {
+      border-color: #fff;
+      background: rgba(17,25,22,.86);
+      color: #fff;
+      transform: none;
+    }
+  }
+
   .hub-foot {
     padding: 24px 24px 36px;
     border-top: 1px solid var(--line);
@@ -1483,8 +1987,8 @@
     .location-side { border-right: 0; }
     .location-explorer { height: clamp(560px, 78vh, 720px); grid-template-rows: minmax(220px, .72fr) minmax(0, 1fr); }
     .location-explorer .map-board { border-top: 1px solid var(--line); }
-    .schedule-day { grid-template-columns: 1fr; }
-    .schedule-date { border-right: 0; border-bottom: 1px solid var(--line); padding-bottom: 8px; }
+    .schedule-dayblock { padding: 18px 18px 20px; }
+    .schedule-tl-item { grid-template-columns: 48px 24px minmax(0, 1fr); }
   }
 
   /* スマホ: 横2列のコンパクトグリッド（縦スクロール） */
@@ -1674,6 +2178,26 @@
       border-top: 1px solid var(--line);
       border-bottom: 1px solid var(--line);
     }
+    .location-explorer.is-location-forward .location-side {
+      --location-slide-x: 0;
+      --location-slide-y: -16px;
+    }
+    .location-explorer.is-location-forward .location-detail {
+      --location-slide-x: 0;
+      --location-slide-y: 20px;
+    }
+    .location-explorer.is-location-back .location-side {
+      --location-slide-x: 0;
+      --location-slide-y: 16px;
+    }
+    .location-explorer.is-location-back .location-detail {
+      --location-slide-x: 0;
+      --location-slide-y: -20px;
+    }
+    .location-explorer.is-location-swap .location-detail {
+      --location-slide-x: 0;
+      --location-slide-y: 16px;
+    }
     .location-detail {
       order: 1;
       min-height: 0;
@@ -1694,23 +2218,59 @@
       border-right: 0;
       background: #fff;
     }
+    .location-explorer.is-plan-mode .location-side {
+      order: 1;
+      border-bottom: 1px solid var(--line);
+    }
+    .location-explorer.is-plan-mode .location-detail {
+      order: 2;
+    }
     .location-side-head {
-      gap: 2px;
-      padding: 10px 12px;
-      background: #fff;
+      min-height: 62px;
+      gap: 8px;
+      padding: 12px;
+    }
+    .location-explorer.is-plan-mode .location-side-head {
+      padding: 12px;
+    }
+    .location-explorer.is-plan-mode .location-side-head .location-back {
+      align-self: center;
+      border: 0;
+      background: transparent;
+      color: var(--green);
+    }
+    .location-head-main {
+      gap: 8px;
+    }
+    .location-head-ic {
+      width: 26px;
+      height: 26px;
+    }
+    .location-head-ic svg,
+    .location-head-ic .hi {
+      width: 21px;
+      height: 21px;
+    }
+    .location-head-kicker {
+      font-size: 9px;
     }
     .location-side-title {
-      font-size: 13px;
-      line-height: 1.3;
+      font-size: 14px;
+      line-height: 1.15;
     }
     .location-side-note {
       font-size: 10px;
-      line-height: 1.4;
+      line-height: 1.3;
     }
     .location-back {
       min-height: 28px;
-      padding: 0 8px;
+      padding: 0;
       font-size: 10px;
+    }
+    .location-back svg,
+    .location-back .hi {
+      width: 14px;
+      height: 14px;
     }
     .location-explorer .dest-list,
     .location-plan-list {
@@ -1763,6 +2323,47 @@
       gap: 8px;
       padding: 9px 12px;
     }
+    .location-explorer.is-plan-mode .location-plan-list {
+      display: flex;
+      gap: 8px;
+      max-height: none;
+      overflow-x: auto;
+      overflow-y: hidden;
+      padding: 10px 12px;
+      scroll-snap-type: inline proximity;
+      scrollbar-width: none;
+    }
+    .location-explorer.is-plan-mode .location-plan-list::-webkit-scrollbar {
+      display: none;
+    }
+    .location-explorer.is-plan-mode .location-plan-row {
+      flex: 0 0 min(78vw, 260px);
+      scroll-snap-align: start;
+      min-height: 68px;
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      background: #fff;
+    }
+    .location-explorer.is-plan-mode .location-plan-row.is-active {
+      border-color: rgba(11, 90, 66, .34);
+      background: var(--green-soft);
+    }
+    .location-explorer.is-plan-mode .location-plan-row > span {
+      display: grid;
+      gap: 3px;
+      min-width: 0;
+    }
+    .location-explorer.is-plan-mode .location-plan-row > span > span {
+      display: block;
+      overflow: hidden;
+      color: var(--muted);
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .location-explorer.is-plan-mode .location-plan-row.is-active em {
+      color: var(--green);
+      font-weight: 760;
+    }
     .location-plan-row b {
       font-size: 13px;
       line-height: 1.25;
@@ -1779,27 +2380,112 @@
       font-size: 10px;
     }
     .location-schedule {
-      max-height: 260px;
+      max-height: none;
       border-bottom: 1px solid var(--line);
+      overflow: visible;
     }
     .schedule-head {
-      padding: 10px 12px;
+      grid-template-columns: 28px minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 8px;
+      padding: 12px;
+      background: #fff;
+      color: var(--ink);
+    }
+    .schedule-head-ic {
+      width: 28px;
+      height: 28px;
+    }
+    .schedule-head-ic svg,
+    .schedule-head-ic .hi {
+      width: 21px;
+      height: 21px;
+    }
+    .schedule-head-kicker {
+      display: none;
     }
     .schedule-head b {
       font-size: 14px;
       font-weight: 720;
     }
-    .schedule-head span {
+    .schedule-head-meta {
       font-size: 10px;
     }
-    .schedule-day {
+    .schedule-head a {
+      align-self: center;
+      min-height: 34px;
+      border-color: var(--green);
+      color: var(--green);
+      white-space: nowrap;
+    }
+    .schedule-dayblock {
+      padding: 16px 12px 18px;
+    }
+    .schedule-dayblock-head {
+      align-items: flex-start;
+      margin-bottom: 14px;
+    }
+    .schedule-dayblock-head b {
+      font-size: 15px;
+    }
+    .schedule-weather {
+      font-size: 11px;
+    }
+    .schedule-stay {
+      gap: 10px;
+      margin-bottom: 15px;
+      padding: 3px 0 13px 10px;
+    }
+    .schedule-stay-ic {
+      width: 32px;
+      height: 32px;
+    }
+    .schedule-stay-ic svg,
+    .schedule-stay-ic .hi {
+      width: 17px;
+      height: 17px;
+    }
+    .schedule-stay-label {
+      font-size: 10px;
+    }
+    .schedule-stay-name {
+      font-size: 14px;
+    }
+    .schedule-stay-place,
+    .schedule-stay .schedule-maplink {
+      font-size: 11px;
+    }
+    .schedule-tl-item {
+      grid-template-columns: 44px 24px minmax(0, 1fr);
       gap: 8px;
-      padding: 10px 12px;
+      padding-bottom: 15px;
     }
-    .schedule-date,
-    .schedule-main b,
-    .schedule-main span {
+    .schedule-time {
+      font-size: 11px;
+      font-weight: 760;
+    }
+    .schedule-plan-line {
+      align-items: baseline;
+      flex-wrap: wrap;
+      gap: 2px 7px;
+    }
+    .schedule-kind {
       font-size: 10px;
+    }
+    .schedule-plan h3 {
+      font-size: 14px;
+      white-space: normal;
+    }
+    .schedule-seg {
+      font-size: 13px;
+    }
+    .schedule-meta {
+      row-gap: 5px;
+    }
+    .schedule-meta-text,
+    .schedule-needed,
+    .schedule-maplink {
+      font-size: 11px;
     }
     .location-marker span {
       min-width: 40px;

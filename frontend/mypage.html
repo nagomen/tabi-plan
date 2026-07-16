@@ -37,6 +37,7 @@
     <button class="mp-tab is-active" type="button" data-tab="plans" data-ic-plans>計画</button>
     <button class="mp-tab" type="button" data-tab="schedule" data-ic-schedule>日程</button>
     <button class="mp-tab" type="button" data-tab="pay" data-ic-pay>送金</button>
+    <button class="mp-tab" type="button" data-tab="friends" data-ic-friends>友達</button>
   </nav>
 
   <div class="mp-body">
@@ -64,6 +65,33 @@
     </div>
     <p class="mp-pay-help">精算の「PayPayで送る」で使うため、メンバーの PayPay 受取リンク（<code>https://qr.paypay.ne.jp/…</code>）または ID を登録します。リンクはこの端末にだけ保存されます。</p>
     <div class="mp-paylist" data-paylinks></div>
+  </section>
+
+  <section class="mp-view" data-view="friends" hidden>
+    <div class="mp-listhead">
+      <h2 class="mp-sec-title">友達を探す</h2>
+    </div>
+    <form class="mp-friend-search" data-friend-search-form>
+      <input data-friend-search-input type="text" placeholder="名前またはメールアドレスで検索" aria-label="友達を検索">
+      <button type="submit">検索</button>
+    </form>
+    <p class="mp-friend-note" data-friend-note aria-live="polite"></p>
+    <div class="mp-list" data-friend-search-results></div>
+
+    <div class="mp-listhead">
+      <h2 class="mp-sec-title">届いている申請 <span class="mp-sec-count" data-friend-incoming-count></span></h2>
+    </div>
+    <div class="mp-list" data-friend-incoming></div>
+
+    <div class="mp-listhead">
+      <h2 class="mp-sec-title">友達 <span class="mp-sec-count" data-friend-count></span></h2>
+    </div>
+    <div class="mp-list" data-friend-list></div>
+
+    <div class="mp-listhead">
+      <h2 class="mp-sec-title">送信中の申請 <span class="mp-sec-count" data-friend-outgoing-count></span></h2>
+    </div>
+    <div class="mp-list" data-friend-outgoing></div>
   </section>
 </main>
 

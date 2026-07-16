@@ -10,6 +10,7 @@ import "leaflet/dist/leaflet.css";
 import { escapeHtml } from "../shared/dom";
 import { registerServiceWorker } from "../shared/pwa";
 import { mountAppHeader } from "../shared/app-header";
+import { icon, type IconName } from "../shared/icons";
 import { getUser } from "../shared/user-store";
 import { isHistoryPublic } from "../shared/history-privacy";
 import { personTrips, historyPins, distinctPlaceCount, countriesFromPins, type PersonTrip, type HistoryPin } from "../shared/travel-history";
@@ -58,9 +59,16 @@ function fmtFull(d: Date): string {
 // ---- 起動 ---------------------------------------------------------------
 
 const nameEl = $("[data-name]");
+const avatarEl = $("[data-avatar]");
 const statsEl = $("[data-stats]");
 const privateEl = $("[data-private]");
 const contentEl = $("[data-content]");
+
+document.querySelectorAll<HTMLElement>("[data-stat-icon]").forEach((stat) => {
+  const name = stat.dataset.statIcon as IconName | undefined;
+  const slot = stat.querySelector<HTMLElement>(".pv-stat-icon");
+  if (name && slot) slot.innerHTML = icon(name, { strokeWidth: 1.7 });
+});
 
 const me = getUser().name.trim();
 const isSelf = Boolean(me) && me === personName;
@@ -69,6 +77,9 @@ if (nameEl) {
   nameEl.innerHTML =
     escapeHtml(personName || "名前が指定されていません") +
     (isSelf ? `<span class="pv-self">あなた</span>` : "");
+}
+if (avatarEl) {
+  avatarEl.textContent = personName ? personName.slice(0, 1) : "?";
 }
 document.title = `${personName || "旅行履歴"} | 旅行計画`;
 
@@ -250,6 +261,19 @@ function tripYear(trip: PersonTrip): string {
   return m ? m[1] : "—";
 }
 
+function fmtMonthDay(d: Date): string {
+  return `${d.getMonth() + 1}/${d.getDate()}(${DOW[d.getDay()]})`;
+}
+
+function tripDateRange(trip: PersonTrip): string {
+  if (!trip.start) return String(trip.plan.dates || "日付未定");
+  if (!trip.end || sameDay(trip.start, trip.end)) return fmtMonthDay(trip.start);
+  if (trip.start.getMonth() === trip.end.getMonth()) {
+    return `${fmtMonthDay(trip.start)}-${trip.end.getDate()}(${DOW[trip.end.getDay()]})`;
+  }
+  return `${fmtMonthDay(trip.start)}-${fmtMonthDay(trip.end)}`;
+}
+
 function renderTrips(trips: PersonTrip[]): void {
   const listEl = $("[data-trips]");
   const countEl = $("[data-trips-count]");
@@ -261,23 +285,37 @@ function renderTrips(trips: PersonTrip[]): void {
     return;
   }
 
-  listEl.innerHTML = trips
-    .map((trip) => {
-      const days = tripDays(trip);
-      const flags = tripFlags(trip);
-      const route = trip.places.join("・");
-      return (
-        `<a class="pv-trip" href="index.html?plan=${encodeURIComponent(trip.plan.slug)}">` +
-        `<span class="pv-trip-year">${escapeHtml(tripYear(trip))}</span>` +
-        `<span class="pv-trip-main">` +
-        `<span class="pv-trip-name">${escapeHtml(trip.plan.title || "無題の旅行")}` +
-        (flags ? `<span class="pv-trip-flags">${flags}</span>` : "") +
-        `</span>` +
-        (route ? `<span class="pv-trip-route">${escapeHtml(route)}</span>` : "") +
-        `</span>` +
-        (days ? `<span class="pv-trip-days">${days}日</span>` : "") +
-        `</a>`
-      );
+  const groups = new Map<string, PersonTrip[]>();
+  for (const trip of trips) {
+    const year = tripYear(trip);
+    groups.set(year, [...(groups.get(year) || []), trip]);
+  }
+
+  listEl.innerHTML = Array.from(groups.entries())
+    .map(([year, yearTrips]) => {
+      const rows = yearTrips
+        .map((trip) => {
+          const days = tripDays(trip);
+          const flags = tripFlags(trip);
+          const route = trip.places.join("・");
+          return (
+            `<a class="pv-trip" href="index.html?plan=${encodeURIComponent(trip.plan.slug)}">` +
+            `<span class="pv-trip-date">${icon("calendarDays")}${escapeHtml(tripDateRange(trip))}</span>` +
+            `<span class="pv-trip-main">` +
+            `<span class="pv-trip-name">${escapeHtml(trip.plan.title || "無題の旅行")}` +
+            (flags ? `<span class="pv-trip-flags">${flags}</span>` : "") +
+            `</span>` +
+            `<span class="pv-trip-meta">` +
+            (route ? `<span>${icon("mapPin")}${escapeHtml(route)}</span>` : "") +
+            (days ? `<span>${icon("clock")}${days}日</span>` : "") +
+            `</span>` +
+            `</span>` +
+            `<span class="pv-trip-open">${icon("chevronRight")}</span>` +
+            `</a>`
+          );
+        })
+        .join("");
+      return `<section class="pv-trip-year-group"><h3 class="pv-trip-year">${escapeHtml(year)}</h3><div class="pv-trip-year-list">${rows}</div></section>`;
     })
     .join("");
 }

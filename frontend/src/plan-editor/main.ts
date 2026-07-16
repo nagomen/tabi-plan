@@ -23,12 +23,14 @@ import { escapeHtml, errorMessage } from "../shared/dom";
 import { icon, type IconName } from "../shared/icons";
 import { planCoverThumbnail } from "../shared/cover";
 import { registerServiceWorker } from "../shared/pwa";
-import { getUser, setUserName } from "../shared/user-store";
-import { friendCandidates, splitNames } from "../shared/friend-store";
+import { getUser } from "../shared/user-store";
+import { splitNames } from "../shared/friend-store";
 import { buildInviteLink } from "../shared/invite";
 import { gcalUrl, buildIcs, type CalEvent } from "../shared/calendar";
 import { mountAppHeader } from "../shared/app-header";
 import * as Permissions from "../shared/permissions-store";
+import { currentAccount } from "../shared/account-store";
+import { listFriends } from "../shared/friendship-store";
 
 initPageTransitions();
 
@@ -110,6 +112,96 @@ function cityForDate(date: string): City | null {
   return null;
 }
 
+function countryFromText(text: string | undefined): CountryCode | null {
+  const raw = String(text || "").trim();
+  if (!raw) return null;
+  return COUNTRY_TEXT_HINTS.find(([pattern]) => pattern.test(raw))?.[1] || null;
+}
+
+function countryFromCoords(latValue: string, lngValue: string): CountryCode | null {
+  if (!hasLatLng(latValue, lngValue)) return null;
+  const lat = num(latValue);
+  const lng = num(lngValue);
+  const inBox = (minLat: number, maxLat: number, minLng: number, maxLng: number): boolean =>
+    lat >= minLat && lat <= maxLat && lng >= minLng && lng <= maxLng;
+  if (inBox(24, 46, 122, 154)) return "JP";
+  if (inBox(5, 21, 97, 106)) return "TH";
+  if (inBox(24, 50, -125, -66) || inBox(18, 23, -161, -154)) return "US";
+  if (inBox(41, 52, -5.5, 10)) return "FR";
+  if (inBox(49, 61, -8.5, 2.5)) return "GB";
+  if (inBox(33, 39, 124, 132)) return "KR";
+  if (inBox(21, 26, 119, 123)) return "TW";
+  if (inBox(22.1, 22.6, 113.8, 114.4)) return "HK";
+  if (inBox(18, 54, 73, 135)) return "CN";
+  if (inBox(1.1, 1.6, 103.5, 104.1)) return "SG";
+  if (inBox(8, 24, 102, 110)) return "VN";
+  if (inBox(0, 8, 99, 120)) return "MY";
+  if (inBox(-11, 6, 95, 142)) return "ID";
+  if (inBox(4, 22, 116, 127)) return "PH";
+  if (inBox(6, 36, 68, 98)) return "IN";
+  if (inBox(41, 53, 87, 120)) return "MN";
+  if (inBox(47, 55, 5, 16)) return "DE";
+  if (inBox(35, 44, -10, 5)) return "ES";
+  if (inBox(36, 47, 6, 19)) return "IT";
+  if (inBox(-44, -10, 112, 154)) return "AU";
+  return null;
+}
+
+function countryForCity(city: City | null): CountryCode | null {
+  if (!city) return null;
+  return countryFromText(city.name) || countryFromCoords(city.lat, city.lng);
+}
+
+function nextDifferentCityCountry(dayIndex: number, current: CountryCode | null): CountryCode | null {
+  if (!current) return null;
+  for (let i = dayIndex + 1; i < model.days.length; i++) {
+    const nextCountry = countryForCity(cityForDate(model.days[i].date));
+    if (nextCountry && nextCountry !== current) return nextCountry;
+    if (nextCountry === current) return null;
+  }
+  return null;
+}
+
+function moveEndpointCountry(item: Item, target: "from" | "to", label = ""): CountryCode | null {
+  if (target === "from") {
+    return countryFromText(label) || countryFromText(item.from) || countryFromCoords(item.fromLat, item.fromLng);
+  }
+  return countryFromText(label) || countryFromText(item.to) || countryFromCoords(item.toLat, item.toLng);
+}
+
+function shouldDefaultMoveToAirplane(
+  item: Item,
+  day: Day,
+  resultLabel = "",
+  labelTarget?: "from" | "to",
+  useDayTransition = false,
+): boolean {
+  if (item.kind !== "move" || item.transport.trim()) return false;
+  const fromCountry = moveEndpointCountry(item, "from", labelTarget === "from" ? resultLabel : "");
+  const toCountry = moveEndpointCountry(item, "to", labelTarget === "to" ? resultLabel : "");
+  if (fromCountry && toCountry) return fromCountry !== toCountry;
+  if (!useDayTransition) return false;
+  const dayIndex = model.days.indexOf(day);
+  const currentCountry = countryForCity(cityForDate(day.date));
+  return Boolean(currentCountry && nextDifferentCityCountry(dayIndex, currentCountry));
+}
+
+function maybeDefaultMoveTransport(
+  item: Item,
+  day: Day,
+  resultLabel = "",
+  labelTarget?: "from" | "to",
+  useDayTransition = false,
+): void {
+  if (shouldDefaultMoveToAirplane(item, day, resultLabel, labelTarget, useDayTransition)) item.transport = "飛行機";
+}
+
+function syncTransportSelect(item: Item): void {
+  if (item.kind !== "move") return;
+  const select = daysEl.querySelector<HTMLSelectElement>(`select[data-field="transport"][data-item="${item.id}"]`);
+  if (select) select.value = item.transport;
+}
+
 interface Model {
   slug: string;
   title: string;
@@ -140,6 +232,33 @@ const KIND_COLOR: Record<ItemKind, string> = {
 };
 
 const TRANSPORTS = ["電車", "新幹線", "飛行機", "車", "バス", "フェリー", "徒歩", "その他"];
+
+type CountryCode =
+  | "JP" | "TH" | "US" | "FR" | "GB" | "KR" | "TW" | "CN" | "HK" | "SG"
+  | "VN" | "MY" | "ID" | "PH" | "IN" | "MN" | "DE" | "ES" | "IT" | "AU";
+
+const COUNTRY_TEXT_HINTS: [RegExp, CountryCode][] = [
+  [/日本|japan|東京|大阪|京都|長野|札幌|福岡|沖縄|那覇|羽田|成田|関空|新千歳|新宿|品川|横浜|名古屋|仙台|盛岡|青森|八戸/i, "JP"],
+  [/タイ王国|タイ|thailand|bangkok|バンコク|suvarnabhumi|スワンナプーム/i, "TH"],
+  [/アメリカ|米国|united states|usa|u\.s\.a|new york|ニューヨーク|manhattan|マンハッタン|los angeles|ロサンゼルス|san francisco|サンフランシスコ|hawaii|ハワイ|honolulu|ホノルル/i, "US"],
+  [/フランス|france|paris|パリ/i, "FR"],
+  [/イギリス|英国|united kingdom|uk|london|ロンドン/i, "GB"],
+  [/韓国|south korea|korea|seoul|ソウル/i, "KR"],
+  [/台湾|taiwan|taipei|台北/i, "TW"],
+  [/香港|hong kong/i, "HK"],
+  [/中国|china|shanghai|上海|beijing|北京/i, "CN"],
+  [/シンガポール|singapore/i, "SG"],
+  [/ベトナム|vietnam|hanoi|ハノイ|ho chi minh|ホーチミン/i, "VN"],
+  [/マレーシア|malaysia|kuala lumpur|クアラルンプール/i, "MY"],
+  [/インドネシア|indonesia|bali|バリ|jakarta|ジャカルタ/i, "ID"],
+  [/フィリピン|philippines|manila|マニラ/i, "PH"],
+  [/インド|india|delhi|デリー/i, "IN"],
+  [/モンゴル|mongolia|ulaanbaatar|ウランバートル/i, "MN"],
+  [/ドイツ|germany|berlin|ベルリン/i, "DE"],
+  [/スペイン|spain|madrid|マドリード|barcelona|バルセロナ/i, "ES"],
+  [/イタリア|italy|rome|ローマ/i, "IT"],
+  [/オーストラリア|australia|sydney|シドニー/i, "AU"],
+];
 
 // ---- DOM ----------------------------------------------------------------
 
@@ -185,11 +304,12 @@ const cityOptions = qs<HTMLDataListElement>(document, "#pe-city-options");
 const mapEl = qs<HTMLElement>(root, "[data-map]");
 const mapHintEl = qs<HTMLElement>(root, "[data-map-hint]");
 const rangeEl = qs<HTMLInputElement>(root, "[data-range]");
+const rangeTrigger = qs<HTMLButtonElement>(root, "[data-range-trigger]");
+const rangeLabel = qs<HTMLElement>(root, "[data-range-label]");
 const dayStripEl = qs<HTMLElement>(root, "[data-daystrip]");
 const tripSummaryEl = qs<HTMLElement>(root, "[data-trip-summary]");
 
 // セクション見出しにアイコン
-qs<HTMLElement>(root, "[data-ic-setup]").insertAdjacentHTML("afterbegin", icon("sparkles") + " ");
 qs<HTMLElement>(root, "[data-ic-route]").insertAdjacentHTML("afterbegin", icon("map") + " ");
 qs<HTMLElement>(root, "[data-ic-days]").insertAdjacentHTML("afterbegin", icon("calendarDays") + " ");
 qs<HTMLElement>(root, "[data-ic-cand]").insertAdjacentHTML("afterbegin", icon("star") + " ");
@@ -205,6 +325,7 @@ const ICON_MOUNTS: [string, IconName][] = [
   ["[data-ic-ics]", "documentText"],
   ["[data-ic-note]", "documentText"],
   ["[data-ic-cover]", "photo"],
+  ["[data-ic-coverpick]", "photo"],
   ["[data-city-add]", "plus"],
   ["[data-cand-add]", "plus"],
   ["[data-export]", "documentText"],
@@ -235,14 +356,32 @@ const fp = flatpickr(rangeEl, {
   mode: "range",
   dateFormat: "Y-m-d",
   locale: Japanese,
+  clickOpens: false,
+  disableMobile: true,
   onChange: (dates: Date[]) => {
     model.startDate = dates[0] ? toISO(dates[0]) : "";
     model.endDate = dates[1] ? toISO(dates[1]) : model.startDate;
+    updateRangeButton();
     rebuildDays();
     renderDays();
     refreshMap(false);
     markDirty();
   },
+  onOpen: () => {
+    rangeTrigger.setAttribute("aria-expanded", "true");
+  },
+  onClose: () => {
+    rangeTrigger.setAttribute("aria-expanded", "false");
+  },
+});
+
+function updateRangeButton(): void {
+  rangeLabel.textContent = datesString() || "期間を選択";
+  rangeTrigger.classList.toggle("is-empty", !model.startDate);
+}
+
+rangeTrigger.addEventListener("click", () => {
+  fp.open(undefined, rangeTrigger);
 });
 
 function newItem(kind: ItemKind, seed?: Partial<Item>): Item {
@@ -702,6 +841,14 @@ function updateSteps(): void {
   }
   const pe = document.getElementById("editor");
   if (pe) pe.dataset.step = String(viewStep);
+  if (viewStep === 1 && root) {
+    root.classList.add("map-collapsed");
+    const showBtn = root.querySelector<HTMLButtonElement>("[data-map-show]");
+    if (showBtn) showBtn.hidden = true;
+  } else if (root) {
+    const showBtn = root.querySelector<HTMLButtonElement>("[data-map-show]");
+    if (showBtn) showBtn.hidden = !root.classList.contains("map-collapsed");
+  }
   document.querySelectorAll<HTMLElement>(".pe-step").forEach((el, i) => {
     const isDone = done[i] && i + 1 !== viewStep;
     el.classList.toggle("is-done", isDone);
@@ -896,8 +1043,11 @@ function fieldInput(item: Item, key: ItemStrKey, ph: string): string {
 function placeBlock(item: Item, target: GeoTarget, label: string, ph: string): string {
   const key: ItemStrKey = target === "from" ? "from" : target === "to" ? "to" : "place";
   return (
-    `<div class="pe-field c2"><span>${label}</span>` +
+    `<div class="pe-field pe-place-field c2" data-place-field="${item.id}-${target}"><span>${label}</span>` +
+    `<div class="pe-place-input-wrap">` +
     fieldInput(item, key, ph) +
+    `<span class="pe-place-loading" aria-hidden="true"></span>` +
+    `</div>` +
     `<div class="pe-place-tools">` +
     `<button class="pe-mini" type="button" data-act="geo" data-item="${item.id}" data-target="${target}">${icon("magnifyingGlass")}<span>検索</span></button>` +
     `<button class="pe-mini" type="button" data-act="geo-arm" data-item="${item.id}" data-target="${target}">${icon("mapPin")}<span>地図で指定</span></button>` +
@@ -1245,6 +1395,10 @@ async function onMapClick(latlng: L.LatLng): Promise<void> {
   const [latKey, lngKey] = latLngKeys(target);
   found.item[latKey] = lat.toFixed(6);
   found.item[lngKey] = lng.toFixed(6);
+  if (target === "from" || target === "to") {
+    maybeDefaultMoveTransport(found.item, found.day, "", target);
+    syncTransportSelect(found.item);
+  }
   setGeoStatus(itemId, target, "設定先の住所を確認中…", "ok");
   disarm();
   markDirty();
@@ -1284,6 +1438,14 @@ function setGeoStatus(itemId: number, target: GeoTarget, text: string, kind?: "o
   el.className = "pe-geo-status" + (kind ? " is-" + kind : "");
 }
 
+function setPlaceLoading(itemId: number, target: GeoTarget, loading: boolean): void {
+  const field = daysEl.querySelector<HTMLElement>(`[data-place-field="${itemId}-${target}"]`);
+  if (!field) return;
+  field.classList.toggle("is-loading", loading);
+  if (loading) field.setAttribute("aria-busy", "true");
+  else field.removeAttribute("aria-busy");
+}
+
 async function runGeocode(itemId: number, target: GeoTarget, options: { autoApplySingle?: boolean; quiet?: boolean } = {}): Promise<void> {
   const autoApplySingle = options.autoApplySingle !== false;
   const found = findItem(itemId);
@@ -1291,13 +1453,19 @@ async function runGeocode(itemId: number, target: GeoTarget, options: { autoAppl
   const item = found.item;
   const query = geoQueryForItem(item, target);
   const context = geocodeContextForDay(found.day, item, target);
+  const key = `${itemId}-${target}`;
   const resultsEl = daysEl.querySelector<HTMLElement>(`[data-geores="${itemId}-${target}"]`);
   if (!query) { if (!options.quiet) setGeoStatus(itemId, target, "場所名を入力してください", "warn"); return; }
+  const requestId = (geoRequestSeq.get(key) || 0) + 1;
+  geoRequestSeq.set(key, requestId);
+  const isCurrent = (): boolean => geoRequestSeq.get(key) === requestId;
+  setPlaceLoading(itemId, target, true);
   setGeoStatus(itemId, target, context?.cityName ? `${context.cityName}を優先して検索中…` : "検索中…");
   clearCandidates();
   if (resultsEl) { resultsEl.hidden = true; resultsEl.innerHTML = ""; }
   try {
     const results = await geocodeSearch(query, context);
+    if (!isCurrent()) return;
     if (!results.length) {
       const area = context?.requireNearby && context.cityName ? `${context.cityName}周辺で` : "";
       setGeoStatus(itemId, target, `${area}見つかりませんでした。ホテル名や英字表記を変えて再検索を`, "warn");
@@ -1314,23 +1482,35 @@ async function runGeocode(itemId: number, target: GeoTarget, options: { autoAppl
       setGeoStatus(itemId, target, "地図のピン、または下の候補から選んでください");
     }
   } catch (e) {
+    if (!isCurrent()) return;
     setGeoStatus(itemId, target, e instanceof Error ? e.message : "検索に失敗しました", "warn");
+  } finally {
+    if (isCurrent()) setPlaceLoading(itemId, target, false);
   }
 }
 
 const geoCache = new Map<string, GeoResult[]>();
 const geoSuggestTimers = new Map<number, number>();
+const geoRequestSeq = new Map<string, number>();
+
+function invalidateGeoRequest(itemId: number, target: GeoTarget): void {
+  const key = `${itemId}-${target}`;
+  geoRequestSeq.set(key, (geoRequestSeq.get(key) || 0) + 1);
+  setPlaceLoading(itemId, target, false);
+}
 
 function clearGeoResults(itemId: number, target: GeoTarget): void {
+  invalidateGeoRequest(itemId, target);
   const resultsEl = daysEl.querySelector<HTMLElement>(`[data-geores="${itemId}-${target}"]`);
   if (resultsEl) { resultsEl.hidden = true; resultsEl.innerHTML = ""; }
   geoCache.delete(`${itemId}-${target}`);
 }
 
-function scheduleSightPlaceSuggest(item: Item): void {
+function scheduleNamePlaceSuggest(item: Item): void {
   const existing = geoSuggestTimers.get(item.id);
   if (existing) window.clearTimeout(existing);
-  if (item.kind !== "sight" || item.place.trim() || item.title.trim().length < 2) {
+  invalidateGeoRequest(item.id, "place");
+  if (!["sight", "stay"].includes(item.kind) || item.place.trim() || item.title.trim().length < 2) {
     clearGeoResults(item.id, "place");
     return;
   }
@@ -1347,6 +1527,10 @@ function applyGeo(itemId: number, target: GeoTarget, r: GeoResult): void {
   const [latKey, lngKey] = latLngKeys(target);
   found.item[latKey] = String(r.lat);
   found.item[lngKey] = String(r.lng);
+  if (target === "from" || target === "to") {
+    maybeDefaultMoveTransport(found.item, found.day, r.label, target);
+    syncTransportSelect(found.item);
+  }
   if (target === "place") {
     found.item.mapQuery = r.label;
     if (!found.item.place.trim()) found.item.place = conciseGeoLabel(r.label);
@@ -1398,6 +1582,7 @@ daysEl.addEventListener("click", (event) => {
     const day = model.days[dayIndex];
     if (!day) return;
     const it = newItem(kind);
+    maybeDefaultMoveTransport(it, day, "", undefined, true);
     if (kind === "stay") day.stay = it;
     else day.items.push(it);
     openItemId = it.id;
@@ -1470,11 +1655,16 @@ daysEl.addEventListener("input", (event) => {
   if (field === "place" || field === "mapQuery") autoCoords(found.item, "place");
   if (field === "from") autoCoords(found.item, "from");
   if (field === "to") autoCoords(found.item, "to");
-  if (field === "title") scheduleSightPlaceSuggest(found.item);
+  if (field === "from" || field === "to") {
+    maybeDefaultMoveTransport(found.item, found.day, "", field);
+    syncTransportSelect(found.item);
+  }
+  if (field === "title") scheduleNamePlaceSuggest(found.item);
   if (field === "place") {
     const timer = geoSuggestTimers.get(found.item.id);
     if (timer) window.clearTimeout(timer);
     geoSuggestTimers.delete(found.item.id);
+    invalidateGeoRequest(found.item.id, "place");
   }
 
   refreshNode(found.item);
@@ -1587,14 +1777,22 @@ coverClearBtn.addEventListener("click", () => {
 // ---- メンバー（チップ／友達候補／招待リンク） --------------------------
 
 const membersMount = qs<HTMLElement>(root, "[data-members]");
-const memberInput = qs<HTMLInputElement>(root, "[data-member-input]");
-const memberSuggest = qs<HTMLElement>(root, "[data-member-suggest]");
+const memberField = qs<HTMLElement>(root, "[data-member-field]");
+const memberSelect = qs<HTMLSelectElement>(root, "[data-member-select]");
+const memberAddBtn = qs<HTMLButtonElement>(root, "[data-member-add]");
+const memberHint = qs<HTMLElement>(root, "[data-member-hint]");
+
+function hasMemberAccount(): boolean {
+  return Boolean(currentAccount());
+}
 
 function memberArray(): string[] { return splitNames(model.members); }
 function setMembers(arr: string[]): void {
   model.members = arr.join("、");
   markDirty();
+  updateMemberVisibility();
   renderMembers();
+  renderMemberSelect();
 }
 function addMember(name: string): void {
   const n = name.trim();
@@ -1608,17 +1806,17 @@ function removeMember(name: string): void {
 }
 
 function renderMembers(): void {
-  const me = getUser().name;
+  const account = currentAccount();
+  const me = account?.name || "";
   const arr = memberArray();
   membersMount.innerHTML = arr
     .map((name) => {
       const self = Boolean(me) && name === me;
       return (
         `<span class="pe-chip-m${self ? " is-self" : ""}">` +
-        (self ? icon("user") : "") +
         `<span>${escapeHtml(name)}</span>` +
         (self ? `<span class="pe-chip-self">自分</span>` : "") +
-        (self
+        (!account || self
           ? ""
           : `<button class="pe-chip-ic invite" type="button" data-invite="${escapeHtml(name)}" title="招待リンクを送る" aria-label="${escapeHtml(name)}を招待">${icon("paperAirplane")}</button>`) +
         `<button class="pe-chip-ic del" type="button" data-rm="${escapeHtml(name)}" title="削除" aria-label="${escapeHtml(name)}を削除">${icon("xMark")}</button>` +
@@ -1627,6 +1825,54 @@ function renderMembers(): void {
     })
     .join("");
 }
+
+function memberCandidateNames(): string[] {
+  const account = currentAccount();
+  if (!account) return [];
+  const excluded = new Set([account.name, ...memberArray()].map((name) => name.trim()).filter(Boolean));
+
+  const names = new Set<string>();
+  listFriends().forEach((friend) => {
+    const name = (friend.name || friend.email).trim();
+    if (name && !excluded.has(name)) names.add(name);
+  });
+
+  return [...names].sort((a, b) => a.localeCompare(b, "ja")).slice(0, 12);
+}
+
+function renderMemberSelect(): void {
+  const names = memberCandidateNames();
+  memberSelect.innerHTML =
+    `<option value="">友達を選択</option>` +
+    (names.length
+      ? names.map((name) => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join("")
+      : `<option value="" disabled>追加できる友達がいません</option>`);
+  memberSelect.value = "";
+  memberSelect.disabled = !names.length;
+  memberAddBtn.disabled = !names.length;
+  memberHint.hidden = names.length > 0;
+}
+
+function updateMemberVisibility(): void {
+  const enabled = hasMemberAccount();
+  memberField.hidden = !enabled;
+  memberField.classList.toggle("is-enabled", enabled);
+}
+
+function refreshMemberField(): void {
+  updateMemberVisibility();
+  renderMembers();
+  renderMemberSelect();
+}
+
+// ログイン状態は別タブ（storage イベント）やマイページのドロワー（同一オリジンの
+// iframeなので localStorage 変更は storage イベントとして親に届く）で変わることがある。
+// このページ自身は読み込み時に1回しかログイン状態を見ないため、タブに戻ってきた
+// タイミングでも再評価しないと「ログイン済みなのにメンバー欄が出ない」状態のまま残る。
+window.addEventListener("storage", refreshMemberField);
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") refreshMemberField();
+});
 
 membersMount.addEventListener("click", (event) => {
   const t = event.target;
@@ -1637,45 +1883,13 @@ membersMount.addEventListener("click", (event) => {
   if (inv) { void shareInvite(inv.dataset.invite || ""); }
 });
 
-function commitMemberInput(): void {
-  const v = memberInput.value.trim();
-  if (v) addMember(v);
-  memberInput.value = "";
-  memberSuggest.hidden = true;
-  memberInput.focus();
+function commitMemberSelect(): void {
+  const v = memberSelect.value.trim();
+  if (!v) return;
+  addMember(v);
 }
-function renderSuggest(): void {
-  const q = memberInput.value.trim().toLowerCase();
-  const cands = friendCandidates(memberArray()).filter((n) => !q || n.toLowerCase().includes(q));
-  if (!cands.length) { memberSuggest.hidden = true; return; }
-  memberSuggest.innerHTML =
-    `<div class="pe-suggest-head">友達から追加</div>` +
-    cands
-      .slice(0, 8)
-      .map((n) => `<button class="pe-suggest-item" type="button" data-pick="${escapeHtml(n)}">${icon("user")}<span>${escapeHtml(n)}</span></button>`)
-      .join("");
-  memberSuggest.hidden = false;
-}
-memberInput.addEventListener("input", renderSuggest);
-memberInput.addEventListener("focus", renderSuggest);
-memberInput.addEventListener("keydown", (e) => {
-  if (e.key === "Enter") { e.preventDefault(); commitMemberInput(); }
-  else if (e.key === "Escape") { memberSuggest.hidden = true; }
-});
-qs<HTMLButtonElement>(root, "[data-member-add]").addEventListener("click", commitMemberInput);
-memberSuggest.addEventListener("click", (event) => {
-  const t = event.target;
-  if (!(t instanceof Element)) return;
-  const pick = t.closest<HTMLElement>("[data-pick]");
-  if (!pick) return;
-  addMember(pick.dataset.pick || "");
-  memberInput.value = "";
-  memberSuggest.hidden = true;
-  memberInput.focus();
-});
-document.addEventListener("click", (e) => {
-  if (e.target instanceof Element && !e.target.closest(".pe-member-add")) memberSuggest.hidden = true;
-});
+memberAddBtn.addEventListener("click", commitMemberSelect);
+memberSelect.addEventListener("change", commitMemberSelect);
 
 function toast(message: string): void {
   const el = document.createElement("div");
@@ -1880,37 +2094,6 @@ async function shareInvite(name: string): Promise<void> {
   catch { window.prompt("招待リンクをコピーしてください", link); }
 }
 
-/** 新規作成時: 未登録なら名前登録を促し、登録済みならメンバーに自分を自動追加。 */
-function ensureSelfMember(): void {
-  const me = getUser().name;
-  if (me) { addMember(me); return; }
-  const modal = document.createElement("div");
-  modal.className = "pe-modal";
-  modal.innerHTML =
-    `<form class="pe-modal-box">` +
-    `<h2>あなたの名前を登録</h2>` +
-    `<p>この端末に保存し、作成する旅行のメンバーに自動で追加します。次回からは自動で入ります。</p>` +
-    `<div class="pe-modal-body">` +
-    `<input type="text" maxlength="24" placeholder="例: 太郎" aria-label="あなたの名前">` +
-    `<div class="pe-modal-actions">` +
-    `<button type="button" class="pe-modal-btn ghost" data-skip>あとで</button>` +
-    `<button type="submit" class="pe-modal-btn">登録</button>` +
-    `</div></div></form>`;
-  document.body.appendChild(modal);
-  const input = modal.querySelector<HTMLInputElement>("input");
-  const form = modal.querySelector<HTMLFormElement>("form");
-  input?.focus();
-  modal.querySelector("[data-skip]")?.addEventListener("click", () => modal.remove());
-  form?.addEventListener("submit", (e) => {
-    e.preventDefault();
-    const n = (input?.value || "").trim();
-    if (!n) { input?.focus(); return; }
-    setUserName(n);
-    addMember(n);
-    modal.remove();
-  });
-}
-
 // ---- カレンダー連携（Google テンプレート / .ics） ----------------------
 
 const gcalBtn = qs<HTMLButtonElement>(root, "[data-gcal]");
@@ -2100,8 +2283,11 @@ function syncBasicInputs(): void {
   qs<HTMLInputElement>(root!, '[data-f="title"]').value = model.title || "";
   qs<HTMLInputElement>(root!, '[data-f="note"]').value = model.note || "";
   updateCoverPreview();
+  updateMemberVisibility();
   renderMembers();
+  renderMemberSelect();
   if (model.startDate && model.endDate) fp.setDate([model.startDate, model.endDate], false);
+  updateRangeButton();
   titleEcho.textContent = model.title || "新しい計画";
   updateCalsync();
 }
@@ -2430,7 +2616,6 @@ window.addEventListener("beforeunload", (event) => {
 const editable = loadExisting();
 if (slug) { openLink.href = "index.html?plan=" + encodeURIComponent(slug); openLink.hidden = false; }
 syncBasicInputs();
-if (isNew && editable) ensureSelfMember();
 rebuildDays();
 renderCities();
 renderDays();
