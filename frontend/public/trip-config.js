@@ -1,6 +1,9 @@
 window.TRIP_CONFIG = {
   tripSlug: "2608-tohoku",
   tripTitle: "2026年8月 東北旅行",
+  tripDates: "2026年8月",
+  tripRoute: "仙台、松島、蔵王、青森",
+  tripCover: "./images/cover_tohoku.webp",
   mode: "googleSheets",
   spreadsheetId: "1Vsed92F7ao0rW0y5WWao_6VOasuqwATVH1GwE7MvsXw",
   schema: "trip",

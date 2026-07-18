@@ -5,7 +5,7 @@
 
 import "../shared/ui.css";
 import "./style.css";
-import { initPageTransitions } from "../shared/page-transition";
+import { initPageTransitions, navigateWithPageTransition } from "../shared/page-transition";
 import "leaflet/dist/leaflet.css";
 
 import { icon, type IconName } from "../shared/icons";
@@ -21,10 +21,10 @@ import {
 } from "../shared/config";
 import * as TripPlans from "../shared/plans-store";
 import { getUser } from "../shared/user-store";
-import { canEditPlan } from "../shared/membership";
+import { canEditPlan, canViewPlan } from "../shared/membership";
 import { currentAccount } from "../shared/account-store";
 import { incrementView } from "../shared/views-store";
-import { planCoverImage } from "../shared/cover";
+import { planCoverImage, planCoverImageForLocation } from "../shared/cover";
 import { splitNames } from "../shared/friend-store";
 import { buildInviteLink } from "../shared/invite";
 import * as Permissions from "../shared/permissions-store";
@@ -49,9 +49,10 @@ import { loadData, normalizeDate, numberOrNaN, formatYen } from "./data-source";
 import { renderLeafletMap } from "./leaflet-map";
 import type { DayGroup, LeafletState } from "./types";
 import { registerServiceWorker } from "../shared/pwa";
-import { mountAppHeader } from "../shared/app-header";
+import { mountAppHeader, setAppHeaderHero } from "../shared/app-header";
 import { getPayLink, isPayUrl } from "../shared/payment-links";
 import { fetchDayWeather, weatherLabel } from "../shared/weather";
+import * as Backend from "../shared/backend";
 import type {
   TripData,
   TripLink,
@@ -73,6 +74,13 @@ interface ProfileRecord {
 
 /** 地図に投影したプレースポイント（x/y は SVG 用の割合座標） */
 type ProjectedPlace = ItineraryItem & { x: number; y: number };
+
+interface HeaderCoverMeta {
+  slug: string;
+  route?: string;
+  title: string;
+  cover?: string;
+}
 
 interface AppState {
   data: TripData;
@@ -177,7 +185,7 @@ const coverMeta = TripPlans.get(CONFIG.tripSlug) ?? {
   title: CONFIG.tripTitle,
 };
 
-mountAppHeader({
+const appHeaderEl = mountAppHeader({
   mount: "#tripLive [data-app-header]",
   hero: planCoverImage(coverMeta),
   kicker: "Shared Travel Dashboard",
@@ -251,6 +259,31 @@ const leafletState: LeafletState = { map: null, layer: null, followActive: true 
 let expenseDetailsOpen = false;
 let syncInFlight: Promise<void> | null = null;
 let lastSyncAt = 0;
+
+function activeDayCoverMeta(): HeaderCoverMeta {
+  const configuredCover = "cover" in coverMeta ? coverMeta.cover : "";
+  return {
+    ...coverMeta,
+    cover: configuredCover || state.data.trip?.cover || "",
+    route: coverMeta.route || "",
+    title: state.data.trip?.title || coverMeta.title || CONFIG.tripTitle,
+  };
+}
+
+function dayCoverLocation(day: DayGroup): string {
+  const items = day.items || [];
+  for (let i = items.length - 1; i >= 0; i -= 1) {
+    const item = items[i];
+    const loc = item.area || (String(item.type) === "move" ? item.destination : "") || item.place || item.mapQuery || "";
+    if (loc.trim()) return loc.trim();
+  }
+  return day.area || "";
+}
+
+function updateHeaderHero(day: DayGroup): void {
+  const meta = activeDayCoverMeta();
+  setAppHeaderHero(appHeaderEl, planCoverImageForLocation(meta, dayCoverLocation(day)));
+}
 
 // ---- Apps Script 通信 ---------------------------------------------------
 
@@ -1158,6 +1191,10 @@ function setupExpenseEntryHandlers(form: HTMLFormElement, participants: string[]
 
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
+    if (READ_ONLY) {
+      setStatus("閲覧のみの計画では費用を追加できません。", "error");
+      return;
+    }
     const mode = activeMode();
     const targets = qsa<HTMLInputElement>("input[name='targets']:checked", form).map((input) => input.value);
     const individual: Record<string, number> = {};
@@ -1485,6 +1522,7 @@ function renderMembers(data: TripData): void {
 
 /** 自分をこの旅行のメンバーから外して一覧へ戻る（脱退）。 */
 function leaveTrip(): void {
+  if (READ_ONLY) return;
   const meta = TripPlans.get(CONFIG.tripSlug);
   const myName = getUser().name.trim();
   if (!meta || !myName) return;
@@ -1498,7 +1536,7 @@ function leaveTrip(): void {
   } else {
     TripPlans.upsert({ slug: meta.slug, members: merged });
   }
-  location.href = "plans.html";
+  navigateWithPageTransition("plans.html");
 }
 
 function flashButton(btn: HTMLButtonElement, msg: string): void {
@@ -1513,6 +1551,7 @@ function flashButton(btn: HTMLButtonElement, msg: string): void {
 
 /** 招待リンクを作成して共有／コピーする（ローカル計画のみ）。 */
 async function shareTripInvite(): Promise<void> {
+  if (READ_ONLY) return;
   const meta = TripPlans.get(CONFIG.tripSlug);
   const planData = TripPlans.getData(CONFIG.tripSlug);
   const btn = root.querySelector<HTMLButtonElement>("[data-invite-share]");
@@ -1746,6 +1785,7 @@ function nowNextHtml(day: DayGroup): string {
 function renderActive(): void {
   const day = state.days[state.active];
   if (!day) return;
+  updateHeaderHero(day);
   qsa<HTMLElement>("[data-day-index]").forEach((button) => {
     button.setAttribute("aria-selected", String(Number(button.dataset.dayIndex) === state.active));
   });
@@ -1842,7 +1882,11 @@ async function renderMapEmbed(activePlaces: ItineraryItem[], _day: DayGroup): Pr
 // ---- 同期・初期化 -------------------------------------------------------
 
 function showError(error: unknown): void {
-  root.insertAdjacentHTML("afterbegin", `<div class="tl-error">データ読み込みに失敗しました。サンプル表示に戻します: ${(error as Error).message}</div>`);
+  const message = error instanceof Error ? error.message : String(error || "");
+  const box = document.createElement("div");
+  box.className = "tl-error";
+  box.textContent = `データ読み込みに失敗しました。サンプル表示に戻します: ${message}`;
+  root.insertAdjacentElement("afterbegin", box);
 }
 
 async function syncData(isInitial: boolean, didRetryAuth?: boolean): Promise<void> {
@@ -1886,16 +1930,43 @@ async function syncData(isInitial: boolean, didRetryAuth?: boolean): Promise<voi
 function computeReadOnly(): boolean {
   const forcedView = new URLSearchParams(location.search).get("view") === "1";
   if (forcedView) return true;
-  const name = getUser().name;
-  if (!name) return false;
   const meta = TripPlans.get(CONFIG.tripSlug);
   return Boolean(meta) && !canEditPlan(meta!);
 }
 
-const READ_ONLY = computeReadOnly();
+function computeAccessDenied(): boolean {
+  const meta = TripPlans.get(CONFIG.tripSlug);
+  return Boolean(meta) && !canViewPlan(meta!);
+}
+
+let READ_ONLY = computeReadOnly();
+let ACCESS_DENIED = computeAccessDenied();
+
+function renderAccessDenied(): void {
+  setLoading(false);
+  root.classList.add("is-readonly");
+  root
+    .querySelectorAll<HTMLElement>(".tl-actions, .tl-days, .tl-main, .tl-foot, .tl-mobile-nav")
+    .forEach((el) => {
+      el.hidden = true;
+    });
+  const box = document.createElement("div");
+  box.className = "tl-error";
+  box.textContent = "この旅行計画は招待されたメンバーだけが閲覧できます。招待リンクから参加するか、権限のあるアカウントでログインしてください。";
+  const header = root.querySelector(".ah");
+  if (header) header.insertAdjacentElement("afterend", box);
+  else root.insertAdjacentElement("afterbegin", box);
+}
 
 async function init(): Promise<void> {
   registerServiceWorker();
+  await Backend.preload();
+  READ_ONLY = computeReadOnly();
+  ACCESS_DENIED = computeAccessDenied();
+  if (ACCESS_DENIED) {
+    renderAccessDenied();
+    return;
+  }
   // この計画を開いた＝1閲覧としてカウント（ホームの観覧数に反映）。
   if (CONFIG.tripSlug) incrementView(CONFIG.tripSlug);
   if (READ_ONLY) {

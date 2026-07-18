@@ -3,7 +3,7 @@
 
 import "../shared/ui.css";
 import "./style.css";
-import { initPageTransitions } from "../shared/page-transition";
+import { initPageTransitions, navigateWithPageTransition } from "../shared/page-transition";
 import { icon } from "../shared/icons";
 import { makeScopedQuery, errorMessage, escapeHtml } from "../shared/dom";
 import { registerServiceWorker } from "../shared/pwa";
@@ -81,7 +81,7 @@ function renderLoggedIn(): void {
     logout.addEventListener("click", (e) => {
       e.preventDefault();
       logOut();
-      location.replace(new URL("plans.html", location.href).href);
+      navigateWithPageTransition("plans.html", { replace: true });
     });
   }
 }
@@ -115,7 +115,7 @@ form.addEventListener("submit", async (event) => {
     if (mode === "signup") await signUp(email, password, name);
     else await logIn(email, password);
     // 成功 → ホーム（計画一覧）へ。マイページはヘッダーのユーザーアイコンから開ける。
-    location.href = "plans.html";
+    navigateWithPageTransition("plans.html");
   } catch (err) {
     showError(errorMessage(err) || "失敗しました");
     submitBtn.disabled = false;

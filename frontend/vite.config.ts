@@ -40,15 +40,13 @@ function readAllPlans(): unknown[] {
 }
 
 /**
- * 開発専用: ローカルプランを data/plans/<slug>.json に永続化する。
+ * ローカルプランを data/plans/<slug>.json から読み込む。
  *  - transformIndexHtml で window.__DEV_PLANS__ に全ファイルを注入（同期読み取り用）
- *  - /api/plans への PUT/DELETE でファイルを書き込み/削除
- * `apply: "serve"` なので本番ビルドには一切含まれない。
+ *  - 開発サーバでは /api/plans への PUT/DELETE でファイルを書き込み/削除
  */
 function devPlansFiles(): Plugin {
   return {
     name: "dev-plans-files",
-    apply: "serve",
     configureServer(server) {
       server.middlewares.use("/api/plans", (req, res) => {
         const rest = decodeURIComponent((req.url || "/").split("?")[0].replace(/^\//, ""));
@@ -184,6 +182,40 @@ function devStoreFiles(): Plugin {
   };
 }
 
+/**
+ * 画面遷移をなめらかにするインライン <style>（head 先頭 = render-blocking, dev/本番共通）。
+ *
+ * 1) 対応ブラウザ: クロスドキュメント View Transitions（@view-transition: navigation auto）。
+ *    旧画面のスナップショットを保持したまま新画面へスライドするので、白画面が出ず
+ *    GPU 合成でなめらか。MPA で「スライドアウト→白→スライドイン」の分断が起きない。
+ * 2) 非対応ブラウザ: ブートクローク（html:not(.ui-ready){opacity:0}）で初回描画を隠し、
+ *    page-transition.ts が同期構築の完了直後に html.ui-ready を付けて表示する。
+ *    JS が動かない場合も uiBootFailsafe が 0.8s 後に必ず表示へ戻す。
+ * バンドルCSS(ui.css)に置くと dev では JS 注入でタイミングがずれるため、必ずインラインで入れる。
+ */
+function pageTransitionHead(): Plugin {
+  const css = [
+    "@view-transition{navigation:auto}",
+    "::view-transition-old(root){animation:vtOut .18s cubic-bezier(.4,0,.2,1) both}",
+    "::view-transition-new(root){animation:vtIn .24s cubic-bezier(.2,.8,.2,1) both}",
+    "@keyframes vtOut{to{opacity:0;transform:translateX(-16px)}}",
+    "@keyframes vtIn{from{opacity:0;transform:translateX(18px)}}",
+    "@supports not (view-transition-name:none){",
+    "@keyframes uiBootFailsafe{to{opacity:1}}",
+    "html:not(.ui-ready){opacity:0;animation:uiBootFailsafe .001s linear .8s both}",
+    "}",
+    "@media (prefers-reduced-motion:reduce){",
+    "::view-transition-old(root),::view-transition-new(root){animation:none}",
+    "}",
+  ].join("");
+  return {
+    name: "page-transition-head",
+    transformIndexHtml() {
+      return [{ tag: "style", injectTo: "head-prepend", children: css }];
+    },
+  };
+}
+
 // 複数ページ（ダッシュボード / 計画一覧 / 計画エディタ / 費用入力 / 行程編集）を
 // それぞれ独立した HTML エントリとしてビルドする。
 // GitHub Pages のプロジェクトサイトでも動くよう base は相対パスにする。
@@ -191,7 +223,7 @@ export default defineConfig({
   base: "./",
   root: ".",
   publicDir: "public",
-  plugins: [devPlansFiles(), devStoreFiles()],
+  plugins: [pageTransitionHead(), devPlansFiles(), devStoreFiles()],
   server: {
     open: true,
   },

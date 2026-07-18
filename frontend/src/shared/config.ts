@@ -74,6 +74,10 @@ export interface TripConfig {
   mode: TripMode;
   tripSlug: string;
   tripTitle: string;
+  tripDates: string;
+  tripRoute: string;
+  tripMembers: string;
+  tripCover: string;
   spreadsheetId: string;
   schema: TripSchema;
   defaultParticipants: string[];
@@ -99,6 +103,10 @@ export const DEFAULT_CONFIG: TripConfig = {
   mode: "sample",
   tripSlug: "trip-template",
   tripTitle: "旅行",
+  tripDates: "",
+  tripRoute: "",
+  tripMembers: "",
+  tripCover: "",
   spreadsheetId: "",
   schema: "trip",
   defaultParticipants: ["参加者A", "参加者B"],

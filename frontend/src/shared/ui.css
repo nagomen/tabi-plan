@@ -19,19 +19,26 @@ html {
   overflow-x: hidden;
 }
 
+/* ブートクローク本体（html:not(.ui-ready){opacity:0}）は vite.config.ts の bootCloak() が
+   各ページ <head> 先頭にインライン注入する。dev でも render-blocking にするためCSSバンドルに
+   置かない。ここでは表示状態のみ明示しておく（インライン側と重複しても無害）。 */
+html.ui-ready {
+  opacity: 1;
+}
+
 body.ui-page-enter {
-  animation: uiPageEnter 0.28s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation: uiPageEnter 0.24s cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
 
 body.ui-page-leave {
   pointer-events: none;
-  animation: uiPageLeave 0.22s cubic-bezier(0.4, 0, 0.2, 1) both;
+  animation: uiPageLeave 0.18s cubic-bezier(0.4, 0, 0.2, 1) both;
 }
 
 @keyframes uiPageEnter {
   from {
     opacity: 0;
-    transform: translateX(22px);
+    transform: translateX(18px);
   }
   to {
     opacity: 1;
@@ -46,7 +53,7 @@ body.ui-page-leave {
   }
   to {
     opacity: 0;
-    transform: translateX(-18px);
+    transform: translateX(-16px);
   }
 }
 

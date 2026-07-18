@@ -48,6 +48,11 @@ function readStore(): FriendshipStore {
 
 function writeStore(store: FriendshipStore): void {
   Backend.setJSON(KEY, store);
+  try {
+    window.dispatchEvent(new CustomEvent("trip-friendships-change"));
+  } catch {
+    /* ignore */
+  }
 }
 
 function requireAccount(): Account {

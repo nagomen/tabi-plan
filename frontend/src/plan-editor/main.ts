@@ -8,7 +8,7 @@
 import L from "leaflet";
 import "../shared/ui.css";
 import "./style.css";
-import { initPageTransitions } from "../shared/page-transition";
+import { initPageTransitions, navigateWithPageTransition } from "../shared/page-transition";
 import "leaflet/dist/leaflet.css";
 import flatpickr from "flatpickr";
 import { Japanese } from "flatpickr/dist/l10n/ja.js";
@@ -31,20 +31,9 @@ import { mountAppHeader } from "../shared/app-header";
 import * as Permissions from "../shared/permissions-store";
 import { currentAccount } from "../shared/account-store";
 import { listFriends } from "../shared/friendship-store";
+import { canEditPlan } from "../shared/membership";
 
 initPageTransitions();
-
-const CREATE_TRANSITION_KEY = "trip:create-plan-transition";
-
-try {
-  if (sessionStorage.getItem(CREATE_TRANSITION_KEY) === "1") {
-    sessionStorage.removeItem(CREATE_TRANSITION_KEY);
-    document.body.classList.add("is-plan-create-entry");
-    window.setTimeout(() => document.body.classList.remove("is-plan-create-entry"), 420);
-  }
-} catch {
-  // sessionStorage が使えない環境では通常表示に戻す。
-}
 
 // ---- モデル -------------------------------------------------------------
 
@@ -350,6 +339,24 @@ let dirty = false;
 let seq = 1;
 let openItemId: number | null = null;
 let armed: { itemId: number; target: GeoTarget } | null = null;
+let editorLocked = false;
+
+function lockEditor(message: string): false {
+  editorLocked = true;
+  statusEl.textContent = message;
+  statusEl.className = "is-dirty";
+  savebarNoteEl.textContent = message;
+  return false;
+}
+
+function applyEditorLock(): void {
+  root!.classList.add("is-readonly");
+  root!.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement | HTMLButtonElement>(
+    "input, select, textarea, button",
+  ).forEach((control) => {
+    control.disabled = true;
+  });
+}
 
 // 期間レンジピッカー（flatpickr・カレンダーで開始日→終了日を一括選択）
 const fp = flatpickr(rangeEl, {
@@ -757,6 +764,7 @@ function conciseGeoLabel(label: string): string {
 
 let persistTimer = 0;
 function markDirty(): void {
+  if (editorLocked) return;
   dirty = true;
   if (model.title.trim()) {
     statusEl.textContent = "編集中…";
@@ -777,6 +785,7 @@ function nowHM(): string {
 
 // 自動保存（localStorage）。旅行名があれば slug を採番して保存する。
 function persist(): void {
+  if (editorLocked) return;
   if (!model.title.trim()) return;
   if (!slug) {
     slug = TripPlans.uniqueSlug(model.title);
@@ -785,6 +794,7 @@ function persist(): void {
     openLink.hidden = false;
     try { history.replaceState(null, "", "plan-editor.html?plan=" + encodeURIComponent(slug)); } catch { /* ignore */ }
   }
+  Permissions.ensureOwner(slug, model.members);
   TripPlans.saveLocalPlan(slug, buildData());
   TripPlans.setActiveSlug(slug);
   dirty = false;
@@ -2062,6 +2072,7 @@ candInput.addEventListener("keydown", (e) => {
 });
 
 async function shareInvite(name: string): Promise<void> {
+  if (editorLocked) return;
   if (!model.title.trim()) { toast("先に旅行名を入力してください"); return; }
   if (!slug) { slug = TripPlans.uniqueSlug(model.title); model.slug = slug; }
   persist();
@@ -2350,9 +2361,10 @@ function buildData(): LocalPlanData {
 function loadExisting(): boolean {
   const meta = slug ? TripPlans.get(slug) : null;
   if (meta && meta.source && meta.source !== "local") {
-    statusEl.textContent = "この計画は外部連携のため、ここでは編集できません";
-    statusEl.className = "is-dirty";
-    return false;
+    return lockEditor("この計画は外部連携のため、ここでは編集できません");
+  }
+  if (meta && !canEditPlan(meta)) {
+    return lockEditor("この計画を編集する権限がありません");
   }
   const data = slug ? TripPlans.getData(slug) : null;
   if (!data) return true;
@@ -2420,6 +2432,11 @@ function normalizeKind(type: string | undefined): ItemKind {
 }
 
 function save(): void {
+  if (editorLocked) {
+    statusEl.textContent = "この計画を編集する権限がありません";
+    statusEl.className = "is-dirty";
+    return;
+  }
   if (!model.title.trim()) {
     statusEl.textContent = "旅行名を入れてください";
     statusEl.className = "is-dirty";
@@ -2431,6 +2448,7 @@ function save(): void {
 }
 
 function doSave(visibility: PlanVisibility): void {
+  if (editorLocked) return;
   if (!slug) { slug = TripPlans.uniqueSlug(model.title || "trip"); model.slug = slug; }
   model.visibility = visibility;
   // 先に公開範囲をメタへ反映してから保存する（dev のファイル書き出しに visibility を含めるため）。
@@ -2446,7 +2464,7 @@ function doSave(visibility: PlanVisibility): void {
   openLink.hidden = false;
   savebarNoteEl.textContent = `保存しました（${visLabel}）。右上の「表示」でダッシュボードを確認できます。`;
   try { history.replaceState(null, "", "plan-editor.html?plan=" + encodeURIComponent(slug)); } catch { /* ignore */ }
-  window.location.href = "index.html?plan=" + encodeURIComponent(slug);
+  navigateWithPageTransition("index.html?plan=" + encodeURIComponent(slug));
 }
 
 function visOption(value: PlanVisibility, current: PlanVisibility, label: string, desc: string, glyph: IconName): string {
@@ -2609,6 +2627,7 @@ dayStripEl.addEventListener("click", (event) => {
 });
 
 window.addEventListener("beforeunload", (event) => {
+  if (editorLocked) return;
   if (dirty && model.title.trim()) persist();
   if (dirty) { event.preventDefault(); event.returnValue = ""; }
 });
@@ -2630,5 +2649,6 @@ if (window.matchMedia("(max-width: 680px)").matches) {
   setMapCollapsed(true);
 }
 statusEl.textContent = isNew ? "下書き（自動保存・未保存）" : editable ? "読み込み完了" : statusEl.textContent;
+if (!editable || editorLocked) applyEditorLock();
 
 registerServiceWorker();

@@ -147,10 +147,11 @@ export function seedMeta(config: Partial<TripConfig>): PlanMeta | null {
   return {
     slug: safeSlug(config.tripSlug || config.tripTitle),
     title: config.tripTitle || "旅行",
-    dates: "",
-    route: "",
-    members: "",
+    dates: config.tripDates || "",
+    route: config.tripRoute || "",
+    members: config.tripMembers || "",
     note: "",
+    cover: config.tripCover || "",
     source,
     visibility: "public",
     spreadsheetId: config.spreadsheetId || "",
@@ -163,13 +164,24 @@ export function seedMeta(config: Partial<TripConfig>): PlanMeta | null {
   };
 }
 
-/** 組み込みプランが未登録なら先頭にシードする */
+/** 組み込みプランをシードする。既存の builtIn は trip-config.js の表示メタへ追従させる。 */
 export function ensureSeed(config: Partial<TripConfig>): PlanMeta[] {
   const seed = seedMeta(config);
   if (!seed) return list();
   const arr = list();
-  if (!arr.some((p) => p.slug === seed.slug)) {
+  const i = arr.findIndex((p) => p.slug === seed.slug);
+  if (i < 0) {
     arr.unshift(seed);
+    saveList(arr);
+  } else if (arr[i].builtIn && arr[i].source !== "local") {
+    arr[i] = {
+      ...arr[i],
+      ...seed,
+      visibility: arr[i].visibility || seed.visibility,
+      published: arr[i].published,
+      createdAt: arr[i].createdAt || seed.createdAt,
+      updatedAt: arr[i].updatedAt || seed.updatedAt,
+    };
     saveList(arr);
   }
   return list();
@@ -269,7 +281,7 @@ export function mergeLocalPlan(
 
 // ---- 開発時のファイル保存（data/plans/<slug>.json） --------------------
 // Vite dev プラグインが window.__DEV_PLANS__ を注入し、/api/plans で書込みする。
-// 本番ビルドでは __DEV_PLANS__ は無いので、すべて no-op（localStorage のまま）。
+// 本番ビルドでも読み取り用に __DEV_PLANS__ を埋め込む。書込み API は dev server のみ。
 
 interface DevPlanFile extends PlanMeta {
   data: LocalPlanData;

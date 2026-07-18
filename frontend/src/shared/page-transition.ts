@@ -1,9 +1,20 @@
 const TRANSITION_KEY = "trip:page-transition";
-const LEAVE_MS = 220;
-const ENTER_MS = 320;
+const LEAVE_MS = 180;
+const ENTER_MS = 240;
 
 function reducedMotion(): boolean {
   return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+// クロスドキュメント View Transitions に対応しているか。
+// 対応時は CSS の @view-transition がネイティブに遷移を処理するため、
+// JS による退場アニメ・ブートクロークは一切不要（そちらの方がなめらか）。
+function supportsCrossDocViewTransitions(): boolean {
+  try {
+    return typeof CSS !== "undefined" && CSS.supports("view-transition-name: none");
+  } catch {
+    return false;
+  }
 }
 
 function sameDocumentHash(url: URL): boolean {
@@ -33,22 +44,43 @@ function shouldSkip(event: MouseEvent, link: HTMLAnchorElement, url: URL): boole
 export function initPageTransitions(): void {
   if (typeof window === "undefined" || typeof document === "undefined") return;
 
-  document.body.classList.remove("ui-page-leave");
-  window.addEventListener("pageshow", () => {
-    document.body.classList.remove("ui-page-leave");
-  });
+  // 対応ブラウザはネイティブのクロスドキュメント View Transitions に任せる。
+  // @supports により、これらのブラウザではブートクロークも無効なので何もしない。
+  if (supportsCrossDocViewTransitions()) return;
 
+  // 以下は View Transitions 非対応ブラウザ向けフォールバック（退場フェード＋ブートクローク）。
+  document.body.classList.remove("ui-page-leave");
+
+  // 遷移フラグを読み、入場アニメの要否だけ先に決める（表示は reveal まで保留）。
+  let enterAnimation = false;
   try {
     if (sessionStorage.getItem(TRANSITION_KEY) === "1") {
       sessionStorage.removeItem(TRANSITION_KEY);
-      if (!reducedMotion()) {
-        document.body.classList.add("ui-page-enter");
-        window.setTimeout(() => document.body.classList.remove("ui-page-enter"), ENTER_MS);
-      }
+      enterAnimation = !reducedMotion();
     }
   } catch {
     // sessionStorage が使えない環境では通常遷移に戻す。
   }
+
+  // ページの同期構築（共通ヘッダーの挿入など）が終わった直後・描画前に表示する。
+  // これでヘッダー未挿入の骨組みが一瞬見える現象とレイアウトジャンプを防ぐ（ブートクローク）。
+  const reveal = (): void => {
+    if (document.documentElement.classList.contains("ui-ready")) return;
+    document.documentElement.classList.add("ui-ready");
+    if (enterAnimation) {
+      document.body.classList.add("ui-page-enter");
+      window.setTimeout(() => document.body.classList.remove("ui-page-enter"), ENTER_MS);
+    }
+  };
+  window.requestAnimationFrame(reveal);
+  // 保険: rAF が来ない環境でも必ず表示する（CSS 側 uiBootFailsafe と二重の保険）。
+  window.setTimeout(reveal, 800);
+
+  window.addEventListener("pageshow", () => {
+    document.body.classList.remove("ui-page-leave");
+    // bfcache 復帰時など、確実に表示状態へ戻す。
+    document.documentElement.classList.add("ui-ready");
+  });
 
   document.addEventListener(
     "click",
@@ -61,16 +93,28 @@ export function initPageTransitions(): void {
       const url = new URL(link.href, location.href);
       if (shouldSkip(event, link, url)) return;
 
-      try { sessionStorage.setItem(TRANSITION_KEY, "1"); } catch { /* ignore */ }
-      if (reducedMotion()) return;
-
       event.preventDefault();
       event.stopImmediatePropagation();
-      document.body.classList.add("ui-page-leave");
-      window.setTimeout(() => {
-        location.href = url.href;
-      }, LEAVE_MS);
+      navigateWithPageTransition(url.href);
     },
     true,
   );
+}
+
+export function navigateWithPageTransition(href: string, options: { replace?: boolean } = {}): void {
+  const url = new URL(href, location.href);
+  try { sessionStorage.setItem(TRANSITION_KEY, "1"); } catch { /* ignore */ }
+
+  const go = (): void => {
+    if (options.replace) location.replace(url.href);
+    else location.href = url.href;
+  };
+
+  if (reducedMotion() || supportsCrossDocViewTransitions()) {
+    go();
+    return;
+  }
+
+  document.body.classList.add("ui-page-leave");
+  window.setTimeout(go, LEAVE_MS);
 }

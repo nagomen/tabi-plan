@@ -130,6 +130,75 @@ a {
   line-height: 1;
 }
 
+.pv-friend-action {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+  margin-top: 12px;
+}
+
+.pv-friend-btn,
+.pv-friend-badge,
+.pv-friend-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 11px;
+  border: 1px solid var(--line-strong);
+  background: #fff;
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 760;
+  text-decoration: none;
+}
+
+.pv-friend-btn {
+  cursor: pointer;
+}
+
+.pv-friend-btn:hover,
+.pv-friend-btn:focus-visible {
+  border-color: var(--green);
+  color: var(--green);
+  outline: none;
+}
+
+.pv-friend-badge {
+  border-color: rgba(11, 90, 66, .24);
+  background: var(--green-soft);
+  color: var(--green);
+}
+
+.pv-friend-badge.is-pending {
+  border-color: #d4b36e;
+  background: #fff6df;
+  color: #8a5f12;
+}
+
+.pv-friend-note {
+  color: var(--muted);
+}
+
+.pv-friend-message {
+  color: var(--green);
+  font-size: 12px;
+  font-weight: 720;
+}
+
+.pv-friend-message.is-error {
+  color: var(--red);
+}
+
+.pv-friend-action .hi {
+  width: 15px;
+  height: 15px;
+  vertical-align: 0;
+}
+
 .pv-flag {
   display: inline-grid;
   place-items: center;

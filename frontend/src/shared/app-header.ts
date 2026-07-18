@@ -6,6 +6,8 @@
 import { icon, type IconName } from "./icons";
 import { escapeHtml } from "./dom";
 import { initMypageDrawer } from "./mypage-drawer";
+import * as Backend from "./backend";
+import * as Friendships from "./friendship-store";
 import "./app-header.css";
 
 /** ヘッダー下部の補足行に並べる文言。attr を付けるとページ側が動的更新できる。 */
@@ -66,10 +68,15 @@ function renderAction(action: HeaderActionSpec): string {
   const hidden = action.hidden ? " hidden" : "";
   const aria = ` aria-label="${escapeHtml(action.label)}" title="${escapeHtml(action.label)}"`;
   const iconHtml = action.icon ? icon(action.icon) : "";
+  const isMypageAction =
+    action.icon === "user" ||
+    Boolean(action.attr && /\bdata-mypage\b/.test(action.attr)) ||
+    Boolean(action.href && /(?:^|\/)mypage\.html(?:[?#]|$)/.test(action.href));
+  const badge = isMypageAction ? '<span class="ah-notify" data-header-friend-badge hidden></span>' : "";
   const inner =
     display === "icon"
-      ? iconHtml
-      : `${iconHtml}<span>${escapeHtml(action.text ?? action.label)}</span>`;
+      ? iconHtml + badge
+      : `${iconHtml}<span>${escapeHtml(action.text ?? action.label)}</span>${badge}`;
   if (action.kind === "link") {
     const href = escapeHtml(action.href ?? "#");
     return `<a class="${cls}"${attrToken(action.attr)} href="${href}"${aria}${hidden}>${inner}</a>`;
@@ -77,9 +84,30 @@ function renderAction(action: HeaderActionSpec): string {
   return `<button class="${cls}" type="button"${attrToken(action.attr)}${aria}${hidden}>${inner}</button>`;
 }
 
+function updateFriendBadges(root: ParentNode = document): void {
+  const badges = Array.from(root.querySelectorAll<HTMLElement>("[data-header-friend-badge]"));
+  if (!badges.length) return;
+  const count = Friendships.incomingRequests().length;
+  badges.forEach((badge) => {
+    badge.hidden = count === 0;
+    badge.textContent = count ? String(count) : "";
+    const action = badge.closest<HTMLElement>(".ah-act");
+    if (action) {
+      action.classList.toggle("has-notify", count > 0);
+      const base = action.getAttribute("aria-label") || action.getAttribute("title") || "マイページ";
+      action.setAttribute("aria-label", count ? `${base.replace(/（未処理.*?）$/, "")}（未処理の友達申請 ${count}件）` : base.replace(/（未処理.*?）$/, ""));
+    }
+  });
+}
+
 function cssUrl(value: string): string {
   const resolved = /^(?:data:|blob:|https?:|\/)/i.test(value) ? value : new URL(value, document.baseURI).href;
   return `url(${JSON.stringify(resolved)})`;
+}
+
+export function setAppHeaderHero(el: HTMLElement, hero: string): void {
+  el.classList.add("ah--hero");
+  el.style.setProperty("--ah-hero-image", cssUrl(hero));
 }
 
 /** ヘッダーの HTML 文字列を組み立てる（テスト・SSR 用に純粋関数として公開）。 */
@@ -118,10 +146,15 @@ export function mountAppHeader(config: AppHeaderConfig): HTMLElement {
   template.innerHTML = renderAppHeaderHtml(config).trim();
   const el = template.content.firstElementChild as HTMLElement;
   if (config.hero) {
-    el.style.setProperty("--ah-hero-image", cssUrl(config.hero));
+    setAppHeaderHero(el, config.hero);
   }
   mount.replaceWith(el);
   // マイページのスライドインドロワーを全画面共通で設置（埋め込み時はスキップ）
   initMypageDrawer();
+  updateFriendBadges(el);
+  void Backend.preload().then(() => updateFriendBadges(el));
+  window.addEventListener("trip-friendships-change", () => updateFriendBadges(el));
+  window.addEventListener("trip-backend-sync", () => updateFriendBadges(el));
+  window.addEventListener("trip-account-logout", () => updateFriendBadges(el));
   return el;
 }

@@ -5,6 +5,7 @@
 
 import { icon } from "./icons";
 import { logOut } from "./account-store";
+import { navigateWithPageTransition } from "./page-transition";
 import "./mypage-drawer.css";
 
 let panelEl: HTMLElement | null = null;
@@ -41,7 +42,7 @@ function onMessage(event: MessageEvent): void {
   if (!data || data.type !== "trip-account-logout") return;
   logOut();
   closeMypageDrawer();
-  window.location.replace(new URL("plans.html", location.href).href);
+  navigateWithPageTransition("plans.html", { replace: true });
 }
 
 export function openMypageDrawer(): void {

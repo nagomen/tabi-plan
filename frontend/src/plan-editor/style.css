@@ -36,26 +36,6 @@
 
   a { color: inherit; }
 
-  body.is-plan-create-entry .pe {
-    animation: planCreateEntry .34s cubic-bezier(.2, .8, .2, 1) both;
-  }
-
-  @keyframes planCreateEntry {
-    from {
-      opacity: 0;
-      transform: translateY(18px) scale(.985);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0) scale(1);
-    }
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    body.is-plan-create-entry .pe {
-      animation: none;
-    }
-  }
   .hi { width: 1.15em; height: 1.15em; vertical-align: -0.18em; flex: none; }
 
   .pe {

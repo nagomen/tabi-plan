@@ -3,7 +3,7 @@
 
 import "../shared/ui.css";
 import "./style.css";
-import { initPageTransitions } from "../shared/page-transition";
+import { initPageTransitions, navigateWithPageTransition } from "../shared/page-transition";
 import { icon, type IconName } from "../shared/icons";
 import { escapeHtml, makeScopedQuery, errorMessage } from "../shared/dom";
 import { registerServiceWorker } from "../shared/pwa";
@@ -155,7 +155,7 @@ function renderAccount(): void {
         return;
       }
       logOut();
-      location.replace(new URL("plans.html", location.href).href);
+      navigateWithPageTransition("plans.html", { replace: true });
     });
   } else {
     accountEl.innerHTML = `<a href="login.html">ログイン / 新規登録</a><span>すると別端末でも同じ名前で使えます（試作）</span>`;
@@ -234,6 +234,7 @@ function renderPlans(): void {
 
 const tabs = Array.from(document.querySelectorAll<HTMLButtonElement>(".mp-tab"));
 const views = Array.from(document.querySelectorAll<HTMLElement>(".mp-view"));
+const initialTab = new URLSearchParams(location.search).get("tab") || "";
 function showTab(name: string): void {
   tabs.forEach((t) => t.classList.toggle("is-active", t.dataset.tab === name));
   views.forEach((v) => { v.hidden = v.dataset.view !== name; });
@@ -400,6 +401,7 @@ const friendListMount = qs<HTMLElement>("[data-friend-list]");
 const friendCount = qs<HTMLElement>("[data-friend-count]");
 const friendOutgoingMount = qs<HTMLElement>("[data-friend-outgoing]");
 const friendOutgoingCount = qs<HTMLElement>("[data-friend-outgoing-count]");
+const friendTabBadge = qs<HTMLElement>("[data-friend-tab-badge]");
 
 function friendNote(message: string): void {
   friendNoteEl.textContent = message;
@@ -454,6 +456,8 @@ function renderFriendSearchResults(results: Account[]): void {
 
 function renderFriends(): void {
   if (!isLoggedIn()) {
+    friendTabBadge.hidden = true;
+    friendTabBadge.textContent = "";
     friendSearchResults.innerHTML = "";
     friendIncomingMount.innerHTML = `<div class="mp-empty"><b>ログインすると友達を追加できます</b><span>マイページ上部からログイン / 新規登録してください</span></div>`;
     friendIncomingCount.textContent = "";
@@ -466,6 +470,8 @@ function renderFriends(): void {
   }
 
   const incoming = Friendships.incomingRequests();
+  friendTabBadge.hidden = incoming.length === 0;
+  friendTabBadge.textContent = incoming.length ? String(incoming.length) : "";
   friendIncomingCount.textContent = incoming.length ? `${incoming.length}件` : "";
   friendIncomingMount.innerHTML = incoming.length
     ? incoming
@@ -584,6 +590,7 @@ async function init(): Promise<void> {
   renderCalendar(); // PC は左右2カラムで日程も常時表示するため初期描画する
   renderPayLinks(); // PC ではタブが無く常時表示されるため初期描画する
   renderFriends(); // PC ではタブが無く常時表示されるため初期描画する
+  if (initialTab && tabs.some((tab) => tab.dataset.tab === initialTab)) showTab(initialTab);
 }
 
 void init();

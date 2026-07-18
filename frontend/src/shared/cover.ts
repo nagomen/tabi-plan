@@ -23,11 +23,8 @@ export function firstDayLocation(meta: CoverMeta): string {
 }
 
 /** 行き先の地名キーワードから、国・地域別のカバー画像パスを返す。 */
-export function planCoverImage(meta: CoverMeta): string {
-  // 手動設定のサムネ（WebP data URL）があれば最優先。
-  if (meta.cover) return meta.cover;
-  const loc = firstDayLocation(meta).toLowerCase();
-
+export function coverImageForLocation(location: string): string {
+  const loc = location.toLowerCase();
   // イギリス
   if (/イギリス|英国|ロンドン|london|uk|united.*kingdom|イングランド|コッツウォルズ|エディンバラ/.test(loc)) {
     return "./images/cover_uk.webp";
@@ -87,6 +84,15 @@ export function planCoverImage(meta: CoverMeta): string {
     return "./images/cover_africa.webp";
   }
 
+  // カナダ
+  if (/カナダ|トロント|バンクーバー|モントリオール|オタワ|ケベック|カルガリー|ナイアガラ|canada|toronto|vancouver|montreal|ottawa|quebec|calgary/.test(loc)) {
+    return "./images/cover_canada.webp";
+  }
+  // 中南米
+  if (/中南米|南米|中央アメリカ|ラテンアメリカ|メキシコ|ブラジル|リオデジャネイロ|サンパウロ|ペルー|リマ|マチュピチュ|アルゼンチン|ブエノスアイレス|チリ|サンティアゴ|ボリビア|ウユニ|コロンビア|ボゴタ|キューバ|ハバナ|south.*america|latin.*america|central.*america|mexico|brazil|rio.*de.*janeiro|sao.*paulo|peru|lima|machu.*picchu|argentina|buenos.*aires|chile|santiago|bolivia|uyuni|colombia|bogota|cuba|havana/.test(loc)) {
+    return "./images/cover_middle_south_america.webp";
+  }
+
   // アメリカ各州
   // カリフォルニア州
   if (/カリフォルニア|ロサンゼルス|サンフランシスコ|ヨセミテ|シリコンバレー|ディズニーランド|サンディエゴ|ca|california|los.*angeles|san.*francisco/.test(loc)) {
@@ -136,7 +142,7 @@ export function planCoverImage(meta: CoverMeta): string {
     return "./images/cover_aomori.webp";
   }
   if (loc.includes("仙台") || loc.includes("sendai") || loc.includes("宮城") || loc.includes("牛タン") || loc.includes("ずんだ")) {
-    return "./images/cover_sendai.webp";
+    return "./images/cover_tohoku.webp";
   }
   if (loc.includes("松島") || loc.includes("matsushima")) {
     return "./images/cover_matsushima.webp";
@@ -181,6 +187,19 @@ export function planCoverImage(meta: CoverMeta): string {
 
   // デフォルト
   return "./images/cover_default.webp";
+}
+
+/** 計画全体の代表地からカバー画像を返す。手動設定画像があれば最優先。 */
+export function planCoverImage(meta: CoverMeta): string {
+  if (meta.cover) return meta.cover;
+  return coverImageForLocation(firstDayLocation(meta));
+}
+
+/** 特定の日・都市用のカバー画像を返す。手動設定画像があれば最優先。 */
+export function planCoverImageForLocation(meta: CoverMeta, location: string): string {
+  if (meta.cover) return meta.cover;
+  const loc = location.trim();
+  return coverImageForLocation(loc || firstDayLocation(meta));
 }
 
 /** 一覧カードなど小さく表示する場所では、軽量サムネイル版を使う。 */

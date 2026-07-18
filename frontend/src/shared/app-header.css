@@ -5,7 +5,15 @@
 /* 全ページ共通のPC最大コンテンツ幅。各ページのシェルが var(--app-width) を参照する。
    ここ1か所を変えれば全画面の横幅が揃う。 */
 :root {
-  --app-width: 1120px;
+  --app-width: 1600px;
+}
+
+/* ヘッダー挿入前のプレースホルダに高さを予約し、万一ブートクロークが外れた
+   場合（JS 遅延・失敗）でも 0px→ヘッダーのレイアウトジャンプを抑える。
+   通常は html.ui-ready の表示前にヘッダーへ差し替わるため見えない。 */
+[data-app-header] {
+  display: block;
+  min-height: 92px;
 }
 
 .ah {
@@ -58,7 +66,7 @@
 .ah-kicker {
   margin: 0 0 2px;
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 620;
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--green, #0b5a42);
@@ -67,7 +75,7 @@
 .ah-title {
   margin: 0;
   font-size: 22px;
-  font-weight: 800;
+  font-weight: 660;
   line-height: 1.25;
   overflow-wrap: anywhere;
 }
@@ -87,6 +95,7 @@
 /* 戻る／アイコンのみアクション（円形タップターゲット） */
 .ah-back,
 .ah-act--icon {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -119,6 +128,7 @@
 
 /* テキストアクション（下線ホバー、枠なし） */
 .ah-act--text {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -127,7 +137,7 @@
   text-decoration: none;
   font: inherit;
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 620;
   background: none;
   border: 0;
   cursor: pointer;
@@ -143,6 +153,33 @@
   flex: none;
 }
 .ah-act[hidden] { display: none; }
+.ah-notify {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  display: inline-grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border: 2px solid #fff;
+  border-radius: 999px;
+  background: var(--red, #cf4f3d);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 680;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+.ah-notify[hidden] { display: none; }
+.ah-act--text .ah-notify {
+  top: -5px;
+  right: -8px;
+}
+.ah--hero .ah-notify {
+  border-color: rgba(17, 25, 22, .72);
+}
 
 @media (max-width: 640px) {
   .ah {

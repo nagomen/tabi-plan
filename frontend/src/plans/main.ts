@@ -6,7 +6,7 @@
 import * as TripPlans from "../shared/plans-store";
 import "../shared/ui.css";
 import "./style.css";
-import { initPageTransitions } from "../shared/page-transition";
+import { initPageTransitions, navigateWithPageTransition } from "../shared/page-transition";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import type { PlanMeta, LocalPlanData, PlanSource } from "../shared/plans-store";
@@ -79,8 +79,6 @@ interface DestinationRow {
   coords?: L.LatLngTuple;
 }
 
-const CREATE_TRANSITION_KEY = "trip:create-plan-transition";
-
 // ---- DOM 取得ヘルパー ----------------------------------------------------
 
 mountAppHeader({
@@ -109,11 +107,6 @@ const countPublicEl = qs<HTMLElement>("[data-count-public]");
 const filterEl = qs<HTMLInputElement>("[data-filter]");
 const searchToggleEl = qs<HTMLButtonElement>("[data-toggle-search]");
 const createMainEl = qs<HTMLAnchorElement>("[data-create-main]");
-const jumpNewEl = qs<HTMLAnchorElement>("[data-jump-new]");
-const jumpMapEl = qs<HTMLAnchorElement>("[data-jump-map]");
-const statPublicEl = qs<HTMLElement>("[data-stat-public]");
-const statCitiesEl = qs<HTMLElement>("[data-stat-cities]");
-const statViewsEl = qs<HTMLElement>("[data-stat-views]");
 const inviteStripEl = qs<HTMLElement>("[data-invite-strip]");
 const inviteTitleEl = qs<HTMLElement>("[data-invite-title]");
 const inviteNoteEl = qs<HTMLElement>("[data-invite-note]");
@@ -133,6 +126,8 @@ const mapCountEl = qs<HTMLElement>("[data-map-count]");
 const state: AppState = { filter: "", selectedLocation: "", selectedPlanSlug: "" };
 let pendingLocationTransition: LocationTransition | "" = "";
 let locationTransitionTimer = 0;
+let lastRankingLimit = 0;
+let rankingResizeTimer = 0;
 const locationMapState: { map: L.Map | null; layer: L.LayerGroup | null } = { map: null, layer: null };
 const CONFIG: TripConfig = normalizeTripConfig(
   mergeConfig(
@@ -158,24 +153,22 @@ searchToggleEl.addEventListener("click", () => {
   setSearchOpen(!hub.classList.contains("is-search-open"));
 });
 
-createMainEl.addEventListener("click", (event) => {
-  if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-  if (createMainEl.target && createMainEl.target !== "_self") return;
-  try { sessionStorage.setItem(CREATE_TRANSITION_KEY, "1"); } catch { /* ignore */ }
-  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-  event.preventDefault();
-  document.body.classList.add("is-plan-create-leaving");
-  window.setTimeout(() => {
-    window.location.href = createMainEl.href;
-  }, 260);
-});
-
 const SOURCE_LABEL: Record<string, string> = {
   local: "ローカル",
   googleSheets: "Sheets連携",
   appsScript: "公開",
   sample: "サンプル",
 };
+
+const EMPTY_TRIP_COVERS = [
+  "./images/thumbs/cover_tokyo.webp",
+  "./images/thumbs/cover_newyork.webp",
+  "./images/thumbs/cover_africa.webp",
+  "./images/thumbs/cover_india.webp",
+  "./images/thumbs/cover_arizona.webp",
+];
+
+const emptyTripCover = EMPTY_TRIP_COVERS[Math.floor(Math.random() * EMPTY_TRIP_COVERS.length)];
 
 function sourceClass(source: PlanSource | string): string {
   return ["local", "googleSheets", "appsScript", "sample"].indexOf(source) >= 0 ? source : "sample";
@@ -322,7 +315,7 @@ function uniqueLocationEntries(entries: LocationEntry[]): LocationEntry[] {
 
 function locationEntries(meta: PlanMeta): LocationEntry[] {
   const data = dataForPlan(meta);
-  const cityEntries = uniqueLocationEntries((data?.cities || [])
+  const entries: LocationEntry[] = (data?.cities || [])
     .map((city) => {
       const lat = numeric(city.lat);
       const lng = numeric(city.lng);
@@ -330,17 +323,13 @@ function locationEntries(meta: PlanMeta): LocationEntry[] {
         name: city.name || "",
         coords: lat !== null && lng !== null ? [lat, lng] as L.LatLngTuple : undefined,
       };
-    }));
-  if (cityEntries.length) return cityEntries;
+    });
 
-  const areaEntries = uniqueLocationEntries((data?.itinerary || [])
-    .map((item) => ({ name: item.area || "" })));
-  if (areaEntries.length) return areaEntries;
+  entries.push(...(data?.itinerary || []).map((item) => ({ name: item.area || "" })));
+  entries.push(...routeParts(meta).map((name) => ({ name })));
 
-  const routeEntries = uniqueLocationEntries(routeParts(meta).map((name) => ({ name })));
-  if (routeEntries.length) return routeEntries;
-
-  return uniqueLocationEntries([{ name: destinationName(meta) }]);
+  const unique = uniqueLocationEntries(entries);
+  return unique.length ? unique : uniqueLocationEntries([{ name: destinationName(meta) }]);
 }
 
 function locationNames(meta: PlanMeta): string[] {
@@ -351,9 +340,22 @@ function locationLabel(meta: PlanMeta): string {
   return locationNames(meta).join("、") || meta.route || destinationName(meta);
 }
 
+function rankingCardLimit(): number {
+  const width = Math.max(
+    rankingNewEl.clientWidth,
+    rankingViewsEl.clientWidth,
+    Math.min(window.innerWidth, 1600) - 48,
+  );
+  const cardWidth = window.innerWidth <= 600 ? 180 : 220;
+  const gap = window.innerWidth <= 600 ? 12 : 18;
+  return Math.max(5, Math.min(12, Math.ceil((width + gap) / (cardWidth + gap))));
+}
+
 function renderRankings(plans: PlanMeta[]): void {
-  const latest = [...plans].sort((a, b) => timeValue(b) - timeValue(a)).slice(0, 5);
-  const byViews = [...plans].sort((a, b) => getViews(b.slug) - getViews(a.slug) || timeValue(b) - timeValue(a)).slice(0, 5);
+  const limit = rankingCardLimit();
+  lastRankingLimit = limit;
+  const latest = [...plans].sort((a, b) => timeValue(b) - timeValue(a)).slice(0, limit);
+  const byViews = [...plans].sort((a, b) => getViews(b.slug) - getViews(a.slug) || timeValue(b) - timeValue(a)).slice(0, limit);
   const discoverCard = (meta: PlanMeta, label: string): string => {
     const views = getViews(meta.slug);
     return (
@@ -396,7 +398,7 @@ function destinationRows(plans: PlanMeta[]): DestinationRow[] {
       rows.set(entry.name, row);
     });
   });
-  return [...rows.values()].sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, "ja")).slice(0, 10);
+  return [...rows.values()].sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, "ja"));
 }
 
 function renderLocationCityList(plans: PlanMeta[]): void {
@@ -421,7 +423,6 @@ function renderLocationCityList(plans: PlanMeta[]): void {
       ).join("")
     : emptyList("行き先別の一覧は、公開旅行が増えると表示されます。");
   destinationCountEl.textContent = rows.length ? rows.length + "地域" : "";
-  statCitiesEl.textContent = String(rows.length);
 }
 
 function renderLocationPlans(plans: PlanMeta[]): PlanMeta[] {
@@ -564,7 +565,7 @@ function renderSchedule(plan: PlanMeta | undefined): void {
     return;
   }
   const data = itineraryFor(plan);
-  const items = (data?.itinerary || []).slice(0, 18);
+  const items = data?.itinerary || [];
   const head =
     '<div class="schedule-head"><span class="schedule-head-ic">' + icon("calendarDays") + '</span>' +
     '<div class="schedule-head-main"><span class="schedule-head-kicker">Itinerary</span>' +
@@ -596,7 +597,7 @@ function renderSchedule(plan: PlanMeta | undefined): void {
 }
 
 function renderLocationMap(plans: PlanMeta[]): void {
-  const rows = destinationRows(plans).slice(0, 14);
+  const rows = destinationRows(plans);
   const totalPlans = plans.length;
   mapCountEl.textContent = totalPlans ? totalPlans + "件" : "";
   locationScheduleEl.hidden = true;
@@ -714,13 +715,9 @@ function renderLocationExplorer(plans: PlanMeta[]): void {
   playLocationTransition();
 }
 
-function renderStart(publicPlans: PlanMeta[]): void {
+function renderStart(): void {
   const invites = Permissions.pendingInvitesForCurrentUser();
   createMainEl.innerHTML = icon("plusCircle") + "<span>新しい旅行計画を作る</span>";
-  jumpNewEl.innerHTML = icon("sparkles") + "<span>公開旅行を見る</span>";
-  jumpMapEl.innerHTML = icon("map") + "<span>地図から探す</span>";
-  statPublicEl.textContent = String(publicPlans.length);
-  statViewsEl.textContent = publicPlans.reduce((sum, meta) => sum + getViews(meta.slug), 0).toLocaleString("ja-JP");
   inviteStripEl.classList.toggle("is-visible", invites.length > 0);
   if (invites.length) {
     inviteTitleEl.textContent = "未参加の招待があります";
@@ -881,7 +878,7 @@ function render(): void {
 
   if (countEl) countEl.textContent = mineTotal ? "自分の計画 " + mineTotal + "件" : "計画はまだありません";
   countMineEl.textContent = mine.length ? mine.length + "件" : "";
-  renderStart(discoverPlans);
+  renderStart();
   renderDiscover(discoverPlans);
 
   // --- 自分の計画 ---
@@ -893,10 +890,27 @@ function render(): void {
   } else {
     gridMine.innerHTML =
       '<div class="hub-empty">' +
-      '<img src="./images/thumbs/cover_default.webp" alt="東北旅行" style="width: 140px; height: auto; margin: 0 auto 12px; opacity: 0.85;">' +
       (mineTotal
-        ? "<b>該当する計画がありません</b><span>検索条件を変えてください</span>"
-        : '<b>最初の計画を作りましょう</b><span>「新規計画」から行程を作成できます</span>') +
+        ? '<div class="hub-empty-simple"><b>該当する計画がありません</b><span>検索条件を変えてください</span></div>'
+        : '<div class="hub-empty-layout">' +
+          '<span class="hub-empty-tag">' + icon("sparkles") + '<span>FIRST TRIP</span></span>' +
+          '<div class="hub-empty-art" aria-hidden="true">' +
+          '<img src="' + emptyTripCover + '" alt="">' +
+          '<span class="hub-empty-pin start">' + icon("mapPin") + '</span>' +
+          '<span class="hub-empty-pin end">' + icon("flag") + '</span>' +
+          '<span class="hub-empty-route"></span>' +
+          '</div>' +
+          '<div class="hub-empty-copy">' +
+          '<b>最初の計画を作りましょう</b>' +
+          '<span>行き先、日程、メンバーを入れて旅の下書きを始められます</span>' +
+          '</div>' +
+          '<div class="hub-empty-steps">' +
+          '<span>' + icon("mapPin") + '<i>01</i>行き先</span>' +
+          '<span>' + icon("calendarDays") + '<i>02</i>日程</span>' +
+          '<span>' + icon("listBullet") + '<i>03</i>行程</span>' +
+          '</div>' +
+          '<a class="hub-empty-cta" href="plan-editor.html">' + icon("plusCircle") + '<span>新規計画を作る</span></a>' +
+          '</div>') +
       "</div>";
   }
 
@@ -990,7 +1004,7 @@ hub.addEventListener("click", (event) => {
     TripPlans.setActiveSlug(slug);
     const meta = TripPlans.get(slug);
     const path = meta && meta.source === "local" ? "plan-editor.html?plan=" : "itinerary-editor.html?plan=";
-    location.href = path + encodeURIComponent(slug);
+    navigateWithPageTransition(path + encodeURIComponent(slug));
     return;
   }
   if (target.closest("[data-dup]")) {
@@ -1268,6 +1282,13 @@ window.addEventListener("trip-account-logout", () => {
   render();
 });
 
+window.addEventListener("resize", () => {
+  window.clearTimeout(rankingResizeTimer);
+  rankingResizeTimer = window.setTimeout(() => {
+    if (rankingCardLimit() !== lastRankingLimit) render();
+  }, 120);
+});
+
 registerServiceWorker();
 
 // 招待リンク（plans.html#join=<token>）を開いたら、計画を取り込んでダッシュボードへ。
@@ -1300,7 +1321,7 @@ async function handleJoinLink(): Promise<boolean> {
     showToast(`「${payload.meta.title || "旅行"}」を最新に更新しました。`);
     return true;
   }
-  location.replace("index.html?plan=" + encodeURIComponent(slug));
+  navigateWithPageTransition("index.html?plan=" + encodeURIComponent(slug), { replace: true });
   return true;
 }
 

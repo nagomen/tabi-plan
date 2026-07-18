@@ -12,6 +12,9 @@ import { registerServiceWorker } from "../shared/pwa";
 import { mountAppHeader } from "../shared/app-header";
 import { icon, type IconName } from "../shared/icons";
 import { getUser } from "../shared/user-store";
+import * as Backend from "../shared/backend";
+import { currentAccount, searchAccounts, type Account } from "../shared/account-store";
+import * as Friendships from "../shared/friendship-store";
 import { isHistoryPublic } from "../shared/history-privacy";
 import { personTrips, historyPins, distinctPlaceCount, countriesFromPins, type PersonTrip, type HistoryPin } from "../shared/travel-history";
 import { countryOf } from "../shared/country";
@@ -63,6 +66,7 @@ const avatarEl = $("[data-avatar]");
 const statsEl = $("[data-stats]");
 const privateEl = $("[data-private]");
 const contentEl = $("[data-content]");
+const friendActionEl = $("[data-friend-action]");
 
 document.querySelectorAll<HTMLElement>("[data-stat-icon]").forEach((stat) => {
   const name = stat.dataset.statIcon as IconName | undefined;
@@ -83,13 +87,81 @@ if (avatarEl) {
 }
 document.title = `${personName || "旅行履歴"} | 旅行計画`;
 
-const canView = Boolean(personName) && (isSelf || isHistoryPublic(personName));
+function canViewHistory(): boolean {
+  return Boolean(personName) && (isSelf || isHistoryPublic(personName));
+}
+
+function exactPersonAccounts(): Account[] {
+  const key = personName.trim().toLowerCase();
+  if (!key) return [];
+  return searchAccounts(personName, { excludeSelf: true }).filter((account) =>
+    account.name.trim().toLowerCase() === key || account.email.trim().toLowerCase() === key,
+  );
+}
+
+function renderFriendAction(message = ""): void {
+  if (!friendActionEl) return;
+  if (!personName) {
+    friendActionEl.innerHTML = "";
+    return;
+  }
+  const account = currentAccount();
+  if (!account) {
+    friendActionEl.innerHTML =
+      '<a class="pv-friend-btn" href="login.html">' + icon("user") + '<span>ログインして友達申請</span></a>';
+    return;
+  }
+  if (account.name.trim() === personName || account.email.trim().toLowerCase() === personName.toLowerCase()) {
+    friendActionEl.innerHTML = '<span class="pv-friend-badge">' + icon("checkCircle") + '<span>あなたのページ</span></span>';
+    return;
+  }
+  const matches = exactPersonAccounts();
+  if (matches.length !== 1) {
+    const text = matches.length > 1 ? "同じ名前のアカウントが複数あります" : "この名前のアカウントが見つかりません";
+    friendActionEl.innerHTML = '<span class="pv-friend-note">' + icon("informationCircle") + '<span>' + escapeHtml(text) + '</span></span>';
+    return;
+  }
+  const target = matches[0];
+  const status = Friendships.statusWith(target.id);
+  if (status === "friends") {
+    friendActionEl.innerHTML = '<span class="pv-friend-badge">' + icon("checkCircle") + '<span>友達</span></span>';
+    return;
+  }
+  if (status === "outgoing_pending") {
+    friendActionEl.innerHTML = '<span class="pv-friend-badge is-pending">' + icon("paperAirplane") + '<span>申請中</span></span>';
+    return;
+  }
+  if (status === "incoming_pending") {
+    friendActionEl.innerHTML =
+      '<a class="pv-friend-btn" href="mypage.html?tab=friends">' + icon("users") + '<span>届いた申請を見る</span></a>';
+    return;
+  }
+  friendActionEl.innerHTML =
+    '<button class="pv-friend-btn" type="button" data-send-friend-request="' + escapeHtml(target.id) + '">' +
+    icon("plus") + '<span>友達申請を送る</span></button>' +
+    (message ? '<span class="pv-friend-message">' + escapeHtml(message) + '</span>' : "");
+}
+
+friendActionEl?.addEventListener("click", (event) => {
+  const target = event.target;
+  if (!(target instanceof Element)) return;
+  const button = target.closest<HTMLButtonElement>("[data-send-friend-request]");
+  if (!button) return;
+  const accountId = button.dataset.sendFriendRequest || "";
+  try {
+    Friendships.sendFriendRequest({ accountId });
+    renderFriendAction("申請を送信しました");
+  } catch (err) {
+    friendActionEl.innerHTML += '<span class="pv-friend-message is-error">' +
+      escapeHtml(err instanceof Error ? err.message : "送信できませんでした") + '</span>';
+  }
+});
 
 // 実際の描画はファイル末尾の boot() で行う。
 // renderMap/renderCalendar が参照するモジュール変数（allPins, today, view など）が
 // この位置より下で宣言されるため、ここで直接呼ぶと TDZ 参照エラーになる。
 function boot(): void {
-  if (!canView) {
+  if (!canViewHistory()) {
     if (privateEl) privateEl.hidden = false;
     if (contentEl) contentEl.hidden = true;
     if (!personName && privateEl) {
@@ -401,4 +473,10 @@ $("[data-cal-next]")?.addEventListener("click", () => {
 });
 
 // 全モジュール変数の宣言後に描画を開始する。
-boot();
+async function init(): Promise<void> {
+  await Backend.preload();
+  renderFriendAction();
+  boot();
+}
+
+void init();
