@@ -7,7 +7,7 @@ function appStoreSpreadsheet_(): Spreadsheet {
   const props = PropertiesService.getScriptProperties();
   const storeId = props.getProperty('TRIP_STORE_SPREADSHEET_ID') || props.getProperty('TRIP_SPREADSHEET_ID') || DEFAULT_CONFIG.spreadsheetId;
   if (storeId) return SpreadsheetApp.openById(storeId);
-  const ss = SpreadsheetApp.create('旅行ダッシュボード共有ストア');
+  const ss = SpreadsheetApp.create('Tabi Plan 共有ストア');
   props.setProperty('TRIP_STORE_SPREADSHEET_ID', ss.getId());
   return ss;
 }

@@ -21,7 +21,7 @@ import {
 } from "../shared/config";
 import * as TripPlans from "../shared/plans-store";
 import { getUser } from "../shared/user-store";
-import { canEditPlan, canViewPlan } from "../shared/membership";
+import { canEditPlan, canViewPlan, planHasOwner } from "../shared/membership";
 import { currentAccount } from "../shared/account-store";
 import { incrementView } from "../shared/views-store";
 import { planCoverImage, planCoverImageForLocation } from "../shared/cover";
@@ -52,6 +52,8 @@ import { registerServiceWorker } from "../shared/pwa";
 import { mountAppHeader, setAppHeaderHero } from "../shared/app-header";
 import { getPayLink, isPayUrl } from "../shared/payment-links";
 import { fetchDayWeather, weatherLabel } from "../shared/weather";
+import { buildItineraryShareText } from "../shared/itinerary-text";
+import { taskStatus, nextTaskStatus, setTaskStatus, checklistSummary, TASK_STATUS_LABEL } from "../shared/checklist";
 import * as Backend from "../shared/backend";
 import type {
   TripData,
@@ -189,7 +191,7 @@ const appHeaderEl = mountAppHeader({
   mount: "#tripLive [data-app-header]",
   hero: planCoverImage(coverMeta),
   kicker: "Shared Travel Dashboard",
-  title: "旅行ダッシュボード",
+  title: "Tabi Plan",
   titleAttr: "data-title",
   back: { href: "plans.html", label: "計画一覧へ戻る" },
   actions: [
@@ -762,7 +764,7 @@ function applyMobileView(view?: string): void {
   });
   if (mobileView === "home" || mobileView === "map") {
     setTimeout(() => {
-      if (leafletState.map) leafletState.map.invalidateSize();
+      refreshMapLayout();
       if (mobileView === "map" && state.days.length && !leafletState.map) renderActive();
     }, 80);
   }
@@ -772,6 +774,16 @@ function syncStickyOffsets(): void {
   const head = root.querySelector<HTMLElement>(".ah");
   if (!head) return;
   root.style.setProperty("--tl-head-height", `${Math.ceil(head.getBoundingClientRect().height)}px`);
+}
+
+function refreshMapLayout(): void {
+  const map = leafletState.map;
+  if (!map) return;
+  map.invalidateSize();
+  window.requestAnimationFrame(() => {
+    leafletState.map?.invalidateSize();
+    window.setTimeout(() => leafletState.map?.invalidateSize(), 120);
+  });
 }
 
 /** 費用入力ボトムシートの開閉。入力フォームは [data-expense-entry] にマウント済み。 */
@@ -994,17 +1006,42 @@ interface ParticipantSource {
   trip?: { members?: string };
 }
 
+/** 本人の名前（ログイン中のアカウント名 → 端末のユーザー名 → 保存済みプロフィール）。 */
+function selfName(): string {
+  const account = currentAccount();
+  if (account && account.name.trim()) return account.name.trim();
+  const user = getUser().name.trim();
+  if (user) return user;
+  const profile = readProfile();
+  return (profile && profile.name ? profile.name : "").trim();
+}
+
+/**
+ * 参加者一覧に本人を必ず含める。
+ * メンバー未設定の計画（1人で作った計画・招待前の計画）では支払者の候補に自分が出ず、
+ * 本人設定も参加者一覧に一致しないため費用を自分名義で追加できなくなる。
+ * 閲覧のみの計画では他人の割り勘に自分を混ぜないので、追加しない。
+ */
+function withSelf(names: string[]): string[] {
+  const me = READ_ONLY ? "" : selfName();
+  if (!me || names.includes(me)) return names;
+  return [me, ...names];
+}
+
 function expenseParticipants(data: TripData): string[] {
   const source = data as TripData & ParticipantSource;
   const fromData = (source.participants || [])
     .map((member) => member && (member.name || member.displayName || (member["表示名"] as string | undefined)))
     .filter((name): name is string => Boolean(name));
-  if (fromData.length) return fromData;
+  if (fromData.length) return withSelf(fromData);
   const fromMembers = String((data.trip && data.trip.members) || "")
     .split(/\s*\/\s*|、|,|\n/)
     .map((name) => name.trim())
     .filter((name) => name && !/\d+人|共有メンバー/.test(name));
-  return fromMembers.length ? fromMembers : (CONFIG.defaultParticipants || ["参加者A", "参加者B"]);
+  if (fromMembers.length) return withSelf(fromMembers);
+  // メンバーも本人も分からないときだけダミー名にフォールバックする。
+  const onlySelf = withSelf([]);
+  return onlySelf.length ? onlySelf : CONFIG.defaultParticipants || ["参加者A", "参加者B"];
 }
 
 function expenseCurrencies(data: TripData): string[] {
@@ -1434,6 +1471,7 @@ function renderBase(): void {
     { key: "money", label: "費用", glyph: icon("banknotes") },
     { key: "links", label: "リンク", glyph: icon("link") },
   ];
+  qs<HTMLElement>("[data-actions]").style.setProperty("--tl-action-count", String(tabs.length));
   setHtml("[data-actions]", tabs.map((tab) =>
     `<button class="tl-action" type="button" data-section-nav="${tab.key}" aria-selected="${tab.key === mobileView}">
       ${tab.glyph}<b>${tab.label}</b>
@@ -1472,13 +1510,93 @@ function renderBase(): void {
     </a>`,
   ).join(""));
 
-  setHtml("[data-checks]", (data.checklist || []).slice(0, 4).map((check) =>
-    `<label><input type="checkbox" ${String(check.done).toLowerCase() === "true" || check.done === true ? "checked" : ""}><span>${check.label}</span></label>`,
-  ).join(""));
+  renderChecklist();
 
   const route = computeRoute();
   renderDayTabs(route);
   applyMobileView(mobileView);
+}
+
+// ---- タスク（チェックリスト） -------------------------------------------
+
+/** タスクを編集・保存できるのはこの端末のローカル計画のみ。 */
+function tasksEditable(): boolean {
+  return !READ_ONLY && CONFIG.mode === "local";
+}
+
+/** ローカル計画のチェックリストを localStorage に保存する。 */
+function persistChecklist(): void {
+  if (!tasksEditable()) return;
+  const stored = TripPlans.getData(CONFIG.tripSlug);
+  if (!stored) return;
+  stored.checklist = state.data.checklist || [];
+  TripPlans.saveData(CONFIG.tripSlug, stored);
+}
+
+/** チェックリストを3状態（未着手/進行中/完了）のタスクリストとして描画する。 */
+function renderChecklist(): void {
+  const items = state.data.checklist || [];
+  const editable = tasksEditable();
+  const rows = items
+    .map((item, index) => {
+      const status = taskStatus(item);
+      const stateBtn = editable
+        ? `<button class="tl-task-state" type="button" data-task-toggle="${index}" aria-label="状態: ${TASK_STATUS_LABEL[status]}（クリックで変更）">${TASK_STATUS_LABEL[status]}</button>`
+        : `<span class="tl-task-state" aria-label="状態: ${TASK_STATUS_LABEL[status]}">${TASK_STATUS_LABEL[status]}</span>`;
+      const del = editable
+        ? `<button class="tl-task-del" type="button" data-task-del="${index}" aria-label="このタスクを削除">${icon("xMark")}</button>`
+        : "";
+      return `<li class="tl-task is-${status}">${stateBtn}<span class="tl-task-label">${escapeHtml(item.label)}</span>${del}</li>`;
+    })
+    .join("");
+
+  const summary = checklistSummary(items);
+  const summaryHtml = summary.total
+    ? `<p class="tl-task-summary">完了 ${summary.done}/${summary.total}<i>·</i>進行中 ${summary.doing}<i>·</i>未着手 ${summary.todo}</p>`
+    : "";
+  const addHtml = editable
+    ? `<form class="tl-task-add" data-task-add><input data-task-input type="text" maxlength="60" placeholder="タスクを追加" aria-label="タスクを追加" autocomplete="off"><button type="submit" aria-label="追加">${icon("plus")}</button></form>`
+    : "";
+  const emptyHtml = !items.length && !editable ? `<p class="tl-task-empty">タスクはありません</p>` : "";
+  setHtml("[data-checks]", `<ul class="tl-tasks">${rows}</ul>${emptyHtml}${addHtml}${summaryHtml}`);
+}
+
+/** タスクの状態変更・削除・追加を [data-checks] にデリゲートで束ねる（初期化時に1回）。 */
+function bindChecklist(): void {
+  const container = root.querySelector<HTMLElement>("[data-checks]");
+  if (!container) return;
+  container.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    const toggle = target.closest<HTMLElement>("[data-task-toggle]");
+    if (toggle) {
+      const item = (state.data.checklist || [])[Number(toggle.dataset.taskToggle)];
+      if (!item) return;
+      setTaskStatus(item, nextTaskStatus(taskStatus(item)));
+      persistChecklist();
+      renderChecklist();
+      return;
+    }
+    const del = target.closest<HTMLElement>("[data-task-del]");
+    if (del) {
+      const items = state.data.checklist || [];
+      items.splice(Number(del.dataset.taskDel), 1);
+      persistChecklist();
+      renderChecklist();
+    }
+  });
+  container.addEventListener("submit", (event) => {
+    if (!(event.target instanceof Element) || !event.target.closest("[data-task-add]")) return;
+    event.preventDefault();
+    const input = container.querySelector<HTMLInputElement>("[data-task-input]");
+    const label = (input?.value || "").trim();
+    if (!label) return;
+    const items = state.data.checklist || (state.data.checklist = []);
+    items.push({ label, done: false, status: "todo" });
+    if (input) input.value = "";
+    persistChecklist();
+    renderChecklist();
+  });
 }
 
 // ---- メンバー（参加者一覧・招待） ---------------------------------------
@@ -1549,6 +1667,47 @@ function flashButton(btn: HTMLButtonElement, msg: string): void {
   }, 1800);
 }
 
+/** ボタン内のラベル span だけを一時的に書き換える（アイコンを消さずにフィードバック）。 */
+function flashLabel(btn: HTMLButtonElement, labelSel: string, msg: string): void {
+  const label = btn.querySelector<HTMLElement>(labelSel);
+  if (!label) {
+    flashButton(btn, msg);
+    return;
+  }
+  const orig = label.textContent || "";
+  label.textContent = msg;
+  btn.disabled = true;
+  window.setTimeout(() => {
+    label.textContent = orig;
+    btn.disabled = false;
+  }, 1800);
+}
+
+/** 旅行の全日程を LINE で送れるテキストにして共有／コピーする。 */
+async function shareSchedule(): Promise<void> {
+  const btn = root.querySelector<HTMLButtonElement>("[data-copy-schedule]");
+  const text = buildItineraryShareText(state.data.trip, state.days);
+  if (!text.trim()) {
+    if (btn) flashLabel(btn, "[data-copy-schedule-label]", "日程がありません");
+    return;
+  }
+  // モバイルは共有シート（LINE を直接選べる）、非対応環境はクリップボードへコピー。
+  if (navigator.share) {
+    try {
+      await navigator.share({ title: state.data.trip.title || "旅行日程", text });
+    } catch {
+      /* 共有キャンセルは無視 */
+    }
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(text);
+    if (btn) flashLabel(btn, "[data-copy-schedule-label]", "コピーしました");
+  } catch {
+    window.prompt("日程をコピーしてLINEに貼り付けてください", text);
+  }
+}
+
 /** 招待リンクを作成して共有／コピーする（ローカル計画のみ）。 */
 async function shareTripInvite(): Promise<void> {
   if (READ_ONLY) return;
@@ -1565,8 +1724,17 @@ async function shareTripInvite(): Promise<void> {
     const invite = Permissions.createInvite(meta.slug, name || undefined, "editor");
     const link = await buildInviteLink({
       v: 1,
-      meta: { slug: meta.slug, title: meta.title, dates: meta.dates, members: meta.members, route: meta.route },
+      meta: {
+        slug: meta.slug,
+        title: meta.title,
+        dates: meta.dates,
+        members: meta.members,
+        route: meta.route,
+        updatedAt: meta.updatedAt,
+      },
       data: planData,
+      // 費用台帳は計画データと別ストアなので、明示的に同梱しないと共有されない。
+      expenses: ExpenseStore.list(meta.slug),
       invitedName: name || undefined,
       inviteId: invite?.id,
       role: "editor",
@@ -1859,6 +2027,7 @@ async function renderMapEmbed(activePlaces: ItineraryItem[], _day: DayGroup): Pr
   } else if (CONFIG.mapEmbed.mode === "leaflet") {
     try {
       await renderLeafletMap(map, leafletState, state.days, state.active, CONFIG.mapDefaults);
+      refreshMapLayout();
     } catch (error) {
       console.warn(error);
     }
@@ -1924,14 +2093,18 @@ async function syncData(isInitial: boolean, didRetryAuth?: boolean): Promise<voi
 /**
  * 読み取り専用ビュー判定。
  * 他人の公開計画は plans ホームから `?view=1` 付きで開かれる（明示シグナル）。
- * 加えて、名前を設定済みで、この計画の非メンバーなら読み取り専用にする。
- * 名前未設定時は自分の計画までロックしないよう Boolean(name) でガードする。
+ * 加えて、持ち主が居る計画（権限行 or メンバー名がある）の非メンバーなら読み取り専用にする。
+ * 持ち主が居ない計画は、名前未設定の本人までロックしないよう planHasOwner でガードする。
  */
 function computeReadOnly(): boolean {
   const forcedView = new URLSearchParams(location.search).get("view") === "1";
   if (forcedView) return true;
   const meta = TripPlans.get(CONFIG.tripSlug);
-  return Boolean(meta) && !canEditPlan(meta!);
+  if (!meta) return false;
+  if (canEditPlan(meta)) return false;
+  // 権限行もメンバー名も無い計画は持ち主が居ない＝ロックしない。
+  // （ログアウト状態で作った計画を、本人が二度と編集できなくなるのを防ぐ）
+  return planHasOwner(meta);
 }
 
 function computeAccessDenied(): boolean {
@@ -1952,7 +2125,7 @@ function renderAccessDenied(): void {
     });
   const box = document.createElement("div");
   box.className = "tl-error";
-  box.textContent = "この旅行計画は招待されたメンバーだけが閲覧できます。招待リンクから参加するか、権限のあるアカウントでログインしてください。";
+  box.textContent = "この旅行計画は限定公開です。招待リンクから参加するか、権限のあるアカウントでログインしてください。";
   const header = root.querySelector(".ah");
   if (header) header.insertAdjacentElement("afterend", box);
   else root.insertAdjacentElement("afterbegin", box);
@@ -1982,6 +2155,11 @@ async function init(): Promise<void> {
     const membersNav = root.querySelector<HTMLElement>("[data-members-nav]");
     if (membersNav) membersNav.hidden = true;
   }
+  // 日程を LINE 用テキストで共有／コピー
+  const copyScheduleBtn = root.querySelector<HTMLButtonElement>("[data-copy-schedule]");
+  if (copyScheduleBtn) copyScheduleBtn.addEventListener("click", () => void shareSchedule());
+  // タスク（チェックリスト）の状態変更・追加・削除
+  bindChecklist();
   // 招待リンクの共有ボタン（メンバー画面）
   const inviteBtn = root.querySelector<HTMLButtonElement>("[data-invite-share]");
   if (inviteBtn) inviteBtn.addEventListener("click", () => void shareTripInvite());
@@ -2006,9 +2184,13 @@ async function init(): Promise<void> {
     });
   }
   syncStickyOffsets();
-  window.addEventListener("resize", syncStickyOffsets);
+  window.addEventListener("resize", () => {
+    syncStickyOffsets();
+    refreshMapLayout();
+  });
   if ("ResizeObserver" in window) {
     new ResizeObserver(syncStickyOffsets).observe(qs(".ah"));
+    new ResizeObserver(refreshMapLayout).observe(qs("[data-map]"));
   }
   qsa<HTMLElement>("[data-mobile-nav]").forEach((button) => {
     button.addEventListener("click", () => {

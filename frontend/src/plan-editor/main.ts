@@ -29,9 +29,10 @@ import { buildInviteLink } from "../shared/invite";
 import { gcalUrl, buildIcs, type CalEvent } from "../shared/calendar";
 import { mountAppHeader } from "../shared/app-header";
 import * as Permissions from "../shared/permissions-store";
+import * as ExpenseStore from "../shared/expense-store";
 import { currentAccount } from "../shared/account-store";
 import { listFriends } from "../shared/friendship-store";
-import { canEditPlan } from "../shared/membership";
+import { canEditPlan, planHasOwner } from "../shared/membership";
 
 initPageTransitions();
 
@@ -2086,8 +2087,11 @@ async function shareInvite(name: string): Promise<void> {
       dates: datesString(),
       members: model.members,
       route: (data.cities || []).map((c) => c.name).filter(Boolean).join("→"),
+      updatedAt: TripPlans.get(slug)?.updatedAt,
     },
     data,
+    // 費用台帳は計画データと別ストアなので、明示的に同梱しないと共有されない。
+    expenses: ExpenseStore.list(slug),
     invitedName: name,
     inviteId: invite?.id,
     role: "editor",
@@ -2363,7 +2367,9 @@ function loadExisting(): boolean {
   if (meta && meta.source && meta.source !== "local") {
     return lockEditor("この計画は外部連携のため、ここでは編集できません");
   }
-  if (meta && !canEditPlan(meta)) {
+  // 持ち主が居ない計画（権限行もメンバー名も無い）は、名前未設定の本人まで締め出さない。
+  // ダッシュボードの computeReadOnly と同じ判定に揃えている。
+  if (meta && planHasOwner(meta) && !canEditPlan(meta)) {
     return lockEditor("この計画を編集する権限がありません");
   }
   const data = slug ? TripPlans.getData(slug) : null;
@@ -2486,11 +2492,14 @@ function openVisibilityChooser(onConfirm: (v: PlanVisibility) => void): void {
   modal.innerHTML =
     `<form class="pe-modal-box">` +
     `<h2>公開範囲を選択</h2>` +
-    `<p class="pe-modal-sub">この計画を誰が見られるかを選びます。あとから変更できます。</p>` +
+    `<p class="pe-modal-sub">この計画を「みんなの計画」一覧に出すかを選びます。あとから変更できます。</p>` +
     `<div class="pe-vis-options">` +
-    visOption("public", current, "公開", "リンクを知らない人にも公開される計画として保存します。", "globeAlt") +
-    visOption("invite", current, "招待制", "招待した（メンバーに追加した）人だけが見られます。", "users") +
+    visOption("public", current, "公開", "「みんなの計画」一覧に載り、誰でも見られます。", "globeAlt") +
+    visOption("invite", current, "限定", "一覧には出さず、招待リンクを渡した人にだけ共有します。", "users") +
     `</div>` +
+    // 試作段階の正直な但し書き。閲覧制御はサーバーが入るまで実装できないので、
+    // 「限定」を秘密の保証として読ませない。
+    `<p class="pe-modal-note">※ 現在は端末内で動く試作のため、「限定」は一覧に出さない設定です。リンクを受け取った人がさらに転送することは防げません。</p>` +
     `<div class="pe-modal-actions">` +
     `<button type="button" class="pe-modal-btn ghost" data-cancel>キャンセル</button>` +
     `<button type="submit" class="pe-modal-btn">この設定で保存</button>` +

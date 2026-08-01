@@ -38,6 +38,9 @@ function onKeydown(event: KeyboardEvent): void {
 }
 
 function onMessage(event: MessageEvent): void {
+  // 自オリジンの埋め込みマイページ以外からのメッセージは無視する。
+  if (event.origin !== location.origin) return;
+  if (frameEl && event.source !== frameEl.contentWindow) return;
   const data = event.data as { type?: string } | null;
   if (!data || data.type !== "trip-account-logout") return;
   logOut();

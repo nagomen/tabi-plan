@@ -263,6 +263,7 @@ export async function renderLeafletMap(
     : [20, 0];
   const defaultZoom = Number(mapDefaults.zoom) || 2;
   const overviewRadiusKm = Number(mapDefaults.overviewRadiusKm) || 800;
+  lmap.invalidateSize(false);
   // 日詳細のダッシュボードなので、まず選択中の日の地点の実範囲にフィットする
   // （広い半径パディングは使わず、maxZoom で都市レベルに収める）。
   // 当日の地点が無いときだけ全行程の概観にフォールバック。

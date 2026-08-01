@@ -130,6 +130,8 @@ export interface Settlement {
 export interface ChecklistItem {
   label: string;
   done: boolean | string;
+  /** タスク状態 "todo" | "doing" | "done"。未設定なら done から導出する（shared/checklist.ts）。 */
+  status?: string;
 }
 
 export interface LocalInfoItem {

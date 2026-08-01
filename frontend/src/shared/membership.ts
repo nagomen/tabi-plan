@@ -32,6 +32,15 @@ export function canEditPlan(plan: PlanMeta): boolean {
   return Permissions.canEdit(plan.slug) || isMemberOf(plan);
 }
 
+/**
+ * 持ち主が確定している計画か（権限行があるか、メンバー名が入っているか）。
+ * どちらも無い計画は「誰のものでもない」ので、名前未設定の訪問者でも締め出さない
+ * （＝ログアウト状態で作った計画を、本人が編集できなくなるのを防ぐ）。
+ */
+export function planHasOwner(plan: PlanMeta): boolean {
+  return Permissions.hasAnyPermission(plan.slug) || membersOf(plan).length > 0;
+}
+
 export function canViewPlan(plan: PlanMeta): boolean {
   return Permissions.canView(plan.slug, planVisibility(plan)) || isMemberOf(plan);
 }

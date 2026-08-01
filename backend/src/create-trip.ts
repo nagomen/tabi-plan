@@ -19,7 +19,7 @@ function handleCreateTrip_(params: Params) {
 
   const trip = plan.trip || {};
   const tripTitle = String(trip.title || plan.title || '旅行').slice(0, 120);
-  const ss = SpreadsheetApp.create('旅行ダッシュボード: ' + tripTitle);
+  const ss = SpreadsheetApp.create('Tabi Plan: ' + tripTitle);
   const spreadsheetId = ss.getId();
 
   provisionPlanSpreadsheet_(ss, plan);

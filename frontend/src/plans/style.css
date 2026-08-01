@@ -834,7 +834,7 @@
   .discover-trip-card {
     position: relative;
     display: grid;
-    gap: 8px;
+    gap: 5px;
     min-width: 0;
     scroll-snap-align: start;
     text-decoration: none;
@@ -866,24 +866,83 @@
   .discover-trip-title {
     display: -webkit-box;
     overflow: hidden;
-    -webkit-line-clamp: 2;
+    -webkit-line-clamp: 1;
     -webkit-box-orient: vertical;
-    min-height: 2.45em;
+    min-height: 0;
     color: var(--ink);
     font-size: 15px;
     line-height: 1.25;
     font-weight: 620;
   }
 
-  .discover-trip-meta {
-    display: -webkit-box;
+  .discover-trip-meta,
+  .discover-trip-cities {
+    display: block;
     overflow: hidden;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     color: var(--muted);
-    font-size: 12px;
-    line-height: 1.45;
+    font-size: 11.5px;
+    line-height: 1.35;
     font-weight: 500;
+  }
+
+  .discover-trip-cities {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    min-width: 0;
+  }
+
+  .discover-trip-cities span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .discover-trip-cities svg,
+  .discover-trip-cities .hi {
+    width: 12px;
+    height: 12px;
+  }
+
+  .discover-trip-author {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    min-width: 0;
+    color: var(--muted);
+    font-size: 11.5px;
+    line-height: 1.25;
+    font-weight: 500;
+  }
+
+  .discover-trip-author[data-author-link],
+  .plan-author[data-author-link] {
+    cursor: pointer;
+  }
+
+  .discover-trip-author[data-author-link]:hover,
+  .discover-trip-author[data-author-link]:focus-visible,
+  .plan-author[data-author-link]:hover,
+  .plan-author[data-author-link]:focus-visible {
+    color: var(--green);
+    text-decoration: underline;
+    outline: none;
+  }
+
+  .discover-trip-author span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .discover-trip-author svg,
+  .discover-trip-author .hi {
+    width: 12px;
+    height: 12px;
   }
 
   .discover-trip-views {
@@ -1484,6 +1543,30 @@
     font-weight: 500;
   }
 
+  .plan-author {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    min-width: 0;
+    color: var(--muted);
+    font-size: 12.5px;
+    font-weight: 500;
+    line-height: 1.35;
+  }
+
+  .plan-author span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .plan-author svg,
+  .plan-author .hi {
+    width: 14px;
+    height: 14px;
+  }
+
   .plan-route {
     color: var(--muted);
     font-size: 12px;
@@ -1499,6 +1582,29 @@
     overflow: hidden;
     text-overflow: ellipsis;
     line-height: 1.4;
+  }
+
+  /* タスク進捗（完了=緑 / 進行中=琥珀 / 未着手=トラック）。細い帯＋小さな文言で示す。 */
+  .plan-progress {
+    display: grid;
+    gap: 5px;
+    margin-top: 8px;
+  }
+  .plan-progress-bar {
+    display: flex;
+    height: 4px;
+    border-radius: 2px;
+    overflow: hidden;
+    background: var(--line-strong);
+  }
+  .plan-progress-bar i { display: block; min-width: 0; }
+  .plan-progress-bar i.done { background: var(--green); }
+  .plan-progress-bar i.doing { background: var(--amber); }
+  .plan-progress-bar i.todo { background: transparent; }
+  .plan-progress-text {
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 700;
   }
 
   /* 操作ツール */
@@ -2818,7 +2924,9 @@
     .discover-head h2,
     .discover-head span,
     .discover-trip-title,
+    .discover-trip-author,
     .discover-trip-meta,
+    .discover-trip-cities,
     .discover-trip-views,
     .discover-card-badge,
     .location-side-title,
@@ -2833,6 +2941,7 @@
     .hub-sec-head h2,
     .hub-sec-count,
     .plan-name,
+    .plan-author,
     .plan-meta,
     .plan-route,
     .plan-tag,
@@ -2846,10 +2955,13 @@
     }
 
     .discover-trip-meta,
+    .discover-trip-author,
+    .discover-trip-cities,
     .location-side-note,
     .location-plan-row span,
     .dest-row span,
     .rank-main span,
+    .plan-author,
     .plan-meta,
     .plan-route {
       font-weight: 560;

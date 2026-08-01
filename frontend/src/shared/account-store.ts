@@ -197,6 +197,25 @@ export function logOut(): void {
   writeSession(null);
   // セッションだけ消すと、旧来の名前ベース判定が前ユーザーのまま残る。
   setUserName("");
+  clearDeviceProfiles();
+}
+
+/**
+ * 計画ごとの「本人設定」（trip-dashboard-profile-<slug>）を全部消す。
+ * 残したままだと、同じ端末で別アカウントにログインした人が
+ * 前のユーザーの本人設定を引き継いでしまう（支払者の初期値・自分の立替表示）。
+ */
+function clearDeviceProfiles(): void {
+  try {
+    const keys: string[] = [];
+    for (let i = 0; i < localStorage.length; i += 1) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith("trip-dashboard-profile-")) keys.push(key);
+    }
+    keys.forEach((key) => localStorage.removeItem(key));
+  } catch {
+    /* localStorage が使えない環境 */
+  }
 }
 
 /** 現在ログイン中のアカウント（公開情報）。未ログインなら null。 */

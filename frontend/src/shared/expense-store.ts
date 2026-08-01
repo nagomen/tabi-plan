@@ -82,6 +82,47 @@ export function remove(slug: string, id: string): void {
   writeAll(slug, readAll(slug).filter((r) => r.id !== id));
 }
 
+/**
+ * 受け取った台帳を手元の台帳へ id で和集合マージする（追加されたレコードだけ取り込む）。
+ * 招待リンクの取り込み時に使う。同じ id は手元を優先し、編集の取り消し合いを避ける。
+ * 返り値は新しく取り込んだ件数。
+ */
+export function merge(slug: string, incoming: ExpenseRecord[] | undefined): number {
+  if (!Array.isArray(incoming) || !incoming.length) return 0;
+  const records = readAll(slug);
+  const seen = new Set(records.map((r) => r.id));
+  const added = incoming.filter((r) => r && r.id && !seen.has(r.id));
+  if (!added.length) return 0;
+  // createdAt 昇順に並べ直して、明細の並びが端末間でぶれないようにする。
+  const merged = [...records, ...added].sort((a, b) =>
+    String(a.createdAt || "").localeCompare(String(b.createdAt || "")),
+  );
+  writeAll(slug, merged);
+  return added.length;
+}
+
+/** 表示名を変更したとき、台帳内の名前参照（支払者・割り勘対象・個別金額）を移す。 */
+export function renameParticipant(slug: string, oldName: string, newName: string): void {
+  const from = (oldName || "").trim();
+  const to = (newName || "").trim();
+  if (!from || !to || from === to) return;
+  const records = readAll(slug);
+  let changed = false;
+  records.forEach((record) => {
+    if (record.payer === from) { record.payer = to; changed = true; }
+    if (Array.isArray(record.targets) && record.targets.includes(from)) {
+      record.targets = record.targets.map((name) => (name === from ? to : name));
+      changed = true;
+    }
+    if (record.individual && Object.prototype.hasOwnProperty.call(record.individual, from)) {
+      const { [from]: amount, ...rest } = record.individual;
+      record.individual = { ...rest, [to]: (rest[to] || 0) + amount };
+      changed = true;
+    }
+  });
+  if (changed) writeAll(slug, records);
+}
+
 // ---- 金額表示ヘルパー ---------------------------------------------------
 
 function formatYen(value: number): string {

@@ -186,7 +186,7 @@ function buildTripData_(input: BuildTripDataInput): TripDashboardData {
 
   return {
     trip: {
-      title: basicInfo.tripTitle || '旅行ダッシュボード',
+      title: basicInfo.tripTitle || 'Tabi Plan',
       dates: startDate && endDate ? `${startDate} - ${endDate}` : '',
       members: basicInfo.members || (participants.length ? participants.map(member => member.name).join(' / ') : '共有メンバー'),
       note: basicInfo.dashboardNote || '共有メモ: 詳細な予約番号や宿泊先住所は公開ページに載せず、スプレッドシート側で管理してください。'

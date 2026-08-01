@@ -1,7 +1,7 @@
 {
-  "name": "2026年8月 東北旅行",
-  "short_name": "東北旅行",
-  "description": "2026年8月 東北旅行の共有ダッシュボード",
+  "name": "Tabi Plan",
+  "short_name": "Tabi Plan",
+  "description": "旅行の計画・日程・費用精算を仲間と共有できるアプリ",
   "id": "./",
   "start_url": "./plans.html",
   "scope": "./",

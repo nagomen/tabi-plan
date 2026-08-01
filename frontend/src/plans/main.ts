@@ -24,6 +24,7 @@ import { mountAppHeader } from "../shared/app-header";
 import { getUser } from "../shared/user-store";
 import { getViews } from "../shared/views-store";
 import { planCoverThumbnail } from "../shared/cover";
+import { checklistSummary } from "../shared/checklist";
 import { splitNames } from "../shared/friend-store";
 import { decodeInvite } from "../shared/invite";
 import {
@@ -39,6 +40,7 @@ import {
 } from "../shared/auth";
 import * as Backend from "../shared/backend";
 import * as Permissions from "../shared/permissions-store";
+import * as ExpenseStore from "../shared/expense-store";
 import { isLoggedIn } from "../shared/account-store";
 
 // ---- 補助型 -------------------------------------------------------------
@@ -175,7 +177,7 @@ function sourceClass(source: PlanSource | string): string {
 }
 
 function planText(meta: PlanMeta): string {
-  return [meta.title, locationLabel(meta), meta.route, meta.dates, meta.members].join(" ").toLowerCase();
+  return [meta.title, locationLabel(meta), meta.route, meta.dates, meta.members, creatorName(meta)].join(" ").toLowerCase();
 }
 
 function planHref(meta: PlanMeta, view = false): string {
@@ -340,6 +342,43 @@ function locationLabel(meta: PlanMeta): string {
   return locationNames(meta).join("、") || meta.route || destinationName(meta);
 }
 
+function compactLocationLabel(meta: PlanMeta, max = 3): string {
+  const names = locationNames(meta).slice(0, max);
+  return names.join("、") || meta.route || destinationName(meta);
+}
+
+function creatorName(meta: PlanMeta): string {
+  const store = Permissions.readPermissionStore();
+  const owner = store.planPermissions
+    .filter((row) => row.planSlug === meta.slug && row.status === "active" && row.role === "owner" && row.displayName)
+    .sort((a, b) => {
+      if (a.source === "owner" && b.source !== "owner") return -1;
+      if (a.source !== "owner" && b.source === "owner") return 1;
+      return Date.parse(a.createdAt || "") - Date.parse(b.createdAt || "");
+    })[0];
+  const inviteCreator = store.planInvites
+    .filter((row) => row.planSlug === meta.slug && row.createdByName)
+    .sort((a, b) => Date.parse(a.createdAt || "") - Date.parse(b.createdAt || ""))[0];
+  return owner?.displayName || inviteCreator?.createdByName || splitNames(meta.members)[0] || "作成者不明";
+}
+
+function personHref(name: string): string {
+  return "person.html?name=" + encodeURIComponent(name);
+}
+
+function creatorLinkHtml(meta: PlanMeta, className: string): string {
+  const name = creatorName(meta);
+  const isUnknown = name === "作成者不明";
+  const linkAttrs = isUnknown
+    ? ""
+    : ' role="link" tabindex="0" data-author-link="' + escapeHtml(personHref(name)) + '" aria-label="' + escapeHtml(name + "の人物ページを開く") + '"';
+  return (
+    '<span class="' + className + (isUnknown ? " is-unknown" : "") + '"' + linkAttrs + ">" +
+    icon("user") +
+    "<span>" + escapeHtml(name) + "</span></span>"
+  );
+}
+
 function rankingCardLimit(): number {
   const width = Math.max(
     rankingNewEl.clientWidth,
@@ -358,13 +397,16 @@ function renderRankings(plans: PlanMeta[]): void {
   const byViews = [...plans].sort((a, b) => getViews(b.slug) - getViews(a.slug) || timeValue(b) - timeValue(a)).slice(0, limit);
   const discoverCard = (meta: PlanMeta, label: string): string => {
     const views = getViews(meta.slug);
+    const compactLocations = compactLocationLabel(meta);
     return (
       '<a class="discover-trip-card" href="' + planHref(meta, !Permissions.canEdit(meta.slug)) + '">' +
       '<span class="discover-card-badge">' + escapeHtml(label) + "</span>" +
       '<span class="discover-trip-cover"><img src="' + planCoverThumbnail(meta) + '" alt="' + escapeHtml(meta.title || "旅行画像") + '" loading="lazy">' +
       '<span class="discover-trip-views">' + icon("eye") + views.toLocaleString("ja-JP") + '</span></span>' +
       '<span class="discover-trip-title">' + escapeHtml(meta.title || "無題の旅行") + '</span>' +
-      '<span class="discover-trip-meta">' + escapeHtml([meta.dates, locationLabel(meta)].filter(Boolean).join(" ・ ")) + '</span>' +
+      creatorLinkHtml(meta, "discover-trip-author") +
+      (meta.dates ? '<span class="discover-trip-meta">' + escapeHtml(meta.dates) + '</span>' : "") +
+      (compactLocations ? '<span class="discover-trip-cities">' + icon("mapPin") + "<span>" + escapeHtml(compactLocations) + "</span></span>" : "") +
       '</a>'
     );
   };
@@ -737,7 +779,12 @@ function rowHtml(meta: PlanMeta, variant: RowVariant, activeSlug: string, highli
   const src = sourceClass(meta.source);
   const isLocal = meta.source === "local";
   const isActive = meta.slug === activeSlug;
-  const metaLine = [meta.dates, meta.members].filter(Boolean).map(escapeHtml).join(" · ");
+  const metaLine = (variant === "public" ? [meta.dates] : [meta.dates, meta.members]).filter(Boolean).map(escapeHtml).join(" · ");
+  const compactLocations = compactLocationLabel(meta);
+  const authorLine =
+    variant === "public"
+      ? creatorLinkHtml(meta, "plan-author")
+      : "";
   const openHref = planHref(meta, variant === "public" || !Permissions.canEdit(meta.slug));
   const role = Permissions.permissionFor(meta.slug)?.role;
   const roleBadge = role
@@ -776,6 +823,29 @@ function rowHtml(meta: PlanMeta, variant: RowVariant, activeSlug: string, highli
         : "";
 
   const coverSrc = planCoverThumbnail(meta);
+  const taskSummary = checklistSummary(dataForPlan(meta)?.checklist ?? undefined);
+  const progressHtml = taskSummary.total
+    ? '<span class="plan-progress" title="タスク 完了' +
+      taskSummary.done +
+      " / 進行中" +
+      taskSummary.doing +
+      " / 未着手" +
+      taskSummary.todo +
+      '">' +
+      '<span class="plan-progress-bar" aria-hidden="true">' +
+      '<i class="done" style="flex:' + taskSummary.done + '"></i>' +
+      '<i class="doing" style="flex:' + taskSummary.doing + '"></i>' +
+      '<i class="todo" style="flex:' + taskSummary.todo + '"></i>' +
+      "</span>" +
+      '<span class="plan-progress-text">タスク ' +
+      taskSummary.done +
+      "/" +
+      taskSummary.total +
+      " 完了" +
+      (taskSummary.doing ? "・進行中 " + taskSummary.doing : "") +
+      "</span>" +
+      "</span>"
+    : "";
   const sourceLabelText = SOURCE_LABEL[src] || src;
   const views = getViews(meta.slug);
   const viewsBadge =
@@ -828,8 +898,10 @@ function rowHtml(meta: PlanMeta, variant: RowVariant, activeSlug: string, highli
     roleBadge +
     highlightBadge +
     "</span>" +
+    authorLine +
     (metaLine ? '<span class="plan-meta">' + metaLine + "</span>" : "") +
-    (locationLabel(meta) ? '<span class="plan-route">' + escapeHtml(locationLabel(meta)) + "</span>" : "") +
+    (compactLocations ? '<span class="plan-route">' + escapeHtml(compactLocations) + "</span>" : "") +
+    progressHtml +
     "</span>" +
     "</a>" +
     '<div class="plan-tools">' +
@@ -974,9 +1046,22 @@ document.addEventListener("click", (event) => {
   closeMenus();
 });
 
+function openAuthorPage(link: HTMLElement): void {
+  const href = link.dataset.authorLink;
+  if (!href) return;
+  navigateWithPageTransition(href);
+}
+
 hub.addEventListener("click", (event) => {
   const target = event.target;
   if (!(target instanceof Element)) return;
+  const authorLink = target.closest<HTMLElement>("[data-author-link]");
+  if (authorLink) {
+    event.preventDefault();
+    event.stopPropagation();
+    openAuthorPage(authorLink);
+    return;
+  }
   const card = target.closest<HTMLElement>("[data-slug]");
   if (!card) return;
   const slug = card.dataset.slug || "";
@@ -1028,6 +1113,16 @@ hub.addEventListener("click", (event) => {
     void publishPlan(slug, publishButton);
     return;
   }
+});
+
+hub.addEventListener("keydown", (event) => {
+  const target = event.target;
+  if (!(target instanceof Element)) return;
+  const authorLink = target.closest<HTMLElement>("[data-author-link]");
+  if (!authorLink) return;
+  if (event.key !== "Enter" && event.key !== " ") return;
+  event.preventDefault();
+  openAuthorPage(authorLink);
 });
 
 // ---- 公開（Google Sheets へ書き出し） ----
@@ -1303,8 +1398,37 @@ async function handleJoinLink(): Promise<boolean> {
     return false;
   }
   const slug = TripPlans.safeSlug(payload.meta.slug || payload.meta.title || "trip");
-  Permissions.acceptInvite(slug, payload.inviteId, payload.invitedName);
-  const { existed } = TripPlans.mergeLocalPlan(slug, payload.data);
+  const accepted = Permissions.acceptInvite(slug, payload.inviteId, payload.invitedName, payload.role);
+  if (!accepted.granted) {
+    showToast(
+      accepted.reason === "revoked"
+        ? "この招待リンクは取り消されています。"
+        : "参加するにはマイページで名前を設定してください。",
+      true,
+    );
+    return true;
+  }
+
+  // 古いリンクを開き直すだけで、後から入った編集が消えるのを防ぐ。
+  let merge = TripPlans.mergeLocalPlan(slug, payload.data, { incomingUpdatedAt: payload.meta.updatedAt });
+  if (merge.outcome === "kept-newer") {
+    showToast(`「${payload.meta.title || "旅行"}」は手元の方が新しいため、内容はそのままにしました。`);
+  } else if (merge.outcome === "kept-unknown") {
+    const title = payload.meta.title || "この旅行";
+    const overwrite = window.confirm(
+      `「${title}」は既に保存されています。\nこのリンクには更新日時が無いため、手元の内容より古い可能性があります。\n\nリンクの内容で上書きしますか？（キャンセルで手元の内容を残します）`,
+    );
+    if (overwrite) {
+      merge = TripPlans.mergeLocalPlan(slug, payload.data, { force: true });
+    } else {
+      showToast(`「${title}」の内容はそのままにしました。`);
+    }
+  }
+  const existed = merge.existed;
+
+  // 費用台帳はリンクに同梱されていれば id で和集合マージする（重複取り込みなし）。
+  const addedExpenses = ExpenseStore.merge(slug, payload.expenses);
+
   const data = TripPlans.getData(slug);
   const joinName = (Permissions.currentPrincipal(payload.invitedName)?.displayName || payload.invitedName || "").trim();
   if (data && joinName) {
@@ -1318,7 +1442,12 @@ async function handleJoinLink(): Promise<boolean> {
   // 既存を更新したときは、すぐ遷移せず一覧で結果を見せる
   if (existed) {
     render();
-    showToast(`「${payload.meta.title || "旅行"}」を最新に更新しました。`);
+    if (merge.outcome === "updated") {
+      const suffix = addedExpenses ? `（費用 ${addedExpenses}件を取り込み）` : "";
+      showToast(`「${payload.meta.title || "旅行"}」を最新に更新しました。${suffix}`);
+    } else if (addedExpenses) {
+      showToast(`費用 ${addedExpenses}件を取り込みました。`);
+    }
     return true;
   }
   navigateWithPageTransition("index.html?plan=" + encodeURIComponent(slug), { replace: true });

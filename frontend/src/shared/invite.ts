@@ -6,6 +6,7 @@
 // 旧来の無圧縮リンク（プレフィックス無し）もそのまま読める。
 
 import type { LocalPlanData } from "./plans-store";
+import type { ExpenseRecord } from "./expense-store";
 
 export interface InviteMeta {
   slug: string;
@@ -13,12 +14,16 @@ export interface InviteMeta {
   dates?: string;
   members?: string;
   route?: string;
+  /** リンクを作った時点の計画の更新時刻。受け取り側が古い上書きを弾くのに使う。 */
+  updatedAt?: string;
 }
 
 export interface InvitePayload {
   v: 1;
   meta: InviteMeta;
   data: LocalPlanData;
+  /** 立替費用の台帳。id で和集合マージされる（無い旧リンクは費用を持ち込まない）。 */
+  expenses?: ExpenseRecord[];
   invitedName?: string;
   inviteId?: string;
   role?: "editor" | "viewer";

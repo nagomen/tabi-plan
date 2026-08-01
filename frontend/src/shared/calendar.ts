@@ -41,13 +41,13 @@ export function buildIcs(calName: string, events: CalEvent[], now: Date): string
   const lines: string[] = [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
-    "PRODID:-//tohoku-travel-dashboard//JP",
+    "PRODID:-//tabi-plan//JP",
     "CALSCALE:GREGORIAN",
     `X-WR-CALNAME:${icsEscape(calName)}`,
   ];
   events.forEach((ev, i) => {
     lines.push("BEGIN:VEVENT");
-    lines.push(`UID:trip-${i}-${ymd(ev.start)}-${i}@tohoku-travel`);
+    lines.push(`UID:trip-${i}-${ymd(ev.start)}-${i}@tabi-plan`);
     lines.push(`DTSTAMP:${stamp}`);
     if (ev.allDay) {
       lines.push(`DTSTART;VALUE=DATE:${ymd(ev.start)}`);

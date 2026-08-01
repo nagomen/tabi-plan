@@ -1,32 +1,8 @@
-# 2026年8月 東北旅行 Dashboard
+# Tabi Plan
 
-2026年8月1日から8月9日までの東北旅行用ダッシュボードです。観光地を一筆書き寄りにつなぎ、夜に大きい祭りがある日は祭りを見るルートにしています。
+旅行の計画・共有ダッシュボードアプリです。行程・地図・チェックリスト・費用精算を仲間と共有できます。ローカル（この端末だけ）でも、Google Sheets / Apps Script 連携でも動作します。旅行ごとに `frontend/public/trip-config.js` を差し替えるだけで、コードを書き換えずに使い回せます。
 
-GitHub Pages には予約番号、宿泊先住所、電話番号、保険証券番号などを置かないでください。現在は Google Sheets をリンク閲覧可にして `googleSheets` モードで読み取る試作構成です。非公開運用やページからの書き込みが必要になったら、Apps Script Web App 経由に切り替えます。
-
-## 旅行情報
-
-| 項目 | 内容 |
-| --- | --- |
-| 期間 | 2026年8月1日から2026年8月9日 |
-| 方針 | 祭りを全部拾う旅ではなく、観光地をつないで夜に大きい祭りがある日は祭りを見る |
-| ルート | 東京、平泉、盛岡、八戸、青森、弘前、五所川原、秋田、庄内、山形、山寺、仙台、松島、東京 |
-| データ元 | [2608 東北旅行ダッシュボード](https://docs.google.com/spreadsheets/d/1Vsed92F7ao0rW0y5WWao_6VOasuqwATVH1GwE7MvsXw/edit) |
-| 公開方式 | GitHub Pages + Google Sheets 直接読み取り |
-
-## ルート
-
-| 日付 | ルート | 昼の観光 | 夜 |
-| --- | --- | --- | --- |
-| 8/1(土) | 東京 → 平泉 → 盛岡 | 平泉で中尊寺、毛越寺 | 盛岡さんさ踊り |
-| 8/2(日) | 盛岡 → 八戸 | 種差海岸、蕪島あたり | 八戸三社大祭 |
-| 8/3(月) | 八戸 → 青森 | 三内丸山遺跡、ねぶたの家 | 青森ねぶた祭 |
-| 8/4(火) | 青森 → 弘前 → 五所川原 | 弘前城、洋館、喫茶店 | 五所川原立佞武多 |
-| 8/5(水) | 五所川原、弘前 → 秋田 | 五能線か奥羽本線で南下 | 秋田竿燈まつり |
-| 8/6(木) | 秋田 → 酒田、鶴岡 | 山居倉庫、羽黒山、加茂水族館 | 庄内泊で休む |
-| 8/7(金) | 鶴岡、酒田 → 山形 | 移動、余裕があれば山形市内 | 山形花笠まつり |
-| 8/8(土) | 山形 → 山寺 → 仙台、松島 | 山寺、仙台七夕、または松島 | 仙台泊 |
-| 8/9(日) | 仙台、松島 → 東京 | 松島を見て帰京 | なし |
+GitHub Pages は公開サイトとして扱ってください。予約番号、宿泊先住所、電話番号、保険証券番号などの機密は置かず、Apps Script が返してよい情報だけを公開する設計です。読み取りだけの試作は Google Sheets をリンク閲覧可にする `googleSheets` モード、非公開運用やページからの書き込みは Apps Script Web App 経由の `appsScript` モードを使います。
 
 ## ディレクトリ構成
 
@@ -140,7 +116,7 @@ window.TRIP_CONFIG = {
 | 計画を選んで開く | `plans.html` → `index.html?plan=<slug>` | 選択中 slug を localStorage に記録 |
 | 公開済み旅行を見る | `index.html` | Google Sheets / Apps Script |
 
-- 既存の `window.TRIP_CONFIG`（東北旅行など Sheets 連携の旅行）は、初回に「組み込みプラン」として一覧へ自動登録されます。従来どおりの表示は維持されます。
+- 既存の `window.TRIP_CONFIG`（Sheets 連携の旅行）は、初回に「組み込みプラン」として一覧へ自動登録されます。従来どおりの表示は維持されます。
 - `mode: "local"` のプランは行程・地図・チェックリスト・リンクをこの端末だけで表示します。費用入力と精算は Google Sheets / Apps Script 連携の旅行で使えます。
 - `sharedBackend.enabled: true` かつ `mode: "appsScript"` にすると、ローカル計画・候補・投票・費用なども Apps Script の共有ストアへ同期します。計画一覧で共有パスワードを入力すると、別端末や別ブラウザでも同じ計画を読み込めます。
 - レジストリのキー: `trip-dashboard-plans`（一覧）、`trip-dashboard-plan-<slug>`（各データ）、`trip-dashboard-active-plan`（選択中）。
@@ -158,7 +134,7 @@ window.TRIP_CONFIG = {
 | 公開用 Sheets に書き出す | `createTrip` | 計画一覧の「公開」で新しい Google スプレッドシートを作成 |
 | 権限を守る | 共有パスワード + Apps Script トークン | `TRIP_PASSWORD_HASH` / `TRIP_TOKEN_SECRET` を Apps Script に設定 |
 
-Apps Script は共有ストア用に `_AppStore` シートを自動作成します。専用の保存先を分けたい場合は Script Properties に `TRIP_STORE_SPREADSHEET_ID` を設定してください。未設定なら `TRIP_SPREADSHEET_ID` のスプレッドシートを使い、どちらも無い場合は「旅行ダッシュボード共有ストア」という新規スプレッドシートを作ります。
+Apps Script は共有ストア用に `_AppStore` シートを自動作成します。専用の保存先を分けたい場合は Script Properties に `TRIP_STORE_SPREADSHEET_ID` を設定してください。未設定なら `TRIP_SPREADSHEET_ID` のスプレッドシートを使い、どちらも無い場合は「Tabi Plan 共有ストア」という新規スプレッドシートを作ります。
 
 ### 権限モデル
 

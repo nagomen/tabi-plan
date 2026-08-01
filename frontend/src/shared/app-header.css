@@ -47,7 +47,12 @@
   font-size: 26px;
   text-shadow: 0 1px 8px rgba(0, 0, 0, 0.35);
 }
-.ah--hero .ah-meta { color: rgba(255, 255, 255, 0.9); }
+.ah--hero .ah-meta,
+.ah--hero .ah-meta > span,
+.ah--hero .ah-meta svg,
+.ah--hero .ah-meta .hi {
+  color: rgba(255, 255, 255, 0.92);
+}
 .ah--hero .ah-back,
 .ah--hero .ah-act--icon { color: #fff; }
 .ah--hero .ah-back:hover,

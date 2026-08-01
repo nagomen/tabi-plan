@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="旅行ダッシュボード">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Tabi Plan">
   <rect width="512" height="512" rx="96" fill="#0b5a42"/>
   <path d="M151 330c31-89 79-151 143-185 39-21 78-30 118-28-26 28-43 59-51 92-7 31-6 58 3 81-31-15-63-15-96 1-38 18-72 52-102 101l-15-62Z" fill="#ffffff"/>
   <path d="M115 136h158v46H115v-46Zm0 81h103v46H115v-46Zm0 81h72v46h-72v-46Z" fill="#d8eee5"/>

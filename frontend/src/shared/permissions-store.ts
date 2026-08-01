@@ -177,17 +177,42 @@ export function createInvite(planSlug: string, invitedName?: string, role: PlanR
   return invite;
 }
 
-export function acceptInvite(planSlug: string, inviteId?: string, invitedName?: string): PlanInviteRow | null {
+/** 招待の受け入れ結果。granted=false なら権限を付けていない。 */
+export interface AcceptInviteResult {
+  granted: boolean;
+  role?: PlanRole;
+  invite: PlanInviteRow | null;
+  reason?: "revoked" | "no-principal";
+}
+
+/**
+ * 招待リンクを受け入れて権限行を作る。
+ *
+ * 招待行（planInvites）は招待した側の端末にしか無いため、受け取り側では通常見つからない。
+ * そのため役割はリンクに埋め込まれた requestedRole を正とし、招待行が手元にある場合だけ
+ * 状態（revoked）と役割を突き合わせて上書きする。
+ * リンクに役割が無い旧リンクは editor 扱い（従来互換）。
+ */
+export function acceptInvite(
+  planSlug: string,
+  inviteId?: string,
+  invitedName?: string,
+  requestedRole?: PlanRole,
+): AcceptInviteResult {
   const fallbackName = (invitedName || "").trim();
   if (fallbackName && !getUser().name.trim()) setUserName(fallbackName);
   const principal = currentPrincipal(fallbackName);
-  if (!principal) return null;
+  if (!principal) return { granted: false, invite: null, reason: "no-principal" };
   const slug = safeTripSlug(planSlug);
   const store = readPermissionStore();
   const invite = inviteId
-    ? store.planInvites.find((row) => row.id === inviteId && row.planSlug === slug)
+    ? store.planInvites.find((row) => row.id === inviteId && row.planSlug === slug) || null
     : null;
-  const role = invite?.role || "editor";
+  // 取り消された招待は手元に行があるときだけ判定できる。分かるなら拒否する。
+  if (invite && invite.status === "revoked") {
+    return { granted: false, invite, reason: "revoked" };
+  }
+  const role: PlanRole = invite?.role || requestedRole || "editor";
   upsertPermission(store, { planSlug: slug, principal, role, source: "invite", inviteId: invite?.id });
   if (invite) {
     invite.status = "accepted";
@@ -197,7 +222,110 @@ export function acceptInvite(planSlug: string, inviteId?: string, invitedName?: 
     invite.acceptedAt = nowISO();
   }
   writePermissionStore(store);
-  return invite || null;
+  return { granted: true, role, invite };
+}
+
+/** 招待を取り消す（以後この招待IDでは権限を付けられない）。 */
+export function revokeInvite(inviteId: string): boolean {
+  const store = readPermissionStore();
+  const invite = store.planInvites.find((row) => row.id === inviteId);
+  if (!invite || invite.status === "revoked") return false;
+  invite.status = "revoked";
+  invite.revokedAt = nowISO();
+  // その招待で配った権限も止める
+  store.planPermissions.forEach((row) => {
+    if (row.inviteId === inviteId && row.status === "active") {
+      row.status = "revoked";
+      row.updatedAt = nowISO();
+    }
+  });
+  writePermissionStore(store);
+  return true;
+}
+
+/**
+ * ログイン時に、名前 principal で持っていた権限をアカウントへ引き継ぐ。
+ * 未ログインで作った計画にログイン後アクセスすると permissionFor が空振りし、
+ * 自分の計画なのに閲覧のみになってしまうのを防ぐ。冪等。
+ */
+export function adoptNamePermissions(): void {
+  const account = currentAccount();
+  const name = (account?.name || "").trim();
+  if (!account || !name) return;
+  const store = readPermissionStore();
+  const nameRows = store.planPermissions.filter(
+    (row) => row.subjectType === "name" && row.subjectId === name && row.status === "active",
+  );
+  let changed = false;
+  nameRows.forEach((row) => {
+    const owned = store.planPermissions.find(
+      (other) =>
+        other.planSlug === row.planSlug &&
+        other.subjectType === "account" &&
+        other.subjectId === account.id,
+    );
+    if (!owned) {
+      store.planPermissions.push({
+        ...row,
+        id: id("perm"),
+        subjectType: "account",
+        subjectId: account.id,
+        displayName: name,
+        updatedAt: nowISO(),
+      });
+      changed = true;
+      return;
+    }
+    if (owned.status !== "active") {
+      owned.status = "active";
+      owned.updatedAt = nowISO();
+      changed = true;
+    }
+    if (ROLE_RANK[row.role] > ROLE_RANK[owned.role]) {
+      owned.role = row.role;
+      owned.updatedAt = nowISO();
+      changed = true;
+    }
+  });
+  if (changed) writePermissionStore(store);
+}
+
+/**
+ * 表示名を変更したとき、名前キーの権限行を新しい名前へ移す。
+ * 名前が主キーになっている箇所（membership の名前一致）を壊さないため。
+ */
+export function renameNamePrincipal(oldName: string, newName: string): void {
+  const from = (oldName || "").trim();
+  const to = (newName || "").trim();
+  if (!from || !to || from === to) return;
+  const store = readPermissionStore();
+  let changed = false;
+  store.planPermissions.forEach((row) => {
+    if (row.subjectType === "name" && row.subjectId === from) {
+      row.subjectId = to;
+      row.displayName = to;
+      row.updatedAt = nowISO();
+      changed = true;
+    } else if (row.displayName === from) {
+      row.displayName = to;
+      row.updatedAt = nowISO();
+      changed = true;
+    }
+  });
+  store.planInvites.forEach((invite) => {
+    if (invite.invitedName === from) { invite.invitedName = to; changed = true; }
+    if (invite.createdByName === from) { invite.createdByName = to; changed = true; }
+    if (invite.acceptedByName === from) { invite.acceptedByName = to; changed = true; }
+    if (invite.createdBySubjectType === "name" && invite.createdBySubjectId === from) {
+      invite.createdBySubjectId = to;
+      changed = true;
+    }
+    if (invite.acceptedBySubjectType === "name" && invite.acceptedBySubjectId === from) {
+      invite.acceptedBySubjectId = to;
+      changed = true;
+    }
+  });
+  if (changed) writePermissionStore(store);
 }
 
 export function permissionFor(planSlug: string, principal = currentPrincipal()): PlanPermissionRow | null {
@@ -207,6 +335,14 @@ export function permissionFor(planSlug: string, principal = currentPrincipal()):
     .filter((row) => row.planSlug === slug && row.status === "active" && samePrincipal(row, principal))
     .sort((a, b) => ROLE_RANK[b.role] - ROLE_RANK[a.role]);
   return rows[0] || null;
+}
+
+/** その計画に有効な権限行が1件でもあるか（＝持ち主が確定しているか）。 */
+export function hasAnyPermission(planSlug: string): boolean {
+  const slug = safeTripSlug(planSlug);
+  return readPermissionStore().planPermissions.some(
+    (row) => row.planSlug === slug && row.status === "active",
+  );
 }
 
 export function pendingInvitesForCurrentUser(): PlanInviteRow[] {

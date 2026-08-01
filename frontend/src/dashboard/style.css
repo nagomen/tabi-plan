@@ -1,11 +1,13 @@
   html {
     overflow-y: scroll;
+    overflow-x: hidden;
     scrollbar-gutter: stable;
     background: #fff;
   }
 
   body {
     margin: 0;
+    overflow-x: hidden;
     background: #fff;
   }
 
@@ -22,9 +24,13 @@
     --amber: #b87418;
     --red: #cf4f3d;
     --violet: #6246a6;
+    --tl-section-title-size: 16px;
+    --tl-section-title-weight: 640;
+    --tl-section-title-line: 1.25;
+    --tl-section-icon-size: 21px;
     color: var(--ink);
     width: 100%;
-    max-width: var(--app-width, 1120px);
+    max-width: min(1880px, calc(100vw - 24px));
     margin-inline: auto;
     font-family: "Avenir Next", "Hiragino Sans", "Yu Gothic", Meiryo, sans-serif;
     line-height: 1.55;
@@ -386,7 +392,7 @@
 
   .tl-actions {
     display: grid;
-    grid-template-columns: repeat(5, minmax(78px, 1fr));
+    grid-template-columns: repeat(var(--tl-action-count, 5), minmax(78px, 1fr));
     border-bottom: 1px solid var(--line);
   }
 
@@ -574,6 +580,19 @@
   .trip-live > .tl-main { order: 4; }
   .trip-live > .tl-foot { order: 5; }
 
+  .trip-live > .ah--hero,
+  .trip-live > .tl-days,
+  .trip-live > .tl-actions {
+    width: 100vw;
+    margin-left: calc(50% - 50vw);
+    margin-right: calc(50% - 50vw);
+  }
+
+  .trip-live > .ah--hero {
+    background-attachment: scroll;
+    background-position: center center;
+  }
+
   #tripLive .ah--hero { min-height: 210px; padding-bottom: 64px; }
 
   .tl-days {
@@ -602,7 +621,11 @@
   /* PC: ヒーローを高くして「日程バー＋セクションタブ」の両方を画像内に収める。
      スマホはセクションタブ非表示なので日程バーのみ（ベース値のまま）。 */
   @media (min-width: 621px) {
-    #tripLive .ah--hero { min-height: 264px; padding-bottom: 116px; }
+    #tripLive .ah--hero {
+      min-height: clamp(280px, 21vw, 360px);
+      padding: 38px 64px 118px;
+      background-position: center 46%;
+    }
     .tl-days { margin-top: -110px; }
     /* 費用・リンクは日程バーを出さない。日程バーの負マージンに便乗して
        ヒーローに重なっていたセクションタブが、日程バーが消えると画像下の
@@ -613,12 +636,164 @@
     }
   }
 
+  @media (min-width: 961px) {
+    #tripLive {
+      --tl-pc-day-tabs-h: 82px;
+      --tl-pc-section-tabs-h: 62px;
+    }
+
+    #tripLive .ah--hero {
+      min-height: clamp(320px, 23vw, 400px);
+      padding:
+        clamp(44px, 3.8vw, 72px)
+        clamp(72px, 5vw, 110px)
+        calc(var(--tl-pc-day-tabs-h) + var(--tl-pc-section-tabs-h) + 24px);
+    }
+
+    .tl-days {
+      height: var(--tl-pc-day-tabs-h);
+      margin-top: calc(-1 * (var(--tl-pc-day-tabs-h) + var(--tl-pc-section-tabs-h)));
+    }
+
+    .tl-days .tl-daygroup {
+      height: 100%;
+    }
+
+    .tl-days .tl-daygroup-days {
+      flex: 1;
+      min-height: 0;
+    }
+
+    .tl-days .tl-daygroup .tl-day,
+    .tl-days > .tl-day {
+      height: 100%;
+    }
+
+    #tripLive .ah--hero .ah-kicker {
+      margin-bottom: 4px;
+      font-size: 13px;
+      letter-spacing: .14em;
+    }
+
+    #tripLive .ah--hero .ah-title {
+      font-size: clamp(34px, 2.4vw, 46px);
+      line-height: 1.08;
+      font-weight: 720;
+    }
+
+    #tripLive .ah--hero .ah-meta {
+      margin-top: 8px;
+      gap: 8px 18px;
+      font-size: 15px;
+    }
+
+    #tripLive .ah--hero .ah-back,
+    #tripLive .ah--hero .ah-act--icon {
+      width: 52px;
+      height: 52px;
+    }
+
+    #tripLive .ah--hero .ah-back svg,
+    #tripLive .ah--hero .ah-act--icon svg {
+      width: 31px;
+      height: 31px;
+    }
+
+    #tripLive .tl-ro-badge {
+      min-height: 30px;
+      padding: 0 11px;
+      font-size: 14px;
+    }
+
+    #tripLive .tl-ro-badge svg,
+    #tripLive .tl-ro-badge .hi {
+      width: 17px;
+      height: 17px;
+    }
+
+    .tl-actions .tl-action {
+      min-height: var(--tl-pc-section-tabs-h);
+      gap: 9px;
+      font-size: 17px;
+    }
+
+    .tl-actions .tl-action svg,
+    .tl-actions .tl-action .hi {
+      width: 21px;
+      height: 21px;
+    }
+
+    .tl-days .tl-daygroup-label {
+      padding: 6px 12px;
+      font-size: 14px;
+    }
+
+    .tl-days .tl-day {
+      min-height: 46px;
+      padding: 10px 14px;
+    }
+
+    .tl-days .tl-day b {
+      font-size: 15px;
+    }
+
+    .tl-days .tl-day small {
+      font-size: 12px;
+    }
+
+    .trip-live[data-section-view="money"] .tl-actions,
+    .trip-live[data-section-view="links"] .tl-actions {
+      margin-top: calc(-1 * var(--tl-pc-section-tabs-h));
+    }
+  }
+
   /* カードで囲わず、セクションは横罫線だけで仕切る */
   .tl-main {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
     padding: 0 32px;
     background: #fff;
+  }
+
+  @media (min-width: 961px) {
+    .tl-main {
+      --tl-plan-column-width: clamp(420px, 32vw, 640px);
+      grid-template-columns: minmax(0, 1fr) minmax(0, var(--tl-plan-column-width));
+      column-gap: clamp(24px, 2.4vw, 46px);
+      row-gap: 0;
+      padding: 0 clamp(28px, 3vw, 56px);
+      align-items: start;
+    }
+
+    .trip-live[data-section-view="home"] .tl-map-panel {
+      grid-column: 1;
+    }
+
+    .trip-live[data-section-view="home"] .tl-main > .tl-panel[data-section-target~="plan"]:not(.tl-map-panel) {
+      grid-column: 2;
+      align-self: start;
+      padding-left: clamp(22px, 2.2vw, 42px);
+      border-left: 1px solid var(--line);
+      border-top: 0;
+    }
+
+    .trip-live[data-section-view="home"] .tl-map-panel + .tl-panel {
+      border-top: 0;
+    }
+
+    .trip-live[data-section-view="home"] .tl-main > .tl-card-grid,
+    .trip-live[data-section-view="home"] .tl-local-info {
+      grid-column: 1 / -1;
+    }
+
+    .trip-live[data-section-view="map"] .tl-map-panel,
+    .trip-live[data-section-view="plan"] .tl-main > .tl-panel[data-section-target~="plan"]:not(.tl-map-panel),
+    .trip-live[data-section-view="members"] .tl-members,
+    .trip-live[data-section-view="money"] .tl-card-grid,
+    .trip-live[data-section-view="links"] .tl-card-grid,
+    .trip-live[data-section-view="links"] .tl-local-info {
+      grid-column: 1 / -1;
+    }
   }
 
   .tl-main > .tl-panel,
@@ -637,6 +812,7 @@
 
   .tl-map-panel {
     grid-column: 1 / -1;
+    min-width: 0;
   }
 
   /* 共通セクション見出し: heroicon + タイトル（＋右寄せリンク/メタ） */
@@ -649,10 +825,11 @@
 
   .tl-sec-head h2 {
     margin: 0;
-    font-size: 16px;
-    font-weight: 800;
-    letter-spacing: .01em;
-    line-height: 1.2;
+    font-family: inherit;
+    font-size: var(--tl-section-title-size);
+    font-weight: var(--tl-section-title-weight);
+    letter-spacing: 0;
+    line-height: var(--tl-section-title-line);
   }
 
   .tl-sec-ic {
@@ -662,7 +839,10 @@
     color: var(--green);
   }
   .tl-sec-ic .hi,
-  .tl-sec-ic svg { width: 21px; height: 21px; }
+  .tl-sec-ic svg {
+    width: var(--tl-section-icon-size);
+    height: var(--tl-section-icon-size);
+  }
 
   /* 見出し右側のアクション/メタ（Google My Maps へ 等） */
   .tl-sec-link,
@@ -688,16 +868,34 @@
 
   .tl-map {
     position: relative;
-    min-height: 260px;
-    max-height: 430px;
-    aspect-ratio: 21 / 8;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    min-height: 360px;
+    max-height: 620px;
+    aspect-ratio: 16 / 7;
     overflow: hidden;
+    contain: layout paint;
     background:
       linear-gradient(90deg, rgba(11, 90, 66, .04) 1px, transparent 1px),
       linear-gradient(0deg, rgba(11, 90, 66, .035) 1px, transparent 1px),
       linear-gradient(120deg, rgba(34, 113, 157, .08), transparent 46%),
       #f8faf8;
     background-size: 34px 34px, 34px 34px, auto, auto;
+  }
+
+  @media (min-width: 961px) {
+    .trip-live[data-section-view="home"] .tl-map {
+      min-height: clamp(400px, 36vw, 560px);
+      max-height: none;
+      aspect-ratio: 16 / 8.5;
+    }
+
+    .trip-live[data-section-view="map"] .tl-map {
+      min-height: clamp(500px, 46vw, 700px);
+      max-height: none;
+      aspect-ratio: 21 / 9;
+    }
   }
 
   .tl-map-land {
@@ -733,6 +931,9 @@
     position: absolute;
     inset: 0;
     z-index: 1;
+    width: 100%;
+    height: 100%;
+    max-width: 100%;
     background: #eef3ef;
   }
 
@@ -869,15 +1070,44 @@
     margin-bottom: 14px;
   }
 
-  .tl-day-title > span {
+  .tl-day-title > span:not(.tl-sec-ic) {
     margin-left: auto;
   }
 
+  .tl-day-title > .tl-sec-ic {
+    margin-left: 0;
+  }
+
+  /* 日程を LINE 用テキストでコピー/共有。箱にせず、罫線＋余白のテキストリンク調。 */
+  .tl-copy-schedule {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 0;
+    border: 0;
+    background: none;
+    color: var(--green);
+    font-family: inherit;
+    font-size: 12.5px;
+    font-weight: 800;
+    letter-spacing: 0.01em;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .tl-copy-schedule:hover { text-decoration: underline; text-underline-offset: 3px; }
+  .tl-copy-schedule:disabled { color: var(--muted); cursor: default; text-decoration: none; }
+  .tl-copy-schedule .tl-copy-schedule-ic { display: inline-flex; }
+  .tl-copy-schedule .tl-copy-schedule-ic svg,
+  .tl-copy-schedule .tl-copy-schedule-ic .hi { width: 15px; height: 15px; }
+
   .tl-day-title h2 {
     margin: 0;
-    font-size: 16px;
+    font-family: inherit;
+    font-size: var(--tl-section-title-size);
+    font-weight: var(--tl-section-title-weight);
     letter-spacing: 0;
-    line-height: 1.25;
+    line-height: var(--tl-section-title-line);
   }
 
   .tl-day-title h2 span {
@@ -891,7 +1121,7 @@
     color: var(--muted);
   }
 
-  .tl-day-title > span {
+  .tl-day-title > span:not(.tl-sec-ic) {
     color: var(--amber);
     font-size: 12px;
     font-weight: 900;
@@ -962,7 +1192,7 @@
     flex: none;
     align-self: center;
     font-size: 11px;
-    font-weight: 950;
+    font-weight: 620;
     letter-spacing: .02em;
   }
   .tl-kind.move { color: var(--blue); }
@@ -989,7 +1219,7 @@
     gap: 7px;
     min-width: 0;
     flex-wrap: wrap;
-    font-weight: 900;
+    font-weight: 620;
     font-size: 14px;
     color: var(--ink);
   }
@@ -1025,10 +1255,10 @@
   .tl-stay-ic svg, .tl-stay-ic .hi { width: 19px; height: 19px; }
   .tl-stay-body { display: flex; flex-direction: column; gap: 1px; min-width: 0; flex: 1; }
   .tl-stay-label { font-size: 11px; font-weight: 800; color: var(--stay-accent); letter-spacing: .04em; }
-  .tl-stay-name { font-size: 16px; font-weight: 900; color: var(--ink); line-height: 1.25; overflow-wrap: anywhere; }
-  .tl-stay-muted { color: #8a908a; font-weight: 800; }
+  .tl-stay-name { font-size: 16px; font-weight: 620; color: var(--ink); line-height: 1.25; overflow-wrap: anywhere; }
+  .tl-stay-muted { color: #8a908a; font-weight: 560; }
   .tl-stay-place { margin-top: 1px; font-size: 12px; color: var(--muted); }
-  .tl-stay-map { flex: none; align-self: center; margin-left: auto; font-size: 12px; font-weight: 800; color: var(--green); white-space: nowrap; display: inline-flex; align-items: center; gap: 4px; text-decoration: none; }
+  .tl-stay-map { flex: none; align-self: center; margin-left: auto; font-size: 12px; font-weight: 560; color: var(--green); white-space: nowrap; display: inline-flex; align-items: center; gap: 4px; text-decoration: none; }
   .tl-stay-map:hover { text-decoration: underline; }
   .tl-stay-map svg, .tl-stay-map .hi { width: 13px; height: 13px; }
 
@@ -1047,7 +1277,7 @@
     margin: 0;
     overflow: hidden;
     font-size: 15px;
-    font-weight: 900;
+    font-weight: 620;
     letter-spacing: 0;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -1058,7 +1288,7 @@
     margin: 4px 0 0;
     color: var(--ink);
     font-size: 12px;
-    font-weight: 850;
+    font-weight: 560;
   }
 
   .tl-maplink {
@@ -1067,7 +1297,7 @@
     gap: 4px;
     color: var(--green);
     font-size: 12px;
-    font-weight: 800;
+    font-weight: 560;
     text-decoration: none;
     white-space: nowrap;
   }
@@ -1093,9 +1323,9 @@
 
   .tl-box h2 {
     margin: 0;
-    font-size: 16px;
-    font-weight: 800;
-    letter-spacing: .01em;
+    font-size: var(--tl-section-title-size);
+    font-weight: var(--tl-section-title-weight);
+    letter-spacing: 0;
   }
 
   /* 「この日の予定」フィードの各日ブロック */
@@ -1112,10 +1342,10 @@
     gap: 10px;
     margin: 0 0 13px;
     font-size: 13px;
-    font-weight: 900;
+    font-weight: 620;
     color: var(--ink);
   }
-  .tl-dayblock-weather { color: var(--amber); font-size: 12px; font-weight: 800; white-space: nowrap; }
+  .tl-dayblock-weather { color: var(--amber); font-size: 12px; font-weight: 620; white-space: nowrap; }
   .tl-dayblock-weather:empty { display: none; }
   .tl-dayblock-empty { margin: 2px 0 4px; color: var(--muted); font-size: 13px; }
 
@@ -1334,6 +1564,16 @@
     font-weight: 700;
   }
   .tl-ro-badge svg, .tl-ro-badge .hi { width: 14px; height: 14px; }
+
+  .ah--hero .tl-ro-badge {
+    width: fit-content;
+    min-height: 24px;
+    padding: 0 9px;
+    background: rgba(17, 25, 22, 0.34);
+    color: rgba(255, 255, 255, 0.94);
+    font-weight: 560;
+    text-shadow: 0 1px 5px rgba(0, 0, 0, 0.35);
+  }
 
   .tl-btn-ic { display: inline-flex; align-items: center; }
   .tl-btn-ic .hi,
@@ -1819,6 +2059,108 @@
     accent-color: var(--green);
   }
 
+  /* タスク（3状態チェックリスト）。箱にせず、色ドット＋ラベル＋罫線で構成する。 */
+  .tl-tasks {
+    display: grid;
+    gap: 9px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .tl-task {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 9px;
+    align-items: center;
+  }
+  .tl-task-state {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 4.6em;
+    padding: 0;
+    border: 0;
+    background: none;
+    font: inherit;
+    font-size: 11px;
+    font-weight: 850;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+    color: var(--muted);
+  }
+  button.tl-task-state { cursor: pointer; }
+  button.tl-task-state:hover { text-decoration: underline; text-underline-offset: 2px; }
+  .tl-task-state::before {
+    content: "";
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: currentColor;
+    flex: none;
+  }
+  .tl-task.is-todo .tl-task-state { color: var(--muted); }
+  .tl-task.is-todo .tl-task-state::before {
+    background: none;
+    box-shadow: inset 0 0 0 1.5px var(--line-strong);
+  }
+  .tl-task.is-doing .tl-task-state { color: var(--amber); }
+  .tl-task.is-done .tl-task-state { color: var(--green); }
+  .tl-task-label {
+    min-width: 0;
+    font-size: 12.5px;
+    font-weight: 750;
+    color: var(--ink);
+  }
+  .tl-task.is-done .tl-task-label {
+    color: var(--muted);
+    text-decoration: line-through;
+    text-decoration-thickness: 1px;
+  }
+  .tl-task-del {
+    display: inline-flex;
+    padding: 2px;
+    border: 0;
+    background: none;
+    color: var(--muted);
+    cursor: pointer;
+  }
+  .tl-task-del:hover { color: var(--red); }
+  .tl-task-del svg, .tl-task-del .hi { width: 14px; height: 14px; }
+  .tl-task-add {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+    margin-top: 4px;
+  }
+  .tl-task-add input {
+    padding: 5px 2px;
+    border: 0;
+    border-bottom: 1px solid var(--line);
+    background: none;
+    font: inherit;
+    font-size: 12.5px;
+    color: var(--ink);
+  }
+  .tl-task-add input:focus { outline: none; border-bottom-color: var(--green); }
+  .tl-task-add button {
+    display: inline-flex;
+    align-items: center;
+    padding: 0 4px;
+    border: 0;
+    background: none;
+    color: var(--green);
+    cursor: pointer;
+  }
+  .tl-task-add button svg, .tl-task-add button .hi { width: 16px; height: 16px; }
+  .tl-task-summary {
+    margin: 10px 0 0;
+    font-size: 11px;
+    font-weight: 800;
+    color: var(--muted);
+  }
+  .tl-task-summary i { margin: 0 6px; font-style: normal; opacity: 0.5; }
+  .tl-task-empty { margin: 4px 0 0; font-size: 12px; color: var(--muted); }
+
   .tl-local-info {
     grid-column: 1 / -1;
   }
@@ -1983,6 +2325,133 @@
     font-weight: 620;
   }
 
+  @media (min-width: 961px) {
+    .trip-live {
+      --tl-section-title-size: 20px;
+      --tl-section-title-weight: 640;
+      --tl-section-title-line: 1.24;
+      --tl-section-icon-size: 24px;
+    }
+
+    .tl-timeline {
+      font-size: 15px;
+    }
+
+    .tl-day-title {
+      margin-bottom: 18px;
+    }
+
+    .tl-day-title h2 {
+      font-size: 20px;
+      line-height: 1.22;
+    }
+
+    .tl-day-heading-meta,
+    .tl-day-title > span {
+      font-size: 14px;
+    }
+
+    .tl-dayblock + .tl-dayblock {
+      margin-top: 24px;
+      padding-top: 22px;
+    }
+
+    .tl-dayblock-head {
+      margin-bottom: 16px;
+      font-size: 15px;
+      font-weight: 620;
+    }
+
+    .tl-dayblock-weather,
+    .tl-dayblock-empty {
+      font-size: 14px;
+    }
+
+    .tl-item {
+      grid-template-columns: 58px 28px minmax(0, 1fr);
+      gap: 11px;
+      padding-bottom: 20px;
+    }
+
+    .tl-time {
+      font-size: 15px;
+      padding-top: 4px;
+    }
+
+    .tl-rail:before {
+      top: 28px;
+      bottom: -18px;
+    }
+
+    .tl-dot {
+      width: 28px;
+      height: 28px;
+    }
+
+    .tl-dot svg,
+    .tl-dot .hi {
+      width: 16px;
+      height: 16px;
+    }
+
+    .tl-kind {
+      font-size: 12px;
+      font-weight: 620;
+    }
+
+    .tl-plan h3,
+    .tl-seg {
+      font-size: 17px;
+      font-weight: 620;
+      line-height: 1.35;
+    }
+
+    .tl-meta {
+      gap: 4px 12px;
+      margin-top: 6px;
+    }
+
+    .tl-meta-text,
+    .tl-needed,
+    .tl-maplink {
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    .tl-stay {
+      gap: 15px;
+      margin-bottom: 22px;
+      padding: 6px 2px 18px 16px;
+    }
+
+    .tl-stay-ic {
+      width: 42px;
+      height: 42px;
+    }
+
+    .tl-stay-ic svg,
+    .tl-stay-ic .hi {
+      width: 22px;
+      height: 22px;
+    }
+
+    .tl-stay-label {
+      font-size: 12px;
+      font-weight: 560;
+    }
+
+    .tl-stay-name {
+      font-size: 18px;
+      font-weight: 620;
+    }
+
+    .tl-stay-place,
+    .tl-stay-map {
+      font-size: 14px;
+      font-weight: 560;
+    }
+  }
+
   @media (max-width: 960px) {
     .tl-main { grid-template-columns: 1fr; }
     .tl-card-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -2000,6 +2469,10 @@
 
   @media (max-width: 620px) {
     .trip-live {
+      --tl-section-title-size: 14px;
+      --tl-section-title-weight: 680;
+      --tl-section-title-line: 1.35;
+      --tl-section-icon-size: 17px;
       max-width: none;
       min-height: 100vh;
       min-height: 100dvh;
@@ -2077,9 +2550,9 @@
       margin-bottom: 10px;
     }
     .tl-sec-head h2 {
-      font-size: 14px;
-      line-height: 1.35;
-      font-weight: 680;
+      font-size: var(--tl-section-title-size);
+      line-height: var(--tl-section-title-line);
+      font-weight: var(--tl-section-title-weight);
     }
     .tl-sec-ic .hi,
     .tl-sec-ic svg {
@@ -2117,17 +2590,21 @@
       scroll-margin-top: 128px;
       margin-bottom: 10px;
     }
-    .tl-day-title > span {
+    .tl-day-title > span:not(.tl-sec-ic) {
       grid-column: 1 / -1;
       margin-left: 0;
       justify-self: end;
       font-size: 11px;
       font-weight: 620;
     }
+    .tl-day-title > .tl-sec-ic {
+      grid-column: auto;
+      justify-self: start;
+    }
     .tl-day-title h2 {
-      font-size: 14px;
-      line-height: 1.35;
-      font-weight: 680;
+      font-size: var(--tl-section-title-size);
+      line-height: var(--tl-section-title-line);
+      font-weight: var(--tl-section-title-weight);
     }
     .tl-day-heading-meta {
       font-size: 11px;

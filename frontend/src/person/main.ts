@@ -18,6 +18,12 @@ import * as Friendships from "../shared/friendship-store";
 import { isHistoryPublic } from "../shared/history-privacy";
 import { personTrips, historyPins, distinctPlaceCount, countriesFromPins, type PersonTrip, type HistoryPin } from "../shared/travel-history";
 import { countryOf } from "../shared/country";
+import * as TripPlans from "../shared/plans-store";
+import type { PlanMeta } from "../shared/plans-store";
+import * as Permissions from "../shared/permissions-store";
+import { planCoverThumbnail } from "../shared/cover";
+import { getViews } from "../shared/views-store";
+import { splitNames } from "../shared/friend-store";
 
 // ---- 対象の名前 ---------------------------------------------------------
 
@@ -210,8 +216,94 @@ function renderHistory(): void {
   }
 
   renderMap();
+  renderCreatedPlans();
   renderTrips(trips);
   renderCalendar(trips, allSlugs);
+}
+
+function samePerson(a: string | undefined, b: string): boolean {
+  return String(a || "").trim().toLowerCase() === b.trim().toLowerCase();
+}
+
+function planCreatorName(meta: PlanMeta): string {
+  const store = Permissions.readPermissionStore();
+  const owner = store.planPermissions
+    .filter((row) => row.planSlug === meta.slug && row.status === "active" && row.role === "owner" && row.displayName)
+    .sort((a, b) => {
+      if (a.source === "owner" && b.source !== "owner") return -1;
+      if (a.source !== "owner" && b.source === "owner") return 1;
+      return Date.parse(a.createdAt || "") - Date.parse(b.createdAt || "");
+    })[0];
+  const inviteCreator = store.planInvites
+    .filter((row) => row.planSlug === meta.slug && row.createdByName)
+    .sort((a, b) => Date.parse(a.createdAt || "") - Date.parse(b.createdAt || ""))[0];
+  return owner?.displayName || inviteCreator?.createdByName || splitNames(meta.members)[0] || "";
+}
+
+function isCreatedByPerson(meta: PlanMeta): boolean {
+  return samePerson(planCreatorName(meta), personName);
+}
+
+function canShowCreatedPlan(meta: PlanMeta): boolean {
+  if (!TripPlans.isPublished(meta) && !Permissions.canEdit(meta.slug)) return false;
+  return Permissions.canView(meta.slug, TripPlans.planVisibility(meta));
+}
+
+function createdPlanLocations(meta: PlanMeta, max = 3): string {
+  const data = TripPlans.getData(meta.slug);
+  const names = [
+    ...(data?.cities || []).map((city) => city.name || ""),
+    ...(data?.itinerary || []).map((item) => item.area || item.place || ""),
+    meta.route || "",
+  ]
+    .flatMap((raw) => String(raw).split(/\s*(?:→|、|,|\/|・|\|)\s*/))
+    .map((part) => part.trim())
+    .filter((part) => part && !/旅行|計画|ダッシュボード|年|月/.test(part));
+  return Array.from(new Set(names)).slice(0, max).join("、");
+}
+
+function createdPlanSortValue(meta: PlanMeta): number {
+  const value = meta.updatedAt || meta.createdAt || "";
+  const time = value ? Date.parse(value) : 0;
+  return Number.isFinite(time) ? time : 0;
+}
+
+function renderCreatedPlans(): void {
+  const mount = $("[data-created-plans]");
+  const panel = $("[data-created-panel]");
+  const countEl = $("[data-created-count]");
+  if (!mount) return;
+
+  const plans = TripPlans.list()
+    .filter((meta) => isCreatedByPerson(meta) && canShowCreatedPlan(meta))
+    .sort((a, b) => createdPlanSortValue(b) - createdPlanSortValue(a));
+
+  if (countEl) countEl.textContent = plans.length ? `${plans.length}件` : "";
+  if (!plans.length) {
+    if (panel) panel.hidden = true;
+    mount.innerHTML = "";
+    return;
+  }
+  if (panel) panel.hidden = false;
+
+  mount.innerHTML = plans.map((meta) => {
+    const locations = createdPlanLocations(meta);
+    const views = getViews(meta.slug);
+    const href = `index.html?plan=${encodeURIComponent(meta.slug)}${Permissions.canEdit(meta.slug) ? "" : "&view=1"}`;
+    const cover = planCoverThumbnail(meta);
+    return (
+      `<a class="pv-created-card" href="${escapeHtml(href)}">` +
+      `<span class="pv-created-cover"><img src="${escapeHtml(cover)}" alt="${escapeHtml(meta.title || "旅行画像")}" loading="lazy"><span class="pv-created-views">${icon("eye")}<span>${views.toLocaleString("ja-JP")}</span></span></span>` +
+      `<span class="pv-created-body">` +
+      `<span class="pv-created-title">${escapeHtml(meta.title || "無題の旅行")}</span>` +
+      `<span class="pv-created-meta">` +
+      (meta.dates ? `<span>${icon("calendarDays")}${escapeHtml(meta.dates)}</span>` : "") +
+      (locations ? `<span>${icon("mapPin")}${escapeHtml(locations)}</span>` : "") +
+      `</span>` +
+      `</span>` +
+      `</a>`
+    );
+  }).join("");
 }
 
 // ---- 地図（行った場所。期間フィルター付き） ----------------------------

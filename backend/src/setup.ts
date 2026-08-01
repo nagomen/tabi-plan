@@ -63,7 +63,7 @@ function setupPlanningSheets() {
   const props = PropertiesService.getScriptProperties();
   const spreadsheetId = getSpreadsheetId_(props);
   const ss = SpreadsheetApp.openById(spreadsheetId);
-  const tripTitle = props.getProperty('TRIP_TITLE') || '旅行ダッシュボード';
+  const tripTitle = props.getProperty('TRIP_TITLE') || 'Tabi Plan';
   const dateStart = props.getProperty('TRIP_DATE_START') || '';
   const dateEnd = props.getProperty('TRIP_DATE_END') || '';
   const participantNames = defaultParticipantNames_(props);

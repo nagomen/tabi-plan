@@ -121,10 +121,13 @@ function currentUserIsMember(meta: PlanMeta): boolean {
   return Boolean(name) && planMembers(meta).includes(name);
 }
 
-/** 自分の計画: 現在ユーザーがメンバー。ログアウト/名前未設定時は空。 */
+/**
+ * 自分の計画: 現在ユーザーがメンバー。
+ * 「自分」が居ない（未ログインかつ名前未設定）ときだけ空にする。
+ * ログイン中は名前が空でもアカウントの権限で判定できるので currentPrincipal を見る。
+ */
 export function listMine(): PlanMeta[] {
-  const name = getUser().name;
-  return name ? list().filter(currentUserIsMember) : [];
+  return Permissions.currentPrincipal() ? list().filter(currentUserIsMember) : [];
 }
 
 /**
@@ -260,23 +263,44 @@ export function mergeCandidates(
   return Array.from(byId.values());
 }
 
+/** mergeLocalPlan の結果。kept-* は本文を上書きしなかったことを表す。 */
+export type MergeOutcome = "created" | "updated" | "kept-newer" | "kept-unknown";
+
 /**
  * 招待リンク等で受け取ったプランを保存する。既存があればマージする。
- * 本文（行程・リンク・チェックリスト）は受信側を最新として上書きしつつ、
+ * 本文（行程・リンク・チェックリスト）は受信側で上書きしつつ、
  * 候補ボードの votes だけは和集合で残す（再共有で各自の票が消えないように）。
+ *
+ * 上書き事故の防止:
+ *   古いリンクを開き直すだけで、後から入った編集が消えてしまうため、
+ *   リンクに埋めた更新時刻が手元より古ければ本文を触らない（kept-newer）。
+ *   更新時刻を持たない旧リンクは判断できないので kept-unknown を返し、
+ *   force: true で呼び直すかどうかは呼び出し側（＝利用者への確認）に委ねる。
  */
 export function mergeLocalPlan(
   slug: string,
   incoming: LocalPlanData,
-): { meta: PlanMeta | null; existed: boolean } {
+  options: { incomingUpdatedAt?: string; force?: boolean } = {},
+): { meta: PlanMeta | null; existed: boolean; outcome: MergeOutcome } {
   const target = safeSlug(slug);
   const existing = getData(target);
+  const existingMeta = get(target);
+  if (existing && !options.force) {
+    const mine = existingMeta?.updatedAt || "";
+    const theirs = options.incomingUpdatedAt || "";
+    if (!theirs) {
+      return { meta: existingMeta, existed: true, outcome: "kept-unknown" };
+    }
+    if (mine && theirs < mine) {
+      return { meta: existingMeta, existed: true, outcome: "kept-newer" };
+    }
+  }
   const merged: LocalPlanData = {
     ...incoming,
     candidates: mergeCandidates(existing?.candidates, incoming.candidates),
   };
   const meta = saveLocalPlan(target, merged);
-  return { meta, existed: Boolean(existing) };
+  return { meta, existed: Boolean(existing), outcome: existing ? "updated" : "created" };
 }
 
 // ---- 開発時のファイル保存（data/plans/<slug>.json） --------------------
@@ -555,4 +579,8 @@ migrateExistingToPublic();
 // backend のキャッシュをウォームしておく（全ページが本モジュールを読むため、ここで1回）。
 // localStorage 実装では同期完了。将来 API 実装に差し替えたら、各ページ起動で
 // `await Backend.preload()` を待つように変更する（backend.ts のコメント参照）。
-void Backend.preload();
+// ストアが温まったら、未ログイン時に名前で得ていた権限をアカウントへ引き継ぐ（冪等）。
+// permissions-store 側ではなくここで呼ぶのは、account-store との循環 import を避けるため。
+void Backend.preload().then(() => {
+  Permissions.adoptNamePermissions();
+});

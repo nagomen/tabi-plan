@@ -1,7 +1,7 @@
 {
-  "name": "費用入力 | 東北旅行",
+  "name": "費用入力 | Tabi Plan",
   "short_name": "費用入力",
-  "description": "2026年8月 東北旅行の立替費用を記録する",
+  "description": "旅行の立替費用を記録する",
   "id": "./expense-entry.html",
   "start_url": "./expense-entry.html",
   "scope": "./expense-entry.html",

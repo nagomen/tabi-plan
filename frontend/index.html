@@ -7,12 +7,12 @@
 <meta name="theme-color" content="#0b5a42">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="旅行ダッシュボード">
+<meta name="apple-mobile-web-app-title" content="Tabi Plan">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <link rel="manifest" href="site.webmanifest">
 <link rel="icon" href="icon-32.webp" type="image/webp" sizes="32x32">
 <link rel="apple-touch-icon" href="icon-192.webp">
-<title>旅行ダッシュボード</title>
+<title>Tabi Plan</title>
 </head>
 <body>
 
@@ -78,6 +78,9 @@
         <div class="tl-day-title tl-sec-head">
           <span class="tl-sec-ic" data-ic="calendarDays"></span>
           <h2 data-day-title>今日の予定</h2>
+          <button class="tl-copy-schedule" type="button" data-copy-schedule aria-label="旅行の全日程をLINEで送れる文章としてコピー">
+            <span class="tl-copy-schedule-ic" data-ic="paperAirplane"></span><span data-copy-schedule-label>日程をLINEで送る</span>
+          </button>
         </div>
         <div data-day-feed></div>
       </div>
@@ -107,7 +110,7 @@
       <article class="tl-box" data-mobile-view="links" data-section-target="home links">
         <div class="tl-sec-head">
           <span class="tl-sec-ic" data-ic="link"></span>
-          <h2>リンク・チェック</h2>
+          <h2>リンク・タスク</h2>
         </div>
         <div class="tl-docs" data-docs></div>
         <div class="tl-checks" data-checks></div>
