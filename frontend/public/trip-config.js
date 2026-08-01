@@ -13,6 +13,9 @@ window.TRIP_CONFIG = {
   auth: {
     enabled: false
   },
+  // ログイン・新規登録なしで、開いた人は誰でもこの計画の参加者として扱う。
+  // 名前を入れるだけで費用の追加・精算が使える（行程はスプレッドシートが正なので読み取り専用）。
+  openEditing: true,
   mapDefaults: {
     center: [39.6, 140.6],
     zoom: 6,

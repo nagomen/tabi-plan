@@ -92,6 +92,14 @@ export interface TripConfig {
   refreshOnFocus: boolean;
   minRefreshSeconds: number;
   auth: AuthConfig;
+  /**
+   * この計画をログイン不要の共同編集にする。
+   * true にすると、訪問者は誰でも「参加者」として扱われ、閲覧のみにならない
+   * （本人設定は自由入力になり、費用の追加・精算が使える）。
+   * 行程そのものは連携元（スプレッドシート等）が正なので読み取り専用のまま。
+   * 誰でも書ける前提なので、公開してよい計画にだけ使うこと。
+   */
+  openEditing: boolean;
   profile: { storageKey: string };
   expenseCache: { storageKey: string };
   mapDefaults: MapDefaults;
@@ -158,6 +166,7 @@ export const DEFAULT_CONFIG: TripConfig = {
     storageKey: "",
     rememberDays: 14,
   },
+  openEditing: false,
   profile: { storageKey: "" },
   expenseCache: { storageKey: "" },
   mapDefaults: {

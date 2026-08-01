@@ -7,6 +7,10 @@ window.TRIP_CONFIG = {
   appsScriptUrl: "https://script.google.com/macros/s/YOUR_DEPLOYMENT_ID/exec",
   defaultParticipants: ["参加者A", "参加者B"],
   currencies: ["JPY", "USD", "EUR", "KRW", "TWD", "CNY", "THB", "SGD", "AUD", "GBP"],
+  // true にすると、この計画だけログイン・新規登録なしで誰でも参加者として扱う。
+  // 名前を入れるだけで費用の追加・精算が使える（?view=1 で開いても編集できる）。
+  // 誰でも書ける前提なので、公開してよい計画にだけ使うこと。
+  openEditing: false,
   mapDefaults: {
     center: [35.6812, 139.7671],
     zoom: 5,

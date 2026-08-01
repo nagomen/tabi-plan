@@ -17,6 +17,7 @@ import {
   mergeConfig,
   normalizeTripConfig,
   readGlobalTripConfig,
+  safeTripSlug,
   type TripConfig,
 } from "../shared/config";
 import * as TripPlans from "../shared/plans-store";
@@ -114,6 +115,16 @@ const CONFIG: TripConfig = normalizeTripConfig(
   ) as unknown as TripConfig,
 );
 applyDocumentTripTitle(CONFIG.tripTitle);
+
+/**
+ * ログイン不要の共同編集を許す計画かどうか。
+ * trip-config.js の設定はダッシュボードが開く全計画にマージされるため、
+ * フラグを宣言した当の計画（同じ slug）を開いているときだけ有効にする。
+ * これをしないと、他人のローカル計画まで誰でも編集できてしまう。
+ */
+const OPEN_EDITING =
+  Boolean(BASE_TRIP_CONFIG.openEditing) &&
+  safeTripSlug(BASE_TRIP_CONFIG.tripSlug) === CONFIG.tripSlug;
 
 // ---- サンプルデータ -----------------------------------------------------
 
@@ -417,10 +428,22 @@ function showIdentityModal(required: boolean): Promise<boolean> {
     if (existing) existing.remove();
 
     const participants = expenseParticipants(state.data || SAMPLE);
-    const savedName = currentProfileName(participants);
-    const options = participants.map((name) =>
-      `<option value="${escapeHtml(name)}" ${name === savedName ? "selected" : ""}>${escapeHtml(name)}</option>`,
-    ).join("");
+    const savedName = currentProfileName(participants) || (readProfile()?.name || "");
+    // ログイン不要の共同編集計画では、訪問者は連携元のメンバー表に載っていない。
+    // 選択肢から選ばせると誰も自分を選べないので、自由入力（既存メンバーは候補表示）にする。
+    const freeText = OPEN_EDITING;
+    const control = freeText
+      ? `<input type="text" name="profileName" list="tlIdentityNames" required maxlength="24"
+               autocomplete="name" placeholder="例: たろう" value="${escapeHtml(savedName)}">
+         <datalist id="tlIdentityNames">
+           ${participants.map((name) => `<option value="${escapeHtml(name)}"></option>`).join("")}
+         </datalist>`
+      : `<select name="profileName" required>
+           <option value="">選択してください</option>
+           ${participants.map((name) =>
+             `<option value="${escapeHtml(name)}" ${name === savedName ? "selected" : ""}>${escapeHtml(name)}</option>`,
+           ).join("")}
+         </select>`;
     const modal = document.createElement("div");
     modal.className = "tl-identity-modal";
     modal.innerHTML = `
@@ -428,17 +451,16 @@ function showIdentityModal(required: boolean): Promise<boolean> {
         <header>
           <div>
             <h2 id="identityTitle">あなたは誰ですか</h2>
-            <p>この端末に保存して、支払者などの初期値に使います。</p>
+            <p>${freeText
+              ? "名前を入れるだけでこの旅行に参加できます。ログインは不要です。"
+              : "この端末に保存して、支払者などの初期値に使います。"}</p>
           </div>
           <div class="tl-identity-mark" data-identity-mark>${escapeHtml(profileInitial(savedName))}</div>
         </header>
         <div class="tl-identity-body">
           <label class="tl-identity-field">
             <span>本人として使う名前</span>
-            <select name="profileName" required>
-              <option value="">選択してください</option>
-              ${options}
-            </select>
+            ${control}
           </label>
           <div class="tl-identity-actions">
             <span class="tl-identity-note">ブラウザのローカルストレージにだけ保存されます。</span>
@@ -450,13 +472,15 @@ function showIdentityModal(required: boolean): Promise<boolean> {
     document.body.appendChild(modal);
 
     const form = qs<HTMLFormElement>("form", modal);
-    const select = qs<HTMLSelectElement>("select", modal);
+    const field = qs<HTMLSelectElement | HTMLInputElement>(freeText ? "input[name='profileName']" : "select", modal);
     const mark = qs<HTMLElement>("[data-identity-mark]", modal);
     const close = modal.querySelector<HTMLButtonElement>("[data-identity-close]");
-    select.focus();
-    select.addEventListener("change", () => {
-      mark.textContent = profileInitial(select.value);
-    });
+    field.focus();
+    const syncMark = (): void => {
+      mark.textContent = profileInitial(field.value);
+    };
+    field.addEventListener("change", syncMark);
+    field.addEventListener("input", syncMark);
     if (close) {
       close.addEventListener("click", () => {
         modal.remove();
@@ -465,9 +489,9 @@ function showIdentityModal(required: boolean): Promise<boolean> {
     }
     form.addEventListener("submit", (event) => {
       event.preventDefault();
-      const name = select.value;
+      const name = field.value.trim();
       if (!name) {
-        select.focus();
+        field.focus();
         return;
       }
       saveProfile(name);
@@ -1023,9 +1047,15 @@ function selfName(): string {
  * 閲覧のみの計画では他人の割り勘に自分を混ぜないので、追加しない。
  */
 function withSelf(names: string[]): string[] {
-  const me = READ_ONLY ? "" : selfName();
-  if (!me || names.includes(me)) return names;
-  return [me, ...names];
+  if (READ_ONLY) return names;
+  // 保存済みの本人設定も必ず含める。端末のユーザー名と本人設定が食い違っていると
+  // currentProfileName() が空を返し、本人設定モーダルが毎回出てしまうため。
+  const mine = [selfName(), (readProfile()?.name || "").trim()].filter(Boolean);
+  const out = [...names];
+  mine.forEach((name) => {
+    if (!out.includes(name)) out.unshift(name);
+  });
+  return out;
 }
 
 function expenseParticipants(data: TripData): string[] {
@@ -1605,8 +1635,11 @@ function bindChecklist(): void {
 function renderMembers(data: TripData): void {
   const meta = TripPlans.get(CONFIG.tripSlug);
   const membersStr = (meta && meta.members) || (data.trip && data.trip.members) || "";
+  // ログイン不要の共同編集計画では、本人設定した名前をそのまま参加者として並べる
+  // （連携元のメンバー表には載らないため、ここで補って「参加している」状態に見せる）。
+  const myName = getUser().name.trim() || (OPEN_EDITING ? (readProfile()?.name || "").trim() : "");
   const names = splitNames(membersStr);
-  const myName = getUser().name.trim();
+  if (OPEN_EDITING && myName && !names.includes(myName)) names.unshift(myName);
 
   const countEl = root.querySelector<HTMLElement>("[data-members-count]");
   if (countEl) countEl.textContent = names.length ? `${names.length}人` : "";
@@ -2097,6 +2130,9 @@ async function syncData(isInitial: boolean, didRetryAuth?: boolean): Promise<voi
  * 持ち主が居ない計画は、名前未設定の本人までロックしないよう planHasOwner でガードする。
  */
 function computeReadOnly(): boolean {
+  // ログイン不要の共同編集計画は、?view=1 で開かれても編集できる。
+  // 「リンクを踏んだ人は全員参加者」という設定なので、閲覧専用シグナルより優先する。
+  if (OPEN_EDITING) return false;
   const forcedView = new URLSearchParams(location.search).get("view") === "1";
   if (forcedView) return true;
   const meta = TripPlans.get(CONFIG.tripSlug);
@@ -2108,6 +2144,7 @@ function computeReadOnly(): boolean {
 }
 
 function computeAccessDenied(): boolean {
+  if (OPEN_EDITING) return false;
   const meta = TripPlans.get(CONFIG.tripSlug);
   return Boolean(meta) && !canViewPlan(meta!);
 }
