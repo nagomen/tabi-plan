@@ -2199,12 +2199,21 @@ async function init(): Promise<void> {
   });
   // 費用入力はボトムシートに分離（読む画面と書く画面を分ける）。
   // 読み取り専用ビュー（他人の公開計画）では費用追加を出さない。
+  // リスナーは hidden でも必ず付ける: 表示されているのに何も起きないボタンは
+  // 「壊れている」としか見えないため、押されたら理由を出せるようにしておく。
   qsa<HTMLElement>("[data-expense-open]").forEach((button) => {
-    if (READ_ONLY) {
-      button.hidden = true;
-      return;
-    }
-    button.addEventListener("click", () => setExpenseSheet(true));
+    button.hidden = READ_ONLY;
+    button.addEventListener("click", () => {
+      if (READ_ONLY) {
+        const status = root.querySelector<HTMLElement>("[data-settlement-status]");
+        if (status) {
+          status.textContent = "閲覧のみの計画では費用を追加できません。";
+          status.classList.add("is-error");
+        }
+        return;
+      }
+      setExpenseSheet(true);
+    });
   });
   qsa<HTMLElement>("[data-expense-close]").forEach((button) => {
     button.addEventListener("click", () => setExpenseSheet(false));

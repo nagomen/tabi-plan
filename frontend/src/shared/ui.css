@@ -19,6 +19,18 @@ html {
   overflow-x: hidden;
 }
 
+/* hidden 属性を必ず効かせる。
+   ブラウザ既定の `[hidden] { display: none }` は詳細度 (0,1,0) しかないため、
+   `.tl-button { display: inline-flex }` のようなクラス指定に負けて無効化される。
+   その結果「JS が hidden にしたのに画面には残り、リスナーも付いていない“死んだ要素”」
+   が生まれる（費用を追加ボタン・アクセス拒否画面で実際に発生した）。
+   各ページに `.foo[hidden] { display: none }` を都度足す運用だと必ず取りこぼすので、
+   ここで一度だけ打ち消す。意図的に hidden を無視して表示する箇所（mypage の PC 2カラム）
+   だけが !important で上書きする。 */
+[hidden] {
+  display: none !important;
+}
+
 /* ブートクローク本体（html:not(.ui-ready){opacity:0}）は vite.config.ts の bootCloak() が
    各ページ <head> 先頭にインライン注入する。dev でも render-blocking にするためCSSバンドルに
    置かない。ここでは表示状態のみ明示しておく（インライン側と重複しても無害）。 */

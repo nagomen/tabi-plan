@@ -433,7 +433,9 @@
   @media (min-width: 860px) {
     .mp-tabs { display: none; }
     .mp-body { display: grid; grid-template-columns: minmax(0, 400px) minmax(0, 1fr); align-items: start; }
-    .mp-view[hidden] { display: block; }
+    /* PC ではタブ切替をやめて両方出すため、意図的に hidden を無視する。
+       ui.css の `[hidden] { display: none !important }` を上書きするので !important が要る。 */
+    .mp-view[hidden] { display: block !important; }
     .mp-view[data-view="plans"] { border-right: 1px solid var(--line); min-height: 64vh; }
   }
 
