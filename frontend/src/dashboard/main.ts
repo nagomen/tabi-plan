@@ -999,25 +999,25 @@ function renderExpenseDetails(settlement: Settlement): void {
       <table class="tl-expense-table">
         <thead>
           <tr>
-            <th>日付</th>
-            <th>内容</th>
-            <th>支払者</th>
-            <th>区分</th>
-            <th>精算範囲</th>
-            <th>支払額</th>
-            <th>自分の負担</th>
+            <th data-col="date">日付</th>
+            <th data-col="title">内容</th>
+            <th data-col="payer">支払者</th>
+            <th data-col="role">区分</th>
+            <th data-col="mode">精算範囲</th>
+            <th data-col="amount">支払額</th>
+            <th data-col="share">自分の負担</th>
           </tr>
         </thead>
         <tbody>
           ${related.map((detail) => `
             <tr>
-              <td>${escapeHtml(detail.date || "")}</td>
-              <td>${escapeHtml(detail.title || "立替")}${detail.category ? `<br><small>${escapeHtml(detail.category)}</small>` : ""}</td>
-              <td>${escapeHtml(detail.payer || "")}</td>
-              <td>${escapeHtml(roleFor(detail))}</td>
-              <td>${escapeHtml(detail.mode || "")}</td>
-              <td>${escapeHtml(detail.convertedLabel || detail.amountLabel || "")}${detail.amountLabel && detail.convertedLabel && detail.amountLabel !== detail.convertedLabel ? `<br><small>${escapeHtml(detail.amountLabel)}</small>` : ""}</td>
-              <td>${escapeHtml(shareFor(detail))}</td>
+              <td data-col="date"><span class="tl-date-long">${escapeHtml(detail.date || "")}</span><span class="tl-date-short">${escapeHtml(mdLabel(detail.date || ""))}</span></td>
+              <td data-col="title">${escapeHtml(detail.title || "立替")}${detail.category ? `<br><small>${escapeHtml(detail.category)}</small>` : ""}</td>
+              <td data-col="payer">${escapeHtml(detail.payer || "")}</td>
+              <td data-col="role">${escapeHtml(roleFor(detail))}</td>
+              <td data-col="mode">${escapeHtml(detail.mode || "")}</td>
+              <td data-col="amount">${escapeHtml(detail.convertedLabel || detail.amountLabel || "")}${detail.amountLabel && detail.convertedLabel && detail.amountLabel !== detail.convertedLabel ? `<br><small>${escapeHtml(detail.amountLabel)}</small>` : ""}</td>
+              <td data-col="share">${escapeHtml(shareFor(detail))}</td>
             </tr>
           `).join("")}
         </tbody>

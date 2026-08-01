@@ -1666,6 +1666,9 @@
     font-size: 12px;
   }
 
+  /* 日付は PC ではフル表記、スマホでは 5/13 に切り替える */
+  .tl-date-short { display: none; }
+
   .tl-expense-table th,
   .tl-expense-table td {
     padding: 8px 9px;
@@ -2692,7 +2695,90 @@
     .tl-local-card:nth-child(3n) {
       border-right: 0;
     }
-    .tl-buttons { grid-template-columns: 1fr; }
+    /* ---- 費用ページ（スマホ） -------------------------------------------
+       塗りつぶしの大きなボタンを並べると、金額より操作のほうが目立ってしまう。
+       箱をやめて罫線とタイポで組み、ボタンは小さく静かにする。 */
+
+    /* 精算行: 枠付きカード → 罫線区切りの行 */
+    .tl-transfer-list { gap: 0; }
+    .tl-transfer-row {
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 4px 10px;
+      min-height: 0;
+      padding: 11px 0;
+      border: 0;
+      border-top: 1px solid var(--line);
+      background: none;
+      font-size: 13px;
+    }
+    .tl-transfer-row b { font-size: 16px; }
+    .tl-transfer-act { gap: 6px; }
+
+    /* 送金・完了は補助操作。塗りをやめて高さも詰める */
+    .tl-transfer-row button {
+      min-height: 34px;
+      padding: 0 9px;
+      background: none;
+      color: var(--green);
+      font-size: 11px;
+      font-weight: 620;
+    }
+    .tl-transfer-row button.tl-paypay {
+      background: none;
+      color: #e6002e;
+      border-color: #e6002e;
+    }
+    .tl-transfer-row button:disabled { background: none; }
+
+    /* 主導線は塗りの帯ではなく、下罫線つきの語で横に並べる */
+    .tl-buttons {
+      grid-template-columns: auto auto;
+      justify-content: start;
+      gap: 20px;
+      margin-top: 14px;
+      padding-top: 12px;
+      border-top: 1px solid var(--line);
+    }
+    .tl-buttons .tl-button {
+      min-height: 40px;
+      padding: 0 2px;
+      border: 0;
+      border-bottom: 2px solid currentColor;
+      background: none;
+      color: var(--green);
+      font-size: 14px;
+    }
+    .tl-buttons .tl-button.ghost { color: var(--muted); }
+    .tl-buttons .tl-button:hover,
+    .tl-buttons .tl-button:focus-visible { background: none; }
+
+    /* 明細: 7列は読めないので、区分と支払額に絞って5列に落とす */
+    .tl-expense-table th[data-col="mode"],
+    .tl-expense-table td[data-col="mode"],
+    .tl-expense-table th[data-col="amount"],
+    .tl-expense-table td[data-col="amount"] { display: none; }
+    /* 明細も囲みをやめ、見出しは罫線だけで区切る */
+    .tl-expense-details {
+      margin-top: 4px;
+      border: 0;
+      background: none;
+    }
+    .tl-expense-details-head { padding: 12px 0 8px; }
+
+    /* 5列に減らしたので横スクロールは不要。min-width を外して画面幅に収める */
+    .tl-expense-table { min-width: 0; font-size: 12px; }
+    .tl-expense-table th,
+    .tl-expense-table td { padding: 8px 5px; }
+    .tl-expense-table th:first-child,
+    .tl-expense-table td:first-child { padding-left: 0; }
+    .tl-expense-table th:last-child,
+    .tl-expense-table td:last-child { padding-right: 0; }
+    .tl-expense-table td[data-col="date"] { white-space: nowrap; color: var(--muted); }
+    .tl-expense-table td[data-col="role"] { white-space: nowrap; }
+    .tl-expense-table td[data-col="title"] { font-weight: 600; }
+    .tl-expense-table td[data-col="share"] { text-align: right; white-space: nowrap; }
+    .tl-date-long { display: none; }
+    .tl-date-short { display: inline; }
     .tl-expense-grid,
     .tl-individual-grid,
     .tl-expense-submit {
