@@ -1,0 +1,195 @@
+{
+  "createdAt": "2026-06-30T10:46:29.979Z",
+  "slug": "trip-3",
+  "title": "ヨーロッパ一周",
+  "dates": "2026/6/26 - 2026/7/10",
+  "members": "パム、なごめん",
+  "note": "",
+  "route": "london hotel、ベルリン　空港、エッフェル塔",
+  "source": "local",
+  "builtIn": false,
+  "updatedAt": "2026-06-30T10:51:00.261Z",
+  "visibility": "public",
+  "data": {
+    "trip": {
+      "title": "ヨーロッパ一周",
+      "dates": "2026/6/26 - 2026/7/10",
+      "members": "パム、なごめん",
+      "note": ""
+    },
+    "itinerary": [
+      {
+        "date": "2026-06-26",
+        "day": "Day 1",
+        "area": "",
+        "time": "",
+        "type": "sight",
+        "typeLabel": "観光",
+        "title": "ロンドン橋",
+        "place": "",
+        "note": "",
+        "lat": "",
+        "lng": "",
+        "mapQuery": "ロンドン橋",
+        "weather": ""
+      },
+      {
+        "date": "2026-06-26",
+        "day": "Day 1",
+        "area": "london hotel",
+        "time": "",
+        "type": "stay",
+        "typeLabel": "宿泊",
+        "title": "hotel london",
+        "place": "london hotel",
+        "note": "",
+        "lat": 51.4615782,
+        "lng": -0.1130331,
+        "mapQuery": "london hotel",
+        "weather": ""
+      },
+      {
+        "date": "2026-06-27",
+        "day": "Day 2",
+        "area": "london hotel",
+        "time": "",
+        "type": "stay",
+        "typeLabel": "宿泊",
+        "title": "hotel london",
+        "place": "london hotel",
+        "note": "",
+        "lat": 51.4615782,
+        "lng": -0.1130331,
+        "mapQuery": "london hotel",
+        "weather": ""
+      },
+      {
+        "date": "2026-06-28",
+        "day": "Day 3",
+        "area": "london hotel",
+        "time": "",
+        "type": "stay",
+        "typeLabel": "宿泊",
+        "title": "hotel london",
+        "place": "london hotel",
+        "note": "",
+        "lat": 51.4615782,
+        "lng": -0.1130331,
+        "mapQuery": "london hotel",
+        "weather": ""
+      },
+      {
+        "date": "2026-06-29",
+        "day": "Day 4",
+        "area": "london hotel",
+        "time": "",
+        "type": "stay",
+        "typeLabel": "宿泊",
+        "title": "hotel london",
+        "place": "london hotel",
+        "note": "",
+        "lat": 51.4615782,
+        "lng": -0.1130331,
+        "mapQuery": "london hotel",
+        "weather": ""
+      },
+      {
+        "date": "2026-06-30",
+        "day": "Day 5",
+        "area": "",
+        "time": "",
+        "type": "move",
+        "typeLabel": "移動",
+        "title": "London 空港 → ベルリン　空港",
+        "place": "ベルリン　空港",
+        "note": "飛行機 2h00",
+        "lat": 52.36593,
+        "lng": 13.488641,
+        "mapQuery": "",
+        "weather": "",
+        "origin": "London 空港",
+        "destination": "ベルリン　空港",
+        "originLat": 51.467739,
+        "originLng": -0.4587801,
+        "destinationLat": 52.36593,
+        "destinationLng": 13.488641
+      },
+      {
+        "date": "2026-06-30",
+        "day": "Day 5",
+        "area": "london hotel",
+        "time": "",
+        "type": "stay",
+        "typeLabel": "宿泊",
+        "title": "hotel london",
+        "place": "london hotel",
+        "note": "",
+        "lat": 51.4615782,
+        "lng": -0.1130331,
+        "mapQuery": "london hotel",
+        "weather": ""
+      },
+      {
+        "date": "2026-07-06",
+        "day": "Day 11",
+        "area": "エッフェル塔",
+        "time": "",
+        "type": "sight",
+        "typeLabel": "観光",
+        "title": "エッフェル塔",
+        "place": "エッフェル塔",
+        "note": "",
+        "lat": 48.8582599,
+        "lng": 2.2945006,
+        "mapQuery": "エッフェル塔",
+        "weather": ""
+      }
+    ],
+    "links": [],
+    "checklist": [],
+    "cities": [
+      {
+        "name": "ロンドン",
+        "fromDate": "2026-06-26",
+        "toDate": "2026-06-30",
+        "lat": 51.5074456,
+        "lng": -0.1277653
+      },
+      {
+        "name": "ベルリン",
+        "fromDate": "2026-06-30",
+        "toDate": "2026-07-04",
+        "lat": 51.5074456,
+        "lng": -0.1277653
+      },
+      {
+        "name": "パリ",
+        "fromDate": "2026-07-04",
+        "toDate": "2026-07-10",
+        "lat": 48.8588897,
+        "lng": 2.320041
+      }
+    ],
+    "candidates": [
+      {
+        "id": "cand_4_9exs",
+        "title": "ロンドン橋",
+        "votes": [
+          "パム"
+        ],
+        "proposer": "パム",
+        "createdAt": "2026-06-30T10:47:50.080Z",
+        "adopted": true
+      },
+      {
+        "id": "cand_8_q09v",
+        "title": "エッフェル塔",
+        "votes": [
+          "パム"
+        ],
+        "proposer": "パム",
+        "createdAt": "2026-06-30T10:49:39.816Z"
+      }
+    ]
+  }
+}

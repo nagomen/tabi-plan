@@ -1,0 +1,81 @@
+{
+  "createdAt": "2026-07-10T03:36:18.062Z",
+  "slug": "trip-25",
+  "title": "マイナスの世界",
+  "dates": "2026/7/13 - 2026/7/17",
+  "members": "パム、かな",
+  "note": "",
+  "cover": "",
+  "route": "ハルビン、安重根",
+  "source": "local",
+  "builtIn": false,
+  "updatedAt": "2026-07-10T04:06:07.697Z",
+  "visibility": "public",
+  "data": {
+    "trip": {
+      "title": "マイナスの世界",
+      "dates": "2026/7/13 - 2026/7/17",
+      "members": "パム、かな",
+      "note": "",
+      "cover": ""
+    },
+    "itinerary": [
+      {
+        "date": "2026-07-14",
+        "day": "Day 2",
+        "area": "ハルビン",
+        "time": "",
+        "type": "sight",
+        "typeLabel": "観光",
+        "title": "ハルビン雪まつり",
+        "place": "ハルビン",
+        "note": "",
+        "lat": 45.7593633,
+        "lng": 126.6276177,
+        "mapQuery": "ハルビン",
+        "weather": ""
+      },
+      {
+        "date": "2026-07-15",
+        "day": "Day 3",
+        "area": "安重根",
+        "time": "",
+        "type": "sight",
+        "typeLabel": "観光",
+        "title": "伊藤博文",
+        "place": "安重根",
+        "note": "",
+        "lat": 37.5537329,
+        "lng": 126.9809774,
+        "mapQuery": "安重根",
+        "weather": ""
+      }
+    ],
+    "links": [],
+    "checklist": [],
+    "cities": [
+      {
+        "name": "ハルビン",
+        "fromDate": "2026-07-13",
+        "toDate": "2026-07-15",
+        "lat": 45.7593633,
+        "lng": 126.6276177
+      },
+      {
+        "name": "延吉",
+        "fromDate": "2026-07-15",
+        "toDate": "2026-07-16",
+        "lat": 45.7593633,
+        "lng": 126.6276177
+      },
+      {
+        "name": "図們",
+        "fromDate": "2026-07-16",
+        "toDate": "2026-07-17",
+        "lat": 42.9625693,
+        "lng": 129.8334987
+      }
+    ],
+    "candidates": []
+  }
+}

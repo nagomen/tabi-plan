@@ -1,0 +1,36 @@
+{
+  "createdAt": "2026-07-13T04:18:58.223Z",
+  "slug": "step3",
+  "title": "Step3見た目確認",
+  "dates": "2026/7/1 - 2026/7/3",
+  "members": "",
+  "note": "",
+  "cover": "",
+  "route": "盛岡",
+  "source": "local",
+  "builtIn": false,
+  "published": false,
+  "updatedAt": "2026-07-13T04:18:58.225Z",
+  "data": {
+    "trip": {
+      "title": "Step3見た目確認",
+      "dates": "2026/7/1 - 2026/7/3",
+      "members": "",
+      "note": "",
+      "cover": ""
+    },
+    "itinerary": [],
+    "links": [],
+    "checklist": [],
+    "cities": [
+      {
+        "name": "盛岡",
+        "fromDate": "2026-07-01",
+        "toDate": "2026-07-01",
+        "lat": 39.7036,
+        "lng": 141.1527
+      }
+    ],
+    "candidates": []
+  }
+}

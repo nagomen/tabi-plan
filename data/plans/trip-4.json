@@ -1,0 +1,41 @@
+{
+  "createdAt": "2026-07-01T05:27:15.579Z",
+  "slug": "trip-4",
+  "title": "インド旅行",
+  "dates": "2026/7/7 - 2026/7/10",
+  "members": "パム、かな",
+  "note": "",
+  "route": "",
+  "source": "local",
+  "builtIn": false,
+  "updatedAt": "2026-07-01T05:27:54.008Z",
+  "visibility": "public",
+  "data": {
+    "trip": {
+      "title": "インド旅行",
+      "dates": "2026/7/7 - 2026/7/10",
+      "members": "パム、かな",
+      "note": ""
+    },
+    "itinerary": [],
+    "links": [],
+    "checklist": [],
+    "cities": [
+      {
+        "name": "ムンバイ",
+        "fromDate": "2026-07-07",
+        "toDate": "2026-07-09",
+        "lat": "",
+        "lng": ""
+      },
+      {
+        "name": "ニューデリー",
+        "fromDate": "2026-07-09",
+        "toDate": "2026-07-10",
+        "lat": 28.6138954,
+        "lng": 77.2090057
+      }
+    ],
+    "candidates": []
+  }
+}

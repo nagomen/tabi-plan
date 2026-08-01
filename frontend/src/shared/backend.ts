@@ -167,6 +167,38 @@ function remoteDelete(key: string): void {
   }
 }
 
+/** 端末固有で、配ってはいけないキー（配ると全員が同じ名前になる）。 */
+const DEVICE_LOCAL_KEYS = new Set(["trip-dashboard-user"]);
+
+/** id を持つ行の配列を、既存を優先しつつ id で和集合にする。 */
+function unionById(seed: unknown, mine: unknown): unknown {
+  if (!Array.isArray(seed)) return mine ?? seed;
+  if (!Array.isArray(mine)) return seed;
+  const has = new Set(
+    mine.map((row) => (row && typeof row === "object" ? (row as { id?: string }).id : undefined)).filter(Boolean),
+  );
+  const added = seed.filter((row) => {
+    const id = row && typeof row === "object" ? (row as { id?: string }).id : undefined;
+    return id && !has.has(id);
+  });
+  return added.length ? [...mine, ...added] : mine;
+}
+
+/**
+ * 本番での「種」の当て方。
+ *   - 端末固有キーは配らない
+ *   - 訪問者がまだ持っていないキーはそのまま入れる
+ *   - アカウントは id で和集合（配ったアカウントで必ずログインでき、
+ *     その端末で作ったアカウントも消えない）
+ *   - それ以外で既にデータがあるなら、訪問者のものを優先して触らない
+ */
+function mergeSeed(key: string, seed: unknown, mine: unknown): unknown {
+  if (DEVICE_LOCAL_KEYS.has(key)) return mine ?? undefined;
+  if (mine === undefined || mine === null) return seed;
+  if (key === "trip-dashboard-accounts") return unionById(seed, mine);
+  return mine;
+}
+
 /**
  * バックエンドの全データをメモリキャッシュへ読み込む。
  * localStorage 実装では同期的に完了する。API 実装ではここでサーバー取得する。
@@ -189,13 +221,17 @@ export async function preload(): Promise<void> {
   } catch {
     /* localStorage が使えない環境 */
   }
-  // 開発時: data/store のファイルが真実。別ブラウザでも同じ内容になる。
+  // data/store のファイルを流し込む。
+  // dev: ファイルが真実（/api/store で書き戻るので上書きしてよい）。
+  // 本番: git で配る「種」。書き戻せないので、訪問者が既に持っているデータは壊さない。
   const ds = devStore();
   if (ds) {
     for (const [key, value] of Object.entries(ds)) {
-      cache.set(key, value);
+      const next = import.meta.env.DEV ? value : mergeSeed(key, value, cache.get(key));
+      if (next === undefined) continue; // 配らないキー（端末固有で手元にも無い）
+      cache.set(key, next);
       try {
-        localStorage.setItem(key, JSON.stringify(value));
+        localStorage.setItem(key, JSON.stringify(next));
       } catch {
         /* ignore */
       }

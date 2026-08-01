@@ -1,0 +1,25 @@
+{
+  "createdAt": "2026-07-01T05:28:21.256Z",
+  "slug": "trip-5",
+  "title": "ドイツ旅行",
+  "dates": "2026/7/21 - 2026/7/23",
+  "members": "パム",
+  "note": "",
+  "route": "",
+  "source": "local",
+  "builtIn": false,
+  "updatedAt": "2026-07-01T05:28:25.945Z",
+  "data": {
+    "trip": {
+      "title": "ドイツ旅行",
+      "dates": "2026/7/21 - 2026/7/23",
+      "members": "パム",
+      "note": ""
+    },
+    "itinerary": [],
+    "links": [],
+    "checklist": [],
+    "cities": [],
+    "candidates": []
+  }
+}

@@ -1,0 +1,41 @@
+{
+  "createdAt": "2026-07-01T07:00:19.489Z",
+  "slug": "trip-6",
+  "title": "渋谷旅行",
+  "dates": "2026/7/22 - 2026/7/24",
+  "members": "パム",
+  "note": "",
+  "route": "",
+  "source": "local",
+  "builtIn": false,
+  "updatedAt": "2026-07-01T07:00:50.180Z",
+  "visibility": "invite",
+  "data": {
+    "trip": {
+      "title": "渋谷旅行",
+      "dates": "2026/7/22 - 2026/7/24",
+      "members": "パム",
+      "note": ""
+    },
+    "itinerary": [],
+    "links": [],
+    "checklist": [],
+    "cities": [
+      {
+        "name": "東京",
+        "fromDate": "2026-07-22",
+        "toDate": "2026-07-23",
+        "lat": 35.6812,
+        "lng": 139.7671
+      },
+      {
+        "name": "横浜",
+        "fromDate": "2026-07-23",
+        "toDate": "2026-07-24",
+        "lat": 35.4437,
+        "lng": 139.638
+      }
+    ],
+    "candidates": []
+  }
+}

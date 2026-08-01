@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "planPermissions": [
+    {
+      "id": "perm_mreey5hr_7su6hg",
+      "planSlug": "trip-25",
+      "subjectType": "account",
+      "subjectId": "usr_mr0ifupk36jhja",
+      "displayName": "パム",
+      "role": "owner",
+      "status": "active",
+      "source": "owner",
+      "createdAt": "2026-07-10T04:06:07.695Z",
+      "updatedAt": "2026-07-10T04:06:07.695Z"
+    },
+    {
+      "id": "perm_mreey5hr_709bh2",
+      "planSlug": "trip-25",
+      "subjectType": "name",
+      "subjectId": "かな",
+      "displayName": "かな",
+      "role": "editor",
+      "status": "active",
+      "source": "manual",
+      "createdAt": "2026-07-10T04:06:07.695Z",
+      "updatedAt": "2026-07-10T04:06:07.695Z"
+    },
+    {
+      "id": "perm_mrnmxnbm_fm8xyx",
+      "planSlug": "trip-33",
+      "subjectType": "account",
+      "subjectId": "usr_mr0ifupk36jhja",
+      "displayName": "パム",
+      "role": "owner",
+      "status": "active",
+      "source": "owner",
+      "createdAt": "2026-07-16T14:59:36.655Z",
+      "updatedAt": "2026-07-16T15:00:39.485Z"
+    }
+  ],
+  "planInvites": []
+}

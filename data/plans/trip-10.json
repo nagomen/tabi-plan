@@ -1,0 +1,315 @@
+{
+  "createdAt": "2026-05-01T02:00:00.000Z",
+  "slug": "trip-10",
+  "title": "ハワイ旅行",
+  "dates": "2026/12/24 - 2026/12/29",
+  "members": "なごめん、かな、パム、さな",
+  "note": "",
+  "route": "ホノルル、羽田空港",
+  "source": "local",
+  "builtIn": false,
+  "updatedAt": "2026-05-12T09:30:00.000Z",
+  "visibility": "public",
+  "data": {
+    "trip": {
+      "title": "ハワイ旅行",
+      "dates": "2026/12/24 - 2026/12/29",
+      "members": "なごめん、かな、パム、さな",
+      "note": ""
+    },
+    "itinerary": [
+      {
+        "date": "2026-12-24",
+        "day": "Day 1",
+        "area": "ホノルル",
+        "time": "",
+        "type": "move",
+        "typeLabel": "移動",
+        "title": "羽田空港 → ダニエル・K・イノウエ国際空港",
+        "place": "ダニエル・K・イノウエ国際空港",
+        "note": "飛行機 7h00",
+        "lat": 21.3245,
+        "lng": -157.9251,
+        "mapQuery": "ダニエル・K・イノウエ国際空港",
+        "weather": "",
+        "origin": "羽田空港",
+        "destination": "ダニエル・K・イノウエ国際空港",
+        "originLat": 35.5494,
+        "originLng": 139.7798,
+        "destinationLat": 21.3245,
+        "destinationLng": -157.9251
+      },
+      {
+        "date": "2026-12-24",
+        "day": "Day 1",
+        "area": "ホノルル",
+        "time": "16:00",
+        "type": "sight",
+        "typeLabel": "観光",
+        "title": "ワイキキビーチ",
+        "place": "ワイキキビーチ",
+        "note": "",
+        "lat": 21.2767,
+        "lng": -157.8267,
+        "mapQuery": "ワイキキビーチ",
+        "weather": ""
+      },
+      {
+        "date": "2026-12-24",
+        "day": "Day 1",
+        "area": "ホノルル",
+        "time": "",
+        "type": "stay",
+        "typeLabel": "宿泊",
+        "title": "ワイキキのリゾートホテル",
+        "place": "ワイキキ",
+        "note": "",
+        "lat": 21.2793,
+        "lng": -157.8293,
+        "mapQuery": "ワイキキ",
+        "weather": ""
+      },
+      {
+        "date": "2026-12-25",
+        "day": "Day 2",
+        "area": "ホノルル",
+        "time": "07:00",
+        "type": "sight",
+        "typeLabel": "観光",
+        "title": "ダイヤモンドヘッド登山",
+        "place": "ダイヤモンドヘッド",
+        "note": "日の出ハイク",
+        "lat": 21.262,
+        "lng": -157.8055,
+        "mapQuery": "ダイヤモンドヘッド",
+        "weather": ""
+      },
+      {
+        "date": "2026-12-25",
+        "day": "Day 2",
+        "area": "ホノルル",
+        "time": "10:00",
+        "type": "food",
+        "typeLabel": "食事",
+        "title": "アサイーボウルの朝食",
+        "place": "Island Vintage Coffee",
+        "note": "",
+        "lat": 21.2765,
+        "lng": -157.827,
+        "mapQuery": "Island Vintage Coffee",
+        "weather": ""
+      },
+      {
+        "date": "2026-12-25",
+        "day": "Day 2",
+        "area": "ホノルル",
+        "time": "",
+        "type": "stay",
+        "typeLabel": "宿泊",
+        "title": "ワイキキのリゾートホテル",
+        "place": "ワイキキ",
+        "note": "",
+        "lat": 21.2793,
+        "lng": -157.8293,
+        "mapQuery": "ワイキキ",
+        "weather": ""
+      },
+      {
+        "date": "2026-12-26",
+        "day": "Day 3",
+        "area": "ホノルル",
+        "time": "09:00",
+        "type": "sight",
+        "typeLabel": "観光",
+        "title": "真珠湾（パールハーバー）",
+        "place": "真珠湾",
+        "note": "",
+        "lat": 21.3649,
+        "lng": -157.9394,
+        "mapQuery": "真珠湾",
+        "weather": ""
+      },
+      {
+        "date": "2026-12-26",
+        "day": "Day 3",
+        "area": "ホノルル",
+        "time": "14:00",
+        "type": "todo",
+        "typeLabel": "予定",
+        "title": "アラモアナでショッピング",
+        "place": "アラモアナセンター",
+        "note": "",
+        "lat": 21.2911,
+        "lng": -157.8434,
+        "mapQuery": "アラモアナセンター",
+        "weather": ""
+      },
+      {
+        "date": "2026-12-26",
+        "day": "Day 3",
+        "area": "ホノルル",
+        "time": "",
+        "type": "stay",
+        "typeLabel": "宿泊",
+        "title": "ワイキキのリゾートホテル",
+        "place": "ワイキキ",
+        "note": "",
+        "lat": 21.2793,
+        "lng": -157.8293,
+        "mapQuery": "ワイキキ",
+        "weather": ""
+      },
+      {
+        "date": "2026-12-27",
+        "day": "Day 4",
+        "area": "ホノルル",
+        "time": "08:30",
+        "type": "sight",
+        "typeLabel": "観光",
+        "title": "ハナウマ湾でシュノーケリング",
+        "place": "ハナウマ湾",
+        "note": "",
+        "lat": 21.269,
+        "lng": -157.6938,
+        "mapQuery": "ハナウマ湾",
+        "weather": ""
+      },
+      {
+        "date": "2026-12-27",
+        "day": "Day 4",
+        "area": "ホノルル",
+        "time": "",
+        "type": "stay",
+        "typeLabel": "宿泊",
+        "title": "ワイキキのリゾートホテル",
+        "place": "ワイキキ",
+        "note": "",
+        "lat": 21.2793,
+        "lng": -157.8293,
+        "mapQuery": "ワイキキ",
+        "weather": ""
+      },
+      {
+        "date": "2026-12-28",
+        "day": "Day 5",
+        "area": "ホノルル",
+        "time": "12:00",
+        "type": "food",
+        "typeLabel": "食事",
+        "title": "ガーリックシュリンプ",
+        "place": "Giovanni's Shrimp Truck",
+        "note": "",
+        "lat": 21.572,
+        "lng": -158.118,
+        "mapQuery": "Giovanni's Shrimp Truck",
+        "weather": ""
+      },
+      {
+        "date": "2026-12-28",
+        "day": "Day 5",
+        "area": "ホノルル",
+        "time": "",
+        "type": "stay",
+        "typeLabel": "宿泊",
+        "title": "ワイキキのリゾートホテル",
+        "place": "ワイキキ",
+        "note": "",
+        "lat": 21.2793,
+        "lng": -157.8293,
+        "mapQuery": "ワイキキ",
+        "weather": ""
+      },
+      {
+        "date": "2026-12-29",
+        "day": "Day 6",
+        "area": "",
+        "time": "",
+        "type": "move",
+        "typeLabel": "移動",
+        "title": "ダニエル・K・イノウエ国際空港 → 羽田空港",
+        "place": "羽田空港",
+        "note": "飛行機 9h00",
+        "lat": 35.5494,
+        "lng": 139.7798,
+        "mapQuery": "羽田空港",
+        "weather": "",
+        "origin": "ダニエル・K・イノウエ国際空港",
+        "destination": "羽田空港",
+        "originLat": 21.3245,
+        "originLng": -157.9251,
+        "destinationLat": 35.5494,
+        "destinationLng": 139.7798
+      }
+    ],
+    "links": [
+      {
+        "key": "hotel",
+        "label": "ホテル予約",
+        "icon": "link",
+        "url": "https://example.com/hotel-hawaii",
+        "caption": "ワイキキ5泊"
+      }
+    ],
+    "checklist": [
+      {
+        "label": "ESTA申請",
+        "done": true
+      },
+      {
+        "label": "日焼け止め",
+        "done": false
+      },
+      {
+        "label": "水着",
+        "done": false
+      },
+      {
+        "label": "レンタカー予約",
+        "done": true
+      }
+    ],
+    "cities": [
+      {
+        "name": "ホノルル",
+        "fromDate": "2026-12-24",
+        "toDate": "2026-12-29",
+        "lat": 21.3069,
+        "lng": -157.8583
+      }
+    ],
+    "candidates": [
+      {
+        "id": "cand_hi_1",
+        "title": "ダイヤモンドヘッド",
+        "votes": [
+          "パム",
+          "かな",
+          "なごめん",
+          "さな"
+        ],
+        "proposer": "パム",
+        "createdAt": "2026-05-10T04:12:00.000Z",
+        "adopted": true
+      },
+      {
+        "id": "cand_hi_2",
+        "title": "ノースショア",
+        "votes": [
+          "なごめん",
+          "さな"
+        ],
+        "proposer": "なごめん",
+        "createdAt": "2026-05-10T04:12:00.000Z"
+      },
+      {
+        "id": "cand_hi_3",
+        "title": "クアロアランチ",
+        "votes": [
+          "かな"
+        ],
+        "proposer": "かな",
+        "createdAt": "2026-05-10T04:12:00.000Z"
+      }
+    ]
+  }
+}

@@ -1,0 +1,227 @@
+{
+  "createdAt": "2026-05-01T02:00:00.000Z",
+  "slug": "trip-12",
+  "title": "大阪旅行",
+  "dates": "2026/10/3 - 2026/10/5",
+  "members": "パム、かな",
+  "note": "",
+  "route": "大阪、名古屋駅",
+  "source": "local",
+  "builtIn": false,
+  "updatedAt": "2026-05-12T09:30:00.000Z",
+  "visibility": "public",
+  "data": {
+    "trip": {
+      "title": "大阪旅行",
+      "dates": "2026/10/3 - 2026/10/5",
+      "members": "パム、かな",
+      "note": ""
+    },
+    "itinerary": [
+      {
+        "date": "2026-10-03",
+        "day": "Day 1",
+        "area": "大阪",
+        "time": "",
+        "type": "move",
+        "typeLabel": "移動",
+        "title": "名古屋駅 → 新大阪駅（新幹線）",
+        "place": "新大阪駅",
+        "note": "新幹線 0h50",
+        "lat": 34.7332,
+        "lng": 135.5003,
+        "mapQuery": "新大阪駅",
+        "weather": "",
+        "origin": "名古屋駅",
+        "destination": "新大阪駅",
+        "originLat": 35.1706,
+        "originLng": 136.8816,
+        "destinationLat": 34.7332,
+        "destinationLng": 135.5003
+      },
+      {
+        "date": "2026-10-03",
+        "day": "Day 1",
+        "area": "大阪",
+        "time": "11:00",
+        "type": "sight",
+        "typeLabel": "観光",
+        "title": "大阪城",
+        "place": "大阪城",
+        "note": "",
+        "lat": 34.6873,
+        "lng": 135.5259,
+        "mapQuery": "大阪城",
+        "weather": ""
+      },
+      {
+        "date": "2026-10-03",
+        "day": "Day 1",
+        "area": "大阪",
+        "time": "14:00",
+        "type": "food",
+        "typeLabel": "食事",
+        "title": "たこ焼き食べ比べ",
+        "place": "道頓堀",
+        "note": "",
+        "lat": 34.6687,
+        "lng": 135.5013,
+        "mapQuery": "道頓堀",
+        "weather": ""
+      },
+      {
+        "date": "2026-10-03",
+        "day": "Day 1",
+        "area": "大阪",
+        "time": "18:00",
+        "type": "sight",
+        "typeLabel": "観光",
+        "title": "道頓堀・グリコサイン",
+        "place": "道頓堀",
+        "note": "",
+        "lat": 34.6686,
+        "lng": 135.501,
+        "mapQuery": "道頓堀",
+        "weather": ""
+      },
+      {
+        "date": "2026-10-03",
+        "day": "Day 1",
+        "area": "大阪",
+        "time": "",
+        "type": "stay",
+        "typeLabel": "宿泊",
+        "title": "なんばのホテル",
+        "place": "なんば",
+        "note": "",
+        "lat": 34.6659,
+        "lng": 135.501,
+        "mapQuery": "なんば",
+        "weather": ""
+      },
+      {
+        "date": "2026-10-04",
+        "day": "Day 2",
+        "area": "大阪",
+        "time": "09:00",
+        "type": "sight",
+        "typeLabel": "観光",
+        "title": "ユニバーサル・スタジオ・ジャパン",
+        "place": "USJ",
+        "note": "エクスプレスパス購入済み",
+        "lat": 34.6654,
+        "lng": 135.4323,
+        "mapQuery": "USJ",
+        "weather": ""
+      },
+      {
+        "date": "2026-10-04",
+        "day": "Day 2",
+        "area": "大阪",
+        "time": "",
+        "type": "stay",
+        "typeLabel": "宿泊",
+        "title": "なんばのホテル",
+        "place": "なんば",
+        "note": "",
+        "lat": 34.6659,
+        "lng": 135.501,
+        "mapQuery": "なんば",
+        "weather": ""
+      },
+      {
+        "date": "2026-10-05",
+        "day": "Day 3",
+        "area": "大阪",
+        "time": "10:00",
+        "type": "sight",
+        "typeLabel": "観光",
+        "title": "通天閣・新世界",
+        "place": "通天閣",
+        "note": "",
+        "lat": 34.6525,
+        "lng": 135.5063,
+        "mapQuery": "通天閣",
+        "weather": ""
+      },
+      {
+        "date": "2026-10-05",
+        "day": "Day 3",
+        "area": "大阪",
+        "time": "12:00",
+        "type": "food",
+        "typeLabel": "食事",
+        "title": "串カツ（だるま）",
+        "place": "新世界",
+        "note": "",
+        "lat": 34.652,
+        "lng": 135.506,
+        "mapQuery": "新世界",
+        "weather": ""
+      },
+      {
+        "date": "2026-10-05",
+        "day": "Day 3",
+        "area": "",
+        "time": "",
+        "type": "move",
+        "typeLabel": "移動",
+        "title": "新大阪駅 → 名古屋駅（新幹線）",
+        "place": "名古屋駅",
+        "note": "新幹線 0h50",
+        "lat": 35.1706,
+        "lng": 136.8816,
+        "mapQuery": "名古屋駅",
+        "weather": "",
+        "origin": "新大阪駅",
+        "destination": "名古屋駅",
+        "originLat": 34.7332,
+        "originLng": 135.5003,
+        "destinationLat": 35.1706,
+        "destinationLng": 136.8816
+      }
+    ],
+    "links": [],
+    "checklist": [
+      {
+        "label": "USJチケット",
+        "done": true
+      },
+      {
+        "label": "ICOCA準備",
+        "done": false
+      }
+    ],
+    "cities": [
+      {
+        "name": "大阪",
+        "fromDate": "2026-10-03",
+        "toDate": "2026-10-05",
+        "lat": 34.6937,
+        "lng": 135.5023
+      }
+    ],
+    "candidates": [
+      {
+        "id": "cand_osa_1",
+        "title": "USJ",
+        "votes": [
+          "パム",
+          "かな"
+        ],
+        "proposer": "パム",
+        "createdAt": "2026-05-10T04:12:00.000Z",
+        "adopted": true
+      },
+      {
+        "id": "cand_osa_2",
+        "title": "海遊館",
+        "votes": [
+          "かな"
+        ],
+        "proposer": "かな",
+        "createdAt": "2026-05-10T04:12:00.000Z"
+      }
+    ]
+  }
+}

@@ -1,0 +1,197 @@
+{
+  "createdAt": "2026-05-01T02:00:00.000Z",
+  "slug": "trip-13",
+  "title": "福岡旅行",
+  "dates": "2026/9/26 - 2026/9/28",
+  "members": "そうた、ひなた",
+  "note": "",
+  "route": "福岡、羽田空港",
+  "source": "local",
+  "builtIn": false,
+  "updatedAt": "2026-05-12T09:30:00.000Z",
+  "visibility": "public",
+  "data": {
+    "trip": {
+      "title": "福岡旅行",
+      "dates": "2026/9/26 - 2026/9/28",
+      "members": "そうた、ひなた",
+      "note": ""
+    },
+    "itinerary": [
+      {
+        "date": "2026-09-26",
+        "day": "Day 1",
+        "area": "福岡",
+        "time": "",
+        "type": "move",
+        "typeLabel": "移動",
+        "title": "羽田空港 → 福岡空港",
+        "place": "福岡空港",
+        "note": "飛行機 2h00",
+        "lat": 33.5859,
+        "lng": 130.451,
+        "mapQuery": "福岡空港",
+        "weather": "",
+        "origin": "羽田空港",
+        "destination": "福岡空港",
+        "originLat": 35.5494,
+        "originLng": 139.7798,
+        "destinationLat": 33.5859,
+        "destinationLng": 130.451
+      },
+      {
+        "date": "2026-09-26",
+        "day": "Day 1",
+        "area": "福岡",
+        "time": "13:00",
+        "type": "sight",
+        "typeLabel": "観光",
+        "title": "太宰府天満宮",
+        "place": "太宰府天満宮",
+        "note": "梅ヶ枝餅を食べる",
+        "lat": 33.5213,
+        "lng": 130.5348,
+        "mapQuery": "太宰府天満宮",
+        "weather": ""
+      },
+      {
+        "date": "2026-09-26",
+        "day": "Day 1",
+        "area": "福岡",
+        "time": "",
+        "type": "stay",
+        "typeLabel": "宿泊",
+        "title": "博多のホテル",
+        "place": "博多",
+        "note": "",
+        "lat": 33.5898,
+        "lng": 130.4207,
+        "mapQuery": "博多",
+        "weather": ""
+      },
+      {
+        "date": "2026-09-27",
+        "day": "Day 2",
+        "area": "福岡",
+        "time": "10:00",
+        "type": "sight",
+        "typeLabel": "観光",
+        "title": "大濠公園",
+        "place": "大濠公園",
+        "note": "",
+        "lat": 33.5865,
+        "lng": 130.3782,
+        "mapQuery": "大濠公園",
+        "weather": ""
+      },
+      {
+        "date": "2026-09-27",
+        "day": "Day 2",
+        "area": "福岡",
+        "time": "19:00",
+        "type": "food",
+        "typeLabel": "食事",
+        "title": "中洲の屋台でラーメン",
+        "place": "中洲屋台",
+        "note": "",
+        "lat": 33.5931,
+        "lng": 130.4033,
+        "mapQuery": "中洲屋台",
+        "weather": ""
+      },
+      {
+        "date": "2026-09-27",
+        "day": "Day 2",
+        "area": "福岡",
+        "time": "",
+        "type": "stay",
+        "typeLabel": "宿泊",
+        "title": "博多のホテル",
+        "place": "博多",
+        "note": "",
+        "lat": 33.5898,
+        "lng": 130.4207,
+        "mapQuery": "博多",
+        "weather": ""
+      },
+      {
+        "date": "2026-09-28",
+        "day": "Day 3",
+        "area": "福岡",
+        "time": "10:00",
+        "type": "todo",
+        "typeLabel": "予定",
+        "title": "博多駅でお土産（明太子）",
+        "place": "博多駅",
+        "note": "",
+        "lat": 33.5898,
+        "lng": 130.4207,
+        "mapQuery": "博多駅",
+        "weather": ""
+      },
+      {
+        "date": "2026-09-28",
+        "day": "Day 3",
+        "area": "",
+        "time": "",
+        "type": "move",
+        "typeLabel": "移動",
+        "title": "福岡空港 → 羽田空港",
+        "place": "羽田空港",
+        "note": "飛行機 2h00",
+        "lat": 35.5494,
+        "lng": 139.7798,
+        "mapQuery": "羽田空港",
+        "weather": "",
+        "origin": "福岡空港",
+        "destination": "羽田空港",
+        "originLat": 33.5859,
+        "originLng": 130.451,
+        "destinationLat": 35.5494,
+        "destinationLng": 139.7798
+      }
+    ],
+    "links": [],
+    "checklist": [
+      {
+        "label": "航空券",
+        "done": true
+      },
+      {
+        "label": "屋台の現金",
+        "done": false
+      }
+    ],
+    "cities": [
+      {
+        "name": "福岡",
+        "fromDate": "2026-09-26",
+        "toDate": "2026-09-28",
+        "lat": 33.5904,
+        "lng": 130.4017
+      }
+    ],
+    "candidates": [
+      {
+        "id": "cand_fuk_1",
+        "title": "中洲の屋台",
+        "votes": [
+          "そうた",
+          "ひなた"
+        ],
+        "proposer": "そうた",
+        "createdAt": "2026-05-10T04:12:00.000Z",
+        "adopted": true
+      },
+      {
+        "id": "cand_fuk_2",
+        "title": "糸島ドライブ",
+        "votes": [
+          "ひなた"
+        ],
+        "proposer": "ひなた",
+        "createdAt": "2026-05-10T04:12:00.000Z"
+      }
+    ]
+  }
+}

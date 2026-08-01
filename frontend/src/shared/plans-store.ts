@@ -337,17 +337,28 @@ function deleteDevFile(slug: string): void {
   });
 }
 
-// 起動時: ファイル（真実）から localStorage を再構築。ローカルプランは置き換える。
+/**
+ * 起動時にファイル（data/plans/*.json）から localStorage を再構築する。
+ *
+ * dev: ファイルが真実。アプリの保存は /api/plans でファイルへ書き戻るので、
+ *      ローカルプランはファイルの内容で丸ごと置き換えてよい。
+ * 本番: ファイルは git で配る「種」でしかなく、書き戻す先が無い。
+ *      置き換えにすると、訪問者が自分で作った計画がリロードのたびに消える
+ *      （実際にそうなっていた）。種に含まれる slug だけ更新し、他は残す。
+ */
 function hydrateFromDevFiles(): void {
   const files = devPlanFiles();
   if (!files) return;
-  const nonLocal = list().filter((p) => p.source !== "local");
   const metas: PlanMeta[] = files.map((f) => {
     const meta: PlanMeta = { ...f, source: "local" };
     delete (meta as Partial<DevPlanFile>).data;
     return meta;
   });
-  saveList([...nonLocal, ...metas]);
+  const seeded = new Set(metas.map((m) => m.slug));
+  const kept = import.meta.env.DEV
+    ? list().filter((p) => p.source !== "local")
+    : list().filter((p) => !seeded.has(p.slug));
+  saveList([...kept, ...metas]);
   files.forEach((f) => {
     if (f.slug && f.data) writeJSON(DATA_PREFIX + safeSlug(f.slug), f.data);
   });

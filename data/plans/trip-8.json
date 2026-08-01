@@ -1,0 +1,334 @@
+{
+  "createdAt": "2026-05-01T02:00:00.000Z",
+  "slug": "trip-8",
+  "title": "中国旅行",
+  "dates": "2026/9/12 - 2026/9/17",
+  "members": "かな、さな、りく",
+  "note": "",
+  "route": "北京、上海虹橋駅、上海、羽田空港",
+  "source": "local",
+  "builtIn": false,
+  "updatedAt": "2026-05-12T09:30:00.000Z",
+  "visibility": "public",
+  "data": {
+    "trip": {
+      "title": "中国旅行",
+      "dates": "2026/9/12 - 2026/9/17",
+      "members": "かな、さな、りく",
+      "note": ""
+    },
+    "itinerary": [
+      {
+        "date": "2026-09-12",
+        "day": "Day 1",
+        "area": "北京",
+        "time": "",
+        "type": "move",
+        "typeLabel": "移動",
+        "title": "羽田空港 → 北京首都国際空港",
+        "place": "北京首都国際空港",
+        "note": "飛行機 4h00",
+        "lat": 40.0799,
+        "lng": 116.6031,
+        "mapQuery": "北京首都国際空港",
+        "weather": "",
+        "origin": "羽田空港",
+        "destination": "北京首都国際空港",
+        "originLat": 35.5494,
+        "originLng": 139.7798,
+        "destinationLat": 40.0799,
+        "destinationLng": 116.6031
+      },
+      {
+        "date": "2026-09-12",
+        "day": "Day 1",
+        "area": "北京",
+        "time": "15:00",
+        "type": "sight",
+        "typeLabel": "観光",
+        "title": "天安門広場",
+        "place": "天安門広場",
+        "note": "",
+        "lat": 39.9054962,
+        "lng": 116.3976252,
+        "mapQuery": "天安門広場",
+        "weather": ""
+      },
+      {
+        "date": "2026-09-12",
+        "day": "Day 1",
+        "area": "北京",
+        "time": "",
+        "type": "stay",
+        "typeLabel": "宿泊",
+        "title": "北京ホテル（王府井）",
+        "place": "王府井",
+        "note": "",
+        "lat": 39.9151,
+        "lng": 116.4108,
+        "mapQuery": "王府井",
+        "weather": ""
+      },
+      {
+        "date": "2026-09-13",
+        "day": "Day 2",
+        "area": "北京",
+        "time": "09:00",
+        "type": "sight",
+        "typeLabel": "観光",
+        "title": "故宮博物院（紫禁城）",
+        "place": "故宮博物院",
+        "note": "チケット事前予約",
+        "lat": 39.9163447,
+        "lng": 116.3971546,
+        "mapQuery": "故宮博物院",
+        "weather": ""
+      },
+      {
+        "date": "2026-09-13",
+        "day": "Day 2",
+        "area": "北京",
+        "time": "19:00",
+        "type": "food",
+        "typeLabel": "食事",
+        "title": "北京ダック（全聚徳）",
+        "place": "全聚徳",
+        "note": "",
+        "lat": 39.8996,
+        "lng": 116.4074,
+        "mapQuery": "全聚徳",
+        "weather": ""
+      },
+      {
+        "date": "2026-09-13",
+        "day": "Day 2",
+        "area": "北京",
+        "time": "",
+        "type": "stay",
+        "typeLabel": "宿泊",
+        "title": "北京ホテル（王府井）",
+        "place": "王府井",
+        "note": "",
+        "lat": 39.9151,
+        "lng": 116.4108,
+        "mapQuery": "王府井",
+        "weather": ""
+      },
+      {
+        "date": "2026-09-14",
+        "day": "Day 3",
+        "area": "北京",
+        "time": "08:30",
+        "type": "sight",
+        "typeLabel": "観光",
+        "title": "万里の長城（慕田峪）",
+        "place": "慕田峪長城",
+        "note": "ロープウェイ利用",
+        "lat": 40.4319077,
+        "lng": 116.5703749,
+        "mapQuery": "慕田峪長城",
+        "weather": ""
+      },
+      {
+        "date": "2026-09-14",
+        "day": "Day 3",
+        "area": "北京",
+        "time": "",
+        "type": "stay",
+        "typeLabel": "宿泊",
+        "title": "北京ホテル（王府井）",
+        "place": "王府井",
+        "note": "",
+        "lat": 39.9151,
+        "lng": 116.4108,
+        "mapQuery": "王府井",
+        "weather": ""
+      },
+      {
+        "date": "2026-09-15",
+        "day": "Day 4",
+        "area": "",
+        "time": "",
+        "type": "move",
+        "typeLabel": "移動",
+        "title": "北京 → 上海虹橋（高速鉄道）",
+        "place": "上海虹橋駅",
+        "note": "高速鉄道 4h30",
+        "lat": 31.1943,
+        "lng": 121.3197,
+        "mapQuery": "上海虹橋駅",
+        "weather": "",
+        "origin": "北京南駅",
+        "destination": "上海虹橋駅",
+        "originLat": 39.8656,
+        "originLng": 116.3785,
+        "destinationLat": 31.1943,
+        "destinationLng": 121.3197
+      },
+      {
+        "date": "2026-09-15",
+        "day": "Day 4",
+        "area": "上海",
+        "time": "18:00",
+        "type": "sight",
+        "typeLabel": "観光",
+        "title": "外灘（バンド）",
+        "place": "外灘",
+        "note": "夜景スポット",
+        "lat": 31.2396878,
+        "lng": 121.4909,
+        "mapQuery": "外灘",
+        "weather": ""
+      },
+      {
+        "date": "2026-09-15",
+        "day": "Day 4",
+        "area": "上海",
+        "time": "",
+        "type": "stay",
+        "typeLabel": "宿泊",
+        "title": "上海ホテル（南京東路）",
+        "place": "南京東路",
+        "note": "",
+        "lat": 31.2386,
+        "lng": 121.4805,
+        "mapQuery": "南京東路",
+        "weather": ""
+      },
+      {
+        "date": "2026-09-16",
+        "day": "Day 5",
+        "area": "上海",
+        "time": "10:00",
+        "type": "sight",
+        "typeLabel": "観光",
+        "title": "豫園",
+        "place": "豫園",
+        "note": "",
+        "lat": 31.227,
+        "lng": 121.4922,
+        "mapQuery": "豫園",
+        "weather": ""
+      },
+      {
+        "date": "2026-09-16",
+        "day": "Day 5",
+        "area": "上海",
+        "time": "15:00",
+        "type": "sight",
+        "typeLabel": "観光",
+        "title": "東方明珠塔",
+        "place": "東方明珠塔",
+        "note": "",
+        "lat": 31.2397,
+        "lng": 121.4998,
+        "mapQuery": "東方明珠塔",
+        "weather": ""
+      },
+      {
+        "date": "2026-09-16",
+        "day": "Day 5",
+        "area": "上海",
+        "time": "",
+        "type": "stay",
+        "typeLabel": "宿泊",
+        "title": "上海ホテル（南京東路）",
+        "place": "南京東路",
+        "note": "",
+        "lat": 31.2386,
+        "lng": 121.4805,
+        "mapQuery": "南京東路",
+        "weather": ""
+      },
+      {
+        "date": "2026-09-17",
+        "day": "Day 6",
+        "area": "",
+        "time": "",
+        "type": "move",
+        "typeLabel": "移動",
+        "title": "上海浦東国際空港 → 羽田空港",
+        "place": "羽田空港",
+        "note": "飛行機 3h00",
+        "lat": 35.5494,
+        "lng": 139.7798,
+        "mapQuery": "羽田空港",
+        "weather": "",
+        "origin": "上海浦東国際空港",
+        "destination": "羽田空港",
+        "originLat": 31.1443,
+        "originLng": 121.8083,
+        "destinationLat": 35.5494,
+        "destinationLng": 139.7798
+      }
+    ],
+    "links": [],
+    "checklist": [
+      {
+        "label": "中国ビザ確認",
+        "done": true
+      },
+      {
+        "label": "VPN準備",
+        "done": false
+      },
+      {
+        "label": "現金（人民元）",
+        "done": false
+      },
+      {
+        "label": "交通カード",
+        "done": false
+      }
+    ],
+    "cities": [
+      {
+        "name": "北京",
+        "fromDate": "2026-09-12",
+        "toDate": "2026-09-15",
+        "lat": 39.9042,
+        "lng": 116.4074
+      },
+      {
+        "name": "上海",
+        "fromDate": "2026-09-15",
+        "toDate": "2026-09-17",
+        "lat": 31.2304,
+        "lng": 121.4737
+      }
+    ],
+    "candidates": [
+      {
+        "id": "cand_cn_1",
+        "title": "万里の長城",
+        "votes": [
+          "かな",
+          "さな",
+          "りく"
+        ],
+        "proposer": "かな",
+        "createdAt": "2026-05-10T04:12:00.000Z",
+        "adopted": true
+      },
+      {
+        "id": "cand_cn_2",
+        "title": "上海ディズニーランド",
+        "votes": [
+          "りく"
+        ],
+        "proposer": "りく",
+        "createdAt": "2026-05-10T04:12:00.000Z"
+      },
+      {
+        "id": "cand_cn_3",
+        "title": "小籠包食べ歩き",
+        "votes": [
+          "さな",
+          "かな"
+        ],
+        "proposer": "さな",
+        "createdAt": "2026-05-10T04:12:00.000Z"
+      }
+    ]
+  }
+}

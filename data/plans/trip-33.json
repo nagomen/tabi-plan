@@ -1,0 +1,44 @@
+{
+  "createdAt": "2026-07-16T14:59:36.659Z",
+  "slug": "trip-33",
+  "title": "カナダ",
+  "dates": "2026/7/30 - 2026/8/8",
+  "members": "",
+  "note": "",
+  "cover": "",
+  "route": "モントリオール、オタワ",
+  "source": "local",
+  "builtIn": false,
+  "published": true,
+  "updatedAt": "2026-07-16T15:00:39.486Z",
+  "visibility": "public",
+  "data": {
+    "trip": {
+      "title": "カナダ",
+      "dates": "2026/7/30 - 2026/8/8",
+      "members": "",
+      "note": "",
+      "cover": ""
+    },
+    "itinerary": [],
+    "links": [],
+    "checklist": [],
+    "cities": [
+      {
+        "name": "モントリオール",
+        "fromDate": "2026-07-30",
+        "toDate": "2026-08-04",
+        "lat": 45.5031824,
+        "lng": -73.5698065
+      },
+      {
+        "name": "オタワ",
+        "fromDate": "2026-08-04",
+        "toDate": "2026-08-08",
+        "lat": 45.5031824,
+        "lng": -73.5698065
+      }
+    ],
+    "candidates": []
+  }
+}

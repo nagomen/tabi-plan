@@ -16,6 +16,9 @@ backend/.clasp.json
 # Local agent/editor state
 .claude/
 
-# Dev domain data (local; future: DB)
-data/plans/*.json
-data/store/*.json
+# Domain data (future: DB)
+# サーバーが無い間は、この JSON を git で配る＝本番の「配布用の種」になる。
+# ビルド時に window.__DEV_PLANS__ / __DEV_STORE__ として HTML へ埋め込まれ、
+# 訪問者の localStorage に流し込まれる（公開ページに載る点に注意）。
+# ただし端末固有の状態は配らない。
+data/store/trip-dashboard-user.json

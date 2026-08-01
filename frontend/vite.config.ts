@@ -120,16 +120,19 @@ function readAllStore(): Record<string, unknown> {
 }
 
 /**
- * 開発専用: backend.ts のドメインデータ（プラン以外: ユーザー・費用・送金リンク）を
+ * backend.ts のドメインデータ（プラン以外: アカウント・権限・費用・送金リンク）を
  * data/store/<key>.json に永続化する。
- *  - transformIndexHtml で window.__DEV_STORE__ に全ファイルを注入（preload の真実）
- *  - /api/store/<key> への PUT/DELETE でファイルを書き込み/削除
- * `apply: "serve"` なので本番ビルドには含まれない（本番は localStorage のまま）。
+ *  - transformIndexHtml で window.__DEV_STORE__ に全ファイルを注入
+ *  - /api/store/<key> への PUT/DELETE でファイルを書き込み/削除（dev サーバのみ）
+ *
+ * 本番ビルドにも注入する。サーバーが無い間、git にコミットした JSON が
+ * 「配布用の種」になり、どの端末で開いても同じアカウントでログインできる。
+ * 本番では書き戻せないので、種は backend.ts 側で
+ * 「訪問者が持っていないものだけ埋める」マージとして扱う。
  */
 function devStoreFiles(): Plugin {
   return {
     name: "dev-store-files",
-    apply: "serve",
     configureServer(server) {
       server.middlewares.use("/api/store", (req, res) => {
         const rest = decodeURIComponent((req.url || "/").split("?")[0].replace(/^\//, ""));

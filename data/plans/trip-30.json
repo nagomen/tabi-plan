@@ -1,0 +1,28 @@
+{
+  "createdAt": "2026-07-13T04:09:02.910Z",
+  "slug": "trip-30",
+  "title": "戻る動作テスト",
+  "dates": "",
+  "members": "",
+  "note": "",
+  "cover": "",
+  "route": "",
+  "source": "local",
+  "builtIn": false,
+  "published": false,
+  "updatedAt": "2026-07-13T04:09:02.912Z",
+  "data": {
+    "trip": {
+      "title": "戻る動作テスト",
+      "dates": "",
+      "members": "",
+      "note": "",
+      "cover": ""
+    },
+    "itinerary": [],
+    "links": [],
+    "checklist": [],
+    "cities": [],
+    "candidates": []
+  }
+}

@@ -1,0 +1,227 @@
+{
+  "createdAt": "2026-05-01T02:00:00.000Z",
+  "slug": "trip-14",
+  "title": "台湾旅行",
+  "dates": "2026/8/22 - 2026/8/25",
+  "members": "パム、なごめん",
+  "note": "",
+  "route": "台北、新北、成田空港",
+  "source": "local",
+  "builtIn": false,
+  "updatedAt": "2026-05-12T09:30:00.000Z",
+  "visibility": "public",
+  "data": {
+    "trip": {
+      "title": "台湾旅行",
+      "dates": "2026/8/22 - 2026/8/25",
+      "members": "パム、なごめん",
+      "note": ""
+    },
+    "itinerary": [
+      {
+        "date": "2026-08-22",
+        "day": "Day 1",
+        "area": "台北",
+        "time": "",
+        "type": "move",
+        "typeLabel": "移動",
+        "title": "成田空港 → 台湾桃園国際空港",
+        "place": "台湾桃園国際空港",
+        "note": "飛行機 4h00",
+        "lat": 25.0777,
+        "lng": 121.2328,
+        "mapQuery": "台湾桃園国際空港",
+        "weather": "",
+        "origin": "成田空港",
+        "destination": "台湾桃園国際空港",
+        "originLat": 35.772,
+        "originLng": 140.3929,
+        "destinationLat": 25.0777,
+        "destinationLng": 121.2328
+      },
+      {
+        "date": "2026-08-22",
+        "day": "Day 1",
+        "area": "台北",
+        "time": "15:00",
+        "type": "sight",
+        "typeLabel": "観光",
+        "title": "台北101",
+        "place": "台北101",
+        "note": "",
+        "lat": 25.0339,
+        "lng": 121.5645,
+        "mapQuery": "台北101",
+        "weather": ""
+      },
+      {
+        "date": "2026-08-22",
+        "day": "Day 1",
+        "area": "台北",
+        "time": "19:00",
+        "type": "food",
+        "typeLabel": "食事",
+        "title": "鼎泰豐で小籠包",
+        "place": "鼎泰豐 本店",
+        "note": "",
+        "lat": 25.033,
+        "lng": 121.533,
+        "mapQuery": "鼎泰豐 本店",
+        "weather": ""
+      },
+      {
+        "date": "2026-08-22",
+        "day": "Day 1",
+        "area": "台北",
+        "time": "",
+        "type": "stay",
+        "typeLabel": "宿泊",
+        "title": "台北のホテル（西門町）",
+        "place": "西門町",
+        "note": "",
+        "lat": 25.0421,
+        "lng": 121.5075,
+        "mapQuery": "西門町",
+        "weather": ""
+      },
+      {
+        "date": "2026-08-23",
+        "day": "Day 2",
+        "area": "新北",
+        "time": "14:00",
+        "type": "sight",
+        "typeLabel": "観光",
+        "title": "九份老街",
+        "place": "九份",
+        "note": "夕方の提灯が幻想的",
+        "lat": 25.1096,
+        "lng": 121.8449,
+        "mapQuery": "九份",
+        "weather": ""
+      },
+      {
+        "date": "2026-08-23",
+        "day": "Day 2",
+        "area": "台北",
+        "time": "",
+        "type": "stay",
+        "typeLabel": "宿泊",
+        "title": "台北のホテル（西門町）",
+        "place": "西門町",
+        "note": "",
+        "lat": 25.0421,
+        "lng": 121.5075,
+        "mapQuery": "西門町",
+        "weather": ""
+      },
+      {
+        "date": "2026-08-24",
+        "day": "Day 3",
+        "area": "台北",
+        "time": "10:00",
+        "type": "sight",
+        "typeLabel": "観光",
+        "title": "龍山寺",
+        "place": "龍山寺",
+        "note": "",
+        "lat": 25.0369,
+        "lng": 121.4998,
+        "mapQuery": "龍山寺",
+        "weather": ""
+      },
+      {
+        "date": "2026-08-24",
+        "day": "Day 3",
+        "area": "台北",
+        "time": "18:00",
+        "type": "food",
+        "typeLabel": "食事",
+        "title": "士林夜市",
+        "place": "士林夜市",
+        "note": "",
+        "lat": 25.088,
+        "lng": 121.524,
+        "mapQuery": "士林夜市",
+        "weather": ""
+      },
+      {
+        "date": "2026-08-24",
+        "day": "Day 3",
+        "area": "台北",
+        "time": "",
+        "type": "stay",
+        "typeLabel": "宿泊",
+        "title": "台北のホテル（西門町）",
+        "place": "西門町",
+        "note": "",
+        "lat": 25.0421,
+        "lng": 121.5075,
+        "mapQuery": "西門町",
+        "weather": ""
+      },
+      {
+        "date": "2026-08-25",
+        "day": "Day 4",
+        "area": "",
+        "time": "",
+        "type": "move",
+        "typeLabel": "移動",
+        "title": "台湾桃園国際空港 → 成田空港",
+        "place": "成田空港",
+        "note": "飛行機 3h30",
+        "lat": 35.772,
+        "lng": 140.3929,
+        "mapQuery": "成田空港",
+        "weather": "",
+        "origin": "台湾桃園国際空港",
+        "destination": "成田空港",
+        "originLat": 25.0777,
+        "originLng": 121.2328,
+        "destinationLat": 35.772,
+        "destinationLng": 140.3929
+      }
+    ],
+    "links": [],
+    "checklist": [
+      {
+        "label": "パスポート残存期間",
+        "done": true
+      },
+      {
+        "label": "悠遊カード",
+        "done": false
+      }
+    ],
+    "cities": [
+      {
+        "name": "台北",
+        "fromDate": "2026-08-22",
+        "toDate": "2026-08-25",
+        "lat": 25.033,
+        "lng": 121.5654
+      }
+    ],
+    "candidates": [
+      {
+        "id": "cand_tw_1",
+        "title": "九份",
+        "votes": [
+          "パム",
+          "なごめん"
+        ],
+        "proposer": "パム",
+        "createdAt": "2026-05-10T04:12:00.000Z",
+        "adopted": true
+      },
+      {
+        "id": "cand_tw_2",
+        "title": "猫空ロープウェイ",
+        "votes": [
+          "なごめん"
+        ],
+        "proposer": "なごめん",
+        "createdAt": "2026-05-10T04:12:00.000Z"
+      }
+    ]
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "createdAt": "2026-07-10T02:37:59.905Z",
+  "slug": "trip-22",
+  "title": "国境旅行",
+  "dates": "2026/7/13 - 2026/7/17",
+  "members": "パム、かな",
+  "note": "",
+  "cover": "",
+  "route": "",
+  "source": "local",
+  "builtIn": false,
+  "updatedAt": "2026-07-10T02:38:18.159Z",
+  "data": {
+    "trip": {
+      "title": "国境旅行",
+      "dates": "2026/7/13 - 2026/7/17",
+      "members": "パム、かな",
+      "note": "",
+      "cover": ""
+    },
+    "itinerary": [],
+    "links": [],
+    "checklist": [],
+    "cities": [],
+    "candidates": []
+  }
+}

@@ -1,0 +1,39 @@
+{
+  "createdAt": "2026-06-29T04:18:56.680Z",
+  "slug": "trip-2",
+  "title": "モンゴル計画",
+  "dates": "2026/11/25 - 2026/11/30",
+  "members": "なごめん、かな、さな",
+  "note": "",
+  "route": "",
+  "source": "local",
+  "builtIn": false,
+  "updatedAt": "2026-06-29T04:20:15.546Z",
+  "data": {
+    "trip": {
+      "title": "モンゴル計画",
+      "dates": "2026/11/25 - 2026/11/30",
+      "members": "なごめん、かな、さな",
+      "note": ""
+    },
+    "itinerary": [],
+    "links": [],
+    "checklist": [],
+    "cities": [
+      {
+        "name": "札幌",
+        "fromDate": "2026-11-25",
+        "toDate": "2026-11-27",
+        "lat": 43.0618,
+        "lng": 141.3545
+      },
+      {
+        "name": "ウランバートル",
+        "fromDate": "2026-11-27",
+        "toDate": "2026-11-30",
+        "lat": 43.4519831,
+        "lng": 142.8197834
+      }
+    ]
+  }
+}

@@ -1,0 +1,135 @@
+{
+  "createdAt": "2026-07-11T01:47:16.789Z",
+  "slug": "trip-26",
+  "title": "東南アジア",
+  "dates": "2026/7/22 - 2026/7/25",
+  "members": "パム",
+  "note": "",
+  "cover": "",
+  "route": "バンコク、マニラ",
+  "source": "local",
+  "builtIn": false,
+  "published": false,
+  "updatedAt": "2026-07-11T02:20:44.069Z",
+  "visibility": "public",
+  "data": {
+    "trip": {
+      "title": "東南アジア",
+      "dates": "2026/7/22 - 2026/7/25",
+      "members": "パム",
+      "note": "",
+      "cover": ""
+    },
+    "itinerary": [
+      {
+        "date": "2026-07-22",
+        "day": "Day 1",
+        "area": "バンコク",
+        "time": "",
+        "type": "stay",
+        "typeLabel": "宿泊",
+        "title": "マリオット",
+        "place": "マリオット",
+        "note": "",
+        "lat": 13.7276894,
+        "lng": 100.522168,
+        "mapQuery": "Bangkok Marriott Hotel The Surawongse, 262, スラワン通り, ปราโมทย์, シーパーヤー, เขตบางรัก, バンコク, 10500, タイ王国",
+        "weather": ""
+      },
+      {
+        "date": "2026-07-23",
+        "day": "Day 2",
+        "area": "バンコク",
+        "time": "",
+        "type": "stay",
+        "typeLabel": "宿泊",
+        "title": "マリオット",
+        "place": "マリオット",
+        "note": "",
+        "lat": 13.7276894,
+        "lng": 100.522168,
+        "mapQuery": "Bangkok Marriott Hotel The Surawongse, 262, スラワン通り, ปราโมทย์, シーパーヤー, เขตบางรัก, バンコク, 10500, タイ王国",
+        "weather": ""
+      },
+      {
+        "date": "2026-07-24",
+        "day": "Day 3",
+        "area": "バンコク",
+        "time": "",
+        "type": "food",
+        "typeLabel": "食事",
+        "title": "",
+        "place": "",
+        "note": "",
+        "lat": "",
+        "lng": "",
+        "mapQuery": "",
+        "weather": ""
+      },
+      {
+        "date": "2026-07-24",
+        "day": "Day 3",
+        "area": "バンコク",
+        "time": "",
+        "type": "sight",
+        "typeLabel": "観光",
+        "title": "",
+        "place": "",
+        "note": "",
+        "lat": "",
+        "lng": "",
+        "mapQuery": "",
+        "weather": ""
+      },
+      {
+        "date": "2026-07-24",
+        "day": "Day 3",
+        "area": "バンコク",
+        "time": "",
+        "type": "stay",
+        "typeLabel": "宿泊",
+        "title": "マリオット",
+        "place": "マリオット",
+        "note": "",
+        "lat": 13.7276894,
+        "lng": 100.522168,
+        "mapQuery": "Bangkok Marriott Hotel The Surawongse, 262, スラワン通り, ปราโมทย์, シーパーヤー, เขตบางรัก, バンコク, 10500, タイ王国",
+        "weather": ""
+      },
+      {
+        "date": "2026-07-25",
+        "day": "Day 4",
+        "area": "マニラ",
+        "time": "",
+        "type": "sight",
+        "typeLabel": "観光",
+        "title": "",
+        "place": "",
+        "note": "",
+        "lat": "",
+        "lng": "",
+        "mapQuery": "",
+        "weather": ""
+      }
+    ],
+    "links": [],
+    "checklist": [],
+    "cities": [
+      {
+        "name": "バンコク",
+        "fromDate": "2026-07-22",
+        "toDate": "2026-07-24",
+        "lat": 13.7563,
+        "lng": 100.5018
+      },
+      {
+        "name": "マニラ",
+        "fromDate": "2026-07-24",
+        "toDate": "2026-07-25",
+        "lat": 14.5904492,
+        "lng": 120.9803621
+      }
+    ],
+    "candidates": []
+  }
+}

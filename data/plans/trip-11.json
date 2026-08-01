@@ -1,0 +1,242 @@
+{
+  "createdAt": "2026-05-01T02:00:00.000Z",
+  "slug": "trip-11",
+  "title": "京都旅行",
+  "dates": "2026/11/20 - 2026/11/22",
+  "members": "みお、はると",
+  "note": "",
+  "route": "京都、東京駅",
+  "source": "local",
+  "builtIn": false,
+  "updatedAt": "2026-05-12T09:30:00.000Z",
+  "visibility": "public",
+  "data": {
+    "trip": {
+      "title": "京都旅行",
+      "dates": "2026/11/20 - 2026/11/22",
+      "members": "みお、はると",
+      "note": ""
+    },
+    "itinerary": [
+      {
+        "date": "2026-11-20",
+        "day": "Day 1",
+        "area": "京都",
+        "time": "",
+        "type": "move",
+        "typeLabel": "移動",
+        "title": "東京駅 → 京都駅（新幹線）",
+        "place": "京都駅",
+        "note": "新幹線 2h15",
+        "lat": 34.9858,
+        "lng": 135.7588,
+        "mapQuery": "京都駅",
+        "weather": "",
+        "origin": "東京駅",
+        "destination": "京都駅",
+        "originLat": 35.6812,
+        "originLng": 139.7671,
+        "destinationLat": 34.9858,
+        "destinationLng": 135.7588
+      },
+      {
+        "date": "2026-11-20",
+        "day": "Day 1",
+        "area": "京都",
+        "time": "11:00",
+        "type": "sight",
+        "typeLabel": "観光",
+        "title": "清水寺",
+        "place": "清水寺",
+        "note": "紅葉ライトアップ",
+        "lat": 34.9948,
+        "lng": 135.785,
+        "mapQuery": "清水寺",
+        "weather": ""
+      },
+      {
+        "date": "2026-11-20",
+        "day": "Day 1",
+        "area": "京都",
+        "time": "13:00",
+        "type": "food",
+        "typeLabel": "食事",
+        "title": "湯豆腐の昼食",
+        "place": "南禅寺 順正",
+        "note": "",
+        "lat": 35.0113,
+        "lng": 135.7942,
+        "mapQuery": "南禅寺 順正",
+        "weather": ""
+      },
+      {
+        "date": "2026-11-20",
+        "day": "Day 1",
+        "area": "京都",
+        "time": "17:00",
+        "type": "sight",
+        "typeLabel": "観光",
+        "title": "祇園・花見小路",
+        "place": "祇園",
+        "note": "",
+        "lat": 35.0037,
+        "lng": 135.7752,
+        "mapQuery": "祇園",
+        "weather": ""
+      },
+      {
+        "date": "2026-11-20",
+        "day": "Day 1",
+        "area": "京都",
+        "time": "",
+        "type": "stay",
+        "typeLabel": "宿泊",
+        "title": "京都の町家ステイ",
+        "place": "京都駅周辺",
+        "note": "",
+        "lat": 34.988,
+        "lng": 135.759,
+        "mapQuery": "京都駅周辺",
+        "weather": ""
+      },
+      {
+        "date": "2026-11-21",
+        "day": "Day 2",
+        "area": "京都",
+        "time": "08:00",
+        "type": "sight",
+        "typeLabel": "観光",
+        "title": "伏見稲荷大社",
+        "place": "伏見稲荷大社",
+        "note": "千本鳥居は朝が空いてる",
+        "lat": 34.9671,
+        "lng": 135.7727,
+        "mapQuery": "伏見稲荷大社",
+        "weather": ""
+      },
+      {
+        "date": "2026-11-21",
+        "day": "Day 2",
+        "area": "京都",
+        "time": "13:00",
+        "type": "sight",
+        "typeLabel": "観光",
+        "title": "金閣寺",
+        "place": "金閣寺",
+        "note": "",
+        "lat": 35.0394,
+        "lng": 135.7292,
+        "mapQuery": "金閣寺",
+        "weather": ""
+      },
+      {
+        "date": "2026-11-21",
+        "day": "Day 2",
+        "area": "京都",
+        "time": "16:00",
+        "type": "sight",
+        "typeLabel": "観光",
+        "title": "嵐山・竹林の小径",
+        "place": "嵐山",
+        "note": "",
+        "lat": 35.0094,
+        "lng": 135.6737,
+        "mapQuery": "嵐山",
+        "weather": ""
+      },
+      {
+        "date": "2026-11-21",
+        "day": "Day 2",
+        "area": "京都",
+        "time": "",
+        "type": "stay",
+        "typeLabel": "宿泊",
+        "title": "京都の町家ステイ",
+        "place": "京都駅周辺",
+        "note": "",
+        "lat": 34.988,
+        "lng": 135.759,
+        "mapQuery": "京都駅周辺",
+        "weather": ""
+      },
+      {
+        "date": "2026-11-22",
+        "day": "Day 3",
+        "area": "京都",
+        "time": "10:00",
+        "type": "todo",
+        "typeLabel": "予定",
+        "title": "錦市場で食べ歩き",
+        "place": "錦市場",
+        "note": "",
+        "lat": 35.005,
+        "lng": 135.7649,
+        "mapQuery": "錦市場",
+        "weather": ""
+      },
+      {
+        "date": "2026-11-22",
+        "day": "Day 3",
+        "area": "",
+        "time": "",
+        "type": "move",
+        "typeLabel": "移動",
+        "title": "京都駅 → 東京駅（新幹線）",
+        "place": "東京駅",
+        "note": "新幹線 2h15",
+        "lat": 35.6812,
+        "lng": 139.7671,
+        "mapQuery": "東京駅",
+        "weather": "",
+        "origin": "京都駅",
+        "destination": "東京駅",
+        "originLat": 34.9858,
+        "originLng": 135.7588,
+        "destinationLat": 35.6812,
+        "destinationLng": 139.7671
+      }
+    ],
+    "links": [],
+    "checklist": [
+      {
+        "label": "寺社の拝観券",
+        "done": false
+      },
+      {
+        "label": "紅葉の見頃チェック",
+        "done": true
+      }
+    ],
+    "cities": [
+      {
+        "name": "京都",
+        "fromDate": "2026-11-20",
+        "toDate": "2026-11-22",
+        "lat": 35.0116,
+        "lng": 135.7681
+      }
+    ],
+    "candidates": [
+      {
+        "id": "cand_kyo_1",
+        "title": "伏見稲荷大社",
+        "votes": [
+          "みお",
+          "はると"
+        ],
+        "proposer": "みお",
+        "createdAt": "2026-05-10T04:12:00.000Z",
+        "adopted": true
+      },
+      {
+        "id": "cand_kyo_2",
+        "title": "貴船神社",
+        "votes": [
+          "はると"
+        ],
+        "proposer": "はると",
+        "createdAt": "2026-05-10T04:12:00.000Z"
+      }
+    ]
+  }
+}
