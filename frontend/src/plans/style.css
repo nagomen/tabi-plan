@@ -1716,12 +1716,13 @@
     position: relative;
     z-index: 1;
     display: grid;
-    grid-template-columns: minmax(140px, 180px) minmax(0, 1fr) auto;
+    grid-template-columns: minmax(140px, 180px) minmax(0, 1fr);
     grid-template-areas:
-      "art copy cta"
-      "art steps cta";
+      "art copy"
+      "art steps"
+      "art cta";
     align-items: center;
-    gap: 16px 22px;
+    gap: 14px 22px;
     width: min(760px, 100%);
     margin: 0 auto;
     padding: 10px 8px;
@@ -1864,36 +1865,37 @@
     letter-spacing: .06em;
   }
 
+  /* 主導線だが、塗りつぶしの箱は置かない。
+     文字＋アイコンに下罫線を1本引いて「押せる語」として見せる。 */
   .hub-empty-cta {
     grid-area: cta;
+    justify-self: start;
     display: inline-flex;
     align-items: center;
-    justify-content: center;
-    gap: 8px;
-    align-self: stretch;
-    min-width: 150px;
-    padding: 0 18px;
-    border: 2px solid var(--green);
-    background: var(--green);
-    color: #fff;
-    font-size: 14px;
+    gap: 9px;
+    min-height: 44px;
+    padding: 0 2px;
+    border: 0;
+    border-bottom: 2px solid currentColor;
+    background: none;
+    color: var(--green);
+    font-size: 16px;
     font-weight: 620;
+    letter-spacing: .01em;
     text-decoration: none;
-    text-align: center;
+    transition: color .15s ease, gap .15s ease;
   }
 
   .hub-empty-cta svg,
   .hub-empty-cta .hi {
-    width: 20px;
-    height: 20px;
+    width: 19px;
+    height: 19px;
   }
 
   .hub-empty-cta:hover,
   .hub-empty-cta:focus-visible {
-    outline: 3px solid var(--green-soft);
-    outline-offset: 2px;
-    background: #063f32;
-    border-color: #063f32;
+    gap: 12px;
+    color: #063f32;
   }
 
   .hub-empty-simple {
@@ -2834,8 +2836,8 @@
       justify-content: center;
     }
     .hub-empty-cta {
+      justify-self: center;
       min-height: 48px;
-      width: 100%;
     }
     .plan-row {
       scroll-snap-align: start;
