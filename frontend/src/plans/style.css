@@ -204,6 +204,11 @@
 
   .discover-panel {
     position: relative;
+    /* .discover-grid のグリッドアイテム。min-width の既定 auto のままだと
+       中のカード列（.discover-card-grid）の実寸まで広がってしまい、
+       overflow-x:auto がスクロール領域として成立しない（横スクロールできず、
+       カードが画面外へはみ出したまま切れる）。0 を明示して縮めるようにする。 */
+    min-width: 0;
     border: 2px solid #b8c5bd;
     background: #fff;
     box-shadow: 6px 6px 0 #cbd8d1;
