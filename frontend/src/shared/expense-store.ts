@@ -11,7 +11,7 @@
 // computeSettlement は純関数のまま。表示のために id → 表示名へ解決する
 // （名前は「表示のための値」に降格した、という整理）。
 
-import type { Settlement, SettlementTransfer, ExpenseDetail, SettlementShare } from "./types";
+import type { Settlement, SettlementTransfer, ExpenseDetail, SettlementHistory } from "./types";
 import * as db from "./db";
 import type {
   ExpenseRow, ExpenseShareRow, SettlementRow, SplitMethod, ExpenseCategory, PaymentMethod,
@@ -51,8 +51,17 @@ export function list(planId: string): ExpenseEntry[] {
   const shares = db.expenseShares();
   return db
     .expenses()
-    .filter((e) => e.plan_id === planId)
+    .filter((e) => e.plan_id === planId && !e.deleted_at)
     .map((row) => ({ row, shares: shares.filter((s) => s.expense_id === row.id) }));
+}
+
+export function canceledList(planId: string): ExpenseEntry[] {
+  const shares = db.expenseShares();
+  return db
+    .expenses()
+    .filter((e) => e.plan_id === planId && e.deleted_at)
+    .map((row) => ({ row, shares: shares.filter((s) => s.expense_id === row.id) }))
+    .sort((a, b) => String(b.row.deleted_at || "").localeCompare(String(a.row.deleted_at || "")));
 }
 
 export function get(planId: string, expenseId: string): ExpenseEntry | undefined {
@@ -160,6 +169,13 @@ export function restore(row: ExpenseRow, shares: ExpenseShareRow[]): void {
   db.restoreExpense(row, shares);
 }
 
+export function restoreById(planId: string, expenseId: string): boolean {
+  const entry = canceledList(planId).find((item) => item.row.id === expenseId);
+  if (!entry) return false;
+  restore(entry.row, entry.shares);
+  return true;
+}
+
 export function addSettlement(planId: string, input: {
   fromUserId: string; toUserId: string; amountBaseMinor: number; note?: string | null;
 }): Promise<void> {
@@ -181,6 +197,29 @@ function amountLabel(row: ExpenseRow): string {
   const currency = (row.currency || "JPY").toUpperCase();
   if (currency !== "JPY") return `${currency} ${row.amount_minor.toLocaleString("ja-JP")}`;
   return formatYen(row.amount_minor);
+}
+
+export function entryDetail(entry: ExpenseEntry, selfUserId = ""): ExpenseDetail {
+  const { row, shares } = entry;
+  const mine = selfUserId ? shares.find((s) => s.user_id === selfUserId) : undefined;
+  return {
+    id: row.id,
+    kind: "expense",
+    date: row.paid_on || "",
+    payer: db.nameOf(row.payer_user_id),
+    category: CATEGORY_LABEL[row.category] || "その他",
+    title: row.title || "立替",
+    mode: SPLIT_LABEL[row.split_method] || "",
+    amountLabel: amountLabel(row),
+    convertedLabel: formatYen(row.amount_base_minor),
+    myShareLabel: selfUserId ? formatYen(mine ? mine.amount_base_minor : 0) : "",
+    targetNames: shares.map((s) => db.nameOf(s.user_id)),
+    shares: shares.map((s) => ({
+      name: db.nameOf(s.user_id),
+      amount: s.amount_base_minor,
+      amountLabel: formatYen(s.amount_base_minor),
+    })),
+  };
 }
 
 // ---- 精算計算（純関数） -------------------------------------------------
@@ -226,6 +265,7 @@ export function computeSettlement(
   });
 
   const details: ExpenseDetail[] = [];
+  const settlementHistory: SettlementHistory[] = [];
   let total = 0;
 
   for (const { row, shares } of entries) {
@@ -233,45 +273,21 @@ export function computeSettlement(
     bump(paid, row.payer_user_id, row.amount_base_minor);
     for (const s of shares) bump(owe, s.user_id, s.amount_base_minor);
 
-    const mine = selfUserId ? shares.find((s) => s.user_id === selfUserId) : undefined;
-    const shareList: SettlementShare[] = shares.map((s) => ({
-      name: db.nameOf(s.user_id),
-      amount: s.amount_base_minor,
-      amountLabel: formatYen(s.amount_base_minor),
-    }));
-    details.push({
-      id: row.id,
-      kind: "expense",
-      date: row.paid_on || "",
-      payer: db.nameOf(row.payer_user_id),
-      category: CATEGORY_LABEL[row.category] || "その他",
-      title: row.title || "立替",
-      mode: SPLIT_LABEL[row.split_method] || "",
-      amountLabel: amountLabel(row),
-      convertedLabel: formatYen(row.amount_base_minor),
-      myShareLabel: selfUserId ? formatYen(mine ? mine.amount_base_minor : 0) : "",
-      targetNames: shares.map((s) => db.nameOf(s.user_id)),
-      shares: shareList,
-    });
+    details.push(entryDetail({ row, shares }, selfUserId));
   }
 
   // 精算済みの送金: 払った側の立替を増やし、受け取った側の負担を増やす（相殺）
   for (const s of settlementsOf(planId)) {
     bump(paid, s.from_user_id, s.amount_base_minor);
     bump(owe, s.to_user_id, s.amount_base_minor);
-    details.push({
+    settlementHistory.push({
       id: s.id,
-      kind: "settlement",
       date: (s.settled_at || "").slice(0, 10),
-      payer: db.nameOf(s.from_user_id),
-      category: "精算",
-      title: `${db.nameOf(s.from_user_id)} → ${db.nameOf(s.to_user_id)} 精算`,
-      mode: SPLIT_LABEL.none,
+      from: db.nameOf(s.from_user_id),
+      to: db.nameOf(s.to_user_id),
+      amount: s.amount_base_minor,
       amountLabel: formatYen(s.amount_base_minor),
-      convertedLabel: formatYen(s.amount_base_minor),
-      myShareLabel: "",
-      targetNames: [db.nameOf(s.to_user_id)],
-      shares: [{ name: db.nameOf(s.to_user_id), amount: s.amount_base_minor, amountLabel: formatYen(s.amount_base_minor) }],
+      note: s.note || "",
     });
   }
 
@@ -294,6 +310,7 @@ export function computeSettlement(
 
   const yourNet = selfUserId ? net[selfUserId] || 0 : 0;
   details.reverse(); // newest first
+  settlementHistory.reverse(); // newest first
 
   return {
     expenseTotal: formatYen(total),
@@ -301,6 +318,7 @@ export function computeSettlement(
     yourPaid: selfUserId ? formatYen(paid[selfUserId] || 0) : "—",
     yourDue: selfUserId ? formatYen(Math.max(0, -yourNet)) : "¥0",
     transfers,
+    settlementHistory,
     expenseDetails: details,
     baseCurrency,
   };

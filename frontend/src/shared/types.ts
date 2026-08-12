@@ -85,6 +85,16 @@ export interface SettlementShare {
   amountLabel: string;
 }
 
+export interface SettlementHistory {
+  id?: string;
+  date: string;
+  from: string;
+  to: string;
+  amount: number;
+  amountLabel: string;
+  note?: string;
+}
+
 export interface RateDetail {
   date: string;
   payer: string;
@@ -120,6 +130,7 @@ export interface Settlement {
   yourPaid?: string;
   yourDue?: string;
   transfers?: SettlementTransfer[];
+  settlementHistory?: SettlementHistory[];
   rateDetails?: RateDetail[];
   expenseDetails?: ExpenseDetail[];
   rateWarnings?: string[];

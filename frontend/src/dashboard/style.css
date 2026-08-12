@@ -1544,6 +1544,68 @@
     cursor: wait;
   }
 
+  .tl-subhead {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 700;
+  }
+
+  .tl-subhead .hi,
+  .tl-subhead svg {
+    width: 16px;
+    height: 16px;
+    color: var(--green);
+  }
+
+  .tl-subhead small {
+    margin-left: auto;
+    font-size: 11px;
+    font-weight: 700;
+  }
+
+  .tl-settlement-history {
+    display: grid;
+    gap: 0;
+    margin-top: 8px;
+    padding-top: 12px;
+    border-top: 1px solid var(--line);
+  }
+
+  .tl-settlement-history-row {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 10px;
+    align-items: baseline;
+    padding: 9px 0;
+    border-top: 1px solid var(--line);
+    font-size: 12px;
+  }
+
+  .tl-settlement-history-row span {
+    color: var(--muted);
+    font-weight: 700;
+    white-space: nowrap;
+  }
+
+  .tl-settlement-history-row b {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--ink);
+    font-weight: 700;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .tl-settlement-history-row strong {
+    color: var(--green);
+    font-size: 13px;
+    font-weight: 800;
+    white-space: nowrap;
+  }
+
   .tl-confirm-modal {
     position: fixed;
     inset: 0;
@@ -1592,6 +1654,11 @@
     color: #e6002e;
   }
 
+  .tl-confirm-modal.is-danger .tl-confirm-icon {
+    background: rgba(178, 64, 49, .08);
+    color: var(--red);
+  }
+
   .tl-confirm-copy {
     display: grid;
     gap: 6px;
@@ -1617,7 +1684,8 @@
   .tl-confirm-actions {
     grid-column: 1 / -1;
     display: grid;
-    gap: 10px;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 8px;
     padding-top: 8px;
   }
 
@@ -1626,10 +1694,10 @@
     display: grid;
     place-items: center;
     width: 100% !important;
-    min-height: 48px;
-    border: 1px solid var(--green);
-    background: var(--green);
-    color: #fff;
+    min-height: 46px !important;
+    border: 1px solid #0b5a42 !important;
+    background: #0b5a42 !important;
+    color: #fff !important;
     padding: 0 16px;
     font: inherit;
     font-size: 14px;
@@ -1641,24 +1709,34 @@
 
   .tl-confirm-modal.is-paypay .tl-confirm-ok,
   .tl-confirm-modal.is-paypay .tl-confirm-actions [data-confirm-ok] {
-    border-color: #e6002e;
-    background: #e6002e;
+    border-color: #e6002e !important;
+    background: #e6002e !important;
   }
 
-  .tl-confirm-btn.ghost {
-    min-height: 38px;
-    border-color: transparent;
-    border-bottom: 1px solid currentColor;
-    background: transparent;
-    color: var(--muted);
-    justify-self: center;
-    width: auto;
-    padding: 0 4px;
+  .tl-confirm-modal.is-danger .tl-confirm-ok,
+  .tl-confirm-modal.is-danger .tl-confirm-actions [data-confirm-ok] {
+    border-color: var(--red) !important;
+    background: var(--red) !important;
+  }
+
+  .tl-confirm-cancel,
+  .tl-confirm-actions [data-confirm-cancel] {
+    display: grid;
+    place-items: center;
+    width: 100%;
+    min-height: 46px;
+    border: 1px solid var(--line-strong);
+    background: #fff;
+    color: var(--ink);
+    padding: 0 16px;
+    font: inherit;
+    font-size: 14px;
     font-weight: 700;
+    cursor: pointer;
   }
 
   .tl-confirm-ok:focus-visible,
-  .tl-confirm-btn:focus-visible {
+  .tl-confirm-cancel:focus-visible {
     outline: none;
     box-shadow: 0 0 0 3px var(--green-soft);
   }
@@ -1667,8 +1745,15 @@
     display: grid;
     grid-template-columns: 1fr;
     gap: 8px;
-    margin-top: 14px;
+    margin: 12px 0 4px;
   }
+
+  /* 精算 / 費用詳細のタブ。PC ではタブを出さず両方並べる。 */
+  .tl-money-tabs { display: none; }
+
+  .tl-money-panel { display: block; }
+
+  .tl-money-panel[data-money-panel="details"] { margin-top: 4px; }
 
   /* 読み取り専用（他人の公開計画）ビューのバッジ */
   .tl-ro-badge {
@@ -1857,6 +1942,68 @@
     color: var(--muted);
     font-size: 12px;
     font-weight: 620;
+  }
+
+  .tl-canceled-expenses {
+    display: grid;
+    gap: 0;
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px solid var(--line);
+  }
+
+  .tl-canceled-expense {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto auto;
+    gap: 9px;
+    align-items: center;
+    min-height: 42px;
+    padding: 8px 0;
+    border-top: 1px solid var(--line);
+    color: var(--muted);
+    font-size: 12px;
+  }
+
+  .tl-canceled-expense span {
+    font-weight: 700;
+    white-space: nowrap;
+  }
+
+  .tl-canceled-expense b {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--muted);
+    font-weight: 760;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .tl-canceled-expense strong {
+    color: var(--muted);
+    font-weight: 800;
+    white-space: nowrap;
+  }
+
+  .tl-restore-expense {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    min-height: 32px;
+    border: 1px solid var(--line-strong);
+    background: #fff;
+    color: var(--green);
+    padding: 0 9px;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 760;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
+  .tl-restore-expense .hi,
+  .tl-restore-expense svg {
+    width: 14px;
+    height: 14px;
   }
 
   .tl-expense-entry {
@@ -3018,6 +3165,38 @@
        塗りつぶしの大きなボタンを並べると、金額より操作のほうが目立ってしまう。
        箱をやめて罫線とタイポで組み、ボタンは小さく静かにする。 */
 
+    /* 精算と費用詳細はタブで切り替える（既定は精算）。
+       同時に出すと縦に長くなり、どちらも読みにくくなるため。 */
+    .tl-money-tabs {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      /* 「費用を追加」の下罫線と近すぎると境界が二重に見えるので離す */
+      margin-top: 20px;
+      border-bottom: 1px solid var(--line);
+    }
+    .tl-money-tab {
+      min-height: 42px;
+      padding: 0 4px 8px;
+      border: 0;
+      border-bottom: 2px solid transparent;
+      background: none;
+      color: var(--muted);
+      font: inherit;
+      font-size: 13px;
+      font-weight: 620;
+      cursor: pointer;
+    }
+    .tl-money-tab.is-active {
+      color: var(--green);
+      border-bottom-color: var(--green);
+    }
+    .tl-money-panel { display: none; }
+    .tl-money-panel.is-active { display: block; }
+    /* タブ見出しがあるので、パネル内の h3 は重複になる */
+    .tl-money-panel[data-money-panel="settle"] .tl-transfer-list { margin-top: 0; padding-top: 0; border-top: 0; }
+    .tl-money-panel[data-money-panel="settle"] .tl-transfer-list h3 { display: none; }
+    .tl-buttons { margin: 14px 0 0; }
+
     /* 精算行: 枠付きカード → 罫線区切りの行 */
     .tl-transfer-list { gap: 0; }
     .tl-transfer-row {
@@ -3032,6 +3211,11 @@
     }
     .tl-transfer-row b { font-size: 16px; }
     .tl-transfer-act { gap: 6px; }
+    .tl-settlement-history-row {
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      gap: 7px;
+      font-size: 11.5px;
+    }
 
     /* 送金・完了は補助操作。文字ボタンではなくアイコンにする */
     .tl-transfer-row .tl-icon-action {
@@ -3088,6 +3272,14 @@
     .tl-expense-table td[data-col="role"] { white-space: nowrap; }
     .tl-expense-table td[data-col="title"] { font-weight: 600; }
     .tl-expense-table td[data-col="share"] { text-align: right; white-space: nowrap; }
+    .tl-canceled-expense {
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      gap: 7px;
+    }
+    .tl-canceled-expense .tl-restore-expense {
+      grid-column: 2 / -1;
+      justify-self: end;
+    }
     .tl-expense-table th[data-col="actions"],
     .tl-expense-table td[data-col="actions"] {
       width: 64px;

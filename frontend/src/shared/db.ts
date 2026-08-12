@@ -548,13 +548,13 @@ export async function updateExpense(expenseId: string, input: ExpenseInput): Pro
 export function removeExpense(expenseId: string): { row: ExpenseRow | undefined; shares: ExpenseShareRow[] } {
   const row = snap.expenses.find((e) => e.id === expenseId);
   const shares = snap.expenseShares.filter((s) => s.expense_id === expenseId);
-  snap.expenses = snap.expenses.filter((e) => e.id !== expenseId);
-  snap.expenseShares = snap.expenseShares.filter((s) => s.expense_id !== expenseId);
+  if (row) row.deleted_at = new Date().toISOString();
   send("DELETE", `/api/expenses/${encodeURIComponent(expenseId)}`);
   return { row, shares };
 }
 
 export function restoreExpense(row: ExpenseRow, shares: ExpenseShareRow[]): void {
+  row.deleted_at = null;
   if (!snap.expenses.some((e) => e.id === row.id)) snap.expenses.push(row);
   for (const s of shares) {
     if (!snap.expenseShares.some((x) => x.expense_id === s.expense_id && x.user_id === s.user_id)) {

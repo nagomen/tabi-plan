@@ -98,12 +98,21 @@
             <strong class="tl-settle-amount" data-your-due>¥0</strong>
             <span class="tl-settle-sub">あなたの立替 <b data-your-paid>—</b><i>·</i>費用総額 <b data-paid>¥0</b></span>
           </div>
-          <div class="tl-transfer-list" data-transfers></div>
+          <!-- 主導線はヒーロー直下。スクロールせずに届く位置に置く。 -->
           <div class="tl-buttons">
             <button class="tl-button primary" type="button" data-expense-open><span class="tl-btn-ic" data-ic="plus"></span>費用を追加</button>
-            <button class="tl-button ghost" type="button" data-expense-detail-toggle aria-expanded="false"><span class="tl-btn-ic" data-ic="documentText"></span>費用明細を見る</button>
           </div>
-          <div class="tl-expense-details" data-expense-details></div>
+          <!-- スマホでは精算/台帳をタブで切り替える（既定は精算）。PC は両方並べる。 -->
+          <div class="tl-money-tabs" role="tablist" aria-label="費用の表示切替">
+            <button class="tl-money-tab" type="button" role="tab" data-money-tab="settle" aria-selected="true">精算する金額</button>
+            <button class="tl-money-tab" type="button" role="tab" data-money-tab="details" aria-selected="false" data-expense-detail-toggle>費用詳細</button>
+          </div>
+          <div class="tl-money-panel" data-money-panel="settle">
+            <div class="tl-transfer-list" data-transfers></div>
+          </div>
+          <div class="tl-money-panel" data-money-panel="details">
+            <div class="tl-expense-details" data-expense-details></div>
+          </div>
         </div>
       </article>
 

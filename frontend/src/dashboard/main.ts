@@ -24,7 +24,7 @@ import * as TripPlans from "../shared/plans-store";
 import { getUser } from "../shared/user-store";
 import { canEditPlan, canViewPlan, planHasOwner } from "../shared/membership";
 import { currentAccount } from "../shared/account-store";
-import { currentUserId, adoptLegacyIdentity } from "../shared/identity";
+import { currentUserId, adoptLegacyIdentity, identifyByName } from "../shared/identity";
 import * as db from "../shared/db";
 import { incrementView } from "../shared/views-store";
 import { planCoverImage, planCoverImageForLocation } from "../shared/cover";
@@ -287,7 +287,20 @@ function mapsEmbedDirections(places: ItineraryItem[]): string {
 const state: AppState = { data: SAMPLE, days: [], active: 0, viewEnd: 0, source: "sample" };
 let mobileView = "home";
 const leafletState: LeafletState = { map: null, layer: null, followActive: true };
-let expenseDetailsOpen = true;
+/** スマホの費用タブ。既定は精算する金額。PC では両方出すので使わない。 */
+let moneyTab: "settle" | "details" = "settle";
+
+function applyMoneyTab(next?: "settle" | "details"): void {
+  if (next) moneyTab = next;
+  qsa<HTMLElement>("[data-money-tab]").forEach((tab) => {
+    const active = tab.dataset.moneyTab === moneyTab;
+    tab.setAttribute("aria-selected", String(active));
+    tab.classList.toggle("is-active", active);
+  });
+  qsa<HTMLElement>("[data-money-panel]").forEach((panel) => {
+    panel.classList.toggle("is-active", panel.dataset.moneyPanel === moneyTab);
+  });
+}
 let editingExpenseId: string | null = null;
 let syncInFlight: Promise<void> | null = null;
 let lastSyncAt = 0;
@@ -536,6 +549,11 @@ function showIdentityModal(required: boolean): Promise<boolean> {
         return;
       }
       saveProfile(name);
+      // 表示名から利用者を確定する（users に無ければ作る）。
+      void identifyByName(name).then(() => {
+        renderBase();
+        renderActive();
+      });
       modal.remove();
       const expenseForm = root.querySelector<HTMLFormElement>("[data-expense-form-native]");
       applyProfileDefaults(expenseForm, participants);
@@ -549,16 +567,16 @@ function showIdentityModal(required: boolean): Promise<boolean> {
 async function requestIdentityIfNeeded(): Promise<void> {
   // 読み取り専用（他人の公開計画の閲覧）では費用に関わらないので本人設定は求めない。
   if (READ_ONLY) return;
-  // ログイン済みなら本人確認は不要。端末プロフィール未設定ならアカウント名を本人に使う。
-  const account = currentAccount();
-  if (account) {
-    if (!readProfile() && account.name) saveProfile(account.name);
+  // 利用者は identity（user_id）が正。確定済みなら訊かない。
+  if (currentUserId()) {
+    // 旧プロフィール（計画ごとの表示名）が空なら表示名で埋めておく（明細の見た目用）。
+    if (!readProfile()) {
+      const name = db.nameOf(currentUserId());
+      if (name) saveProfile(name);
+    }
     return;
   }
-  const participants = expenseParticipants(state.data || SAMPLE);
-  if (!currentProfileName(participants)) {
-    await showIdentityModal(true);
-  }
+  await showIdentityModal(true);
 }
 
 function requestPassword(): Promise<boolean> {
@@ -879,8 +897,20 @@ function renderTransfers(settlement: Settlement): void {
   const mount = root.querySelector<HTMLElement>("[data-transfers]");
   if (!mount) return;
   const transfers = settlement.transfers || [];
+  const history = settlement.settlementHistory || [];
+  const historyHtml = history.length ? `
+    <div class="tl-settlement-history">
+      <div class="tl-subhead"><span>${icon("checkCircle")}</span><b>精算履歴</b><small>${history.length}件</small></div>
+      ${history.map((item) => `
+        <div class="tl-settlement-history-row">
+          <span>${escapeHtml(mdLabel(item.date || ""))}</span>
+          <b>${escapeHtml(item.from)} → ${escapeHtml(item.to)}</b>
+          <strong>${escapeHtml(item.amountLabel)}</strong>
+        </div>
+      `).join("")}
+    </div>` : "";
   if (!transfers.length) {
-    mount.innerHTML = `<h3>精算する金額</h3><div class="tl-transfer-row"><span>現時点で精算する支払いはありません</span><b>¥0</b></div><div class="tl-expense-status" data-settlement-status aria-live="polite"></div>`;
+    mount.innerHTML = `<h3>精算する金額</h3><div class="tl-transfer-row"><span>現時点で精算する支払いはありません</span><b>¥0</b></div>${historyHtml}<div class="tl-expense-status" data-settlement-status aria-live="polite"></div>`;
     return;
   }
   mount.innerHTML = `<h3>精算する金額</h3>` + transfers.map((transfer: SettlementTransfer & { completedLabel?: string }) =>
@@ -893,12 +923,12 @@ function renderTransfers(settlement: Settlement): void {
       </div>
       ${transfer.completedLabel ? `<small>完了済み ${escapeHtml(transfer.completedLabel)} を差し引き済み</small>` : ""}
     </div>`,
-  ).join("") + `<div class="tl-expense-status" data-settlement-status aria-live="polite"></div>`;
+  ).join("") + historyHtml + `<div class="tl-expense-status" data-settlement-status aria-live="polite"></div>`;
   setupSettlementCompleteHandlers(mount);
 }
 
 function confirmTransferAction(options: {
-  tone?: "paypay" | "complete";
+  tone?: "paypay" | "complete" | "danger";
   iconName: IconName;
   title: string;
   message: string;
@@ -918,8 +948,8 @@ function confirmTransferAction(options: {
           <p>${escapeHtml(options.message)}</p>
         </div>
         <div class="tl-confirm-actions">
+          <button type="button" class="tl-confirm-cancel" data-confirm-cancel>キャンセル</button>
           <button type="button" class="tl-confirm-ok" data-confirm-ok>${escapeHtml(options.confirmLabel)}</button>
-          <button type="button" class="tl-confirm-btn ghost" data-confirm-cancel>キャンセル</button>
         </div>
       </section>`;
     document.body.appendChild(modal);
@@ -996,7 +1026,7 @@ function setupSettlementCompleteHandlers(mount: HTMLElement): void {
       const amount = Number(button.dataset.amount || 0);
       if (!from || !to || !amount) return;
       const ok = await confirmTransferAction({
-        tone: "complete",
+        tone: "danger",
         iconName: "checkCircle",
         title: "精算完了マークをつけますか",
         message: `${from} から ${to} への ${formatYen(amount)} の精算を完了として記録します。実際の送金が済んでいる場合だけ進めてください。`,
@@ -1066,19 +1096,11 @@ function renderExpenseDetails(settlement: Settlement): void {
       shares.some((share) => share.name === profileName && Number(share.amount || 0) > 0);
   }) : [];
 
-  button.innerHTML = `${icon(expenseDetailsOpen ? "chevronUp" : "documentText")}<span>${expenseDetailsOpen ? "台帳を閉じる" : "費用台帳"}</span>`;
-  button.setAttribute("aria-expanded", String(expenseDetailsOpen));
-  mount.classList.toggle("is-visible", expenseDetailsOpen);
-
+  // タブになったので常に描画しておく（切り替えは CSS の表示だけ）。
+  mount.classList.add("is-visible");
   button.onclick = (): void => {
-    expenseDetailsOpen = !expenseDetailsOpen;
-    renderExpenseDetails(settlement);
+    applyMoneyTab("details");
   };
-
-  if (!expenseDetailsOpen) {
-    mount.innerHTML = "";
-    return;
-  }
 
   if (!profileName) {
     mount.innerHTML = `<div class="tl-expense-empty">本人設定を登録すると、自分に関連する費用明細を表示できます。</div>`;
@@ -1104,10 +1126,25 @@ function renderExpenseDetails(settlement: Settlement): void {
     if (isPayer) return "立替のみ";
     return "負担";
   };
+  const canceled = canManageExpenses
+    ? ExpenseStore.canceledList(planId()).map((entry) => ExpenseStore.entryDetail(entry, currentUserId()))
+    : [];
+  const canceledHtml = canceled.length ? `
+    <div class="tl-canceled-expenses">
+      <div class="tl-subhead"><span>${icon("xCircle")}</span><b>取り消した費用</b><small>${canceled.length}件</small></div>
+      ${canceled.map((detail) => `
+        <div class="tl-canceled-expense" data-canceled-expense="${escapeHtml(detail.id || "")}">
+          <span>${escapeHtml(mdLabel(detail.date || ""))}</span>
+          <b>${escapeHtml(detail.title || "立替")}</b>
+          <strong>${escapeHtml(detail.convertedLabel || detail.amountLabel || "")}</strong>
+          <button type="button" class="tl-restore-expense" data-expense-restore="${escapeHtml(detail.id || "")}">${icon("arrowPath")}復活</button>
+        </div>
+      `).join("")}
+    </div>` : "";
 
   mount.innerHTML = `
     <div class="tl-expense-details-head">
-      <b>${canManageExpenses ? "費用台帳" : `${escapeHtml(profileName)}に関連する費用`}</b>
+      <b>${canManageExpenses ? "支払い台帳" : `${escapeHtml(profileName)}に関連する支払い`}</b>
       <span>${related.length}件</span>
     </div>
     <div class="tl-expense-table-wrap">
@@ -1117,7 +1154,7 @@ function renderExpenseDetails(settlement: Settlement): void {
             <th data-col="date">日付</th>
             <th data-col="title">内容</th>
             <th data-col="payer">支払者</th>
-            <th data-col="role">区分</th>
+            <th data-col="role">負担</th>
             <th data-col="mode">精算範囲</th>
             <th data-col="amount">支払額</th>
             <th data-col="share">自分の負担</th>
@@ -1142,7 +1179,8 @@ function renderExpenseDetails(settlement: Settlement): void {
           `).join("")}
         </tbody>
       </table>
-    </div>`;
+    </div>
+    ${canceledHtml}`;
   setupExpenseDetailActions(mount);
 }
 
@@ -1158,13 +1196,36 @@ function setupExpenseDetailActions(mount: HTMLElement): void {
     });
   });
   mount.querySelectorAll<HTMLButtonElement>("[data-expense-remove]").forEach((button) => {
-    button.addEventListener("click", () => {
+    button.addEventListener("click", async () => {
       const id = button.dataset.expenseRemove || "";
+      const record = ExpenseStore.get(planId(), id);
+      if (!record) return;
+      const ok = await confirmTransferAction({
+        tone: "complete",
+        iconName: "xCircle",
+        title: "この費用を取り消しますか",
+        message: `${record.row.title || "費用"}（${formatYen(record.row.amount_base_minor)}）を支払い台帳から外します。取り消し履歴からあとで復活できます。`,
+        confirmLabel: "取り消す",
+      });
+      if (!ok) return;
       const removed = ExpenseStore.remove(id);
       if (!removed.row) return;
       renderBase();
       renderActive();
       showExpenseUndo(removed.row, removed.shares);
+    });
+  });
+  mount.querySelectorAll<HTMLButtonElement>("[data-expense-restore]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const id = button.dataset.expenseRestore || "";
+      if (!id || !ExpenseStore.restoreById(planId(), id)) return;
+      renderBase();
+      renderActive();
+      const status = root.querySelector<HTMLElement>("[data-settlement-status]");
+      if (status) {
+        status.textContent = "取り消した費用を支払い台帳へ戻しました。";
+        status.classList.add("is-ok");
+      }
     });
   });
 }
@@ -1253,8 +1314,21 @@ function renderExpenseEntry(data: TripData, options: { force?: boolean } = {}): 
   if (!mount) return;
   const existingForm = mount.querySelector<HTMLFormElement>("[data-expense-form-native]");
   if (!options.force && existingForm && existingForm.dataset.dirty === "true") return;
+  const editingRecord = editingExpenseId ? ExpenseStore.get(planId(), editingExpenseId) : undefined;
   const participants = expenseParticipants(data);
-  const editingRecord = editingExpenseId ? ExpenseStore.get(CONFIG.tripSlug, editingExpenseId) : undefined;
+  if (editingExpenseId && !editingRecord) {
+    mount.innerHTML = `<div class="tl-expense-empty">編集する費用が見つかりませんでした。台帳を更新してからもう一度開いてください。</div>`;
+    return;
+  }
+  if (editingRecord) {
+    const editingNames = [
+      db.nameOf(editingRecord.row.payer_user_id),
+      ...editingRecord.shares.map((share) => db.nameOf(share.user_id)),
+    ].filter(Boolean);
+    editingNames.forEach((name) => {
+      if (!participants.includes(name)) participants.push(name);
+    });
+  }
   const currencyOptions = expenseCurrencies(data).map((code) => `<option>${escapeHtml(code)}</option>`).join("");
   const profileName = currentProfileName(participants);
   const payerOptions = participants.map((name) => `<option value="${escapeHtml(name)}" ${name === profileName ? "selected" : ""}>${escapeHtml(name)}</option>`).join("");
@@ -1774,6 +1848,7 @@ function renderBase(): void {
   setText("[data-your-due]", settlement.yourDue || "¥0");
   renderTransfers(settlement);
   renderExpenseDetails(settlement);
+  applyMoneyTab();
   setText("[data-photo-title]", settlement.photoTitle || "写真アルバム");
   setText("[data-photo-meta]", settlement.photoMeta || "Google Photos");
   saveExpenseEntryCache(data);
@@ -2504,6 +2579,14 @@ async function init(): Promise<void> {
       setExpenseSheet(true);
     });
   });
+  // 精算 / 費用詳細のタブ切り替え（スマホ）。
+  qsa<HTMLElement>("[data-money-tab]").forEach((tab) => {
+    tab.addEventListener("click", () => {
+      const next = tab.dataset.moneyTab === "details" ? "details" : "settle";
+      applyMoneyTab(next);
+    });
+  });
+  applyMoneyTab("settle");
   qsa<HTMLElement>("[data-expense-close]").forEach((button) => {
     button.addEventListener("click", () => setExpenseSheet(false));
   });
