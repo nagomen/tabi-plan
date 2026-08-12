@@ -1716,7 +1716,81 @@
     .pe textarea {
       font-size: 16px !important;
     }
-    .pe .pe-primary-field input {
-      font-size: 20px !important;
-    }
   }
+
+/* ---- 計画作成フォームの文字サイズをそろえる ------------------------------
+   セクションごとに別々の値になっていて、
+   ・「期間を選択」だけ 18px/560 で他の入力（14px/400）より大きく太い
+   ・メンバーの選択だけ PC で 13px
+   ・注記が em ヒント 11px とセクション注記 13px で二重基準
+   という状態だったので、見出し／注記／入力値の3階層に統一する。
+   （旅行ダッシュボード側の見出し 12.5px/600 と同じ基準に合わせる）  */
+
+/* 見出し: フィールド名もセクション名も同じ */
+.pe-field > span,
+.pe-sec-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+}
+
+/* 注記: フィールドの補足もセクションの説明も同じ */
+.pe-field > span em,
+.pe-sec-note,
+.pe-cover-note,
+.pe-calsync-note {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: normal;
+}
+
+/* 入力値: input / select / 期間ボタンをそろえる */
+.pe-field input,
+.pe-field select,
+.pe-field textarea,
+.pe-member-inputwrap select,
+.pe-primary-field input,
+.pe-range-button,
+.pe-range-button.is-empty {
+  font-size: 14px;
+  font-weight: 400;
+}
+
+@media (max-width: 680px) {
+  .pe-field > span,
+  .pe-sec-title {
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .pe-field > span em,
+  .pe-sec-note,
+  .pe-cover-note,
+  .pe-calsync-note {
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1.5;
+  }
+  /* input と select は iOS のズーム防止で 16px 固定なので、
+     期間ボタンもそこに合わせる（!important は上の 16px 指定に勝つため）。 */
+  .pe-range-button,
+  .pe-range-button.is-empty {
+    font-size: 16px !important;
+    font-weight: 400;
+  }
+}
+
+/* ラベルは flex の1行なので、注記が長いと語中で折り返していた
+   （「サムネ画」「像」）。注記だけを次の行に送る。 */
+.pe-field > span {
+  flex-wrap: wrap;
+  align-items: baseline;
+  row-gap: 2px;
+}
+.pe-field > span .hi {
+  flex: none;
+  align-self: center;
+}
+.pe-field > span em {
+  flex: 1 1 auto;
+  min-width: 0;
+}
