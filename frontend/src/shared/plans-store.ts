@@ -3,7 +3,7 @@
 // バックエンド不要で動き、source:"local" のプランはこのストアだけで完結する。
 
 import type { TripConfig, MapDefaults } from "./config";
-import { safeTripSlug } from "./config";
+import { safeTripSlug, readGlobalTripConfig } from "./config";
 import * as Backend from "./backend";
 import { getUser } from "./user-store";
 import * as Permissions from "./permissions-store";
@@ -597,4 +597,9 @@ migrateExistingToPublic();
 // permissions-store 側ではなくここで呼ぶのは、account-store との循環 import を避けるため。
 void Backend.preload().then(() => {
   Permissions.adoptNamePermissions();
+  // 起動時のマイグレーション/シードは preload より先に走るため、
+  // そこでの結果は「まだサーバーを読めていない状態」に基づく。
+  // 読み込みが終わってからもう一度当て直す（冪等）。
+  ensureSeed(readGlobalTripConfig());
+  migrateExistingToPublic();
 });

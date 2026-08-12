@@ -76,9 +76,20 @@ const versions = new Map<string, number>();
 /** 直近サーバーへ送った（またはサーバーから受け取った）内容。無駄な PUT を避ける。 */
 const lastSynced = new Map<string, string>();
 
+/** preload 前に書き込もうとしたキー。読み込み後に現在値で送り直す。 */
+const deferredKeys = new Set<string>();
+
 function apiPersist(key: string, value: unknown): void {
   const api = apiConfig();
   if (!api) return;
+  // サーバーを読み終える前に書くと、まだ手元に無いデータを空で上書きしてしまう。
+  // 起動時のマイグレーション（ensureSeed / migrateExistingToPublic）が
+  // preload 完了前に走るため、実際に共有中の計画一覧が消える事故が起きた。
+  // 読み込み後に現在値で送り直す。
+  if (!preloaded) {
+    deferredKeys.add(key);
+    return;
+  }
   const serialized = JSON.stringify(value);
   // 中身が変わっていないなら送らない。
   // 起動時のハイドレートで同じ値が何十件も書き直されるため、これが無いと
@@ -397,6 +408,14 @@ async function runPreload(): Promise<void> {
     }
   }
   preloaded = true;
+  // preload 前に保留した書き込みを、読み込み後の値で送り直す。
+  // 大半はサーバーの値と一致して dedupe で消えるが、
+  // 本当に手元だけの変更があればここで反映される。
+  const deferred = [...deferredKeys];
+  deferredKeys.clear();
+  for (const key of deferred) {
+    if (cache.has(key)) apiPersist(key, cache.get(key));
+  }
 }
 
 /** 認証後などに共有ストアを明示的に再取得する。 */
