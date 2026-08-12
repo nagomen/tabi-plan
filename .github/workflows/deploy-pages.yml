@@ -1,4 +1,4 @@
-name: Deploy GitHub Pages
+name: Deploy Preview Pages
 
 on:
   push:
@@ -21,7 +21,7 @@ concurrency:
 
 jobs:
   build:
-    name: Build frontend (Vite + TS)
+    name: Build preview frontend
     runs-on: ubuntu-latest
 
     steps:
@@ -55,7 +55,7 @@ jobs:
           path: frontend/dist
 
   deploy:
-    name: Deploy
+    name: Deploy preview
     needs: build
     runs-on: ubuntu-latest
     permissions:

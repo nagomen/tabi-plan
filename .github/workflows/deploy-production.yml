@@ -1,0 +1,83 @@
+name: Deploy Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Git ref to deploy"
+        required: true
+        default: "restructure-frontend-backend-ts"
+      install_nginx:
+        description: "Render and install nginx config before deploy"
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build frontend
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Configure trip settings
+        env:
+          TRIP_CONFIG_JSON: ${{ vars.PRODUCTION_TRIP_CONFIG_JSON || vars.TRIP_CONFIG_JSON }}
+        run: node tools/build-trip-config.js
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type-check and build
+        run: npm run build
+
+  deploy:
+    name: Deploy to nginx VPS
+    needs: build
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          APP_DIR: ${{ vars.PRODUCTION_APP_DIR || '~/travel-dashboard' }}
+          DOMAIN: ${{ vars.PRODUCTION_DOMAIN }}
+          REPO_BRANCH: ${{ inputs.ref }}
+          INSTALL_NGINX: ${{ inputs.install_nginx && '1' || '0' }}
+        with:
+          host: ${{ secrets.PRODUCTION_SSH_HOST }}
+          username: ${{ secrets.PRODUCTION_SSH_USER }}
+          key: ${{ secrets.PRODUCTION_SSH_KEY }}
+          port: ${{ secrets.PRODUCTION_SSH_PORT || 22 }}
+          envs: APP_DIR,DOMAIN,REPO_BRANCH,INSTALL_NGINX
+          script_stop: true
+          script: |
+            if [ -z "$DOMAIN" ]; then
+              echo "PRODUCTION_DOMAIN repository variable is required." >&2
+              exit 1
+            fi
+            cd "$APP_DIR"
+            args=""
+            if [ "$INSTALL_NGINX" = "1" ]; then
+              args="--install-nginx"
+            fi
+            DOMAIN="$DOMAIN" REPO_BRANCH="$REPO_BRANCH" bash infra/deploy-static.sh $args

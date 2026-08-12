@@ -164,8 +164,7 @@ function config(): TripConfig {
 function api(): { base: string; token: string } | null {
   const shared = config().sharedBackend;
   if (!shared?.enabled || shared.mode !== "api") return null;
-  const base = (shared.apiBaseUrl || "").replace(/\/+$/, "");
-  return base ? { base, token: shared.apiToken || "" } : null;
+  return { base: (shared.apiBaseUrl || "").replace(/\/+$/, ""), token: shared.apiToken || "" };
 }
 
 /** API を使う構成か（未設定なら読み取り専用のサンプル動作になる）。 */

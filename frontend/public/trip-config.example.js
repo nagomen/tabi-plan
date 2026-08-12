@@ -28,7 +28,8 @@ window.TRIP_CONFIG = {
     // apiToken は静的サイトに埋まる＝公開値。無差別アクセス避け程度の意味しかない。
     enabled: false,
     mode: "api",
-    apiBaseUrl: "https://travel-api.example.com",
+    // 空なら同一オリジンの /api を使う。別ドメイン API の場合だけ URL を入れる。
+    apiBaseUrl: "",
     apiToken: ""
   }
 };

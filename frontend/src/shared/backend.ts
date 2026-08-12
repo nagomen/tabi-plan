@@ -48,9 +48,7 @@ function config(): TripConfig {
 function apiConfig(): { base: string; token: string } | null {
   const shared = config().sharedBackend;
   if (!shared?.enabled || shared.mode !== "api") return null;
-  const base = (shared.apiBaseUrl || "").replace(/\/+$/, "");
-  if (!base) return null;
-  return { base, token: shared.apiToken || "" };
+  return { base: (shared.apiBaseUrl || "").replace(/\/+$/, ""), token: shared.apiToken || "" };
 }
 
 function apiHeaders(token: string): Record<string, string> {

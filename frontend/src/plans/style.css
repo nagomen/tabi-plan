@@ -824,168 +824,22 @@
     display: grid;
   }
 
-  .discover-card-grid {
-    display: grid;
-    grid-auto-flow: column;
-    grid-auto-columns: 220px;
-    grid-template-columns: none;
-    gap: 18px;
-    overflow-x: auto;
-    overscroll-behavior-inline: contain;
-    scroll-snap-type: inline proximity;
-    padding: 16px 4px 16px 0;
-  }
 
-  .discover-trip-card {
-    position: relative;
-    display: grid;
-    gap: 5px;
-    min-width: 0;
-    scroll-snap-align: start;
-    text-decoration: none;
-  }
 
-  .discover-trip-cover {
-    position: relative;
-    display: block;
-    width: 100%;
-    aspect-ratio: 16 / 9;
-    overflow: hidden;
-    border: 1px solid var(--line);
-    background: var(--wash);
-  }
 
-  .discover-trip-cover img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    display: block;
-    transition: transform .18s ease;
-  }
 
-  .discover-trip-card:hover .discover-trip-cover img,
-  .discover-trip-card:focus-visible .discover-trip-cover img {
-    transform: scale(1.03);
-  }
 
-  .discover-trip-title {
-    display: -webkit-box;
-    overflow: hidden;
-    -webkit-line-clamp: 1;
-    -webkit-box-orient: vertical;
-    min-height: 0;
-    color: var(--ink);
-    font-size: 15px;
-    line-height: 1.25;
-    font-weight: 620;
-  }
 
-  .discover-trip-meta,
-  .discover-trip-cities {
-    display: block;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    color: var(--muted);
-    font-size: 11.5px;
-    line-height: 1.35;
-    font-weight: 500;
-  }
 
-  .discover-trip-cities {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    min-width: 0;
-  }
 
-  .discover-trip-cities span {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
 
-  .discover-trip-cities svg,
-  .discover-trip-cities .hi {
-    width: 12px;
-    height: 12px;
-  }
 
-  .discover-trip-author {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    min-width: 0;
-    color: var(--muted);
-    font-size: 11.5px;
-    line-height: 1.25;
-    font-weight: 500;
-  }
 
-  .discover-trip-author[data-author-link],
-  .plan-author[data-author-link] {
-    cursor: pointer;
-  }
 
-  .discover-trip-author[data-author-link]:hover,
-  .discover-trip-author[data-author-link]:focus-visible,
-  .plan-author[data-author-link]:hover,
-  .plan-author[data-author-link]:focus-visible {
-    color: var(--green);
-    text-decoration: underline;
-    outline: none;
-  }
 
-  .discover-trip-author span {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
 
-  .discover-trip-author svg,
-  .discover-trip-author .hi {
-    width: 12px;
-    height: 12px;
-  }
 
-  .discover-trip-views {
-    position: absolute;
-    right: 8px;
-    bottom: 8px;
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    min-height: 24px;
-    padding: 0 8px;
-    background: rgba(17,25,22,.72);
-    color: #fff;
-    font-size: 11px;
-    font-weight: 560;
-  }
-  .discover-trip-views .hi {
-    width: 13px;
-    height: 13px;
-  }
 
-  .discover-card-badge {
-    position: absolute;
-    z-index: 4;
-    top: 8px;
-    left: 8px;
-    display: inline-flex;
-    align-items: center;
-    min-height: 28px;
-    padding: 0 9px;
-    border: 2px solid var(--ink);
-    background: #fff;
-    color: var(--ink);
-    box-shadow: 2px 2px 0 #10201a;
-    font-size: 11px;
-    font-weight: 620;
-    pointer-events: none;
-  }
 
   .rank-row {
     display: grid;
@@ -1157,11 +1011,7 @@
     background: rgba(255,255,255,.12);
     color: #fff;
   }
-  .discover-panel--views .discover-card-badge {
-    background: #eef6fa;
-    color: var(--blue);
-  }
-
+  .discover-panel--views
   .dest-list {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -2362,42 +2212,6 @@
     .discover-panel--new,
     .discover-panel--views,
     .discover-panel--location { box-shadow: none; }
-    .discover-card-grid {
-      grid-auto-columns: minmax(168px, 52vw);
-      gap: 12px;
-      padding: 10px 4px 12px 0;
-    }
-    .discover-trip-card { gap: 6px; }
-    .discover-trip-cover {
-      height: 104px;
-      aspect-ratio: auto;
-    }
-    .discover-trip-title {
-      min-height: 0;
-      font-size: 14px;
-      line-height: 1.25;
-      -webkit-line-clamp: 2;
-    }
-    .discover-trip-meta {
-      font-size: 11px;
-      line-height: 1.4;
-      -webkit-line-clamp: 2;
-    }
-    .discover-trip-views {
-      right: 8px;
-      bottom: 8px;
-      min-height: 22px;
-      padding: 0 7px;
-      font-size: 10px;
-    }
-    .discover-trip-views .hi { width: 12px; height: 12px; }
-    .discover-card-badge {
-      top: 8px;
-      left: 8px;
-      min-height: 22px;
-      padding: 0 7px;
-      font-size: 10px;
-    }
     .discover-head,
     .hub-sec-head {
       min-height: 0;
@@ -2930,59 +2744,9 @@
     .start-action.primary,
     .discover-head h2,
     .discover-head span,
-    .discover-trip-title,
-    .discover-trip-author,
-    .discover-trip-meta,
-    .discover-trip-cities,
-    .discover-trip-views,
-    .discover-card-badge,
-    .location-side-title,
-    .location-side-note,
-    .location-back,
-    .location-plan-row b,
-    .location-plan-row span,
-    .location-plan-row em,
-    .dest-row b,
-    .dest-row span,
-    .location-marker,
-    .hub-sec-head h2,
-    .hub-sec-count,
-    .plan-name,
-    .plan-author,
-    .plan-meta,
-    .plan-route,
-    .plan-tag,
-    .plan-dot-badge,
-    .plan-views-badge,
-    .rank-no,
-    .rank-main b,
-    .rank-main span,
-    .rank-metric {
-      font-weight: 650;
-    }
 
-    .discover-trip-meta,
-    .discover-trip-author,
-    .discover-trip-cities,
-    .location-side-note,
-    .location-plan-row span,
-    .dest-row span,
-    .rank-main span,
-    .plan-author,
-    .plan-meta,
-    .plan-route {
-      font-weight: 560;
-    }
 
     .discover-head h2,
-    .discover-trip-title,
-    .location-side-title,
-    .location-plan-row b,
-    .dest-row b,
-    .hub-sec-head h2,
-    .plan-name {
-      font-weight: 720;
-    }
 
     /* スマホでは浮き上がりアニメは切り、影だけ維持（レイアウト崩れ防止） */
     .plan-row:hover { transform: none; }
@@ -2995,8 +2759,47 @@
     .start-title { font-size: 26px; padding-left: 14px; }
     .start-action { font-size: 11px; }
     .start-action.primary { min-width: 104px; font-size: 11px; }
-    .discover-card-grid { grid-auto-columns: minmax(156px, 58vw); }
     .hub-grid { grid-auto-columns: minmax(156px, 58vw); }
-    .discover-trip-cover { height: 96px; }
     .plan-cover { height: 96px; }
   }
+
+/* 新着・ランキングのカードは .plan-row を共用する。
+   種別ドットの代わりに順位（NEW 01 / No.1 …）を出すので、その見た目だけ足す。 */
+.plan-dot-badge.is-rank {
+  color: var(--green);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+/* カード列の幅を「自分の計画」と揃える（別々の指定になっていた） */
+.discover-card-grid {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 220px;
+  grid-template-columns: none;
+  gap: 18px;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  scroll-snap-type: inline proximity;
+  padding: 16px 4px 16px 0;
+}
+
+@media (max-width: 860px) {
+  .discover-card-grid {
+    grid-auto-columns: minmax(168px, 52vw);
+    gap: 12px;
+    padding: 10px 4px 12px 0;
+  }
+}
+
+@media (max-width: 390px) {
+  .discover-card-grid { grid-auto-columns: minmax(156px, 58vw); }
+}
+
+/* タグ（公開 / 表示中）はカード名と同じ行に置く。
+   長い旅行名で「公 開」と割れていたので、折り返さないようにする。 */
+.plan-tag {
+  flex: none;
+  white-space: nowrap;
+}

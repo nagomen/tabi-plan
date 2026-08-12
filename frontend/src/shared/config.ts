@@ -68,7 +68,10 @@ export interface SharedBackendConfig {
   mode: "local" | "api";
   /** true のとき共有ストアから読み込む */
   enabled: boolean;
-  /** mode="api" のときのベースURL（例 https://travel-api.example.com）。末尾スラッシュ不要。 */
+  /**
+   * mode="api" のときのベースURL（例 https://travel-api.example.com）。
+   * 空なら同一オリジンの /api を使う。末尾スラッシュ不要。
+   */
   apiBaseUrl?: string;
   /**
    * mode="api" のときのトークン。静的サイトに埋まる＝公開値なので、

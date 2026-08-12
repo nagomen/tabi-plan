@@ -378,21 +378,11 @@ function renderRankings(plans: PlanMeta[]): void {
   lastRankingLimit = limit;
   const latest = [...plans].sort((a, b) => timeValue(b) - timeValue(a)).slice(0, limit);
   const byViews = [...plans].sort((a, b) => getViews(b.slug) - getViews(a.slug) || timeValue(b) - timeValue(a)).slice(0, limit);
-  const discoverCard = (meta: PlanMeta, label: string): string => {
-    const views = getViews(meta.slug);
-    const compactLocations = compactLocationLabel(meta);
-    return (
-      '<a class="discover-trip-card" href="' + planHref(meta, !Permissions.canEdit(meta.slug)) + '">' +
-      '<span class="discover-card-badge">' + escapeHtml(label) + "</span>" +
-      '<span class="discover-trip-cover"><img src="' + planCoverThumbnail(meta) + '" alt="' + escapeHtml(meta.title || "旅行画像") + '" loading="lazy">' +
-      '<span class="discover-trip-views">' + icon("eye") + views.toLocaleString("ja-JP") + '</span></span>' +
-      '<span class="discover-trip-title">' + escapeHtml(meta.title || "無題の旅行") + '</span>' +
-      creatorLinkHtml(meta, "discover-trip-author") +
-      (meta.dates ? '<span class="discover-trip-meta">' + escapeHtml(meta.dates) + '</span>' : "") +
-      (compactLocations ? '<span class="discover-trip-cities">' + icon("mapPin") + "<span>" + escapeHtml(compactLocations) + "</span></span>" : "") +
-      '</a>'
-    );
-  };
+  // 新着・ランキングも「自分の計画」と同じカードを使う。
+  // 以前は discover-trip-card という別実装で、同じ旅行計画なのに
+  // 画像サイズ・文字サイズ・情報の並びが揃っていなかった。
+  const discoverCard = (meta: PlanMeta, label: string): string =>
+    rowHtml(meta, "public", "", undefined, label);
 
   rankingNewEl.innerHTML = latest.length
     ? latest.map((meta, i) => discoverCard(meta, "NEW " + String(i + 1).padStart(2, "0"))).join("")
@@ -758,7 +748,13 @@ function renderDiscover(publicPlans: PlanMeta[]): void {
 type RowVariant = "mine" | "public";
 
 /** 1枚のカード（計画）の HTML を組み立てる。variant で「自分の計画」/「みんなの公開計画」を出し分ける。 */
-function rowHtml(meta: PlanMeta, variant: RowVariant, activeSlug: string, highlight?: PlanTiming): string {
+function rowHtml(
+  meta: PlanMeta,
+  variant: RowVariant,
+  activeSlug: string,
+  highlight?: PlanTiming,
+  badge?: string,
+): string {
   const src = sourceClass(meta.source);
   const isLocal = meta.source === "local";
   const isActive = meta.slug === activeSlug;
@@ -849,7 +845,9 @@ function rowHtml(meta: PlanMeta, variant: RowVariant, activeSlug: string, highli
     '" data-variant="' +
     variant +
     '">' +
-    '<div class="plan-dot-badge">' +
+    (badge
+      ? '<div class="plan-dot-badge is-rank"><span>' + escapeHtml(badge) + "</span></div>"
+      : '<div class="plan-dot-badge">' +
     '<span class="plan-dot ' +
     src +
     '" title="' +
@@ -860,7 +858,7 @@ function rowHtml(meta: PlanMeta, variant: RowVariant, activeSlug: string, highli
     "<span>" +
     escapeHtml(sourceLabelText) +
     "</span>" +
-    "</div>" +
+    "</div>") +
     '<a class="plan-open" href="' +
     openHref +
     '" data-open>' +
