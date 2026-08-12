@@ -3417,28 +3417,40 @@
       bottom: 0;
       z-index: 80;
       display: grid;
-      grid-template-columns: repeat(5, 1fr);
+      grid-template-columns: repeat(var(--tl-mobile-nav-count, 5), minmax(0, 1fr));
       gap: 0;
       padding: 7px 8px calc(7px + env(safe-area-inset-bottom));
       border-top: 1px solid var(--line-strong);
       background: #fff;
     }
+    /* 塗りの箱にせず、仕切り線で区切って選択中だけ色を付ける。 */
     .tl-mobile-nav button {
       display: grid;
-      place-items: center;
+      justify-items: center;
+      align-content: center;
+      gap: 3px;
       min-width: 0;
-      height: 46px;
+      height: 50px;
       border: 0;
-      background: transparent;
+      border-left: 1px solid var(--line);
+      background: none;
       color: var(--muted);
       font: inherit;
-      font-size: 12px;
-      font-weight: 560;
+      cursor: pointer;
     }
-    .tl-mobile-nav button[aria-selected="true"] {
-      background: var(--green);
-      color: #fff;
-    }
+    .tl-mobile-nav button:first-child { border-left: 0; }
+
+    .tl-nav-ic { display: inline-grid; place-items: center; }
+    .tl-nav-ic .hi,
+    .tl-nav-ic svg { width: 20px; height: 20px; stroke-width: 1.8; }
+
+    .tl-nav-label { font-size: 10.5px; font-weight: 600; letter-spacing: 0.02em; }
+
+    /* 選択中はアイコンと文字だけ緑にする（背景は塗らない） */
+    .tl-mobile-nav button[aria-selected="true"] { color: var(--green); }
+    .tl-mobile-nav button[aria-selected="true"] .tl-nav-ic .hi,
+    .tl-mobile-nav button[aria-selected="true"] .tl-nav-ic svg { stroke-width: 2.1; }
+    .tl-mobile-nav button[aria-selected="true"] .tl-nav-label { font-weight: 700; }
   }
 
 /* ---- 支払い台帳 -------------------------------------------------------

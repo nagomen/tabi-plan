@@ -1946,6 +1946,7 @@ function renderBase(): void {
   qsa<HTMLElement>("[data-mobile-nav='members'], [data-mobile-nav='money']").forEach((el) => {
     el.hidden = !workspaceView;
   });
+  syncMobileNavLayout();
   if (!workspaceView && (mobileView === "members" || mobileView === "money")) {
     mobileView = "home";
   }
@@ -2006,6 +2007,13 @@ function canUseWorkspaceView(): boolean {
   if (canEditPlan(meta) || isMemberOf(meta)) return true;
   if (!planHasOwner(meta) && !READ_ONLY) return true;
   return false;
+}
+
+function syncMobileNavLayout(): void {
+  const nav = root.querySelector<HTMLElement>(".tl-mobile-nav");
+  if (!nav) return;
+  const visibleCount = qsa<HTMLElement>("[data-mobile-nav]").filter((button) => !button.hidden).length;
+  nav.style.setProperty("--tl-mobile-nav-count", String(Math.max(1, visibleCount)));
 }
 
 /** ローカル計画のチェックリストを localStorage に保存する。 */
@@ -2671,6 +2679,7 @@ async function init(): Promise<void> {
     qsa<HTMLElement>("[data-members-nav], [data-mobile-nav='money']").forEach((nav) => {
       nav.hidden = !canUseWorkspaceView();
     });
+    syncMobileNavLayout();
   }
   // 日程を LINE 用テキストで共有／コピー
   const copyScheduleBtn = root.querySelector<HTMLButtonElement>("[data-copy-schedule]");
@@ -2709,7 +2718,14 @@ async function init(): Promise<void> {
     new ResizeObserver(syncStickyOffsets).observe(qs(".ah"));
     new ResizeObserver(refreshMapLayout).observe(qs("[data-map]"));
   }
+  // 下部ナビにアイコンを差し込む（セクション見出しと同じ heroicon を使う）。
+  const MOBILE_NAV_ICONS: Record<string, IconName> = {
+    home: "home", map: "map", members: "users", money: "banknotes", links: "link",
+  };
   qsa<HTMLElement>("[data-mobile-nav]").forEach((button) => {
+    const name = MOBILE_NAV_ICONS[button.dataset.mobileNav || ""];
+    const slot = button.querySelector(".tl-nav-ic");
+    if (name && slot) slot.innerHTML = icon(name);
     button.addEventListener("click", () => {
       applyMobileView(button.dataset.mobileNav);
     });

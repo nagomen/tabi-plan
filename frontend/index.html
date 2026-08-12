@@ -178,12 +178,14 @@
     </div>
   </div>
 
+  <!-- 下部ナビ。アイコン（heroicon）の下にラベルを置き、選択中だけ色を付ける。
+       アイコンは main.ts の MOBILE_NAV_ICONS が起動時に差し込む。 -->
   <nav class="tl-mobile-nav" aria-label="スマホ用ナビゲーション">
-    <button type="button" data-mobile-nav="home" aria-selected="true">ホーム</button>
-    <button type="button" data-mobile-nav="map" aria-selected="false">地図</button>
-    <button type="button" data-mobile-nav="members" aria-selected="false" data-members-nav>メンバー</button>
-    <button type="button" data-mobile-nav="money" aria-selected="false">費用</button>
-    <button type="button" data-mobile-nav="links" aria-selected="false">リンク</button>
+    <button type="button" data-mobile-nav="home" aria-selected="true"><span class="tl-nav-ic"></span><span class="tl-nav-label">ホーム</span></button>
+    <button type="button" data-mobile-nav="map" aria-selected="false"><span class="tl-nav-ic"></span><span class="tl-nav-label">地図</span></button>
+    <button type="button" data-mobile-nav="members" aria-selected="false" data-members-nav><span class="tl-nav-ic"></span><span class="tl-nav-label">メンバー</span></button>
+    <button type="button" data-mobile-nav="money" aria-selected="false"><span class="tl-nav-ic"></span><span class="tl-nav-label">費用</span></button>
+    <button type="button" data-mobile-nav="links" aria-selected="false"><span class="tl-nav-ic"></span><span class="tl-nav-label">リンク</span></button>
   </nav>
 </div>
 
