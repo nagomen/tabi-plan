@@ -7,7 +7,7 @@
 
 import mysql from "mysql2/promise";
 import { config } from "./config.js";
-import type { Bootstrap } from "./types.js";
+import type { Bootstrap, ExpenseRow, ExpenseShareRow, PlanMemberRow, PlanRow, SettlementRow } from "./types.js";
 
 export const pool = mysql.createPool({
   host: config.db.host,
@@ -35,6 +35,10 @@ async function all<T>(sql: string, params: unknown[] = []): Promise<T[]> {
   return rows as unknown as T[];
 }
 
+function inClause(ids: string[]): { sql: string; params: string[] } {
+  return { sql: ids.map(() => "?").join(","), params: ids };
+}
+
 export async function ping(): Promise<void> {
   await pool.query("SELECT 1");
 }
@@ -42,45 +46,181 @@ export async function ping(): Promise<void> {
 // ---- 読み取り -----------------------------------------------------------
 
 export async function bootstrap(): Promise<Bootstrap> {
-  const [
-    users, credentials, plans, members, itinerary, cities, links, checklist,
-    candidates, candidateVotes, expenses, expenseShares, settlements, views,
-    paymentLinks, userSettings, friendships,
-  ] = await Promise.all([
-    all("SELECT id, display_name FROM users ORDER BY created_at"),
-    all("SELECT user_id, email FROM user_credentials"),
-    all(`SELECT id, slug, title, note, start_date, end_date, dates_label, cover_url,
-           base_currency, source, visibility, status, open_editing, owner_user_id,
-           external_spreadsheet_id, external_apps_script_url, external_schema,
-           created_at, updated_at
-         FROM plans WHERE deleted_at IS NULL ORDER BY created_at`),
-    all("SELECT plan_id, user_id, role, status FROM plan_members WHERE status = 'active'"),
-    all(`SELECT id, plan_id, item_date, day_index, sort_order, kind, start_time, title, place,
+  return bootstrapForUser("");
+}
+
+export async function bootstrapForUser(userId = ""): Promise<Bootstrap> {
+  return restrictedBootstrapForUser(userId);
+}
+
+async function restrictedBootstrapForUser(userId = ""): Promise<Bootstrap> {
+  const actorJoin = userId
+    ? "LEFT JOIN plan_members pm ON pm.plan_id = p.id AND pm.user_id = ? AND pm.status = 'active'"
+    : "";
+  const actorParams = userId ? [userId] : [];
+  const publicPredicate = "(p.visibility = 'public' AND p.status = 'published')";
+  const workspacePredicate = userId ? "(pm.user_id IS NOT NULL OR p.open_editing = 1)" : "p.open_editing = 1";
+  const visibleWhere = `p.deleted_at IS NULL AND (${publicPredicate} OR ${workspacePredicate})`;
+  const workspaceWhere = `p.deleted_at IS NULL AND ${workspacePredicate}`;
+
+  const [plans, workspaceRows, credentials, userSettings, friendships] = await Promise.all([
+    all<PlanRow>(`SELECT p.id, p.slug, p.title, p.note, p.start_date, p.end_date, p.dates_label, p.cover_url,
+           p.base_currency, p.source, p.visibility, p.status, p.open_editing, p.owner_user_id,
+           p.external_spreadsheet_id, p.external_apps_script_url, p.external_schema,
+           p.created_at, p.updated_at
+         FROM plans p ${actorJoin}
+         WHERE ${visibleWhere}
+         ORDER BY p.created_at`, actorParams),
+    all<{ id: string }>(`SELECT p.id FROM plans p ${actorJoin} WHERE ${workspaceWhere}`, actorParams),
+    userId ? all("SELECT user_id, email FROM user_credentials WHERE user_id = ?", [userId]) : [],
+    userId ? all("SELECT user_id, history_public FROM user_settings WHERE user_id = ?", [userId]) : [],
+    userId
+      ? all(`SELECT id, user_low_id, user_high_id, requested_by_id, status, created_at, responded_at
+         FROM friendships WHERE user_low_id = ? OR user_high_id = ?`, [userId, userId])
+      : [],
+  ]);
+
+  const visiblePlanIds = plans.map((plan) => plan.id);
+  const workspacePlanIdSet = new Set(workspaceRows.map((row) => row.id));
+  const workspacePlanIds = visiblePlanIds.filter((id) => workspacePlanIdSet.has(id));
+  const publicOnlyPlanIds = visiblePlanIds.filter((id) => !workspacePlanIdSet.has(id));
+
+  const visibleIn = inClause(visiblePlanIds);
+  const [itinerary, cities, views] = visiblePlanIds.length
+    ? await Promise.all([
+      all<Bootstrap["itinerary"][number]>(`SELECT id, plan_id, item_date, day_index, sort_order, kind, start_time, title, place,
            area, note, map_query, lat, lng, from_place, to_place, transport, duration_minutes
-         FROM itinerary_items ORDER BY plan_id, item_date, sort_order`),
-    all("SELECT id, plan_id, name, sort_order FROM plan_cities ORDER BY plan_id, sort_order"),
-    all("SELECT id, plan_id, link_key, label, url, caption, sort_order FROM plan_links ORDER BY plan_id, sort_order"),
-    all("SELECT id, plan_id, label, status, sort_order FROM plan_checklist_items ORDER BY plan_id, sort_order"),
-    all("SELECT id, plan_id, title, place, proposed_by_id, adopted_at FROM plan_candidates ORDER BY plan_id, created_at"),
-    all("SELECT candidate_id, user_id FROM plan_candidate_votes"),
-    all(`SELECT id, plan_id, paid_on, payer_user_id, category, title, amount_minor, currency,
+         FROM itinerary_items
+         WHERE plan_id IN (${visibleIn.sql})
+         ORDER BY plan_id, item_date, sort_order`, visibleIn.params),
+      all<Bootstrap["cities"][number]>(`SELECT id, plan_id, name, sort_order FROM plan_cities
+         WHERE plan_id IN (${visibleIn.sql})
+         ORDER BY plan_id, sort_order`, visibleIn.params),
+      all<Bootstrap["views"][number]>(`SELECT plan_id, CAST(SUM(view_count) AS SIGNED) AS view_count FROM plan_view_daily
+         WHERE plan_id IN (${visibleIn.sql})
+         GROUP BY plan_id`, visibleIn.params),
+    ])
+    : [[], [], []];
+
+  const workspaceIn = inClause(workspacePlanIds);
+  const [members, checklist, candidates, expenses, expenseShares, settlements] = workspacePlanIds.length
+    ? await Promise.all([
+      all<PlanMemberRow>(`SELECT plan_id, user_id, role, status FROM plan_members
+         WHERE status = 'active' AND plan_id IN (${workspaceIn.sql})`, workspaceIn.params),
+      all<Bootstrap["checklist"][number]>(`SELECT id, plan_id, label, status, sort_order FROM plan_checklist_items
+         WHERE plan_id IN (${workspaceIn.sql})
+         ORDER BY plan_id, sort_order`, workspaceIn.params),
+      all<Bootstrap["candidates"][number]>(`SELECT id, plan_id, title, place, proposed_by_id, adopted_at FROM plan_candidates
+         WHERE plan_id IN (${workspaceIn.sql})
+         ORDER BY plan_id, created_at`, workspaceIn.params),
+      all<ExpenseRow>(`SELECT id, plan_id, paid_on, payer_user_id, category, title, amount_minor, currency,
            fx_rate, amount_base_minor, split_method, payment_method, note, receipt_url,
            created_at, deleted_at
-         FROM expenses ORDER BY plan_id, created_at`),
-    all("SELECT expense_id, user_id, amount_base_minor FROM expense_shares"),
-    all(`SELECT id, plan_id, from_user_id, to_user_id, amount_base_minor, note, settled_at, deleted_at
-         FROM settlements WHERE deleted_at IS NULL ORDER BY plan_id, settled_at`),
-    all("SELECT plan_id, CAST(SUM(view_count) AS SIGNED) AS view_count FROM plan_view_daily GROUP BY plan_id"),
-    all("SELECT user_id, provider, handle FROM user_payment_links"),
-    all("SELECT user_id, history_public FROM user_settings"),
-    all(`SELECT id, user_low_id, user_high_id, requested_by_id, status, created_at, responded_at
-         FROM friendships`),
-  ]);
+         FROM expenses
+         WHERE plan_id IN (${workspaceIn.sql})
+         ORDER BY plan_id, created_at`, workspaceIn.params),
+      all<ExpenseShareRow>(`SELECT s.expense_id, s.user_id, s.amount_base_minor FROM expense_shares s
+         JOIN expenses e ON e.id = s.expense_id
+         WHERE e.plan_id IN (${workspaceIn.sql})`, workspaceIn.params),
+      all<SettlementRow>(`SELECT id, plan_id, from_user_id, to_user_id, amount_base_minor, note, settled_at, deleted_at
+         FROM settlements
+         WHERE deleted_at IS NULL AND plan_id IN (${workspaceIn.sql})
+         ORDER BY plan_id, settled_at`, workspaceIn.params),
+    ])
+    : [[], [], [], [], [], []];
+
+  const candidateIn = inClause(candidates.map((candidate) => String(candidate.id)));
+  const candidateVotes = candidates.length
+    ? await all(`SELECT candidate_id, user_id FROM plan_candidate_votes WHERE candidate_id IN (${candidateIn.sql})`, candidateIn.params)
+    : [];
+
+  const publicOnlyIn = inClause(publicOnlyPlanIds);
+  const linkClauses: string[] = [];
+  const linkParams: string[] = [];
+  if (workspacePlanIds.length) {
+    linkClauses.push(`plan_id IN (${workspaceIn.sql})`);
+    linkParams.push(...workspaceIn.params);
+  }
+  if (publicOnlyPlanIds.length) {
+    linkClauses.push(`(plan_id IN (${publicOnlyIn.sql}) AND link_key IN ('itinerary', 'maps', 'photos'))`);
+    linkParams.push(...publicOnlyIn.params);
+  }
+  const links = linkClauses.length
+    ? await all(`SELECT id, plan_id, link_key, label, url, caption, sort_order FROM plan_links
+         WHERE ${linkClauses.join(" OR ")}
+         ORDER BY plan_id, sort_order`, linkParams)
+    : [];
+
+  const workspaceUserIds = new Set<string>();
+  for (const member of members as PlanMemberRow[]) workspaceUserIds.add(member.user_id);
+  for (const expense of expenses as ExpenseRow[]) workspaceUserIds.add(expense.payer_user_id);
+  for (const share of expenseShares as ExpenseShareRow[]) workspaceUserIds.add(share.user_id);
+  for (const settlement of settlements as SettlementRow[]) {
+    workspaceUserIds.add(settlement.from_user_id);
+    workspaceUserIds.add(settlement.to_user_id);
+  }
+  if (userId) workspaceUserIds.add(userId);
+
+  const visibleUserIds = new Set(workspaceUserIds);
+  for (const plan of plans) {
+    if (plan.owner_user_id) visibleUserIds.add(plan.owner_user_id);
+  }
+
+  const visibleUserIn = inClause([...visibleUserIds]);
+  const users = visibleUserIds.size
+    ? await all(`SELECT id, display_name FROM users WHERE id IN (${visibleUserIn.sql}) ORDER BY created_at`, visibleUserIn.params)
+    : [];
+
+  const paymentUserIn = inClause([...workspaceUserIds]);
+  const paymentLinks = workspaceUserIds.size
+    ? await all(`SELECT user_id, provider, handle FROM user_payment_links WHERE user_id IN (${paymentUserIn.sql})`, paymentUserIn.params)
+    : [];
+
   return {
     users, credentials, plans, members, itinerary, cities, links, checklist,
     candidates, candidateVotes, expenses, expenseShares, settlements, views,
     paymentLinks, userSettings, friendships,
   } as Bootstrap;
+}
+
+export async function planRole(planId: string, userId: string): Promise<"owner" | "editor" | "viewer" | null> {
+  if (!userId) return null;
+  const rows = await all<{ role: "owner" | "editor" | "viewer" }>(
+    "SELECT role FROM plan_members WHERE plan_id = ? AND user_id = ? AND status = 'active' LIMIT 1",
+    [planId, userId],
+  );
+  return rows[0]?.role || null;
+}
+
+export async function canEditPlan(planId: string, userId: string): Promise<boolean> {
+  const plans = await all<{ open_editing: 0 | 1 }>("SELECT open_editing FROM plans WHERE id = ? AND deleted_at IS NULL LIMIT 1", [planId]);
+  if (!plans[0]) return false;
+  if (plans[0].open_editing) return true;
+  const role = await planRole(planId, userId);
+  return role === "owner" || role === "editor";
+}
+
+export async function canManagePlan(planId: string, userId: string): Promise<boolean> {
+  if (!userId) return false;
+  const role = await planRole(planId, userId);
+  return role === "owner";
+}
+
+export async function canViewPlan(planId: string, userId: string): Promise<boolean> {
+  const plans = await all<{ visibility: "public" | "invite"; status: "draft" | "published"; open_editing: 0 | 1 }>(
+    "SELECT visibility, status, open_editing FROM plans WHERE id = ? AND deleted_at IS NULL LIMIT 1",
+    [planId],
+  );
+  const plan = plans[0];
+  if (!plan) return false;
+  if (plan.open_editing) return true;
+  if (userId && await planRole(planId, userId)) return true;
+  return plan.visibility === "public" && plan.status === "published";
+}
+
+export async function planIdForExpense(expenseId: string): Promise<string | null> {
+  const rows = await all<{ plan_id: string }>("SELECT plan_id FROM expenses WHERE id = ? LIMIT 1", [expenseId]);
+  return rows[0]?.plan_id || null;
 }
 
 // ---- ユーザー -----------------------------------------------------------
@@ -177,7 +317,25 @@ export async function createPlan(input: Record<string, unknown>): Promise<{ id: 
     vals.push(v === "" ? null : v);
   }
   if (!cols.includes("slug") || !cols.includes("title")) throw new BadRequest("slug と title が必要です");
-  await pool.query(`INSERT INTO plans (${cols.join(",")}) VALUES (${cols.map(() => "?").join(",")})`, vals);
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    await conn.query(`INSERT INTO plans (${cols.join(",")}) VALUES (${cols.map(() => "?").join(",")})`, vals);
+    const owner = String(input.owner_user_id || "");
+    if (owner) {
+      await conn.query(
+        `INSERT INTO plan_members (plan_id, user_id, role, status) VALUES (?, ?, 'owner', 'active')
+         ON DUPLICATE KEY UPDATE role = 'owner', status = 'active'`,
+        [id, owner],
+      );
+    }
+    await conn.commit();
+  } catch (error) {
+    await conn.rollback();
+    throw error;
+  } finally {
+    conn.release();
+  }
   return { id };
 }
 

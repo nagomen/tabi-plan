@@ -22,7 +22,7 @@ import {
 } from "../shared/config";
 import * as TripPlans from "../shared/plans-store";
 import { getUser } from "../shared/user-store";
-import { canEditPlan, canViewPlan, planHasOwner } from "../shared/membership";
+import { canEditPlan, canViewPlan, isMemberOf, planHasOwner } from "../shared/membership";
 import { currentAccount } from "../shared/account-store";
 import { currentUserId, adoptLegacyIdentity, identifyByName } from "../shared/identity";
 import * as db from "../shared/db";
@@ -965,6 +965,9 @@ function renderTransfers(settlement: Settlement): void {
 function renderPhotoAlbum(): void {
   const photo = linkByKey("photos");
   const url = photo.url || "";
+  const workspaceView = canUseWorkspaceView();
+  const card = root.querySelector<HTMLElement>("[data-photo-card]");
+  if (card) card.hidden = !workspaceView && !url;
   const link = qs<HTMLAnchorElement>("[data-photo-link]");
   const button = qs<HTMLAnchorElement>("[data-photo-button]");
   const editButton = root.querySelector<HTMLButtonElement>("[data-photo-link-edit]");
@@ -977,7 +980,7 @@ function renderPhotoAlbum(): void {
   button.setAttribute("aria-disabled", String(!url));
   if (input) input.value = url;
   if (editButton) {
-    editButton.hidden = !isEditableLocalPlan();
+    editButton.hidden = !workspaceView || !isEditableLocalPlan();
     editButton.innerHTML = `${icon(url ? "pencilSquare" : "plus")}<span>${url ? "リンク変更" : "リンク設定"}</span>`;
   }
 
@@ -1918,13 +1921,13 @@ function renderDayTabs(route: { segs: RouteSeg[]; dayToSeg: number[] }): void {
 function renderBase(): void {
   const data = state.data;
   setText("[data-title]", data.trip.title);
+  const workspaceView = canUseWorkspaceView();
 
   const tabs: { key: string; label: string; glyph: string }[] = [
     { key: "home", label: "ホーム", glyph: icon("home") },
-    // メンバーは参加メンバー（!READ_ONLY）だけに見せる
-    ...(READ_ONLY ? [] : [{ key: "members", label: "メンバー", glyph: icon("users") }]),
+    ...(workspaceView ? [{ key: "members", label: "メンバー", glyph: icon("users") }] : []),
     { key: "map", label: "地図", glyph: icon("map") },
-    { key: "money", label: "費用", glyph: icon("banknotes") },
+    ...(workspaceView ? [{ key: "money", label: "費用", glyph: icon("banknotes") }] : []),
     { key: "links", label: "リンク", glyph: icon("link") },
   ];
   qs<HTMLElement>("[data-actions]").style.setProperty("--tl-action-count", String(tabs.length));
@@ -1937,34 +1940,53 @@ function renderBase(): void {
     button.addEventListener("click", () => applyMobileView(button.dataset.sectionNav));
   });
 
-  renderMembers(data);
+  qsa<HTMLElement>("[data-workspace-only]").forEach((el) => {
+    el.hidden = !workspaceView;
+  });
+  qsa<HTMLElement>("[data-mobile-nav='members'], [data-mobile-nav='money']").forEach((el) => {
+    el.hidden = !workspaceView;
+  });
+  if (!workspaceView && (mobileView === "members" || mobileView === "money")) {
+    mobileView = "home";
+  }
+
+  if (workspaceView) renderMembers(data);
 
   qs<HTMLAnchorElement>("[data-my-maps]").href = linkByKey("maps").url || "#";
 
-  if (usingLocalExpenses()) {
+  if (workspaceView && usingLocalExpenses()) {
     data.settlement = { ...data.settlement, ...localSettlement() };
   }
   const settlement = data.settlement || {};
   setText("[data-paid]", settlement.expenseTotal || "¥0");
   setText("[data-your-paid]", settlement.yourPaid || "—");
   setText("[data-your-due]", settlement.yourDue || "¥0");
-  renderTransfers(settlement);
-  renderExpenseDetails(settlement);
-  applyMoneyTab();
+  if (workspaceView) {
+    renderTransfers(settlement);
+    renderExpenseDetails(settlement);
+    applyMoneyTab();
+  }
   renderPhotoAlbum();
-  saveExpenseEntryCache(data);
-  renderExpenseEntry(data);
+  if (workspaceView) {
+    saveExpenseEntryCache(data);
+    renderExpenseEntry(data);
+  }
   renderLocalInfo(data.localInfo || []);
 
-  const primaryLinks = ["itinerary", "maps", "expenseSheet", "photos"].map(linkByKey).filter((link): link is TripLink => Boolean(link.url));
+  const primaryLinkKeys = workspaceView ? ["itinerary", "maps", "expenseSheet", "photos"] : ["itinerary", "maps", "photos"];
+  const primaryLinks = primaryLinkKeys.map(linkByKey).filter((link): link is TripLink => Boolean(link.url));
   const docs = data.links.filter((link) => !["itinerary", "maps", "expenseForm", "photos", "expenseSheet"].includes(link.key)).concat(primaryLinks);
   setHtml("[data-docs]", docs.slice(0, 5).map((doc) =>
     `<a class="tl-doc" href="${doc.url}" target="_blank" rel="noopener">
       <span class="tl-doc-icon">${linkIcon(doc.key)}</span><b>${doc.label}</b><span>${icon("arrowTopRightOnSquare")}</span>
     </a>`,
   ).join(""));
+  setText("[data-links-title]", workspaceView ? "リンク・タスク" : "リンク");
 
-  renderChecklist();
+  const checksEl = root.querySelector<HTMLElement>("[data-checks]");
+  if (checksEl) checksEl.hidden = !workspaceView;
+  if (workspaceView) renderChecklist();
+  else setHtml("[data-checks]", "");
 
   const route = computeRoute();
   renderDayTabs(route);
@@ -1976,6 +1998,14 @@ function renderBase(): void {
 /** タスクを編集・保存できるのはこの端末のローカル計画のみ。 */
 function tasksEditable(): boolean {
   return !READ_ONLY && CONFIG.mode === "local";
+}
+
+function canUseWorkspaceView(): boolean {
+  const meta = TripPlans.get(CONFIG.tripSlug);
+  if (!meta) return !READ_ONLY;
+  if (canEditPlan(meta) || isMemberOf(meta)) return true;
+  if (!planHasOwner(meta) && !READ_ONLY) return true;
+  return false;
 }
 
 /** ローカル計画のチェックリストを localStorage に保存する。 */
@@ -1991,28 +2021,49 @@ function persistChecklist(): void {
 function renderChecklist(): void {
   const items = state.data.checklist || [];
   const editable = tasksEditable();
+  const summary = checklistSummary(items);
+  // 状態はアイコンだけで示す。「未着手」などの文字を毎行に置くと
+  // 幅を食ってタスク名が折り返し、行の高さがばらついていた。
+  const STATE_ICON: Record<string, IconName> = { todo: "minus", doing: "clock", done: "check" };
+
   const rows = items
     .map((item, index) => {
       const status = taskStatus(item);
-      const stateBtn = editable
-        ? `<button class="tl-task-state" type="button" data-task-toggle="${index}" aria-label="状態: ${TASK_STATUS_LABEL[status]}（クリックで変更）">${TASK_STATUS_LABEL[status]}</button>`
-        : `<span class="tl-task-state" aria-label="状態: ${TASK_STATUS_LABEL[status]}">${TASK_STATUS_LABEL[status]}</span>`;
+      const label = TASK_STATUS_LABEL[status];
+      const mark = `<span class="tl-task-mark">${icon(STATE_ICON[status] || "minus")}</span>`;
+      const state = editable
+        ? `<button class="tl-task-state" type="button" data-task-toggle="${index}" aria-label="状態: ${label}（押すと変更）" title="${label}">${mark}</button>`
+        : `<span class="tl-task-state" aria-label="状態: ${label}" title="${label}">${mark}</span>`;
       const del = editable
         ? `<button class="tl-task-del" type="button" data-task-del="${index}" aria-label="このタスクを削除">${icon("xMark")}</button>`
         : "";
-      return `<li class="tl-task is-${status}">${stateBtn}<span class="tl-task-label">${escapeHtml(item.label)}</span>${del}</li>`;
+      return `<li class="tl-task is-${status}">${state}<span class="tl-task-label">${escapeHtml(item.label)}</span>${del}</li>`;
     })
     .join("");
 
-  const summary = checklistSummary(items);
-  const summaryHtml = summary.total
-    ? `<p class="tl-task-summary">完了 ${summary.done}/${summary.total}<i>·</i>進行中 ${summary.doing}<i>·</i>未着手 ${summary.todo}</p>`
+  // 進捗は細い罫線1本で示す（箱やゲージを置かない）。
+  const pct = summary.total ? Math.round((summary.done / summary.total) * 100) : 0;
+  const progress = summary.total
+    ? `<div class="tl-task-progress" role="img" aria-label="完了 ${summary.done} / ${summary.total}">
+         <span style="width:${pct}%"></span>
+       </div>`
     : "";
   const addHtml = editable
-    ? `<form class="tl-task-add" data-task-add><input data-task-input type="text" maxlength="60" placeholder="タスクを追加" aria-label="タスクを追加" autocomplete="off"><button type="submit" aria-label="追加">${icon("plus")}</button></form>`
+    ? `<form class="tl-task-add" data-task-add>
+         <input data-task-input type="text" maxlength="60" placeholder="タスクを追加" aria-label="タスクを追加" autocomplete="off">
+         <button type="submit" aria-label="追加">${icon("plus")}</button>
+       </form>`
     : "";
-  const emptyHtml = !items.length && !editable ? `<p class="tl-task-empty">タスクはありません</p>` : "";
-  setHtml("[data-checks]", `<ul class="tl-tasks">${rows}</ul>${emptyHtml}${addHtml}${summaryHtml}`);
+  const emptyHtml = !items.length
+    ? `<p class="tl-task-empty">${editable ? "タスクを追加すると、ここに並びます。" : "タスクはありません"}</p>`
+    : "";
+
+  setHtml(
+    "[data-checks]",
+    `${subhead("listBullet", "タスク", summary.total ? `${summary.done}/${summary.total}` : "")}
+     ${progress}
+     <ul class="tl-tasks">${rows}</ul>${emptyHtml}${addHtml}`,
+  );
 }
 
 /** タスクの状態変更・削除・追加を [data-checks] にデリゲートで束ねる（初期化時に1回）。 */
@@ -2616,9 +2667,9 @@ async function init(): Promise<void> {
         '<span class="tl-ro-badge">' + icon("eye") + "閲覧のみ</span>",
       );
     }
-    // 非メンバーはメンバー画面を見られない（下部ナビのメンバーも隠す）
-    const membersNav = root.querySelector<HTMLElement>("[data-members-nav]");
-    if (membersNav) membersNav.hidden = true;
+    qsa<HTMLElement>("[data-members-nav], [data-mobile-nav='money']").forEach((nav) => {
+      nav.hidden = !canUseWorkspaceView();
+    });
   }
   // 日程を LINE 用テキストで共有／コピー
   const copyScheduleBtn = root.querySelector<HTMLButtonElement>("[data-copy-schedule]");

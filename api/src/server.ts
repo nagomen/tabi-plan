@@ -55,7 +55,7 @@ function corsHeaders(origin: string | undefined): Record<string, string> {
   return {
     "Access-Control-Allow-Origin": origin,
     "Access-Control-Allow-Methods": "GET,POST,PATCH,PUT,DELETE,OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type,Authorization",
+    "Access-Control-Allow-Headers": "Content-Type,Authorization,X-Travel-User-Id",
     "Access-Control-Max-Age": "86400",
     Vary: "Origin",
   };
@@ -168,7 +168,8 @@ const server = http.createServer(async (req, res) => {
   try {
     // 関係テーブル（新）。該当しなければ下の KV（旧）へ落ちる。
     const body = req.method === "GET" || req.method === "DELETE" ? {} : await readJsonBody(req);
-    const handled = await route(req.method || "GET", path, body);
+    const actorUserId = typeof req.headers["x-travel-user-id"] === "string" ? req.headers["x-travel-user-id"] : "";
+    const handled = await route(req.method || "GET", path, body, actorUserId);
     if (handled) {
       send(res, handled.status, handled.body, cors);
       return;

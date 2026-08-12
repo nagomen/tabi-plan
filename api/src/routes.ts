@@ -32,10 +32,20 @@ type Body = Record<string, unknown>;
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
 const arr = (v: unknown): Record<string, unknown>[] => (Array.isArray(v) ? v : []);
 
-export async function route(method: string, path: string, body: Body): Promise<Handled | null> {
+async function forbiddenUnless(ok: boolean | Promise<boolean>): Promise<Handled | null> {
+  return await ok ? null : { status: 403, body: { error: "forbidden" } };
+}
+
+async function requireExpenseEdit(expenseId: string, actorUserId: string): Promise<Handled | null> {
+  const planId = await repo.planIdForExpense(expenseId);
+  if (!planId) return { status: 404, body: { error: "not found" } };
+  return forbiddenUnless(repo.canEditPlan(planId, actorUserId));
+}
+
+export async function route(method: string, path: string, body: Body, actorUserId = ""): Promise<Handled | null> {
   // ---- 起動時の一括取得 ----
   if (method === "GET" && path === "/api/bootstrap") {
-    return { status: 200, body: await repo.bootstrap() };
+    return { status: 200, body: await repo.bootstrapForUser(actorUserId) };
   }
 
   // ---- ユーザー ----
@@ -46,11 +56,13 @@ export async function route(method: string, path: string, body: Body): Promise<H
   }
   let m = /^\/api\/users\/([\w-]{1,32})$/.exec(path);
   if (m && method === "PATCH") {
+    if (m[1] !== actorUserId) return { status: 403, body: { error: "forbidden" } };
     await repo.renameUser(m[1], str(body.display_name));
     return { status: 200, body: { ok: true } };
   }
   m = /^\/api\/users\/([\w-]{1,32})\/credentials$/.exec(path);
   if (m && method === "PUT") {
+    if (actorUserId && m[1] !== actorUserId) return { status: 403, body: { error: "forbidden" } };
     await repo.upsertCredentials({
       user_id: m[1], email: str(body.email), salt: str(body.salt), hash: str(body.hash),
     });
@@ -63,49 +75,66 @@ export async function route(method: string, path: string, body: Body): Promise<H
   }
   m = /^\/api\/users\/([\w-]{1,32})\/payment-link$/.exec(path);
   if (m && method === "PUT") {
+    if (m[1] !== actorUserId) return { status: 403, body: { error: "forbidden" } };
     await repo.setPaymentLink(m[1], str(body.handle));
     return { status: 200, body: { ok: true } };
   }
   m = /^\/api\/users\/([\w-]{1,32})\/settings$/.exec(path);
   if (m && method === "PUT") {
+    if (m[1] !== actorUserId) return { status: 403, body: { error: "forbidden" } };
     await repo.setUserSettings(m[1], Boolean(body.history_public));
     return { status: 200, body: { ok: true } };
   }
 
   // ---- 計画 ----
   if (method === "POST" && path === "/api/plans") {
-    return { status: 200, body: await repo.createPlan(body) };
+    if (!actorUserId) return { status: 403, body: { error: "forbidden" } };
+    return { status: 200, body: await repo.createPlan({ ...body, owner_user_id: actorUserId }) };
   }
   m = /^\/api\/plans\/([\w-]{1,32})$/.exec(path);
   if (m && method === "PATCH") {
+    const denied = await forbiddenUnless(repo.canEditPlan(m[1], actorUserId));
+    if (denied) return denied;
     await repo.updatePlan(m[1], body);
     return { status: 200, body: { ok: true } };
   }
   if (m && method === "DELETE") {
+    const denied = await forbiddenUnless(repo.canManagePlan(m[1], actorUserId));
+    if (denied) return denied;
     await repo.deletePlan(m[1]);
     return { status: 200, body: { ok: true } };
   }
   m = /^\/api\/plans\/([\w-]{1,32})\/members$/.exec(path);
   if (m && method === "PUT") {
+    const denied = await forbiddenUnless(repo.canManagePlan(m[1], actorUserId));
+    if (denied) return denied;
     await repo.replaceMembers(m[1], arr(body.members) as { user_id: string; role?: string }[]);
     return { status: 200, body: { ok: true } };
   }
   m = /^\/api\/plans\/([\w-]{1,32})\/content$/.exec(path);
   if (m && method === "PUT") {
+    const denied = await forbiddenUnless(repo.canEditPlan(m[1], actorUserId));
+    if (denied) return denied;
     await repo.replacePlanContent(m[1], body as Parameters<typeof repo.replacePlanContent>[1]);
     return { status: 200, body: { ok: true } };
   }
   m = /^\/api\/plans\/([\w-]{1,32})\/views$/.exec(path);
   if (m && method === "POST") {
+    const denied = await forbiddenUnless(repo.canViewPlan(m[1], actorUserId));
+    if (denied) return denied;
     await repo.countView(m[1]);
     return { status: 200, body: { ok: true } };
   }
   m = /^\/api\/plans\/([\w-]{1,32})\/expenses$/.exec(path);
   if (m && method === "POST") {
+    const denied = await forbiddenUnless(repo.canEditPlan(m[1], actorUserId));
+    if (denied) return denied;
     return { status: 200, body: await repo.createExpense(m[1], body as unknown as repo.ExpenseInput) };
   }
   m = /^\/api\/plans\/([\w-]{1,32})\/settlements$/.exec(path);
   if (m && method === "POST") {
+    const denied = await forbiddenUnless(repo.canEditPlan(m[1], actorUserId));
+    if (denied) return denied;
     return {
       status: 200,
       body: await repo.createSettlement(m[1], body as unknown as {
@@ -117,21 +146,29 @@ export async function route(method: string, path: string, body: Body): Promise<H
   // ---- 費用 ----
   m = /^\/api\/expenses\/([\w-]{1,32})$/.exec(path);
   if (m && method === "PATCH") {
+    const denied = await requireExpenseEdit(m[1], actorUserId);
+    if (denied) return denied;
     await repo.updateExpense(m[1], body as unknown as repo.ExpenseInput);
     return { status: 200, body: { ok: true } };
   }
   if (m && method === "DELETE") {
+    const denied = await requireExpenseEdit(m[1], actorUserId);
+    if (denied) return denied;
     await repo.deleteExpense(m[1]);
     return { status: 200, body: { ok: true } };
   }
   m = /^\/api\/expenses\/([\w-]{1,32})\/restore$/.exec(path);
   if (m && method === "POST") {
+    const denied = await requireExpenseEdit(m[1], actorUserId);
+    if (denied) return denied;
     await repo.restoreExpense(m[1]);
     return { status: 200, body: { ok: true } };
   }
 
   // ---- 友達 ----
   if (method === "POST" && path === "/api/friendships") {
+    if (!actorUserId || str(body.requested_by_id) !== actorUserId) return { status: 403, body: { error: "forbidden" } };
+    if (![str(body.a), str(body.b)].includes(actorUserId)) return { status: 403, body: { error: "forbidden" } };
     return {
       status: 200,
       body: await repo.upsertFriendship({

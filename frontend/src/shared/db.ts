@@ -186,14 +186,34 @@ function emit(detail: Record<string, unknown>): void {
   }
 }
 
+function currentUserIdForRequest(): string {
+  try {
+    const raw = localStorage.getItem("trip-dashboard-identity");
+    if (raw) {
+      const parsed = JSON.parse(raw) as { userId?: string };
+      if (parsed.userId) return parsed.userId;
+    }
+    const session = localStorage.getItem("trip-dashboard-session");
+    if (session) {
+      const parsed = JSON.parse(session) as { userId?: string };
+      if (parsed.userId) return parsed.userId;
+    }
+  } catch {
+    /* ignore */
+  }
+  return "";
+}
+
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   const cfg = api();
   if (!cfg) throw new Error("共有ストアが設定されていません");
+  const userId = currentUserIdForRequest();
   const res = await fetch(cfg.base + path, {
     method,
     headers: {
       "Content-Type": "application/json",
       ...(cfg.token ? { Authorization: `Bearer ${cfg.token}` } : {}),
+      ...(userId ? { "X-Travel-User-Id": userId } : {}),
     },
     body: body === undefined ? undefined : JSON.stringify(body),
   });

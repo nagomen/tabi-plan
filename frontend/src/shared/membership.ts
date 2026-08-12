@@ -8,7 +8,7 @@
 // いまは plan_members 1枚が正で、判定はここに集約する。
 
 import { splitNames } from "./friend-store";
-import { planVisibility, type PlanMeta } from "./plans-store";
+import { isPublished, planVisibility, type PlanMeta } from "./plans-store";
 import * as db from "./db";
 import { currentUserId } from "./identity";
 
@@ -61,7 +61,7 @@ export function canEditPlan(plan: PlanMeta): boolean {
 }
 
 export function canViewPlan(plan: PlanMeta): boolean {
-  if (planVisibility(plan) === "public") return true;
+  if (planVisibility(plan) === "public" && isPublished(plan)) return true;
   return isMemberOf(plan);
 }
 

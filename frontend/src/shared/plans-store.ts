@@ -281,7 +281,13 @@ export function upsert(meta: Partial<PlanMeta> & { slug: string }): PlanMeta | n
       const owner = row.owner_user_id || me;
       // 自分は必ず参加者に残す（メンバー欄から自分が抜けても操作を失わない）
       if (me && !ids.includes(me)) ids.unshift(me);
-      db.replaceMembers(row.id, ids.map((id) => ({ user_id: id, role: id === owner ? "owner" : "editor" })));
+      // 変わっていなければ書かない。参加者の入れ替えは owner 権限が要るので、
+      // タスクや行程を保存するたびに投げると 403 になる。
+      const current = memberIdsOf(row.id);
+      const same = current.length === ids.length && ids.every((id) => current.includes(id));
+      if (!same) {
+        db.replaceMembers(row.id, ids.map((id) => ({ user_id: id, role: id === owner ? "owner" : "editor" })));
+      }
     }
   }
   return get(slug);

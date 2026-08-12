@@ -33,7 +33,7 @@
 
   <main class="tl-main">
     <!-- メンバー（参加メンバーのみ表示。公開/非公開に関わらず非メンバーは見られない） -->
-    <section class="tl-panel tl-members" data-mobile-view="members" data-section-target="members">
+    <section class="tl-panel tl-members" data-workspace-only data-mobile-view="members" data-section-target="members">
       <div class="tl-sec-head">
         <span class="tl-sec-ic" data-ic="users"></span>
         <h2>メンバー</h2>
@@ -87,7 +87,7 @@
     </section>
 
     <section class="tl-card-grid" data-section-target="home plan money links">
-      <article class="tl-box" data-mobile-view="money" data-section-target="home money">
+      <article class="tl-box" data-workspace-only data-mobile-view="money" data-section-target="home money">
         <div class="tl-sec-head">
           <span class="tl-sec-ic" data-ic="banknotes"></span>
           <h2>費用</h2>
@@ -123,13 +123,13 @@
       <article class="tl-box" data-mobile-view="links" data-section-target="home links">
         <div class="tl-sec-head">
           <span class="tl-sec-ic" data-ic="link"></span>
-          <h2>リンク・タスク</h2>
+          <h2 data-links-title>リンク・タスク</h2>
         </div>
         <div class="tl-docs" data-docs></div>
         <div class="tl-checks" data-checks></div>
       </article>
 
-      <article class="tl-box" data-mobile-view="links" data-section-target="home links">
+      <article class="tl-box" data-photo-card data-mobile-view="links" data-section-target="home links">
         <div class="tl-sec-head">
           <span class="tl-sec-ic" data-ic="photo"></span>
           <h2>写真アルバム</h2>
