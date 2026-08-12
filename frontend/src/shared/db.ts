@@ -310,6 +310,22 @@ export async function ensureUser(displayName: string): Promise<UserRow> {
   return created;
 }
 
+/**
+ * 同期版。id をこちら側で決めてキャッシュへ入れ、登録は非同期で追いかける。
+ * 呼び出し側（計画の保存など）を同期のまま保つために使う。
+ * id を渡して作るので、サーバー側と食い違うことはない。
+ */
+export function ensureUserLocal(displayName: string): UserRow {
+  const name = String(displayName || "").trim().slice(0, 64);
+  if (!name) throw new Error("表示名が空です");
+  const existing = findUserByName(name);
+  if (existing) return existing;
+  const row: UserRow = { id: localId("usr"), display_name: name };
+  snap.users.push(row);
+  send("POST", "/api/users", { id: row.id, display_name: name });
+  return row;
+}
+
 export function renameUser(userId: string, displayName: string): void {
   const user = userById(userId);
   if (user) user.display_name = displayName;

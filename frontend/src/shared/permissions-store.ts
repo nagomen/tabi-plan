@@ -6,6 +6,8 @@ import { currentAccount } from "./account-store";
 import { getUser, setUserName } from "./user-store";
 import { safeTripSlug } from "./config";
 import { splitNames } from "./friend-store";
+import * as db from "./db";
+import { currentUserId } from "./identity";
 
 export type PermissionSubjectType = "account" | "name";
 export type PlanRole = "owner" | "editor" | "viewer";
@@ -365,18 +367,27 @@ export function roleLabel(role: PlanRole | undefined): string {
 
 export function canView(planSlug: string, visibility: "public" | "invite" = "public"): boolean {
   if (visibility === "public") return true;
-  return Boolean(permissionFor(planSlug));
+  return isParticipant(planSlug);
 }
 
+/**
+ * 編集できるか。plan_members が正。
+ * 旧 planPermissions は移行済みなので参照しない。
+ */
 export function canEdit(planSlug: string): boolean {
-  const permission = permissionFor(planSlug);
-  return Boolean(permission && (permission.role === "owner" || permission.role === "editor"));
+  const slug = safeTripSlug(planSlug);
+  const row = db.planBySlug(slug);
+  if (!row) return false;
+  if (row.open_editing) return true;
+  const me = currentUserId();
+  if (!me) return false;
+  const member = db.members().find((m) => m.plan_id === row.id && m.user_id === me);
+  return Boolean(member && (member.role === "owner" || member.role === "editor"));
 }
 
-export function isParticipant(planSlug: string, memberNames: string[] = []): boolean {
-  const permission = permissionFor(planSlug);
-  if (permission) return true;
-  const principal = currentPrincipal();
-  if (!principal) return false;
-  return memberNames.includes(principal.displayName);
+export function isParticipant(planSlug: string): boolean {
+  const row = db.planBySlug(safeTripSlug(planSlug));
+  const me = currentUserId();
+  if (!row || !me) return false;
+  return db.members().some((m) => m.plan_id === row.id && m.user_id === me);
 }

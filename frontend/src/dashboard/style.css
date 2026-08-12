@@ -1616,34 +1616,41 @@
 
   .tl-confirm-actions {
     grid-column: 1 / -1;
-    display: flex;
-    justify-content: flex-end;
+    display: grid;
     gap: 8px;
-    padding-top: 4px;
+    padding-top: 8px;
   }
 
   .tl-confirm-btn {
-    min-height: 42px;
+    display: grid;
+    place-items: center;
+    width: 100%;
+    min-height: 48px;
     border: 1px solid var(--green);
     background: var(--green);
     color: #fff;
-    padding: 0 15px;
+    padding: 0 16px;
     font: inherit;
-    font-size: 13px;
+    font-size: 14px;
     font-weight: 700;
     cursor: pointer;
   }
 
-  .tl-confirm-modal.is-paypay .tl-confirm-btn:not(.ghost) {
+  .tl-confirm-modal.is-paypay .tl-confirm-btn.primary {
     border-color: #e6002e;
     background: #e6002e;
   }
 
   .tl-confirm-btn.ghost {
-    border-color: var(--line-strong);
-    background: #fff;
-    color: var(--ink);
-    font-weight: 620;
+    min-height: 38px;
+    border-color: transparent;
+    border-bottom: 1px solid currentColor;
+    background: transparent;
+    color: var(--muted);
+    justify-self: center;
+    width: auto;
+    padding: 0 4px;
+    font-weight: 700;
   }
 
   .tl-confirm-btn:focus-visible {

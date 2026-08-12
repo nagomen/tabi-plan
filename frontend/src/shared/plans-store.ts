@@ -5,8 +5,8 @@
 import type { TripConfig, MapDefaults } from "./config";
 import { safeTripSlug, readGlobalTripConfig } from "./config";
 import * as Backend from "./backend";
-import { getUser } from "./user-store";
 import * as Permissions from "./permissions-store";
+import * as db from "./db";
 import type {
   TripData,
   TripInfo,
@@ -26,6 +26,10 @@ export type PlanSource = "local" | "googleSheets" | "appsScript" | "sample";
 export type PlanVisibility = "public" | "invite";
 
 export interface PlanMeta {
+  /** DB(plans) の主キー。slug は URL 用の別キー。移行中は db から解決する。 */
+  id?: string;
+  /** 参加者の user_id。表示名ではなくこちらを操作に使う。 */
+  memberIds?: string[];
   slug: string;
   title: string;
   dates: string;
@@ -107,18 +111,9 @@ function saveList(arr: PlanMeta[]): boolean {
 // listPublic() は `GET /api/plans?visibility=public` 等のリモート照会に、
 // listMine() はアカウント単位の照会に差し替える（シグネチャは維持）。
 
-// 循環 import 回避のため、メンバー分割は friend-store を使わずここに小さく持つ。
-function planMembers(meta: PlanMeta): string[] {
-  return String(meta.members || "")
-    .split(/[、,／/]|\s*\/\s*|\s*･\s*/)
-    .map((s) => s.trim())
-    .filter(Boolean);
-}
-
+// 参加判定は plan_members が正（旧: members 文字列に名前が含まれるか）。
 function currentUserIsMember(meta: PlanMeta): boolean {
-  if (Permissions.isParticipant(meta.slug, planMembers(meta))) return true;
-  const name = getUser().name;
-  return Boolean(name) && planMembers(meta).includes(name);
+  return Permissions.isParticipant(meta.slug);
 }
 
 /**
@@ -192,7 +187,21 @@ export function ensureSeed(config: Partial<TripConfig>): PlanMeta[] {
 
 export function get(slug: string): PlanMeta | null {
   const target = safeSlug(slug);
-  return list().find((p) => p.slug === target) || null;
+  const meta = list().find((p) => p.slug === target) || null;
+  if (!meta) return null;
+  // 計画の実体は関係テーブル側にもあるので、id と参加者 user_id を補って返す。
+  const row = db.planBySlug(target);
+  if (!row) return meta;
+  return {
+    ...meta,
+    id: row.id,
+    memberIds: db.members().filter((m) => m.plan_id === row.id).map((m) => m.user_id),
+  };
+}
+
+/** この計画の DB 上の id。無ければ空文字。 */
+export function planIdOf(slug: string): string {
+  return db.planBySlug(safeSlug(slug))?.id || "";
 }
 
 /** メタを追加または更新（既存は浅くマージ） */
@@ -459,6 +468,9 @@ export function resolveConfigOverride(config: Partial<TripConfig>): Partial<Trip
   ensureSeed(config);
   const slug = getActiveSlug();
   let meta = slug ? get(slug) : null;
+  // データ読み込み前でも URL/保存済みの slug は信用する。
+  // ここで種計画へ落とすと、共有ストアから読み終えたあとも別の計画を開いたままになる。
+  if (!meta && slug) return { tripSlug: slug };
   if (!meta) meta = list()[0] || seedMeta(config);
   if (!meta) return {};
   setActiveSlug(meta.slug);

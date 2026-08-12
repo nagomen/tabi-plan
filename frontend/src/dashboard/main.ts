@@ -24,6 +24,8 @@ import * as TripPlans from "../shared/plans-store";
 import { getUser } from "../shared/user-store";
 import { canEditPlan, canViewPlan, planHasOwner } from "../shared/membership";
 import { currentAccount } from "../shared/account-store";
+import { currentUserId, adoptLegacyIdentity } from "../shared/identity";
+import * as db from "../shared/db";
 import { incrementView } from "../shared/views-store";
 import { planCoverImage, planCoverImageForLocation } from "../shared/cover";
 import { splitNames } from "../shared/friend-store";
@@ -115,6 +117,22 @@ const CONFIG: TripConfig = normalizeTripConfig(
   ) as unknown as TripConfig,
 );
 applyDocumentTripTitle(CONFIG.tripTitle);
+
+/** 共有ストアを読み終えたあと、開いている計画の実体で CONFIG を補正する。 */
+function applyPlanConfig(): void {
+  const meta = TripPlans.get(CONFIG.tripSlug);
+  if (!meta) return;
+  CONFIG.tripTitle = meta.title || CONFIG.tripTitle;
+  CONFIG.mode =
+    meta.source === "local" ? "local"
+    : meta.source === "appsScript" ? "appsScript"
+    : meta.source === "sample" ? "sample"
+    : "googleSheets";
+  if (meta.spreadsheetId) CONFIG.spreadsheetId = meta.spreadsheetId;
+  if (meta.appsScriptUrl) CONFIG.appsScriptUrl = meta.appsScriptUrl;
+  if (meta.schema) CONFIG.schema = meta.schema as TripConfig["schema"];
+  applyDocumentTripTitle(CONFIG.tripTitle);
+}
 
 /**
  * ログイン不要の共同編集を許す計画かどうか。
@@ -306,12 +324,34 @@ function usingLocalExpenses(): boolean {
   return !CONFIG.appsScriptUrl;
 }
 
-/** ローカル保存の費用記録から精算を計算し、settlement に反映する。 */
+// フォームは日本語ラベルを value に持つ。列挙へ寄せる変換をここに集約する。
+function categoryFromLabel(label: string): ExpenseStore.ExpenseCategory {
+  return (ExpenseStore.CATEGORIES.find((c) => ExpenseStore.CATEGORY_LABEL[c] === label) || "other");
+}
+function splitFromLabel(label: string): ExpenseStore.SplitMethod {
+  return (ExpenseStore.SPLIT_METHODS.find((m) => ExpenseStore.SPLIT_LABEL[m] === label) || "equal_all");
+}
+function paymentFromLabel(label: string): ExpenseStore.PaymentMethod | null {
+  return ExpenseStore.PAYMENT_METHODS.find((m) => ExpenseStore.PAYMENT_LABEL[m] === label) || null;
+}
+
+/** この計画の DB 上の id。無ければ空文字。 */
+function planId(): string {
+  return TripPlans.planIdOf(CONFIG.tripSlug);
+}
+
+/** 参加者の user_id。表示名ではなくこちらを操作に使う。 */
+function memberIds(): string[] {
+  const meta = TripPlans.get(CONFIG.tripSlug);
+  const ids = meta?.memberIds || [];
+  const me = currentUserId();
+  // 自分がまだメンバーでない計画でも、自分名義で費用を入れられるようにする
+  return me && !ids.includes(me) && !READ_ONLY ? [me, ...ids] : ids;
+}
+
+/** 費用と精算から Settlement を組み立てる。 */
 function localSettlement(): Settlement {
-  const participants = expenseParticipants(state.data || SAMPLE);
-  const profileName = currentProfileName(participants);
-  const records = ExpenseStore.list(CONFIG.tripSlug);
-  return ExpenseStore.computeSettlement(records, participants, profileName);
+  return ExpenseStore.computeSettlement(planId(), memberIds(), currentUserId());
 }
 
 /** shared/apps-script を CONFIG.appsScriptUrl にバインドした JSONP 取得 */
@@ -849,7 +889,7 @@ function renderTransfers(settlement: Settlement): void {
       <div class="tl-transfer-act">
         <b>${escapeHtml(transfer.amountLabel || "")}</b>
         <button type="button" class="tl-icon-action tl-paypay" data-paypay data-to="${escapeHtml(transfer.to)}" data-amount="${Number(transfer.amount || 0)}" aria-label="${escapeHtml(transfer.to)}へPayPayで送る" title="PayPayで送る">${icon("paperAirplane")}</button>
-        <button type="button" class="tl-icon-action" data-settlement-complete data-from="${escapeHtml(transfer.from)}" data-to="${escapeHtml(transfer.to)}" data-amount="${Number(transfer.amount || 0)}" aria-label="${escapeHtml(transfer.from)}から${escapeHtml(transfer.to)}への精算を完了" title="精算完了">${icon("checkCircle")}</button>
+        <button type="button" class="tl-icon-action" data-settlement-complete data-from="${escapeHtml(transfer.from)}" data-to="${escapeHtml(transfer.to)}" data-from-id="${escapeHtml(transfer.fromId || "")}" data-to-id="${escapeHtml(transfer.toId || "")}" data-amount="${Number(transfer.amount || 0)}" aria-label="${escapeHtml(transfer.from)}から${escapeHtml(transfer.to)}への精算を完了" title="精算完了">${icon("checkCircle")}</button>
       </div>
       ${transfer.completedLabel ? `<small>完了済み ${escapeHtml(transfer.completedLabel)} を差し引き済み</small>` : ""}
     </div>`,
@@ -878,8 +918,8 @@ function confirmTransferAction(options: {
           <p>${escapeHtml(options.message)}</p>
         </div>
         <div class="tl-confirm-actions">
+          <button type="button" class="tl-confirm-btn primary" data-confirm-ok>${escapeHtml(options.confirmLabel)}</button>
           <button type="button" class="tl-confirm-btn ghost" data-confirm-cancel>キャンセル</button>
-          <button type="button" class="tl-confirm-btn" data-confirm-ok>${escapeHtml(options.confirmLabel)}</button>
         </div>
       </section>`;
     document.body.appendChild(modal);
@@ -967,14 +1007,14 @@ function setupSettlementCompleteHandlers(mount: HTMLElement): void {
       if (status) status.textContent = `${from} → ${to} を精算完了にしています...`;
       try {
         if (usingLocalExpenses()) {
-          // 端末内 JSON に精算記録を追加（from→to の振込を相殺）。
-          ExpenseStore.add(CONFIG.tripSlug, {
-            kind: "settlement",
-            payer: from,
-            targets: [to],
-            amount,
-            title: `${from} → ${to} 精算`,
-            splitMode: "精算不要",
+          // 精算は settlements テーブルへ（費用と同居させない）。
+          const fromId = button.dataset.fromId || "";
+          const toId = button.dataset.toId || "";
+          if (!fromId || !toId) throw new Error("精算相手を特定できませんでした");
+          await ExpenseStore.addSettlement(planId(), {
+            fromUserId: fromId,
+            toUserId: toId,
+            amountBaseMinor: amount,
             note: `サイト上で${from}から${to}への精算完了`,
           });
         } else {
@@ -1110,8 +1150,8 @@ function setupExpenseDetailActions(mount: HTMLElement): void {
   mount.querySelectorAll<HTMLButtonElement>("[data-expense-edit]").forEach((button) => {
     button.addEventListener("click", () => {
       const id = button.dataset.expenseEdit || "";
-      const record = ExpenseStore.get(CONFIG.tripSlug, id);
-      if (!record || record.kind !== "expense") return;
+      const record = ExpenseStore.get(planId(), id);
+      if (!record) return;
       editingExpenseId = id;
       renderExpenseEntry(state.data || SAMPLE, { force: true });
       setExpenseSheet(true);
@@ -1120,16 +1160,16 @@ function setupExpenseDetailActions(mount: HTMLElement): void {
   mount.querySelectorAll<HTMLButtonElement>("[data-expense-remove]").forEach((button) => {
     button.addEventListener("click", () => {
       const id = button.dataset.expenseRemove || "";
-      const removed = ExpenseStore.remove(CONFIG.tripSlug, id);
-      if (!removed) return;
+      const removed = ExpenseStore.remove(id);
+      if (!removed.row) return;
       renderBase();
       renderActive();
-      showExpenseUndo(removed);
+      showExpenseUndo(removed.row, removed.shares);
     });
   });
 }
 
-function showExpenseUndo(record: ExpenseStore.ExpenseRecord): void {
+function showExpenseUndo(record: ExpenseStore.ExpenseRow, shares: ExpenseStore.ExpenseShareRow[]): void {
   const status = root.querySelector<HTMLElement>("[data-settlement-status]");
   if (!status) return;
   status.classList.remove("is-error");
@@ -1138,7 +1178,7 @@ function showExpenseUndo(record: ExpenseStore.ExpenseRecord): void {
   const undo = status.querySelector<HTMLButtonElement>("[data-expense-undo]");
   if (!undo) return;
   undo.addEventListener("click", () => {
-    ExpenseStore.restore(CONFIG.tripSlug, record);
+    ExpenseStore.restore(record, shares);
     renderBase();
     renderActive();
     const nextStatus = root.querySelector<HTMLElement>("[data-settlement-status]");
@@ -1336,13 +1376,26 @@ function renderExpenseEntry(data: TripData, options: { force?: boolean } = {}): 
   const form = qs<HTMLFormElement>("[data-expense-form-native]", mount);
   (form.elements.namedItem("paidDate") as HTMLInputElement).value = todayISO();
   applyProfileDefaults(form, participants);
-  if (editingRecord && editingRecord.kind === "expense") {
+  if (editingRecord) {
     fillExpenseForm(form, editingRecord, participants);
   }
   setupExpenseEntryHandlers(form, participants);
 }
 
-function fillExpenseForm(form: HTMLFormElement, record: ExpenseStore.ExpenseRecord, participants: string[]): void {
+function fillExpenseForm(form: HTMLFormElement, entry: ExpenseStore.ExpenseEntry, participants: string[]): void {
+  const record = {
+    paidDate: entry.row.paid_on || "",
+    payer: db.nameOf(entry.row.payer_user_id),
+    category: ExpenseStore.CATEGORY_LABEL[entry.row.category],
+    title: entry.row.title,
+    amount: entry.row.amount_minor,
+    currency: entry.row.currency,
+    splitMode: ExpenseStore.SPLIT_LABEL[entry.row.split_method],
+    paymentMethod: entry.row.payment_method ? ExpenseStore.PAYMENT_LABEL[entry.row.payment_method] : "",
+    note: entry.row.note || "",
+    targets: entry.shares.map((s) => db.nameOf(s.user_id)).filter(Boolean),
+    individual: Object.fromEntries(entry.shares.map((s) => [db.nameOf(s.user_id), s.amount_base_minor])),
+  };
   const setField = (name: string, value: string | number | undefined): void => {
     const field = form.elements.namedItem(name) as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement | null;
     if (field) field.value = String(value ?? "");
@@ -1478,25 +1531,28 @@ function setupExpenseEntryHandlers(form: HTMLFormElement, participants: string[]
     setStatus("保存中...", "");
     try {
       if (usingLocalExpenses()) {
-        // 端末内 JSON に保存（Apps Script 不要）。精算は renderBase で再計算。
-        const payload = {
-          kind: "expense",
-          paidDate: (field("paidDate") as HTMLInputElement).value,
-          payer: (field("payer") as HTMLSelectElement).value,
-          category: (field("category") as HTMLSelectElement).value,
+        // フォームは表示名と日本語ラベルを持つので、user_id と列挙へ変換して保存する。
+        const idOf = (name: string): string => db.ensureUserLocal(name).id;
+        const custom: Record<string, number> = {};
+        for (const [name, value] of Object.entries(individual)) custom[idOf(name)] = value;
+        const payload: ExpenseStore.AddInput = {
+          paidOn: (field("paidDate") as HTMLInputElement).value || null,
+          payerUserId: idOf((field("payer") as HTMLSelectElement).value),
+          category: categoryFromLabel((field("category") as HTMLSelectElement).value),
           title: (field("title") as HTMLInputElement).value,
-          amount,
+          amountMinor: amount,
           currency: (field("currency") as HTMLSelectElement).value,
-          splitMode: mode,
-          targets,
-          individual,
-          paymentMethod: (field("paymentMethod") as HTMLSelectElement).value,
+          splitMethod: splitFromLabel(mode),
+          paymentMethod: paymentFromLabel((field("paymentMethod") as HTMLSelectElement).value),
           note: (field("note") as HTMLTextAreaElement).value,
-        } satisfies Partial<ExpenseStore.ExpenseRecord>;
+          memberIds: memberIds(),
+          selectedIds: targets.map(idOf),
+          customAmounts: custom,
+        };
         if (editingExpenseId) {
-          ExpenseStore.update(CONFIG.tripSlug, editingExpenseId, payload);
+          await ExpenseStore.update(editingExpenseId, payload);
         } else {
-          ExpenseStore.add(CONFIG.tripSlug, payload);
+          await ExpenseStore.add(planId(), payload);
         }
       } else {
         const receiptInput = field("receiptPhoto") as HTMLInputElement;
@@ -1958,8 +2014,6 @@ async function shareTripInvite(): Promise<void> {
         updatedAt: meta.updatedAt,
       },
       data: planData,
-      // 費用台帳は計画データと別ストアなので、明示的に同梱しないと共有されない。
-      expenses: ExpenseStore.list(meta.slug),
       invitedName: name || undefined,
       inviteId: invite?.id,
       role: "editor",
@@ -2363,6 +2417,12 @@ function renderAccessDenied(): void {
 async function init(): Promise<void> {
   registerServiceWorker();
   await Backend.preload();
+  // 関係テーブル（MySQL）を読み込む。費用・精算はこちらが正。
+  await db.load();
+  adoptLegacyIdentity();
+  // CONFIG はモジュール読み込み時に決まるが、そのとき計画の情報はまだ無い。
+  // 読み終えた時点で、開いている計画の実体に合わせて上書きする。
+  applyPlanConfig();
   READ_ONLY = computeReadOnly();
   ACCESS_DENIED = computeAccessDenied();
   if (ACCESS_DENIED) {
