@@ -2803,3 +2803,35 @@
   flex: none;
   white-space: nowrap;
 }
+
+/* 「自分の計画」だけ左余白がずれていたのを、新着・ランキングに合わせる。
+   このセクションは .hub 直下にあり、新着側が持つ .discover-panel の
+   余白を継いでいないため、PC ではカードが画面端に張り付き（0px）、
+   スマホでは逆に深く（24px）入っていた。
+   カード列の開始位置を他セクションと同じ値にする。 */
+[data-grid-mine] {
+  /* 横スクロール＋スクロールスナップの箱なので、
+     padding だけでは初期表示でスナップに食われて左端に張り付く。
+     スナップの基準位置も同じ量だけ内側にずらす。 */
+  padding-left: 24px;
+  padding-right: 24px;
+  scroll-padding-inline-start: 24px;
+}
+
+@media (max-width: 860px) {
+  [data-grid-mine] {
+    padding-left: 12px;
+    padding-right: 12px;
+    scroll-padding-inline-start: 12px;
+  }
+}
+
+@media (max-width: 860px) {
+  /* 新着・ランキングの見出しは .discover-panel の余白の上に
+     自分の 12px を重ねていたため、他セクションより深く入っていた。
+     横方向は親の余白に任せる。 */
+  .discover-head {
+    padding-left: 0;
+    padding-right: 0;
+  }
+}
