@@ -6,6 +6,7 @@
 //     エディタが文書ごと保存する種類は一括置換にする（差分計算層を持たない）。
 
 import mysql from "mysql2/promise";
+import crypto from "node:crypto";
 import { config } from "./config.js";
 import type { Bootstrap, ExpenseRow, ExpenseShareRow, PlanMemberRow, PlanRow, SettlementRow } from "./types.js";
 
@@ -206,6 +207,11 @@ export async function canManagePlan(planId: string, userId: string): Promise<boo
   return role === "owner";
 }
 
+export async function canInvitePlan(planId: string, userId: string): Promise<boolean> {
+  const role = await planRole(planId, userId);
+  return role === "owner" || role === "editor";
+}
+
 export async function canViewPlan(planId: string, userId: string): Promise<boolean> {
   const plans = await all<{ visibility: "public" | "invite"; status: "draft" | "published"; open_editing: 0 | 1 }>(
     "SELECT visibility, status, open_editing FROM plans WHERE id = ? AND deleted_at IS NULL LIMIT 1",
@@ -221,6 +227,77 @@ export async function canViewPlan(planId: string, userId: string): Promise<boole
 export async function planIdForExpense(expenseId: string): Promise<string | null> {
   const rows = await all<{ plan_id: string }>("SELECT plan_id FROM expenses WHERE id = ? LIMIT 1", [expenseId]);
   return rows[0]?.plan_id || null;
+}
+
+function tokenHash(token: string): Buffer {
+  return crypto.createHash("sha256").update(token, "utf8").digest();
+}
+
+export async function createInvite(input: {
+  planId: string;
+  createdById: string;
+  invitedName?: string;
+  role?: "editor" | "viewer";
+}): Promise<{ token: string }> {
+  const token = crypto.randomBytes(32).toString("base64url");
+  await pool.query(
+    `INSERT INTO plan_invites (id, plan_id, token_hash, role, status, invited_name, created_by_id)
+     VALUES (?, ?, ?, ?, 'pending', ?, ?)`,
+    [
+      newId("inv"),
+      input.planId,
+      tokenHash(token),
+      input.role === "viewer" ? "viewer" : "editor",
+      String(input.invitedName || "").trim().slice(0, 64) || null,
+      input.createdById,
+    ],
+  );
+  return { token };
+}
+
+export async function acceptInvite(token: string, userId: string): Promise<{ planSlug: string }> {
+  if (!userId) throw new BadRequest("ログインが必要です");
+  const rows = await all<{
+    id: string;
+    plan_id: string;
+    role: "editor" | "viewer";
+    status: "pending" | "accepted" | "revoked" | "expired";
+    created_by_id: string;
+    accepted_by_id: string | null;
+    expires_at: string | null;
+    slug: string;
+  }>(
+    `SELECT i.id, i.plan_id, i.role, i.status, i.created_by_id, i.accepted_by_id, i.expires_at, p.slug
+       FROM plan_invites i
+       JOIN plans p ON p.id = i.plan_id AND p.deleted_at IS NULL
+      WHERE i.token_hash = ?
+      LIMIT 1`,
+    [tokenHash(token)],
+  );
+  const invite = rows[0];
+  if (!invite) throw new BadRequest("招待リンクが無効です");
+  if (invite.status === "revoked" || invite.status === "expired") throw new BadRequest("この招待リンクは使えません");
+  if (invite.status === "accepted" && invite.accepted_by_id !== userId) throw new BadRequest("この招待リンクは既に使われています");
+  if (invite.expires_at && new Date(invite.expires_at).getTime() < Date.now()) {
+    await pool.query("UPDATE plan_invites SET status = 'expired' WHERE id = ?", [invite.id]);
+    throw new BadRequest("この招待リンクは期限切れです");
+  }
+  await pool.query(
+    `INSERT INTO plan_members (plan_id, user_id, role, status, invited_by_id)
+     VALUES (?, ?, ?, 'active', ?)
+     ON DUPLICATE KEY UPDATE
+       role = IF(role = 'owner', role, VALUES(role)),
+       status = 'active',
+       invited_by_id = VALUES(invited_by_id)`,
+    [invite.plan_id, userId, invite.role, invite.created_by_id],
+  );
+  await pool.query(
+    `UPDATE plan_invites
+        SET status = 'accepted', accepted_by_id = ?, accepted_at = CURRENT_TIMESTAMP
+      WHERE id = ? AND status = 'pending'`,
+    [userId, invite.id],
+  );
+  return { planSlug: invite.slug };
 }
 
 // ---- ユーザー -----------------------------------------------------------

@@ -22,9 +22,10 @@ export interface InviteMeta {
 export interface InvitePayload {
   v: 1;
   meta: InviteMeta;
-  data: LocalPlanData;
+  data?: LocalPlanData;
   invitedName?: string;
   inviteId?: string;
+  token?: string;
   role?: "editor" | "viewer";
 }
 
@@ -80,7 +81,7 @@ export async function decodeInvite(token: string): Promise<InvitePayload | null>
       json = new TextDecoder().decode(b64urlToBytes(token));
     }
     const obj = JSON.parse(json) as InvitePayload;
-    return obj && obj.meta && obj.data ? obj : null;
+    return obj && obj.meta && (obj.token || obj.data) ? obj : null;
   } catch {
     return null;
   }

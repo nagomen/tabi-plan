@@ -13,6 +13,8 @@
 //   PUT    /api/plans/<id>/members           参加者を一括置換
 //   PUT    /api/plans/<id>/content           行程・都市・リンク・チェックリスト・候補を一括置換
 //   POST   /api/plans/<id>/views             閲覧を1加算
+//   POST   /api/plans/<id>/invites           招待リンクを作る
+//   POST   /api/invites/accept               招待リンクを受けて参加する
 //   POST   /api/plans/<id>/expenses          費用を1件追加（行の INSERT なので衝突しない）
 //   PATCH  /api/expenses/<id>                費用を1件更新
 //   DELETE /api/expenses/<id>                論理削除
@@ -124,6 +126,24 @@ export async function route(method: string, path: string, body: Body, actorUserI
     if (denied) return denied;
     await repo.countView(m[1]);
     return { status: 200, body: { ok: true } };
+  }
+  m = /^\/api\/plans\/([\w-]{1,32})\/invites$/.exec(path);
+  if (m && method === "POST") {
+    const denied = await forbiddenUnless(repo.canInvitePlan(m[1], actorUserId));
+    if (denied) return denied;
+    return {
+      status: 200,
+      body: await repo.createInvite({
+        planId: m[1],
+        createdById: actorUserId,
+        invitedName: str(body.invited_name),
+        role: str(body.role) === "viewer" ? "viewer" : "editor",
+      }),
+    };
+  }
+  if (method === "POST" && path === "/api/invites/accept") {
+    if (!actorUserId) return { status: 403, body: { error: "forbidden" } };
+    return { status: 200, body: await repo.acceptInvite(str(body.token), actorUserId) };
   }
   m = /^\/api\/plans\/([\w-]{1,32})\/expenses$/.exec(path);
   if (m && method === "POST") {

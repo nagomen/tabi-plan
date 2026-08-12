@@ -409,6 +409,19 @@ export async function createPlan(input: Partial<PlanRow>): Promise<PlanRow> {
   return row;
 }
 
+export async function createInvite(planId: string, input: { invited_name?: string; role?: "editor" | "viewer" }): Promise<{ token: string }> {
+  return request<{ token: string }>("POST", `/api/plans/${encodeURIComponent(planId)}/invites`, {
+    invited_name: input.invited_name || "",
+    role: input.role || "editor",
+  });
+}
+
+export async function acceptInvite(token: string): Promise<{ planSlug: string }> {
+  const result = await request<{ planSlug: string }>("POST", "/api/invites/accept", { token });
+  await reload();
+  return result;
+}
+
 /**
  * 同期版の計画作成。id をこちら側で決めてキャッシュへ入れ、登録は非同期で追いかける。
  * 計画の保存（plan-editor など）を同期のまま保つために使う。

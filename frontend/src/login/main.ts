@@ -33,6 +33,12 @@ const submitLabel = qs<HTMLElement>("[data-submit-label]");
 const submitBtn = qs<HTMLButtonElement>("[data-submit]");
 const loggedBox = qs<HTMLElement>("[data-logged]");
 const loggedText = qs<HTMLElement>("[data-logged-text]");
+function safeReturnTo(value: string | null): string {
+  const raw = String(value || "");
+  return raw && !/^[a-z][a-z0-9+.-]*:/i.test(raw) && !raw.startsWith("//") ? raw : "";
+}
+
+const returnTo = safeReturnTo(new URLSearchParams(location.search).get("returnTo"));
 
 const emailInput = form.elements.namedItem("email") as HTMLInputElement;
 const passwordInput = form.elements.namedItem("password") as HTMLInputElement;
@@ -114,8 +120,8 @@ form.addEventListener("submit", async (event) => {
   try {
     if (mode === "signup") await signUp(email, password, name);
     else await logIn(email, password);
-    // 成功 → ホーム（計画一覧）へ。マイページはヘッダーのユーザーアイコンから開ける。
-    navigateWithPageTransition("plans.html");
+    // 成功 → 招待経由なら元の招待URLへ戻る。通常は計画一覧へ。
+    navigateWithPageTransition(returnTo || "plans.html");
   } catch (err) {
     showError(errorMessage(err) || "失敗しました");
     submitBtn.disabled = false;

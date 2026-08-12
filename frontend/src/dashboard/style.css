@@ -3420,7 +3420,9 @@
       grid-template-columns: repeat(var(--tl-mobile-nav-count, 5), minmax(0, 1fr));
       gap: 0;
       padding: 7px 8px calc(7px + env(safe-area-inset-bottom));
-      border-top: 1px solid var(--line-strong);
+      /* 本文の罫線（1px の --line）と同じ強さだと「切れた」ように見えるので、
+         2px にして本文とアプリの枠の境界だと分かるようにする。 */
+      border-top: 2px solid var(--line-strong);
       background: #fff;
     }
     /* 塗りの箱にせず、仕切り線で区切って選択中だけ色を付ける。 */

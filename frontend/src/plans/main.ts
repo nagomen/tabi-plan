@@ -1371,6 +1371,22 @@ async function handleJoinLink(): Promise<boolean> {
     return false;
   }
   const slug = TripPlans.safeSlug(payload.meta.slug || payload.meta.title || "trip");
+  if (payload.token) {
+    if (!isIdentified()) {
+      const returnTo = `${location.pathname}${location.search}#join=${encodeURIComponent(m[1])}`;
+      navigateWithPageTransition("login.html?returnTo=" + encodeURIComponent(returnTo), { replace: true });
+      return true;
+    }
+    try {
+      const accepted = await db.acceptInvite(payload.token);
+      const nextSlug = accepted.planSlug || slug;
+      TripPlans.setActiveSlug(nextSlug);
+      navigateWithPageTransition("index.html?plan=" + encodeURIComponent(nextSlug), { replace: true });
+    } catch (error) {
+      showToast(errorMessage(error) || "招待リンクを受け取れませんでした。ログインしてからもう一度開いてください。", true);
+    }
+    return true;
+  }
   const accepted = Permissions.acceptInvite(slug, payload.inviteId, payload.invitedName, payload.role);
   if (!accepted.granted) {
     showToast(
@@ -1384,7 +1400,7 @@ async function handleJoinLink(): Promise<boolean> {
 
   // 計画は DB が正なので、リンクの内容で手元を潰す心配が無くなった
   // （旧構造では localStorage を丸ごと上書きして編集が消える事故があった）。
-  const merge = TripPlans.mergeLocalPlan(slug, payload.data);
+  const merge = payload.data ? TripPlans.mergeLocalPlan(slug, payload.data) : { existed: Boolean(TripPlans.get(slug)), outcome: "unchanged" };
   const existed = merge.existed;
 
   // 費用は共有ストア（MySQL）側で共有されるので、リンクからは取り込まない。

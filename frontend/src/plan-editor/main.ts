@@ -2078,7 +2078,9 @@ async function shareInvite(name: string): Promise<void> {
   if (!slug) { slug = TripPlans.uniqueSlug(model.title); model.slug = slug; }
   persist();
   const data = buildData();
-  const invite = Permissions.createInvite(slug, name, "editor");
+  const planId = TripPlans.planIdOf(slug);
+  if (!planId) { toast("保存してから招待してください"); return; }
+  const invite = await db.createInvite(planId, { invited_name: name, role: "editor" });
   const link = await buildInviteLink({
     v: 1,
     meta: {
@@ -2089,9 +2091,8 @@ async function shareInvite(name: string): Promise<void> {
       route: (data.cities || []).map((c) => c.name).filter(Boolean).join("→"),
       updatedAt: TripPlans.get(slug)?.updatedAt,
     },
-    data,
+    token: invite.token,
     invitedName: name,
-    inviteId: invite?.id,
     role: "editor",
   });
   const shareData = {

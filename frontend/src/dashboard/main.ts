@@ -30,7 +30,6 @@ import { incrementView } from "../shared/views-store";
 import { planCoverImage, planCoverImageForLocation } from "../shared/cover";
 import { splitNames } from "../shared/friend-store";
 import { buildInviteLink } from "../shared/invite";
-import * as Permissions from "../shared/permissions-store";
 import * as ExpenseStore from "../shared/expense-store";
 import { escapeHtml, makeScopedQuery } from "../shared/dom";
 import {
@@ -2238,7 +2237,9 @@ async function shareTripInvite(): Promise<void> {
   const nameInput = root.querySelector<HTMLInputElement>("[data-invite-name]");
   const name = (nameInput?.value || "").trim();
   try {
-    const invite = Permissions.createInvite(meta.slug, name || undefined, "editor");
+    const planId = TripPlans.planIdOf(meta.slug);
+    if (!planId) throw new Error("計画IDが見つかりません");
+    const invite = await db.createInvite(planId, { invited_name: name || undefined, role: "editor" });
     const link = await buildInviteLink({
       v: 1,
       meta: {
@@ -2249,9 +2250,8 @@ async function shareTripInvite(): Promise<void> {
         route: meta.route,
         updatedAt: meta.updatedAt,
       },
-      data: planData,
+      token: invite.token,
       invitedName: name || undefined,
-      inviteId: invite?.id,
       role: "editor",
     });
     const shareData = {
