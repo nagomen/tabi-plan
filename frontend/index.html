@@ -96,11 +96,13 @@
           <div class="tl-settle-hero">
             <span class="tl-settle-label">あなたの精算額</span>
             <strong class="tl-settle-amount" data-your-due>¥0</strong>
-            <span class="tl-settle-sub">あなたの立替 <b data-your-paid>—</b><i>·</i>費用総額 <b data-paid>¥0</b></span>
-          </div>
-          <!-- 主導線はヒーロー直下。スクロールせずに届く位置に置く。 -->
-          <div class="tl-buttons">
-            <button class="tl-button primary" type="button" data-expense-open><span class="tl-btn-ic" data-ic="plus"></span>費用を追加</button>
+            <span class="tl-settle-sub">
+              <span class="tl-settle-metrics">あなたの立替 <b data-your-paid>—</b><i>·</i>費用総額 <b data-paid>¥0</b></span>
+            </span>
+            <button class="tl-expense-quick-add" type="button" data-expense-open aria-label="費用を追加">
+              <span class="tl-expense-quick-add-icon" data-ic="plus"></span>
+              <span>費用を追加</span>
+            </button>
           </div>
           <!-- スマホでは精算/台帳をタブで切り替える（既定は精算）。PC は両方並べる。 -->
           <div class="tl-money-tabs" role="tablist" aria-label="費用の表示切替">
@@ -132,8 +134,22 @@
         </div>
         <div class="tl-photo-body">
           <a class="tl-photo-art" data-photo-link href="#" target="_blank" rel="noopener" aria-label="写真アルバム"></a>
-          <div><b data-photo-title></b><span data-photo-meta></span></div>
-          <a class="tl-button" data-photo-button href="#" target="_blank" rel="noopener"><span class="tl-btn-ic" data-ic="photo"></span>写真アルバムを開く</a>
+          <div class="tl-photo-copy"><b data-photo-title></b><span data-photo-meta></span></div>
+          <div class="tl-photo-actions">
+            <a class="tl-button" data-photo-button href="#" target="_blank" rel="noopener"><span class="tl-btn-ic" data-ic="photo"></span>開く</a>
+            <button class="tl-photo-link-edit" type="button" data-photo-link-edit><span class="tl-btn-ic" data-ic="pencilSquare"></span>リンク設定</button>
+          </div>
+          <form class="tl-photo-link-form" data-photo-link-form hidden>
+            <label>
+              <span>共有アルバムURL</span>
+              <input type="url" data-photo-url placeholder="https://photos.app.goo.gl/...">
+            </label>
+            <div class="tl-photo-link-form-actions">
+              <button type="button" data-photo-link-cancel>キャンセル</button>
+              <button type="submit">保存</button>
+            </div>
+            <p data-photo-link-status aria-live="polite"></p>
+          </form>
         </div>
       </article>
     </section>
@@ -159,11 +175,6 @@
       </div>
     </div>
   </div>
-
-  <footer class="tl-foot">
-    <span data-note></span>
-    <span><a href="plans.html">計画一覧</a> / <a href="expense-entry.html">費用入力</a><span data-edit-wrap hidden> / <a data-edit-link href="#">編集</a></span> / <span data-updated></span></span>
-  </footer>
 
   <nav class="tl-mobile-nav" aria-label="スマホ用ナビゲーション">
     <button type="button" data-mobile-nav="home" aria-selected="true">ホーム</button>

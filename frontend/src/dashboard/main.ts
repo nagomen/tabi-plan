@@ -783,6 +783,32 @@ function linkByKey(key: string): TripLink | Partial<TripLink> {
   return state.data.links.find((link) => link.key === key) || {};
 }
 
+function isEditableLocalPlan(): boolean {
+  return !READ_ONLY && CONFIG.mode === "local";
+}
+
+function normalizePhotoUrl(value: string): string {
+  const url = String(value || "").trim();
+  if (!url) return "";
+  if (!/^https?:\/\//i.test(url)) throw new Error("https:// から始まる共有リンクを入力してください。");
+  try {
+    return new URL(url).href;
+  } catch {
+    throw new Error("URLの形式を確認してください。");
+  }
+}
+
+function upsertPhotoAlbumLink(url: string): void {
+  const existing = state.data.links || [];
+  const withoutPhotos = existing.filter((link) => link.key !== "photos");
+  state.data.links = [
+    ...withoutPhotos,
+    { key: "photos", label: "写真", icon: "写", url, caption: "Google Photos" },
+  ];
+  const saved = TripPlans.saveData(CONFIG.tripSlug, state.data as TripPlans.LocalPlanData);
+  if (!saved) throw new Error("写真アルバムリンクを保存できませんでした。");
+}
+
 /** リンク種別ごとに Heroicon を返す（タイルアイコン用、data の icon は据え置き） */
 function linkIcon(key: string): string {
   switch (key) {
@@ -893,6 +919,15 @@ function setExpenseSheet(open: boolean): void {
 
 // ---- 費用・精算描画 -----------------------------------------------------
 
+/** 費用まわりのセクション見出し。アイコン・文字サイズ・件数の位置をここで統一する。 */
+function subhead(iconName: IconName, title: string, count?: string): string {
+  return (
+    `<h3 class="tl-subhead"><span class="tl-subhead-ic">${icon(iconName)}</span><b>${escapeHtml(title)}</b>` +
+    (count ? `<small>${escapeHtml(count)}</small>` : "") +
+    `</h3>`
+  );
+}
+
 function renderTransfers(settlement: Settlement): void {
   const mount = root.querySelector<HTMLElement>("[data-transfers]");
   if (!mount) return;
@@ -900,7 +935,7 @@ function renderTransfers(settlement: Settlement): void {
   const history = settlement.settlementHistory || [];
   const historyHtml = history.length ? `
     <div class="tl-settlement-history">
-      <div class="tl-subhead"><span>${icon("checkCircle")}</span><b>精算履歴</b><small>${history.length}件</small></div>
+      ${subhead("checkCircle", "精算履歴", `${history.length}件`)}
       ${history.map((item) => `
         <div class="tl-settlement-history-row">
           <span>${escapeHtml(mdLabel(item.date || ""))}</span>
@@ -910,10 +945,10 @@ function renderTransfers(settlement: Settlement): void {
       `).join("")}
     </div>` : "";
   if (!transfers.length) {
-    mount.innerHTML = `<h3>精算する金額</h3><div class="tl-transfer-row"><span>現時点で精算する支払いはありません</span><b>¥0</b></div>${historyHtml}<div class="tl-expense-status" data-settlement-status aria-live="polite"></div>`;
+    mount.innerHTML = `${subhead("banknotes", "精算する金額")}<div class="tl-transfer-row"><span>現時点で精算する支払いはありません</span><b>¥0</b></div>${historyHtml}<div class="tl-expense-status" data-settlement-status aria-live="polite"></div>`;
     return;
   }
-  mount.innerHTML = `<h3>精算する金額</h3>` + transfers.map((transfer: SettlementTransfer & { completedLabel?: string }) =>
+  mount.innerHTML = subhead("banknotes", "精算する金額", `${transfers.length}件`) + transfers.map((transfer: SettlementTransfer & { completedLabel?: string }) =>
     `<div class="tl-transfer-row">
       <span>${escapeHtml(transfer.from)} → ${escapeHtml(transfer.to)}</span>
       <div class="tl-transfer-act">
@@ -925,6 +960,30 @@ function renderTransfers(settlement: Settlement): void {
     </div>`,
   ).join("") + historyHtml + `<div class="tl-expense-status" data-settlement-status aria-live="polite"></div>`;
   setupSettlementCompleteHandlers(mount);
+}
+
+function renderPhotoAlbum(): void {
+  const photo = linkByKey("photos");
+  const url = photo.url || "";
+  const link = qs<HTMLAnchorElement>("[data-photo-link]");
+  const button = qs<HTMLAnchorElement>("[data-photo-button]");
+  const editButton = root.querySelector<HTMLButtonElement>("[data-photo-link-edit]");
+  const input = root.querySelector<HTMLInputElement>("[data-photo-url]");
+
+  link.href = url || "#";
+  button.href = url || "#";
+  link.classList.toggle("is-empty", !url);
+  button.classList.toggle("is-disabled", !url);
+  button.setAttribute("aria-disabled", String(!url));
+  if (input) input.value = url;
+  if (editButton) {
+    editButton.hidden = !isEditableLocalPlan();
+    editButton.innerHTML = `${icon(url ? "pencilSquare" : "plus")}<span>${url ? "リンク変更" : "リンク設定"}</span>`;
+  }
+
+  const settlement = state.data.settlement || {};
+  setText("[data-photo-title]", settlement.photoTitle || "写真アルバム");
+  setText("[data-photo-meta]", url ? (settlement.photoMeta || "Google Photos") : "共有アルバムリンク未設定");
 }
 
 function confirmTransferAction(options: {
@@ -1026,7 +1085,7 @@ function setupSettlementCompleteHandlers(mount: HTMLElement): void {
       const amount = Number(button.dataset.amount || 0);
       if (!from || !to || !amount) return;
       const ok = await confirmTransferAction({
-        tone: "danger",
+        tone: "complete",
         iconName: "checkCircle",
         title: "精算完了マークをつけますか",
         message: `${from} から ${to} への ${formatYen(amount)} の精算を完了として記録します。実際の送金が済んでいる場合だけ進めてください。`,
@@ -1080,13 +1139,66 @@ function setupSettlementCompleteHandlers(mount: HTMLElement): void {
   });
 }
 
+function setupPhotoAlbumEditor(): void {
+  const form = root.querySelector<HTMLFormElement>("[data-photo-link-form]");
+  const editButton = root.querySelector<HTMLButtonElement>("[data-photo-link-edit]");
+  const cancelButton = root.querySelector<HTMLButtonElement>("[data-photo-link-cancel]");
+  const input = root.querySelector<HTMLInputElement>("[data-photo-url]");
+  const status = root.querySelector<HTMLElement>("[data-photo-link-status]");
+  const openLinks = [
+    root.querySelector<HTMLAnchorElement>("[data-photo-link]"),
+    root.querySelector<HTMLAnchorElement>("[data-photo-button]"),
+  ].filter((el): el is HTMLAnchorElement => Boolean(el));
+  if (!form || !editButton || !input) return;
+
+  const setStatus = (message: string, kind: "ok" | "error" | "" = ""): void => {
+    if (!status) return;
+    status.textContent = message;
+    status.classList.toggle("is-ok", kind === "ok");
+    status.classList.toggle("is-error", kind === "error");
+  };
+  const setOpen = (open: boolean): void => {
+    form.hidden = !open;
+    if (open) {
+      setStatus("");
+      input.value = linkByKey("photos").url || "";
+      setTimeout(() => input.focus(), 30);
+    }
+  };
+
+  openLinks.forEach((link) => {
+    link.addEventListener("click", (event) => {
+      if (linkByKey("photos").url) return;
+      event.preventDefault();
+      if (isEditableLocalPlan()) setOpen(true);
+    });
+  });
+  editButton.addEventListener("click", () => setOpen(form.hidden));
+  cancelButton?.addEventListener("click", () => setOpen(false));
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    if (!isEditableLocalPlan()) return;
+    try {
+      const url = normalizePhotoUrl(input.value);
+      if (!url) throw new Error("共有アルバムURLを入力してください。");
+      upsertPhotoAlbumLink(url);
+      setOpen(false);
+      renderBase();
+      renderActive();
+      setStatus("写真アルバムリンクを保存しました。", "ok");
+    } catch (error) {
+      setStatus((error as Error).message || "保存に失敗しました。", "error");
+    }
+  });
+}
+
 function renderExpenseDetails(settlement: Settlement): void {
   const mount = root.querySelector<HTMLElement>("[data-expense-details]");
   const button = root.querySelector<HTMLButtonElement>("[data-expense-detail-toggle]");
   if (!mount || !button) return;
 
-  const participants = expenseParticipants(state.data || SAMPLE);
-  const profileName = currentProfileName(participants);
+  // 利用者は identity（user_id）が正。表示名は users から引く。
+  const profileName = db.nameOf(currentUserId());
   const canManageExpenses = usingLocalExpenses() && !READ_ONLY;
   const details = settlement.expenseDetails || [];
   const related = canManageExpenses ? details : profileName ? details.filter((detail) => {
@@ -1104,11 +1216,6 @@ function renderExpenseDetails(settlement: Settlement): void {
 
   if (!profileName) {
     mount.innerHTML = `<div class="tl-expense-empty">本人設定を登録すると、自分に関連する費用明細を表示できます。</div>`;
-    return;
-  }
-
-  if (!related.length) {
-    mount.innerHTML = `<div class="tl-expense-empty">${canManageExpenses ? "入力済みの費用はまだありません。" : `${escapeHtml(profileName)}に関連する費用はまだありません。`}</div>`;
     return;
   }
 
@@ -1141,45 +1248,44 @@ function renderExpenseDetails(settlement: Settlement): void {
         </div>
       `).join("")}
     </div>` : "";
+  // カテゴリごとの色。台帳の左に小さな丸を置いて、一覧の中で種別が拾えるようにする。
+  const CAT_TONE: Record<string, string> = {
+    食費: "food", 交通: "transport", 宿泊: "lodging",
+    観光: "sightseeing", 通信: "communication", 精算: "settle",
+  };
+  const rowsHtml = related.length ? related.map((detail) => {
+    const tone = CAT_TONE[detail.category || ""] || "other";
+    const paid = detail.convertedLabel || detail.amountLabel || "";
+    return `
+    <li class="tl-ledger-row" data-expense-row="${escapeHtml(detail.id || "")}">
+      <span class="tl-ledger-dot" data-cat="${tone}" aria-hidden="true"></span>
+      <div class="tl-ledger-body">
+        <b class="tl-ledger-title">${escapeHtml(detail.title || "立替")}</b>
+        <span class="tl-ledger-meta">
+          <span class="tl-ledger-cat">${escapeHtml(detail.category || "その他")}</span>
+          <i>·</i>${escapeHtml(mdLabel(detail.date || ""))}
+          <i>·</i>${escapeHtml(detail.payer || "")}が${escapeHtml(paid)}
+        </span>
+      </div>
+      <div class="tl-ledger-amount">
+        <strong>${escapeHtml(shareFor(detail))}</strong>
+        <span>${escapeHtml(roleFor(detail))}</span>
+      </div>
+      ${canManageExpenses ? `<div class="tl-ledger-act">
+        <button type="button" class="tl-icon-action" data-expense-edit="${escapeHtml(detail.id || "")}" aria-label="${escapeHtml(detail.title || "費用")}を編集" title="編集">${icon("pencilSquare")}</button>
+        <button type="button" class="tl-icon-action danger" data-expense-remove="${escapeHtml(detail.id || "")}" aria-label="${escapeHtml(detail.title || "費用")}を取り消す" title="取り消し">${icon("xCircle")}</button>
+      </div>` : ""}
+    </li>`;
+  }).join("") : `
+    <li class="tl-ledger-empty">
+      ${canManageExpenses ? "支払い台帳に表示する費用はありません。" : `${escapeHtml(profileName)}に関連する支払いはまだありません。`}
+    </li>`;
 
   mount.innerHTML = `
-    <div class="tl-expense-details-head">
-      <b>${canManageExpenses ? "支払い台帳" : `${escapeHtml(profileName)}に関連する支払い`}</b>
-      <span>${related.length}件</span>
-    </div>
-    <div class="tl-expense-table-wrap">
-      <table class="tl-expense-table">
-        <thead>
-          <tr>
-            <th data-col="date">日付</th>
-            <th data-col="title">内容</th>
-            <th data-col="payer">支払者</th>
-            <th data-col="role">負担</th>
-            <th data-col="mode">精算範囲</th>
-            <th data-col="amount">支払額</th>
-            <th data-col="share">自分の負担</th>
-            ${canManageExpenses ? `<th data-col="actions">操作</th>` : ""}
-          </tr>
-        </thead>
-        <tbody>
-          ${related.map((detail) => `
-            <tr data-expense-row="${escapeHtml(detail.id || "")}">
-              <td data-col="date"><span class="tl-date-long">${escapeHtml(detail.date || "")}</span><span class="tl-date-short">${escapeHtml(mdLabel(detail.date || ""))}</span></td>
-              <td data-col="title">${escapeHtml(detail.title || "立替")}${detail.category ? `<br><small>${escapeHtml(detail.category)}</small>` : ""}</td>
-              <td data-col="payer">${escapeHtml(detail.payer || "")}</td>
-              <td data-col="role">${escapeHtml(roleFor(detail))}</td>
-              <td data-col="mode">${escapeHtml(detail.mode || "")}</td>
-              <td data-col="amount">${escapeHtml(detail.convertedLabel || detail.amountLabel || "")}${detail.amountLabel && detail.convertedLabel && detail.amountLabel !== detail.convertedLabel ? `<br><small>${escapeHtml(detail.amountLabel)}</small>` : ""}</td>
-              <td data-col="share">${escapeHtml(shareFor(detail))}</td>
-              ${canManageExpenses ? `<td data-col="actions">
-                <button type="button" class="tl-icon-action" data-expense-edit="${escapeHtml(detail.id || "")}" aria-label="${escapeHtml(detail.title || "費用")}を編集" title="編集">${icon("pencilSquare")}</button>
-                <button type="button" class="tl-icon-action danger" data-expense-remove="${escapeHtml(detail.id || "")}" aria-label="${escapeHtml(detail.title || "費用")}を取り消す" title="取り消し">${icon("xCircle")}</button>
-              </td>` : ""}
-            </tr>
-          `).join("")}
-        </tbody>
-      </table>
-    </div>
+    ${subhead("documentText", canManageExpenses ? "支払い台帳" : `${escapeHtml(profileName)}に関連する支払い`, `${related.length}件`)}
+    <ul class="tl-ledger">
+      ${rowsHtml}
+    </ul>
     ${canceledHtml}`;
   setupExpenseDetailActions(mount);
 }
@@ -1201,7 +1307,7 @@ function setupExpenseDetailActions(mount: HTMLElement): void {
       const record = ExpenseStore.get(planId(), id);
       if (!record) return;
       const ok = await confirmTransferAction({
-        tone: "complete",
+        tone: "danger",
         iconName: "xCircle",
         title: "この費用を取り消しますか",
         message: `${record.row.title || "費用"}（${formatYen(record.row.amount_base_minor)}）を支払い台帳から外します。取り消し履歴からあとで復活できます。`,
@@ -1812,8 +1918,6 @@ function renderDayTabs(route: { segs: RouteSeg[]; dayToSeg: number[] }): void {
 function renderBase(): void {
   const data = state.data;
   setText("[data-title]", data.trip.title);
-  setText("[data-note]", data.trip.note);
-  setText("[data-updated]", "最終更新: " + new Date().toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }));
 
   const tabs: { key: string; label: string; glyph: string }[] = [
     { key: "home", label: "ホーム", glyph: icon("home") },
@@ -1836,8 +1940,6 @@ function renderBase(): void {
   renderMembers(data);
 
   qs<HTMLAnchorElement>("[data-my-maps]").href = linkByKey("maps").url || "#";
-  qs<HTMLAnchorElement>("[data-photo-link]").href = linkByKey("photos").url || "#";
-  qs<HTMLAnchorElement>("[data-photo-button]").href = linkByKey("photos").url || "#";
 
   if (usingLocalExpenses()) {
     data.settlement = { ...data.settlement, ...localSettlement() };
@@ -1849,8 +1951,7 @@ function renderBase(): void {
   renderTransfers(settlement);
   renderExpenseDetails(settlement);
   applyMoneyTab();
-  setText("[data-photo-title]", settlement.photoTitle || "写真アルバム");
-  setText("[data-photo-meta]", settlement.photoMeta || "Google Photos");
+  renderPhotoAlbum();
   saveExpenseEntryCache(data);
   renderExpenseEntry(data);
   renderLocalInfo(data.localInfo || []);
@@ -2477,7 +2578,7 @@ function renderAccessDenied(): void {
   setLoading(false);
   root.classList.add("is-readonly");
   root
-    .querySelectorAll<HTMLElement>(".tl-actions, .tl-days, .tl-main, .tl-foot, .tl-mobile-nav")
+    .querySelectorAll<HTMLElement>(".tl-actions, .tl-days, .tl-main, .tl-mobile-nav")
     .forEach((el) => {
       el.hidden = true;
     });
@@ -2590,6 +2691,7 @@ async function init(): Promise<void> {
   qsa<HTMLElement>("[data-expense-close]").forEach((button) => {
     button.addEventListener("click", () => setExpenseSheet(false));
   });
+  setupPhotoAlbumEditor();
   document.addEventListener("keydown", (event) => {
     if (event.key !== "Escape") return;
     const sheet = root.querySelector<HTMLElement>("[data-expense-sheet]");

@@ -578,7 +578,6 @@
   .trip-live > .tl-days { order: 2; }
   .trip-live > .tl-actions { order: 3; }
   .trip-live > .tl-main { order: 4; }
-  .trip-live > .tl-foot { order: 5; }
 
   .trip-live > .ah--hero,
   .trip-live > .tl-days,
@@ -1437,17 +1436,21 @@
   /* 主役は「自分の精算額」。総額・立替は補助に降格。 */
   .tl-settle-hero {
     display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
     gap: 3px;
     padding: 2px 0 4px;
   }
 
   .tl-settle-label {
+    grid-column: 1;
     color: var(--muted);
     font-size: 12px;
     font-weight: 500;
   }
 
   .tl-settle-amount {
+    grid-column: 1;
     font-size: 32px;
     font-weight: 700;
     line-height: 1.1;
@@ -1455,9 +1458,20 @@
   }
 
   .tl-settle-sub {
+    grid-column: 1;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
     color: var(--muted);
     font-size: 12px;
     font-weight: 400;
+  }
+
+  .tl-settle-metrics {
+    display: inline-flex;
+    align-items: baseline;
+    min-width: 0;
   }
 
   .tl-settle-sub b {
@@ -1471,6 +1485,43 @@
     color: var(--line-strong);
   }
 
+  .tl-expense-quick-add {
+    grid-column: 2;
+    grid-row: 1 / 4;
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    width: 82px;
+    height: 82px;
+    border: 2px solid var(--green);
+    border-radius: 999px;
+    background: var(--green);
+    color: #fff;
+    padding: 0;
+    font: inherit;
+    font-size: 11px;
+    font-weight: 800;
+    line-height: 1.1;
+    cursor: pointer;
+    box-shadow: 4px 4px 0 rgba(94, 105, 100, .55);
+  }
+
+  .tl-expense-quick-add:hover,
+  .tl-expense-quick-add:focus-visible {
+    outline: none;
+    background: #0d6c4f;
+    box-shadow: 5px 5px 0 rgba(94, 105, 100, .65);
+  }
+
+  .tl-expense-quick-add-icon .hi,
+  .tl-expense-quick-add-icon svg {
+    width: 28px;
+    height: 28px;
+    stroke-width: 2.2;
+  }
+
   .tl-transfer-list {
     display: grid;
     gap: 7px;
@@ -1479,12 +1530,9 @@
     border-top: 1px solid var(--line);
   }
 
-  .tl-transfer-list h3 {
-    margin: 0;
-    color: var(--muted);
-    font-size: 12px;
-    font-weight: 600;
-  }
+  /* 見出しは .tl-subhead に一本化した（h3 独自のサイズ指定をやめる）。
+     精算する金額と精算履歴で、文字サイズ・太さ・アイコンの扱いを揃えるため。 */
+  .tl-transfer-list h3 { margin: 0; }
 
   .tl-transfer-row {
     display: grid;
@@ -1548,9 +1596,17 @@
     display: flex;
     align-items: center;
     gap: 7px;
+    margin: 0;
     color: var(--muted);
     font-size: 12px;
     font-weight: 700;
+  }
+
+  /* heroicon は 16px・緑・線幅そろえ。span で包んで縦位置を安定させる。 */
+  .tl-subhead-ic {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
   }
 
   .tl-subhead .hi,
@@ -1558,6 +1614,7 @@
     width: 16px;
     height: 16px;
     color: var(--green);
+    stroke-width: 1.9;
   }
 
   .tl-subhead small {
@@ -1581,7 +1638,8 @@
     align-items: baseline;
     padding: 9px 0;
     border-top: 1px solid var(--line);
-    font-size: 12px;
+    /* 精算行（.tl-transfer-row）と同じ 13px に揃える */
+    font-size: 13px;
   }
 
   .tl-settlement-history-row span {
@@ -1601,8 +1659,9 @@
 
   .tl-settlement-history-row strong {
     color: var(--green);
-    font-size: 13px;
-    font-weight: 800;
+    /* 精算行の金額（.tl-transfer-row b）と同じ 15px */
+    font-size: 15px;
+    font-weight: 700;
     white-space: nowrap;
   }
 
@@ -1942,6 +2001,14 @@
     color: var(--muted);
     font-size: 12px;
     font-weight: 620;
+  }
+
+  .tl-expense-table .tl-expense-empty-cell {
+    padding: 16px 0;
+    color: var(--muted);
+    font-weight: 620;
+    text-align: left;
+    white-space: normal;
   }
 
   .tl-canceled-expenses {
@@ -2714,33 +2781,126 @@
       linear-gradient(160deg, #2f6b89 0 32%, #b9cbbf 33% 46%, #bf7044 47% 62%, #e7c57d 63% 100%);
   }
 
-  .tl-photo-body b,
-  .tl-photo-body span {
+  .tl-photo-art.is-empty {
+    display: grid;
+    place-items: center;
+    border-style: dashed;
+    background:
+      linear-gradient(135deg, rgba(11, 90, 66, .08), rgba(231, 197, 125, .28));
+  }
+
+  .tl-photo-art.is-empty::after {
+    content: "+";
+    display: grid;
+    place-items: center;
+    width: 44px;
+    height: 44px;
+    border: 2px solid var(--green);
+    border-radius: 999px;
+    background: #fff;
+    color: var(--green);
+    font-size: 28px;
+    font-weight: 760;
+  }
+
+  .tl-photo-copy b,
+  .tl-photo-copy span {
     display: block;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
-  .tl-photo-body b { font-size: 14px; }
-  .tl-photo-body span { color: var(--muted); font-size: 12px; }
+  .tl-photo-copy b { font-size: 14px; }
+  .tl-photo-copy span { color: var(--muted); font-size: 12px; }
 
-  .tl-foot {
+  .tl-photo-actions {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: 12px;
-    padding: 11px 32px;
-    border-top: 1px solid var(--line);
-    background: #fff;
-    color: var(--muted);
-    font-size: 12px;
-    font-weight: 800;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 8px;
   }
 
-  .tl-foot a {
+  .tl-photo-link-edit,
+  .tl-photo-link-form button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-height: 44px;
+    border: 1px solid var(--line-strong);
+    background: #fff;
     color: var(--green);
-    text-decoration: none;
+    padding: 0 10px;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 760;
+    cursor: pointer;
   }
+
+  .tl-photo-button.is-disabled,
+  .tl-photo-body .tl-button.is-disabled {
+    pointer-events: none;
+    border-color: var(--line);
+    color: var(--muted);
+    opacity: .65;
+  }
+
+  .tl-photo-link-form {
+    display: grid;
+    gap: 8px;
+    padding: 10px;
+    border: 1px solid var(--line);
+    background: #f8fbf8;
+  }
+
+  .tl-photo-link-form[hidden] {
+    display: none;
+  }
+
+  .tl-photo-link-form label {
+    display: grid;
+    gap: 5px;
+  }
+
+  .tl-photo-link-form label span {
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 760;
+  }
+
+  .tl-photo-link-form input {
+    width: 100%;
+    min-height: 42px;
+    border: 1px solid var(--line-strong);
+    background: #fff;
+    color: var(--ink);
+    padding: 0 10px;
+    font: inherit;
+    font-size: 13px;
+  }
+
+  .tl-photo-link-form-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .tl-photo-link-form-actions button[type="submit"] {
+    border-color: var(--green);
+    background: var(--green);
+    color: #fff;
+  }
+
+  .tl-photo-link-form p {
+    min-height: 16px;
+    margin: 0;
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 700;
+  }
+
+  .tl-photo-link-form p.is-ok { color: var(--green); }
+  .tl-photo-link-form p.is-error { color: var(--red); }
 
   .tl-error {
     padding: 12px 14px;
@@ -2784,7 +2944,6 @@
   .tl-doc-icon,
   .tl-doc span:last-child,
   .tl-checks label,
-  .tl-foot,
   .tl-error {
     font-weight: 560;
   }
@@ -3194,8 +3353,25 @@
     .tl-money-panel.is-active { display: block; }
     /* タブ見出しがあるので、パネル内の h3 は重複になる */
     .tl-money-panel[data-money-panel="settle"] .tl-transfer-list { margin-top: 0; padding-top: 0; border-top: 0; }
-    .tl-money-panel[data-money-panel="settle"] .tl-transfer-list h3 { display: none; }
-    .tl-buttons { margin: 14px 0 0; }
+    /* タブ見出しと重複する「精算する金額」だけを隠す。
+       直接の子に限定しないと、中の「精算履歴」の見出しまで消える。 */
+    .tl-money-panel[data-money-panel="settle"] .tl-transfer-list > h3 { display: none; }
+    .tl-settle-sub {
+      gap: 6px 10px;
+    }
+    .tl-settle-metrics {
+      white-space: nowrap;
+    }
+    .tl-expense-quick-add {
+      width: 76px;
+      height: 76px;
+      font-size: 10.5px;
+    }
+    .tl-expense-quick-add-icon .hi,
+    .tl-expense-quick-add-icon svg {
+      width: 25px;
+      height: 25px;
+    }
 
     /* 精算行: 枠付きカード → 罫線区切りの行 */
     .tl-transfer-list { gap: 0; }
@@ -3214,36 +3390,17 @@
     .tl-settlement-history-row {
       grid-template-columns: auto minmax(0, 1fr) auto;
       gap: 7px;
-      font-size: 11.5px;
+      font-size: 13px;
     }
+    /* 金額は精算行と同じ 16px（精算・履歴・台帳の3か所を揃える） */
+    .tl-settlement-history-row strong,
+    .tl-ledger-amount strong { font-size: 16px; }
 
     /* 送金・完了は補助操作。文字ボタンではなくアイコンにする */
     .tl-transfer-row .tl-icon-action {
       width: 32px;
       height: 32px;
     }
-
-    /* 主導線は塗りの帯ではなく、下罫線つきの語で横に並べる */
-    .tl-buttons {
-      grid-template-columns: auto auto;
-      justify-content: start;
-      gap: 20px;
-      margin-top: 14px;
-      padding-top: 12px;
-      border-top: 1px solid var(--line);
-    }
-    .tl-buttons .tl-button {
-      min-height: 40px;
-      padding: 0 2px;
-      border: 0;
-      border-bottom: 2px solid currentColor;
-      background: none;
-      color: var(--green);
-      font-size: 14px;
-    }
-    .tl-buttons .tl-button.ghost { color: var(--muted); }
-    .tl-buttons .tl-button:hover,
-    .tl-buttons .tl-button:focus-visible { background: none; }
 
     /* 明細: 7列は読めないので、区分と支払額に絞って5列に落とす */
     .tl-expense-table th[data-col="mode"],
@@ -3317,7 +3474,6 @@
     .tl-segments {
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
-    .tl-foot { grid-template-columns: 1fr; padding: 11px 12px; }
     .tl-mobile-nav {
       position: fixed;
       left: 0;
@@ -3347,4 +3503,80 @@
       background: var(--green);
       color: #fff;
     }
+  }
+
+/* ---- 支払い台帳 -------------------------------------------------------
+   表ではなく罫線区切りの行リスト。PC/スマホで同じ見た目にする。
+   カテゴリは左の小さな丸で示し、金額と役割を右に寄せて縦に読ませる。 */
+  .tl-ledger {
+    display: grid;
+    margin: 6px 0 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .tl-ledger-row {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto auto;
+    align-items: center;
+    gap: 0 10px;
+    padding: 11px 0;
+    border-top: 1px solid var(--line);
+  }
+
+  .tl-ledger-row:first-child { border-top: 0; }
+
+  /* カテゴリの色アクセント。面ではなく点で示すので主張しすぎない。 */
+  .tl-ledger-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--line-strong);
+  }
+  .tl-ledger-dot[data-cat="food"] { background: #d98324; }
+  .tl-ledger-dot[data-cat="transport"] { background: #22719d; }
+  .tl-ledger-dot[data-cat="lodging"] { background: #6246a6; }
+  .tl-ledger-dot[data-cat="sightseeing"] { background: #0b5a42; }
+  .tl-ledger-dot[data-cat="communication"] { background: #2f7d6b; }
+  .tl-ledger-dot[data-cat="settle"] { background: #b8c5bd; }
+
+  .tl-ledger-body { display: grid; gap: 2px; min-width: 0; }
+
+  .tl-ledger-title {
+    overflow: hidden;
+    font-size: 14px;
+    font-weight: 700;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .tl-ledger-meta {
+    color: var(--muted);
+    font-size: 11.5px;
+    font-weight: 500;
+  }
+  .tl-ledger-meta i { margin: 0 5px; font-style: normal; color: var(--line-strong); }
+  .tl-ledger-cat { font-weight: 700; }
+
+  .tl-ledger-amount { display: grid; gap: 1px; justify-items: end; }
+  .tl-ledger-amount strong {
+    color: var(--green);
+    /* 精算行の金額（.tl-transfer-row b）と同じサイズに揃える */
+    font-size: 15px;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+  .tl-ledger-amount span {
+    color: var(--muted);
+    font-size: 10.5px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+
+  .tl-ledger-act { display: flex; gap: 2px; }
+
+  .tl-ledger-empty {
+    padding: 18px 0;
+    color: var(--muted);
+    font-size: 12.5px;
   }

@@ -66,9 +66,8 @@ export async function bootstrap(): Promise<Bootstrap> {
     all(`SELECT id, plan_id, paid_on, payer_user_id, category, title, amount_minor, currency,
            fx_rate, amount_base_minor, split_method, payment_method, note, receipt_url,
            created_at, deleted_at
-         FROM expenses WHERE deleted_at IS NULL ORDER BY plan_id, created_at`),
-    all(`SELECT s.expense_id, s.user_id, s.amount_base_minor FROM expense_shares s
-           JOIN expenses e ON e.id = s.expense_id WHERE e.deleted_at IS NULL`),
+         FROM expenses ORDER BY plan_id, created_at`),
+    all("SELECT expense_id, user_id, amount_base_minor FROM expense_shares"),
     all(`SELECT id, plan_id, from_user_id, to_user_id, amount_base_minor, note, settled_at, deleted_at
          FROM settlements WHERE deleted_at IS NULL ORDER BY plan_id, settled_at`),
     all("SELECT plan_id, CAST(SUM(view_count) AS SIGNED) AS view_count FROM plan_view_daily GROUP BY plan_id"),
