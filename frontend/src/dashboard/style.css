@@ -3353,9 +3353,9 @@
     .tl-money-panel.is-active { display: block; }
     /* タブ見出しがあるので、パネル内の h3 は重複になる */
     .tl-money-panel[data-money-panel="settle"] .tl-transfer-list { margin-top: 0; padding-top: 0; border-top: 0; }
-    /* タブ見出しと重複する「精算する金額」だけを隠す。
-       直接の子に限定しないと、中の「精算履歴」の見出しまで消える。 */
-    .tl-money-panel[data-money-panel="settle"] .tl-transfer-list > h3 { display: none; }
+    /* 見出しは隠さない。精算する金額・精算履歴・支払い台帳の3つが
+       同じ形（アイコン＋タイトル＋件数）で並ぶほうが揃って見える。
+       タブ名と一度重なるが、セクションの境目が分かるほうを取る。 */
     .tl-settle-sub {
       gap: 6px 10px;
     }
@@ -3392,9 +3392,8 @@
       gap: 7px;
       font-size: 13px;
     }
-    /* 金額は精算行と同じ 16px（精算・履歴・台帳の3か所を揃える） */
-    .tl-settlement-history-row strong,
-    .tl-ledger-amount strong { font-size: 16px; }
+    /* 金額は精算行と同じ 16px（台帳は末尾の @media でまとめて指定する） */
+    .tl-settlement-history-row strong { font-size: 16px; }
 
     /* 送金・完了は補助操作。文字ボタンではなくアイコンにする */
     .tl-transfer-row .tl-icon-action {
@@ -3580,3 +3579,13 @@
     color: var(--muted);
     font-size: 12.5px;
   }
+
+/* 支払い台帳のスマホ指定。
+   .tl-ledger-* のベース定義がこのファイルの末尾にあるため、
+   上の @media より後ろに置かないと 15px のまま上書きされてしまう。 */
+@media (max-width: 620px) {
+  /* 金額は精算行・履歴行と同じ 16px に揃える */
+  .tl-ledger-amount strong { font-size: 16px; }
+  .tl-ledger-row { gap: 0 8px; }
+  .tl-ledger-title { font-size: 14px; }
+}

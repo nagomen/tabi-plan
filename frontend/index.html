@@ -106,8 +106,10 @@
           </div>
           <!-- スマホでは精算/台帳をタブで切り替える（既定は精算）。PC は両方並べる。 -->
           <div class="tl-money-tabs" role="tablist" aria-label="費用の表示切替">
-            <button class="tl-money-tab" type="button" role="tab" data-money-tab="settle" aria-selected="true">精算する金額</button>
-            <button class="tl-money-tab" type="button" role="tab" data-money-tab="details" aria-selected="false" data-expense-detail-toggle>費用詳細</button>
+            <!-- タブは移動のための短い名前。セクション見出し（精算する金額 / 精算履歴 /
+                 支払い台帳）と文字が重ならないようにして、役割を分ける。 -->
+            <button class="tl-money-tab" type="button" role="tab" data-money-tab="settle" aria-selected="true">精算</button>
+            <button class="tl-money-tab" type="button" role="tab" data-money-tab="details" aria-selected="false" data-expense-detail-toggle>台帳</button>
           </div>
           <div class="tl-money-panel" data-money-panel="settle">
             <div class="tl-transfer-list" data-transfers></div>
