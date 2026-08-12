@@ -317,6 +317,8 @@ function devPlanFiles(): DevPlanFile[] | null {
 }
 
 function persistDevFile(slug: string): void {
+  // 共有ストア API が正なら、ファイルへは書かない（二重の真実を作らない）。
+  if (Backend.sharedApiEnabled()) return;
   if (!devPlanFiles()) return;
   const meta = get(slug);
   const data = getData(slug);
@@ -331,6 +333,7 @@ function persistDevFile(slug: string): void {
 }
 
 function deleteDevFile(slug: string): void {
+  if (Backend.sharedApiEnabled()) return;
   if (!devPlanFiles()) return;
   fetch("/api/plans/" + encodeURIComponent(slug), { method: "DELETE" }).catch(() => {
     /* ignore */
@@ -338,17 +341,13 @@ function deleteDevFile(slug: string): void {
 }
 
 /**
- * 起動時にファイル（data/plans/*.json）から localStorage を再構築する。
- *
- * dev: ファイルが真実。アプリの保存は /api/plans でファイルへ書き戻るので、
- *      ローカルプランはファイルの内容で丸ごと置き換えてよい。
- * 本番: ファイルは git で配る「種」でしかなく、書き戻す先が無い。
- *      置き換えにすると、訪問者が自分で作った計画がリロードのたびに消える
- *      （実際にそうなっていた）。種に含まれる slug だけ更新し、他は残す。
+ * 開発サーバー限定: ファイル（data/plans/*.json）から localStorage を再構築する。
+ * dev ではファイルが真実で、アプリの保存も /api/plans でファイルへ書き戻るため、
+ * ローカルプランはファイルの内容で丸ごと置き換えてよい。
+ * 本番ビルドには __DEV_PLANS__ が注入されないので、ここは何もしない。
+ * 共有ストア API を使う構成でも、そちらが正なので当てない。
  */
 function hydrateFromDevFiles(): void {
-  // 共有ストア API が正のときは種を当てない。
-  // 当てると、ページを開くたびに古いコミット内容で共有中の計画を上書きしてしまう。
   if (Backend.sharedApiEnabled()) return;
   const files = devPlanFiles();
   if (!files) return;
@@ -357,10 +356,7 @@ function hydrateFromDevFiles(): void {
     delete (meta as Partial<DevPlanFile>).data;
     return meta;
   });
-  const seeded = new Set(metas.map((m) => m.slug));
-  const kept = import.meta.env.DEV
-    ? list().filter((p) => p.source !== "local")
-    : list().filter((p) => !seeded.has(p.slug));
+  const kept = list().filter((p) => p.source !== "local");
   saveList([...kept, ...metas]);
   files.forEach((f) => {
     if (f.slug && f.data) writeJSON(DATA_PREFIX + safeSlug(f.slug), f.data);

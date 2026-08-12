@@ -64,12 +64,8 @@ export interface GeocodingConfig {
 }
 
 export interface SharedBackendConfig {
-  /**
-   * local=端末保存のみ
-   * appsScript=Apps Script の共有ストアへ同期
-   * api=自前の共有ストア API（MySQL）へ同期
-   */
-  mode: "local" | "appsScript" | "api";
+  /** local=端末保存のみ / api=共有ストア API（MySQL）へ同期 */
+  mode: "local" | "api";
   /** true のとき共有ストアから読み込む */
   enabled: boolean;
   /** mode="api" のときのベースURL（例 https://travel-api.example.com）。末尾スラッシュ不要。 */

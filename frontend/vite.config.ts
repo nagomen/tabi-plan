@@ -42,11 +42,13 @@ function readAllPlans(): unknown[] {
 /**
  * ローカルプランを data/plans/<slug>.json から読み込む。
  *  - transformIndexHtml で window.__DEV_PLANS__ に全ファイルを注入（同期読み取り用）
- *  - 開発サーバでは /api/plans への PUT/DELETE でファイルを書き込み/削除
+ *  - /api/plans への PUT/DELETE でファイルを書き込み/削除
+ * `apply: "serve"` なので本番ビルドには含まれない（本番は共有ストア API が正）。
  */
 function devPlansFiles(): Plugin {
   return {
     name: "dev-plans-files",
+    apply: "serve",
     configureServer(server) {
       server.middlewares.use("/api/plans", (req, res) => {
         const rest = decodeURIComponent((req.url || "/").split("?")[0].replace(/^\//, ""));
@@ -120,19 +122,17 @@ function readAllStore(): Record<string, unknown> {
 }
 
 /**
- * backend.ts のドメインデータ（プラン以外: アカウント・権限・費用・送金リンク）を
+ * 開発サーバー限定: backend.ts のドメインデータ（プラン以外）を
  * data/store/<key>.json に永続化する。
  *  - transformIndexHtml で window.__DEV_STORE__ に全ファイルを注入
  *  - /api/store/<key> への PUT/DELETE でファイルを書き込み/削除（dev サーバのみ）
  *
- * 本番ビルドにも注入する。サーバーが無い間、git にコミットした JSON が
- * 「配布用の種」になり、どの端末で開いても同じアカウントでログインできる。
- * 本番では書き戻せないので、種は backend.ts 側で
- * 「訪問者が持っていないものだけ埋める」マージとして扱う。
+ * `apply: "serve"` なので本番ビルドには含まれない（本番は共有ストア API が正）。
  */
 function devStoreFiles(): Plugin {
   return {
     name: "dev-store-files",
+    apply: "serve",
     configureServer(server) {
       server.middlewares.use("/api/store", (req, res) => {
         const rest = decodeURIComponent((req.url || "/").split("?")[0].replace(/^\//, ""));

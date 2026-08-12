@@ -1,9 +1,9 @@
 // 永続化バックエンドの唯一の差し替え口。
 //
 // 現在の実装:
-//   - 既定はブラウザの localStorage。
-//   - sharedBackend.enabled=true かつ mode="appsScript" のときだけ、
-//     localStorage を即時キャッシュとして残しながら Apps Script の共有ストアへ同期する。
+//   - sharedBackend.enabled=true かつ mode="api" のとき、MySQL の共有ストアが正。
+//     localStorage は同期読み取り用のキャッシュとして使う。
+//   - それ以外（mode="local"）は localStorage だけで完結する。
 //
 // ルール:
 //   - ドメインデータの読み書きは、各ストアが必ずこの backend 経由で行う
@@ -24,7 +24,6 @@ import {
   readGlobalTripConfig,
   type TripConfig,
 } from "./config";
-import { callAppsScript, postAppsScript } from "./apps-script";
 
 const cache = new Map<string, unknown>();
 let preloaded = false;
@@ -39,11 +38,6 @@ function config(): TripConfig {
       readGlobalTripConfig() as Record<string, unknown>,
     ) as unknown as TripConfig,
   );
-}
-
-function remoteEnabled(): boolean {
-  const cfg = config();
-  return Boolean(cfg.sharedBackend?.enabled && cfg.sharedBackend.mode === "appsScript" && cfg.appsScriptUrl);
 }
 
 // ---- 共有ストア API（MySQL）--------------------------------------------
@@ -162,18 +156,6 @@ async function apiLoadAll(): Promise<void> {
   for (const [key, version] of Object.entries(data.versions || {})) versions.set(key, version);
 }
 
-function authToken(): string {
-  const cfg = config();
-  try {
-    const raw = localStorage.getItem(cfg.auth.storageKey);
-    const session = raw ? (JSON.parse(raw) as { token?: string; expiresAt?: number }) : null;
-    if (session?.expiresAt && Date.now() > session.expiresAt) return "";
-    return session?.token || "";
-  } catch {
-    return "";
-  }
-}
-
 function emitSyncEvent(detail: Record<string, unknown>): void {
   try {
     window.dispatchEvent(new CustomEvent("trip-backend-sync", { detail }));
@@ -196,6 +178,8 @@ function isPlanKey(key: string): boolean {
 }
 
 function devPersist(key: string, value: unknown): void {
+  // 共有ストア API が正なら、ファイルへは書かない（二重の真実を作らない）。
+  if (sharedApiEnabled()) return;
   if (!devStore() || isPlanKey(key)) return; // 本番 or プランは対象外
   try {
     void fetch("/api/store/" + encodeURIComponent(key), {
@@ -211,6 +195,7 @@ function devPersist(key: string, value: unknown): void {
 }
 
 function devDelete(key: string): void {
+  if (sharedApiEnabled()) return;
   if (!devStore() || isPlanKey(key)) return;
   try {
     void fetch("/api/store/" + encodeURIComponent(key), { method: "DELETE" }).catch(() => {
@@ -219,103 +204,6 @@ function devDelete(key: string): void {
   } catch {
     /* ignore */
   }
-}
-
-function remotePersist(key: string, value: unknown): void {
-  if (!remoteEnabled()) return;
-  const cfg = config();
-  try {
-    void postAppsScript(
-      cfg.appsScriptUrl,
-      {
-        action: "storeSet",
-        token: authToken(),
-        key,
-        value: JSON.stringify(value),
-      },
-      {
-        source: "trip-shared-store",
-        idPrefix: "store",
-        timeoutMs: 30000,
-        timeoutMessage: "共有ストアへの保存がタイムアウトしました",
-        failMessage: "共有ストアへの保存に失敗しました",
-      },
-    ).then(
-      () => emitSyncEvent({ ok: true, source: "appsScript", key }),
-      (error) => emitSyncEvent({
-        ok: false,
-        source: "appsScript",
-        key,
-        error: error instanceof Error ? error.message : String(error),
-      }),
-    );
-  } catch {
-    /* ignore */
-  }
-}
-
-function remoteDelete(key: string): void {
-  if (!remoteEnabled()) return;
-  const cfg = config();
-  try {
-    void postAppsScript(
-      cfg.appsScriptUrl,
-      {
-        action: "storeRemove",
-        token: authToken(),
-        key,
-      },
-      {
-        source: "trip-shared-store",
-        idPrefix: "store",
-        timeoutMs: 30000,
-        timeoutMessage: "共有ストアからの削除がタイムアウトしました",
-        failMessage: "共有ストアからの削除に失敗しました",
-      },
-    ).then(
-      () => emitSyncEvent({ ok: true, source: "appsScript", key }),
-      (error) => emitSyncEvent({
-        ok: false,
-        source: "appsScript",
-        key,
-        error: error instanceof Error ? error.message : String(error),
-      }),
-    );
-  } catch {
-    /* ignore */
-  }
-}
-
-/** 端末固有で、配ってはいけないキー（配ると全員が同じ名前になる）。 */
-const DEVICE_LOCAL_KEYS = new Set(["trip-dashboard-user"]);
-
-/** id を持つ行の配列を、既存を優先しつつ id で和集合にする。 */
-function unionById(seed: unknown, mine: unknown): unknown {
-  if (!Array.isArray(seed)) return mine ?? seed;
-  if (!Array.isArray(mine)) return seed;
-  const has = new Set(
-    mine.map((row) => (row && typeof row === "object" ? (row as { id?: string }).id : undefined)).filter(Boolean),
-  );
-  const added = seed.filter((row) => {
-    const id = row && typeof row === "object" ? (row as { id?: string }).id : undefined;
-    return id && !has.has(id);
-  });
-  return added.length ? [...mine, ...added] : mine;
-}
-
-/**
- * 本番での「種」の当て方。
- *   - 端末固有キーは配らない
- *   - 訪問者がまだ持っていないキーはそのまま入れる
- *   - アカウントは id で和集合（配ったアカウントで必ずログインでき、
- *     その端末で作ったアカウントも消えない）
- *   - それ以外で既にデータがあるなら、訪問者のものを優先して触らない
- */
-function mergeSeed(key: string, seed: unknown, mine: unknown): unknown {
-  if (DEVICE_LOCAL_KEYS.has(key)) return mine ?? undefined;
-  if (mine === undefined || mine === null) return seed;
-  if (key === "trip-dashboard-accounts") return unionById(seed, mine);
-  return mine;
 }
 
 /**
@@ -348,49 +236,18 @@ async function runPreload(): Promise<void> {
   } catch {
     /* localStorage が使えない環境 */
   }
-  // data/store のファイルを流し込む。
-  // dev: ファイルが真実（/api/store で書き戻るので上書きしてよい）。
-  // 本番: git で配る「種」。書き戻せないので、訪問者が既に持っているデータは壊さない。
-  // 共有ストア API が正のときは、git の種を当てない。
-  // 当ててしまうと、ページを開くたびに古いコミット内容で共有データを上書きする。
+  // 開発サーバー限定: data/store のファイルを流し込む（/api/store で書き戻る）。
+  // 本番ビルドには注入されない（vite.config.ts の apply:"serve"）。
+  // 共有ストア API を使う構成では、そちらが正なので当てない。
   const ds = sharedApiEnabled() ? null : devStore();
   if (ds) {
     for (const [key, value] of Object.entries(ds)) {
-      const next = import.meta.env.DEV ? value : mergeSeed(key, value, cache.get(key));
-      if (next === undefined) continue; // 配らないキー（端末固有で手元にも無い）
-      cache.set(key, next);
+      cache.set(key, value);
       try {
-        localStorage.setItem(key, JSON.stringify(next));
+        localStorage.setItem(key, JSON.stringify(value));
       } catch {
         /* ignore */
       }
-    }
-  }
-  if (remoteEnabled()) {
-    const cfg = config();
-    try {
-      const response = await callAppsScript(cfg.appsScriptUrl, {
-        action: "storeDump",
-        token: authToken(),
-      });
-      const store = response.store;
-      if (store && typeof store === "object" && !Array.isArray(store)) {
-        for (const [key, value] of Object.entries(store as Record<string, unknown>)) {
-          cache.set(key, value);
-          try {
-            localStorage.setItem(key, JSON.stringify(value));
-          } catch {
-            /* ignore */
-          }
-        }
-        emitSyncEvent({ ok: true, source: "appsScript" });
-      }
-    } catch (error) {
-      emitSyncEvent({
-        ok: false,
-        source: "appsScript",
-        error: error instanceof Error ? error.message : String(error),
-      });
     }
   }
   // 共有ストア API（MySQL）。サーバーが正なので、種やローカルより後に当てて上書きする。
@@ -451,7 +308,6 @@ export function setJSON(key: string, value: unknown): boolean {
     ok = false; // 容量超過など
   }
   devPersist(key, value); // 開発時は data/store/<key>.json にも保存
-  remotePersist(key, value);
   apiPersist(key, value);
   return ok;
 }
@@ -465,6 +321,5 @@ export function removeJSON(key: string): void {
     /* ignore */
   }
   devDelete(key);
-  remoteDelete(key);
   apiDelete(key);
 }

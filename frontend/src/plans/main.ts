@@ -10,13 +10,7 @@ import { initPageTransitions, navigateWithPageTransition } from "../shared/page-
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import type { PlanMeta, LocalPlanData, PlanSource } from "../shared/plans-store";
-import {
-  DEFAULT_CONFIG,
-  mergeConfig,
-  normalizeTripConfig,
-  readGlobalTripConfig,
-  type TripConfig,
-} from "../shared/config";
+import { readGlobalTripConfig } from "../shared/config";
 import { escapeHtml, errorMessage, makeScopedQuery } from "../shared/dom";
 import { registerServiceWorker } from "../shared/pwa";
 import { icon, type IconName } from "../shared/icons";
@@ -34,11 +28,6 @@ import {
   isAuthError,
   type AppsScriptResponse,
 } from "../shared/apps-script";
-import {
-  hasAuthSession as hasAuthSessionShared,
-  saveAuthSession as saveAuthSessionShared,
-} from "../shared/auth";
-import * as Backend from "../shared/backend";
 import * as Permissions from "../shared/permissions-store";
 import * as ExpenseStore from "../shared/expense-store";
 import { isLoggedIn } from "../shared/account-store";
@@ -131,12 +120,6 @@ let locationTransitionTimer = 0;
 let lastRankingLimit = 0;
 let rankingResizeTimer = 0;
 const locationMapState: { map: L.Map | null; layer: L.LayerGroup | null } = { map: null, layer: null };
-const CONFIG: TripConfig = normalizeTripConfig(
-  mergeConfig(
-    DEFAULT_CONFIG as unknown as Record<string, unknown>,
-    readGlobalTripConfig() as Record<string, unknown>,
-  ) as unknown as TripConfig,
-);
 
 // セクション見出しの heroicon を流し込む（HTML 側は data-ic="名前" のみ持つ）
 document.querySelectorAll<HTMLElement>("[data-ic]").forEach((el) => {
@@ -1309,18 +1292,6 @@ function buildPlanJson(data: LocalPlanData): string {
   });
 }
 
-async function ensureSharedBackendAuth(): Promise<void> {
-  if (!CONFIG.sharedBackend.enabled || CONFIG.sharedBackend.mode !== "appsScript") return;
-  if (!CONFIG.auth.enabled || hasAuthSessionShared(CONFIG.auth)) return;
-  if (!CONFIG.appsScriptUrl) return;
-  const password = window.prompt("共有計画を同期するため、共有パスワードを入力してください");
-  if (password == null) return;
-  const passwordHash = await sha256Hex(password);
-  const response = await callAppsScript(CONFIG.appsScriptUrl, { action: "auth", passwordHash });
-  saveAuthSessionShared(CONFIG.auth, response.token, response.expiresAt);
-  await Backend.reload();
-}
-
 filterEl.addEventListener("input", (event) => {
   const target = event.target as HTMLInputElement | null;
   state.filter = (target && target.value) || "";
@@ -1454,11 +1425,6 @@ async function handleJoinLink(): Promise<boolean> {
   return true;
 }
 
-void ensureSharedBackendAuth()
-  .catch((error) => {
-    showToast("共有計画の同期に失敗しました: " + errorMessage(error), true);
-  })
-  .then(() => handleJoinLink())
-  .then((joined) => {
-    if (!joined) render();
-  });
+void handleJoinLink().then((joined) => {
+  if (!joined) render();
+});

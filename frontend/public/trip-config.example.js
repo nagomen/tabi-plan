@@ -23,9 +23,12 @@ window.TRIP_CONFIG = {
     mapboxToken: ""
   },
   sharedBackend: {
-    // true にするとローカル計画・候補・投票・費用などを Apps Script の
-    // 共有ストアへ同期する。静的サイトでも別端末/別ブラウザで同じ計画を扱える。
-    enabled: true,
-    mode: "appsScript"
+    // true にすると計画・費用・アカウント・権限などを共有ストア API（MySQL）へ
+    // 同期する。静的サイトのままで、別端末/別ブラウザから同じデータを扱える。
+    // apiToken は静的サイトに埋まる＝公開値。無差別アクセス避け程度の意味しかない。
+    enabled: false,
+    mode: "api",
+    apiBaseUrl: "https://travel-api.example.com",
+    apiToken: ""
   }
 };

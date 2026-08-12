@@ -1,21 +1,31 @@
 # data/
 
-開発中のローカルデータ置き場。
+**ローカル開発専用**のデータ置き場。本番の正は MySQL（共有ストア API）。
 
-- `plans/<slug>.json` — 計画エディタが保存するローカルプラン（dev のみ）。
+- `plans/<slug>.json` — 計画エディタが保存するローカルプラン。
   Vite dev サーバが `/api/plans` 経由で読み書きし、ページ読込時に
   `window.__DEV_PLANS__` として注入して localStorage を再構築する。
-  本番ビルドには含まれない（将来は DB へ移行）。
+- `store/<key>.json` — プラン以外のドメインデータ（アカウント・権限・費用・送金リンクなど）。
+  `src/shared/backend.ts` が `/api/store/<key>` 経由で write-through し、
+  `window.__DEV_STORE__` として注入される。1キー=1ファイル。
 
-- `store/<key>.json` — プラン以外のドメインデータ（ユーザー情報・費用・送金リンク）。
-  `src/shared/backend.ts` が `/api/store/<key>` 経由で write-through し、ページ読込時に
-  `window.__DEV_STORE__` として注入される。1キー=1ファイル。例:
-  `trip-dashboard-user.json`, `trip-dashboard-pay-links.json`,
-  `trip-dashboard-expenses-<slug>.json`。
+どちらも Vite プラグインが `apply: "serve"` なので **本番ビルドには含まれない**。
 
-いずれも **dev（`npm run dev`）専用** の仕組み。本番（GitHub Pages = 静的）は
-サーバーが無いため書き込めず、データは localStorage に保存される。将来 `backend.ts` を
-API/DB 実装へ差し替えると、dev/本番ともに同じバックエンドへ保存できる。
+## 共有ストア API を使っているときは読まれない
 
-`plans/*.json`・`store/*.json` は個人データになりうるため既定で gitignore。共有したい場合は
-`.gitignore` の該当行を外してコミットする。
+`trip-config.js` の `sharedBackend.mode` が `"api"` のときは、こちらのファイルは
+一切当てない（`Backend.sharedApiEnabled()` で抑止）。DB が正なのに古いファイルを
+当てると、ページを開くたびに共有中のデータを上書きしてしまうため。
+
+## DB へ入れる
+
+ここのファイルを共有ストアへ流し込むには、移行スクリプトを使う。
+
+```bash
+API_BASE=https://travel-api.example.com API_TOKEN=xxxx \
+  node api/scripts/seed-from-data.mjs          # 既存キーはスキップ
+  #                                --force     # 既存も上書き
+```
+
+`plans/*.json` と `store/*.json` は個人データを含むため gitignore している
+（アカウントのメールアドレスやパスワードハッシュが入る）。

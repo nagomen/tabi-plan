@@ -24,9 +24,9 @@ backend/.clasp.json
 # Local agent/editor state
 .claude/
 
-# Domain data (future: DB)
-# サーバーが無い間は、この JSON を git で配る＝本番の「配布用の種」になる。
-# ビルド時に window.__DEV_PLANS__ / __DEV_STORE__ として HTML へ埋め込まれ、
-# 訪問者の localStorage に流し込まれる（公開ページに載る点に注意）。
-# ただし端末固有の状態は配らない。
-data/store/trip-dashboard-user.json
+# ローカル開発用のドメインデータ。
+# 本番の正は MySQL（共有ストア API）なので、git で配らない。
+# 手元では dev サーバーがここに読み書きし、DB への投入は
+# api/scripts/seed-from-data.mjs で行う。
+data/plans/*.json
+data/store/*.json
