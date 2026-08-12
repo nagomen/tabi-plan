@@ -2,6 +2,7 @@
 // データは localStorage(JSON): 計画は plans-store、ユーザーは user-store。
 
 import "../shared/ui.css";
+import * as db from "../shared/db";
 import "./style.css";
 import { initPageTransitions, navigateWithPageTransition } from "../shared/page-transition";
 import { icon, type IconName } from "../shared/icons";
@@ -597,4 +598,4 @@ async function init(): Promise<void> {
   if (initialTab && tabs.some((tab) => tab.dataset.tab === initialTab)) showTab(initialTab);
 }
 
-void init();
+void db.load().then(init);

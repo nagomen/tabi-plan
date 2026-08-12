@@ -918,7 +918,7 @@ function confirmTransferAction(options: {
           <p>${escapeHtml(options.message)}</p>
         </div>
         <div class="tl-confirm-actions">
-          <button type="button" class="tl-confirm-btn primary" data-confirm-ok>${escapeHtml(options.confirmLabel)}</button>
+          <button type="button" class="tl-confirm-ok" data-confirm-ok>${escapeHtml(options.confirmLabel)}</button>
           <button type="button" class="tl-confirm-btn ghost" data-confirm-cancel>キャンセル</button>
         </div>
       </section>`;

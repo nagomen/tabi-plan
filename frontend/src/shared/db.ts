@@ -173,6 +173,11 @@ export function isEnabled(): boolean {
   return api() !== null;
 }
 
+/** bootstrap を読み終えたか。読む前に書くと実在しない行を作ってしまうので判定に使う。 */
+export function isLoaded(): boolean {
+  return loaded;
+}
+
 function emit(detail: Record<string, unknown>): void {
   try {
     window.dispatchEvent(new CustomEvent("trip-db-sync", { detail }));
@@ -381,6 +386,28 @@ export async function createPlan(input: Partial<PlanRow>): Promise<PlanRow> {
     created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
   };
   snap.plans.push(row);
+  return row;
+}
+
+/**
+ * 同期版の計画作成。id をこちら側で決めてキャッシュへ入れ、登録は非同期で追いかける。
+ * 計画の保存（plan-editor など）を同期のまま保つために使う。
+ */
+export function createPlanLocal(input: Partial<PlanRow> & { slug: string }): PlanRow {
+  const row: PlanRow = {
+    id: localId("pln"), slug: input.slug, title: input.title || "無題の旅行", note: input.note ?? null,
+    start_date: input.start_date ?? null, end_date: input.end_date ?? null, dates_label: input.dates_label ?? null,
+    cover_url: input.cover_url ?? null, base_currency: input.base_currency || "JPY",
+    source: input.source || "local", visibility: input.visibility || "public",
+    status: input.status || "draft", open_editing: input.open_editing || 0,
+    owner_user_id: input.owner_user_id ?? null,
+    external_spreadsheet_id: input.external_spreadsheet_id ?? null,
+    external_apps_script_url: input.external_apps_script_url ?? null,
+    external_schema: input.external_schema ?? null,
+    created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+  };
+  snap.plans.push(row);
+  send("POST", "/api/plans", { ...row });
   return row;
 }
 

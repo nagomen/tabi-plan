@@ -6,6 +6,7 @@
 //  - 保存時は従来の LocalPlanData.itinerary（ItineraryItem[]）へフラット化し、ダッシュボード互換。
 
 import L from "leaflet";
+import * as db from "../shared/db";
 import "../shared/ui.css";
 import "./style.css";
 import { initPageTransitions, navigateWithPageTransition } from "../shared/page-transition";
@@ -2638,23 +2639,29 @@ window.addEventListener("beforeunload", (event) => {
   if (dirty) { event.preventDefault(); event.returnValue = ""; }
 });
 
-const editable = loadExisting();
-if (slug) { openLink.href = "index.html?plan=" + encodeURIComponent(slug); openLink.hidden = false; }
-syncBasicInputs();
-rebuildDays();
-renderCities();
-renderDays();
-renderCandidates();
-initMap();
-refreshMap(true);
-// 地図の初期表示：スマホは入力を優先し、地図は必要な時だけ開く。
-const savedMapPref = localStorage.getItem("pe-map-collapsed");
-if (window.matchMedia("(max-width: 680px)").matches) {
-  setMapCollapsed(true);
-} else if (savedMapPref === "1" || (savedMapPref == null && window.matchMedia("(max-width: 760px)").matches)) {
-  setMapCollapsed(true);
+// 共有ストア（MySQL）を読み終えてから既存計画を読み込む。
+// 読む前に触ると「権限がありません」になったり、計画を二重に作ってしまう。
+function bootstrapEditor(): void {
+  const editable = loadExisting();
+  if (slug) { openLink.href = "index.html?plan=" + encodeURIComponent(slug); openLink.hidden = false; }
+  syncBasicInputs();
+  rebuildDays();
+  renderCities();
+  renderDays();
+  renderCandidates();
+  initMap();
+  refreshMap(true);
+  // 地図の初期表示：スマホは入力を優先し、地図は必要な時だけ開く。
+  const savedMapPref = localStorage.getItem("pe-map-collapsed");
+  if (window.matchMedia("(max-width: 680px)").matches) {
+    setMapCollapsed(true);
+  } else if (savedMapPref === "1" || (savedMapPref == null && window.matchMedia("(max-width: 760px)").matches)) {
+    setMapCollapsed(true);
+  }
+  statusEl.textContent = isNew ? "下書き（自動保存・未保存）" : editable ? "読み込み完了" : statusEl.textContent;
+  if (!editable || editorLocked) applyEditorLock();
 }
-statusEl.textContent = isNew ? "下書き（自動保存・未保存）" : editable ? "読み込み完了" : statusEl.textContent;
-if (!editable || editorLocked) applyEditorLock();
+
+void db.load().then(bootstrapEditor);
 
 registerServiceWorker();

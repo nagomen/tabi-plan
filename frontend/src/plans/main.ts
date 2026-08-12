@@ -4,6 +4,7 @@
 // Google Sheets への公開（JSONP 認証 + iframe-POST createTrip）を行う。
 
 import * as TripPlans from "../shared/plans-store";
+import * as db from "../shared/db";
 import "../shared/ui.css";
 import "./style.css";
 import { initPageTransitions, navigateWithPageTransition } from "../shared/page-transition";
@@ -29,7 +30,7 @@ import {
   type AppsScriptResponse,
 } from "../shared/apps-script";
 import * as Permissions from "../shared/permissions-store";
-import { isLoggedIn } from "../shared/account-store";
+import { isIdentified } from "../shared/identity";
 
 // ---- 補助型 -------------------------------------------------------------
 
@@ -907,7 +908,9 @@ function render(): void {
   planDataCache.clear();
   const activeSlug = TripPlans.getActiveSlug();
   const filter = state.filter.trim().toLowerCase();
-  const loggedIn = isLoggedIn();
+  // 「自分の計画」は本人が確定していれば出す。
+  // 旧構造はアカウントのログイン有無で出し分けていたが、いまは identity（user_id）が正。
+  const loggedIn = isIdentified();
 
   const all = TripPlans.list();
   const mine = loggedIn ? sortMinePlans(TripPlans.listMine().filter((m) => matchesFilter(m, filter))) : [];
@@ -1379,21 +1382,9 @@ async function handleJoinLink(): Promise<boolean> {
     return true;
   }
 
-  // 古いリンクを開き直すだけで、後から入った編集が消えるのを防ぐ。
-  let merge = TripPlans.mergeLocalPlan(slug, payload.data, { incomingUpdatedAt: payload.meta.updatedAt });
-  if (merge.outcome === "kept-newer") {
-    showToast(`「${payload.meta.title || "旅行"}」は手元の方が新しいため、内容はそのままにしました。`);
-  } else if (merge.outcome === "kept-unknown") {
-    const title = payload.meta.title || "この旅行";
-    const overwrite = window.confirm(
-      `「${title}」は既に保存されています。\nこのリンクには更新日時が無いため、手元の内容より古い可能性があります。\n\nリンクの内容で上書きしますか？（キャンセルで手元の内容を残します）`,
-    );
-    if (overwrite) {
-      merge = TripPlans.mergeLocalPlan(slug, payload.data, { force: true });
-    } else {
-      showToast(`「${title}」の内容はそのままにしました。`);
-    }
-  }
+  // 計画は DB が正なので、リンクの内容で手元を潰す心配が無くなった
+  // （旧構造では localStorage を丸ごと上書きして編集が消える事故があった）。
+  const merge = TripPlans.mergeLocalPlan(slug, payload.data);
   const existed = merge.existed;
 
   // 費用は共有ストア（MySQL）側で共有されるので、リンクからは取り込まない。
@@ -1424,6 +1415,8 @@ async function handleJoinLink(): Promise<boolean> {
   return true;
 }
 
-void handleJoinLink().then((joined) => {
+// 共有ストア（MySQL）を読み終えてから描画する。
+// 読む前に描くと計画0件に見え、書き込むと実在しない行を作ってしまう。
+void db.load().then(() => handleJoinLink()).then((joined) => {
   if (!joined) render();
 });

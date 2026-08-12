@@ -3,6 +3,7 @@
 // 履歴の公開/非公開は history-privacy に従う（本人は常に閲覧可）。
 
 import "../shared/ui.css";
+import * as db from "../shared/db";
 import "./style.css";
 import { initPageTransitions } from "../shared/page-transition";
 import L from "leaflet";
@@ -571,4 +572,4 @@ async function init(): Promise<void> {
   boot();
 }
 
-void init();
+void db.load().then(init);

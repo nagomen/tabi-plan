@@ -1617,14 +1617,15 @@
   .tl-confirm-actions {
     grid-column: 1 / -1;
     display: grid;
-    gap: 8px;
+    gap: 10px;
     padding-top: 8px;
   }
 
-  .tl-confirm-btn {
+  .tl-confirm-ok,
+  .tl-confirm-actions [data-confirm-ok] {
     display: grid;
     place-items: center;
-    width: 100%;
+    width: 100% !important;
     min-height: 48px;
     border: 1px solid var(--green);
     background: var(--green);
@@ -1634,9 +1635,12 @@
     font-size: 14px;
     font-weight: 700;
     cursor: pointer;
+    opacity: 1 !important;
+    visibility: visible !important;
   }
 
-  .tl-confirm-modal.is-paypay .tl-confirm-btn.primary {
+  .tl-confirm-modal.is-paypay .tl-confirm-ok,
+  .tl-confirm-modal.is-paypay .tl-confirm-actions [data-confirm-ok] {
     border-color: #e6002e;
     background: #e6002e;
   }
@@ -1653,6 +1657,7 @@
     font-weight: 700;
   }
 
+  .tl-confirm-ok:focus-visible,
   .tl-confirm-btn:focus-visible {
     outline: none;
     box-shadow: 0 0 0 3px var(--green-soft);
