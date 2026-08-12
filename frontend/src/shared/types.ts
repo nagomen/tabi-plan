@@ -70,6 +70,9 @@ export interface TripLink {
 }
 
 export interface SettlementTransfer {
+  /** 送金元/先の user_id（表示名ではなくこちらを操作に使う） */
+  fromId?: string;
+  toId?: string;
   from: string;
   to: string;
   amount: number;

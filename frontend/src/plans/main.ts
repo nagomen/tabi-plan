@@ -29,7 +29,6 @@ import {
   type AppsScriptResponse,
 } from "../shared/apps-script";
 import * as Permissions from "../shared/permissions-store";
-import * as ExpenseStore from "../shared/expense-store";
 import { isLoggedIn } from "../shared/account-store";
 
 // ---- 補助型 -------------------------------------------------------------
@@ -1397,8 +1396,8 @@ async function handleJoinLink(): Promise<boolean> {
   }
   const existed = merge.existed;
 
-  // 費用台帳はリンクに同梱されていれば id で和集合マージする（重複取り込みなし）。
-  const addedExpenses = ExpenseStore.merge(slug, payload.expenses);
+  // 費用は共有ストア（MySQL）側で共有されるので、リンクからは取り込まない。
+  const addedExpenses = 0;
 
   const data = TripPlans.getData(slug);
   const joinName = (Permissions.currentPrincipal(payload.invitedName)?.displayName || payload.invitedName || "").trim();

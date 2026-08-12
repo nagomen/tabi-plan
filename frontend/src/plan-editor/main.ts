@@ -29,7 +29,6 @@ import { buildInviteLink } from "../shared/invite";
 import { gcalUrl, buildIcs, type CalEvent } from "../shared/calendar";
 import { mountAppHeader } from "../shared/app-header";
 import * as Permissions from "../shared/permissions-store";
-import * as ExpenseStore from "../shared/expense-store";
 import { currentAccount } from "../shared/account-store";
 import { listFriends } from "../shared/friendship-store";
 import { canEditPlan, planHasOwner } from "../shared/membership";
@@ -2090,8 +2089,6 @@ async function shareInvite(name: string): Promise<void> {
       updatedAt: TripPlans.get(slug)?.updatedAt,
     },
     data,
-    // 費用台帳は計画データと別ストアなので、明示的に同梱しないと共有されない。
-    expenses: ExpenseStore.list(slug),
     invitedName: name,
     inviteId: invite?.id,
     role: "editor",

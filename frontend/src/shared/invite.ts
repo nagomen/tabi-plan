@@ -1,12 +1,13 @@
-// 招待リンク: 計画データ(JSON)をリンクに埋め込み、開いた端末に取り込む方式。
-// サーバー無しでも友達と計画を共有できる。
+// 招待リンク: 計画データ(JSON)をリンクに埋め込む方式。
+// 共有ストア（MySQL）が入ったので本文を運ぶ必要は薄れたが、
+// リンクを開いた時点で計画を特定し、参加者として登録するために残している。
+// 費用は DB 側で共有されるのでリンクには含めない。
 //
 // URL が長くなりがちなので、対応ブラウザでは gzip 圧縮してから base64url 化する
 // （先頭に "." を付けて圧縮版を示す）。CompressionStream 非対応の環境や、
 // 旧来の無圧縮リンク（プレフィックス無し）もそのまま読める。
 
 import type { LocalPlanData } from "./plans-store";
-import type { ExpenseRecord } from "./expense-store";
 
 export interface InviteMeta {
   slug: string;
@@ -22,8 +23,6 @@ export interface InvitePayload {
   v: 1;
   meta: InviteMeta;
   data: LocalPlanData;
-  /** 立替費用の台帳。id で和集合マージされる（無い旧リンクは費用を持ち込まない）。 */
-  expenses?: ExpenseRecord[];
   invitedName?: string;
   inviteId?: string;
   role?: "editor" | "viewer";

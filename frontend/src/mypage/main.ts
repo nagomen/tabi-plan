@@ -17,7 +17,6 @@ import { getPayLink, setPayLink } from "../shared/payment-links";
 import { currentAccount, logOut, updateName, isLoggedIn, searchAccounts, type Account } from "../shared/account-store";
 import * as Friendships from "../shared/friendship-store";
 import { isHistoryPublic, setHistoryPublic } from "../shared/history-privacy";
-import { renameEverywhere } from "../shared/rename";
 import { mountAppHeader } from "../shared/app-header";
 
 initPageTransitions();
@@ -164,44 +163,29 @@ function renderAccount(): void {
 }
 
 // 名前は自動保存（入力中はデバウンス、確定時は即時）。
+// 表示名は users テーブルの1列なので、変更はそこを更新するだけで済む。
+// 以前は名前が実質的な主キーだったため、計画のメンバー欄・費用の支払者・
+// 候補の票・送金リンクへ配り直す必要があった（shared/rename.ts）。
 let nameTimer = 0;
 let noteTimer = 0;
-// 名前は計画のメンバー欄・費用の支払者・候補の票・送金リンクの実質的なキーなので、
-// 変更を各ストアへ伝播させないと自分の計画から締め出される。
-// 伝播は入力途中では行わず、確定（blur / Enter）のときだけ。空欄は「変更途中」とみなし、
-// 直近に伝播した名前を覚えておいて、次に確定した名前へ付け替える。
-let lastPropagatedName = getUser().name.trim();
 
-function commitName(propagate = false): void {
+function commitName(): void {
   const user = setUserName(nameInput.value);
   if (isLoggedIn()) updateName(user.name); // ログイン中はアカウントの表示名も更新
   avatarEl.textContent = avatarText(user.name);
-
-  let renamedNote = "";
-  if (propagate && user.name && lastPropagatedName && lastPropagatedName !== user.name) {
-    const moved = renameEverywhere(lastPropagatedName, user.name);
-    const parts = [
-      moved.plans ? `${moved.plans}件の計画` : "",
-      moved.expenses ? `${moved.expenses}件の費用` : "",
-      moved.votes ? `${moved.votes}件の候補` : "",
-    ].filter(Boolean);
-    if (parts.length) renamedNote = `名前を変更し、${parts.join("・")}に反映しました`;
-  }
-  if (propagate && user.name) lastPropagatedName = user.name;
-
   renderPlans();
   renderHistorySetting();
-  noteEl.textContent = renamedNote || (user.name ? "保存しました" : "入力すると自動で保存されます");
+  noteEl.textContent = user.name ? "保存しました" : "入力すると自動で保存されます";
   window.clearTimeout(noteTimer);
-  if (user.name) noteTimer = window.setTimeout(() => { noteEl.textContent = ""; }, renamedNote ? 4000 : 2000);
+  if (user.name) noteTimer = window.setTimeout(() => { noteEl.textContent = ""; }, 2000);
 }
 nameInput.addEventListener("input", () => {
   window.clearTimeout(nameTimer);
-  nameTimer = window.setTimeout(() => commitName(false), 500);
+  nameTimer = window.setTimeout(commitName, 500);
 });
-nameInput.addEventListener("blur", () => { window.clearTimeout(nameTimer); commitName(true); });
+nameInput.addEventListener("blur", () => { window.clearTimeout(nameTimer); commitName(); });
 nameInput.addEventListener("keydown", (e) => {
-  if (e.key === "Enter") { window.clearTimeout(nameTimer); commitName(true); nameInput.blur(); }
+  if (e.key === "Enter") { window.clearTimeout(nameTimer); commitName(); nameInput.blur(); }
 });
 
 // ---- 計画リスト ---------------------------------------------------------

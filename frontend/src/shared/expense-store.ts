@@ -1,160 +1,174 @@
-// 費用のローカル保存層（JSON / localStorage）。
-// Apps Script(Web App) を使わない構成のときに、費用と精算を端末内 JSON で扱う。
-// 将来 DB へ移行する際は、この list/add/remove の実装だけを差し替えればよい
-// （computeSettlement は純関数なので DB 化しても再利用できる）。
+// 費用のドメイン層。永続化は db.ts（MySQL の expenses / expense_shares / settlements）。
+//
+// 旧実装との違い:
+//   - 人を user_id で参照する（旧: 表示名の文字列。改名で全部壊れていた）
+//   - 1件=1行なので追加は INSERT。複数端末で同時に足しても消えない
+//     （旧: 1旅行=1キーの配列を丸ごと PUT していたため後勝ちで消えた）
+//   - 割り勘方式は SplitMethod の列挙（旧: 日本語文字列を正規表現で判定）
+//   - 負担額は expense_shares が正。等分の端数もここで確定させ、合計＝支払額にする
+//   - 精算は settlements（旧: kind='settlement' で費用に同居し targets[0] を受取人に流用）
+//
+// computeSettlement は純関数のまま。表示のために id → 表示名へ解決する
+// （名前は「表示のための値」に降格した、という整理）。
 
 import type { Settlement, SettlementTransfer, ExpenseDetail, SettlementShare } from "./types";
-import * as Backend from "./backend";
+import * as db from "./db";
+import type {
+  ExpenseRow, ExpenseShareRow, SettlementRow, SplitMethod, ExpenseCategory, PaymentMethod,
+} from "./db";
 
-/** 1件の費用 or 精算記録。kind で区別する。 */
-export interface ExpenseRecord {
-  id: string;
-  /** "expense": 立替費用 / "settlement": 精算完了の振込記録 */
-  kind: "expense" | "settlement";
-  paidDate: string;
-  payer: string;
-  category: string;
-  title: string;
-  amount: number;
-  currency: string;
-  /** "全員で等分" | "選んだ人だけで等分" | "個別金額を入力" | "精算不要" */
-  splitMode: string;
-  /** 割り勘対象（選んだ人だけ）。settlement の場合は [受取人] */
-  targets: string[];
-  /** 個別金額（個別金額を入力） */
-  individual: Record<string, number>;
-  paymentMethod: string;
-  note: string;
-  receiptUrl?: string;
-  createdAt: string;
+export type { ExpenseRow, ExpenseShareRow, SplitMethod, ExpenseCategory, PaymentMethod };
+
+/** 画面が扱う1件（費用 + 誰がいくら負担するか）。 */
+export interface ExpenseEntry {
+  row: ExpenseRow;
+  shares: ExpenseShareRow[];
 }
 
-const PREFIX = "trip-dashboard-expenses-";
+// ---- 表示ラベルと列挙の対応（UI の日本語はここだけに置く） ---------------
 
-function storageKey(slug: string): string {
-  return PREFIX + (slug || "default");
+export const CATEGORY_LABEL: Record<ExpenseCategory, string> = {
+  food: "食費", transport: "交通", lodging: "宿泊",
+  sightseeing: "観光", communication: "通信", other: "その他",
+};
+
+export const SPLIT_LABEL: Record<SplitMethod, string> = {
+  equal_all: "全員で等分", equal_selected: "選んだ人だけで等分",
+  custom: "個別金額を入力", none: "精算不要",
+};
+
+export const PAYMENT_LABEL: Record<PaymentMethod, string> = {
+  card: "カード", cash: "現金", transfer: "送金", other: "その他",
+};
+
+export const CATEGORIES = Object.keys(CATEGORY_LABEL) as ExpenseCategory[];
+export const SPLIT_METHODS = Object.keys(SPLIT_LABEL) as SplitMethod[];
+export const PAYMENT_METHODS = Object.keys(PAYMENT_LABEL) as PaymentMethod[];
+
+// ---- 読み取り -----------------------------------------------------------
+
+export function list(planId: string): ExpenseEntry[] {
+  const shares = db.expenseShares();
+  return db
+    .expenses()
+    .filter((e) => e.plan_id === planId)
+    .map((row) => ({ row, shares: shares.filter((s) => s.expense_id === row.id) }));
 }
 
-function readAll(slug: string): ExpenseRecord[] {
-  const parsed = Backend.getJSON<ExpenseRecord[]>(storageKey(slug), []);
-  return Array.isArray(parsed) ? parsed : [];
+export function get(planId: string, expenseId: string): ExpenseEntry | undefined {
+  return list(planId).find((e) => e.row.id === expenseId);
 }
 
-function writeAll(slug: string, records: ExpenseRecord[]): void {
-  Backend.setJSON(storageKey(slug), records);
+export function settlementsOf(planId: string): SettlementRow[] {
+  return db.settlements().filter((s) => s.plan_id === planId);
 }
 
-function newId(): string {
-  return "exp_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
-}
-
-// ---- CRUD（将来 DB 化する場合はここを差し替える） ----------------------
-
-export function list(slug: string): ExpenseRecord[] {
-  return readAll(slug);
-}
-
-export function get(slug: string, id: string): ExpenseRecord | undefined {
-  return readAll(slug).find((record) => record.id === id);
-}
-
-export function add(slug: string, input: Partial<ExpenseRecord>): ExpenseRecord {
-  const record: ExpenseRecord = {
-    id: newId(),
-    kind: input.kind || "expense",
-    paidDate: input.paidDate || "",
-    payer: input.payer || "",
-    category: input.category || "",
-    title: input.title || "",
-    amount: Number(input.amount) || 0,
-    currency: input.currency || "JPY",
-    splitMode: input.splitMode || "全員で等分",
-    targets: input.targets || [],
-    individual: input.individual || {},
-    paymentMethod: input.paymentMethod || "",
-    note: input.note || "",
-    receiptUrl: input.receiptUrl || "",
-    createdAt: new Date().toISOString(),
-  };
-  const records = readAll(slug);
-  records.push(record);
-  writeAll(slug, records);
-  return record;
-}
-
-export function update(slug: string, id: string, input: Partial<ExpenseRecord>): ExpenseRecord | undefined {
-  const records = readAll(slug);
-  const index = records.findIndex((record) => record.id === id);
-  if (index < 0) return undefined;
-  const current = records[index];
-  const next: ExpenseRecord = {
-    ...current,
-    ...input,
-    id: current.id,
-    kind: input.kind || current.kind,
-    amount: Number(input.amount ?? current.amount) || 0,
-    targets: input.targets || [],
-    individual: input.individual || {},
-    createdAt: current.createdAt,
-  };
-  records[index] = next;
-  writeAll(slug, records);
-  return next;
-}
-
-export function remove(slug: string, id: string): ExpenseRecord | undefined {
-  const records = readAll(slug);
-  const removed = records.find((record) => record.id === id);
-  writeAll(slug, records.filter((r) => r.id !== id));
-  return removed;
-}
-
-export function restore(slug: string, record: ExpenseRecord): void {
-  const records = readAll(slug).filter((item) => item.id !== record.id);
-  records.push(record);
-  records.sort((a, b) => String(a.createdAt || "").localeCompare(String(b.createdAt || "")));
-  writeAll(slug, records);
-}
+// ---- 負担額の計算 -------------------------------------------------------
 
 /**
- * 受け取った台帳を手元の台帳へ id で和集合マージする（追加されたレコードだけ取り込む）。
- * 招待リンクの取り込み時に使う。同じ id は手元を優先し、編集の取り消し合いを避ける。
- * 返り値は新しく取り込んだ件数。
+ * 分割方式から負担額を確定させる。
+ * 等分の端数は先頭の人から1単位ずつ寄せ、合計を支払額に必ず一致させる
+ * （旧実装は割り切れない額を小数のまま持ち回っていた）。
  */
-export function merge(slug: string, incoming: ExpenseRecord[] | undefined): number {
-  if (!Array.isArray(incoming) || !incoming.length) return 0;
-  const records = readAll(slug);
-  const seen = new Set(records.map((r) => r.id));
-  const added = incoming.filter((r) => r && r.id && !seen.has(r.id));
-  if (!added.length) return 0;
-  // createdAt 昇順に並べ直して、明細の並びが端末間でぶれないようにする。
-  const merged = [...records, ...added].sort((a, b) =>
-    String(a.createdAt || "").localeCompare(String(b.createdAt || "")),
-  );
-  writeAll(slug, merged);
-  return added.length;
+export function computeShares(input: {
+  amountBaseMinor: number;
+  splitMethod: SplitMethod;
+  memberIds: string[];
+  selectedIds?: string[];
+  customAmounts?: Record<string, number>;
+}): { user_id: string; amount_base_minor: number }[] {
+  const amount = Math.round(input.amountBaseMinor) || 0;
+  if (input.splitMethod === "none" || amount <= 0) return [];
+
+  if (input.splitMethod === "custom") {
+    return Object.entries(input.customAmounts || {})
+      .map(([user_id, v]) => ({ user_id, amount_base_minor: Math.round(Number(v) || 0) }))
+      .filter((s) => s.user_id && s.amount_base_minor > 0);
+  }
+
+  const pool =
+    input.splitMethod === "equal_selected" && (input.selectedIds || []).length
+      ? input.selectedIds || []
+      : input.memberIds;
+  const uniq = [...new Set(pool.filter(Boolean))];
+  if (!uniq.length) return [];
+  const base = Math.floor(amount / uniq.length);
+  const rest = amount - base * uniq.length;
+  return uniq.map((user_id, i) => ({ user_id, amount_base_minor: base + (i < rest ? 1 : 0) }));
 }
 
-/** 表示名を変更したとき、台帳内の名前参照（支払者・割り勘対象・個別金額）を移す。 */
-export function renameParticipant(slug: string, oldName: string, newName: string): void {
-  const from = (oldName || "").trim();
-  const to = (newName || "").trim();
-  if (!from || !to || from === to) return;
-  const records = readAll(slug);
-  let changed = false;
-  records.forEach((record) => {
-    if (record.payer === from) { record.payer = to; changed = true; }
-    if (Array.isArray(record.targets) && record.targets.includes(from)) {
-      record.targets = record.targets.map((name) => (name === from ? to : name));
-      changed = true;
-    }
-    if (record.individual && Object.prototype.hasOwnProperty.call(record.individual, from)) {
-      const { [from]: amount, ...rest } = record.individual;
-      record.individual = { ...rest, [to]: (rest[to] || 0) + amount };
-      changed = true;
-    }
+// ---- 書き込み -----------------------------------------------------------
+
+export interface AddInput {
+  paidOn?: string | null;
+  payerUserId: string;
+  category?: ExpenseCategory;
+  title?: string;
+  amountMinor: number;
+  currency?: string;
+  fxRate?: number;
+  splitMethod?: SplitMethod;
+  paymentMethod?: PaymentMethod | null;
+  note?: string | null;
+  receiptUrl?: string | null;
+  /** 等分の母集団（計画の参加者） */
+  memberIds: string[];
+  /** 「選んだ人だけ」のときの対象 */
+  selectedIds?: string[];
+  /** 「個別金額」のときの user_id → 金額 */
+  customAmounts?: Record<string, number>;
+}
+
+function toApiInput(input: AddInput): db.ExpenseInput {
+  const rate = input.fxRate && input.fxRate > 0 ? input.fxRate : 1;
+  const amountBase = Math.round((Math.round(input.amountMinor) || 0) * rate);
+  return {
+    paid_on: input.paidOn ?? null,
+    payer_user_id: input.payerUserId,
+    category: input.category || "other",
+    title: input.title || "",
+    amount_minor: Math.round(input.amountMinor) || 0,
+    currency: (input.currency || "JPY").toUpperCase(),
+    fx_rate: rate,
+    split_method: input.splitMethod || "equal_all",
+    payment_method: input.paymentMethod ?? null,
+    note: input.note ?? null,
+    receipt_url: input.receiptUrl ?? null,
+    shares: computeShares({
+      amountBaseMinor: amountBase,
+      splitMethod: input.splitMethod || "equal_all",
+      memberIds: input.memberIds,
+      selectedIds: input.selectedIds,
+      customAmounts: input.customAmounts,
+    }),
+  };
+}
+
+export function add(planId: string, input: AddInput): Promise<ExpenseRow> {
+  return db.addExpense(planId, toApiInput(input));
+}
+
+export function update(expenseId: string, input: AddInput): Promise<void> {
+  return db.updateExpense(expenseId, toApiInput(input));
+}
+
+export function remove(expenseId: string): { row: ExpenseRow | undefined; shares: ExpenseShareRow[] } {
+  return db.removeExpense(expenseId);
+}
+
+export function restore(row: ExpenseRow, shares: ExpenseShareRow[]): void {
+  db.restoreExpense(row, shares);
+}
+
+export function addSettlement(planId: string, input: {
+  fromUserId: string; toUserId: string; amountBaseMinor: number; note?: string | null;
+}): Promise<void> {
+  return db.addSettlement(planId, {
+    from_user_id: input.fromUserId,
+    to_user_id: input.toUserId,
+    amount_base_minor: Math.round(input.amountBaseMinor),
+    note: input.note ?? null,
   });
-  if (changed) writeAll(slug, records);
 }
 
 // ---- 金額表示ヘルパー ---------------------------------------------------
@@ -163,143 +177,129 @@ function formatYen(value: number): string {
   return value ? "¥" + Math.round(value).toLocaleString("ja-JP") : "¥0";
 }
 
-function amountLabel(record: ExpenseRecord): string {
-  const currency = (record.currency || "JPY").toUpperCase();
-  if (currency && currency !== "JPY") return `${currency} ${record.amount.toLocaleString("ja-JP")}`;
-  return formatYen(record.amount);
+function amountLabel(row: ExpenseRow): string {
+  const currency = (row.currency || "JPY").toUpperCase();
+  if (currency !== "JPY") return `${currency} ${row.amount_minor.toLocaleString("ja-JP")}`;
+  return formatYen(row.amount_minor);
 }
 
-// ---- 精算計算（純関数。DB 化後もそのまま使える） -----------------------
+// ---- 精算計算（純関数） -------------------------------------------------
 
 /** ネット残高（立替 - 負担）から、誰→誰の振込が必要かを貪欲法で求める。 */
-function settleTransfers(net: Record<string, number>): SettlementTransfer[] {
-  const creditors = Object.entries(net)
-    .filter(([, v]) => v > 0.5)
-    .map(([name, v]) => ({ name, v }))
-    .sort((a, b) => b.v - a.v);
-  const debtors = Object.entries(net)
-    .filter(([, v]) => v < -0.5)
-    .map(([name, v]) => ({ name, v: -v }))
-    .sort((a, b) => b.v - a.v);
-  const transfers: SettlementTransfer[] = [];
+function settleTransfers(net: Record<string, number>): { fromId: string; toId: string; amount: number }[] {
+  const creditors = Object.entries(net).filter(([, v]) => v > 0).map(([id, v]) => ({ id, v })).sort((a, b) => b.v - a.v);
+  const debtors = Object.entries(net).filter(([, v]) => v < 0).map(([id, v]) => ({ id, v: -v })).sort((a, b) => b.v - a.v);
+  const out: { fromId: string; toId: string; amount: number }[] = [];
   let i = 0;
   let j = 0;
   while (i < debtors.length && j < creditors.length) {
     const pay = Math.min(debtors[i].v, creditors[j].v);
-    if (pay > 0.5) {
-      transfers.push({
-        from: debtors[i].name,
-        to: creditors[j].name,
-        amount: Math.round(pay),
-        amountLabel: formatYen(pay),
-      });
-    }
+    if (pay > 0) out.push({ fromId: debtors[i].id, toId: creditors[j].id, amount: pay });
     debtors[i].v -= pay;
     creditors[j].v -= pay;
-    if (debtors[i].v <= 0.5) i += 1;
-    if (creditors[j].v <= 0.5) j += 1;
+    if (debtors[i].v <= 0) i += 1;
+    if (creditors[j].v <= 0) j += 1;
   }
-  return transfers;
+  return out;
 }
 
-/** 費用記録 + 参加者から、ダッシュボードが描画する Settlement を組み立てる。 */
+/**
+ * 計画の費用・負担・精算から、ダッシュボードが描画する Settlement を組み立てる。
+ * 表示のため id を表示名へ解決する。
+ */
 export function computeSettlement(
-  records: ExpenseRecord[],
-  participants: string[],
-  profileName: string,
+  planId: string,
+  memberIds: string[],
+  selfUserId: string,
   baseCurrency = "JPY",
 ): Settlement {
-  const paid: Record<string, number> = {}; // 立替（払った額）
-  const owe: Record<string, number> = {}; // 負担（自分の取り分）
-  participants.forEach((name) => {
-    paid[name] = 0;
-    owe[name] = 0;
-  });
-  const ensure = (map: Record<string, number>, name: string): void => {
-    if (map[name] === undefined) map[name] = 0;
+  const entries = list(planId);
+  const paid: Record<string, number> = {};
+  const owe: Record<string, number> = {};
+  const bump = (map: Record<string, number>, id: string, v: number): void => {
+    if (!id) return;
+    map[id] = (map[id] || 0) + v;
   };
+  memberIds.forEach((id) => {
+    paid[id] = paid[id] || 0;
+    owe[id] = owe[id] || 0;
+  });
 
   const details: ExpenseDetail[] = [];
   let total = 0;
 
-  records.forEach((record) => {
-    const amount = Number(record.amount) || 0;
+  for (const { row, shares } of entries) {
+    total += row.amount_base_minor;
+    bump(paid, row.payer_user_id, row.amount_base_minor);
+    for (const s of shares) bump(owe, s.user_id, s.amount_base_minor);
 
-    if (record.kind === "settlement") {
-      // 精算完了: from が to に支払った → from の立替を増やし、to の負担を増やす（受取を相殺）
-      const to = record.targets[0] || "";
-      ensure(paid, record.payer);
-      ensure(owe, to);
-      paid[record.payer] += amount;
-      owe[to] += amount;
-      return;
-    }
-
-    total += amount;
-    ensure(paid, record.payer);
-    paid[record.payer] += amount;
-
-    let shares: { name: string; amount: number }[] = [];
-    if (/精算不要/.test(record.splitMode)) {
-      shares = [];
-    } else if (/個別金額/.test(record.splitMode)) {
-      shares = Object.entries(record.individual || {})
-        .map(([name, value]) => ({ name, amount: Number(value) || 0 }))
-        .filter((share) => share.amount > 0);
-    } else if (/選んだ人/.test(record.splitMode)) {
-      const targets = record.targets && record.targets.length ? record.targets : participants;
-      const each = targets.length ? amount / targets.length : 0;
-      shares = targets.map((name) => ({ name, amount: each }));
-    } else {
-      const each = participants.length ? amount / participants.length : 0;
-      shares = participants.map((name) => ({ name, amount: each }));
-    }
-
-    shares.forEach((share) => {
-      ensure(owe, share.name);
-      owe[share.name] += share.amount;
-    });
-
-    const myShare = profileName ? shares.find((share) => share.name === profileName) : undefined;
-    const shareList: SettlementShare[] = shares.map((share) => ({
-      name: share.name,
-      amount: Math.round(share.amount),
-      amountLabel: formatYen(share.amount),
+    const mine = selfUserId ? shares.find((s) => s.user_id === selfUserId) : undefined;
+    const shareList: SettlementShare[] = shares.map((s) => ({
+      name: db.nameOf(s.user_id),
+      amount: s.amount_base_minor,
+      amountLabel: formatYen(s.amount_base_minor),
     }));
     details.push({
-      id: record.id,
-      kind: record.kind,
-      date: record.paidDate,
-      payer: record.payer,
-      category: record.category,
-      title: record.title || "立替",
-      mode: record.splitMode,
-      amountLabel: amountLabel(record),
-      convertedLabel: formatYen(amount),
-      myShareLabel: profileName ? formatYen(myShare ? myShare.amount : 0) : "",
-      targetNames: shares.map((share) => share.name),
+      id: row.id,
+      kind: "expense",
+      date: row.paid_on || "",
+      payer: db.nameOf(row.payer_user_id),
+      category: CATEGORY_LABEL[row.category] || "その他",
+      title: row.title || "立替",
+      mode: SPLIT_LABEL[row.split_method] || "",
+      amountLabel: amountLabel(row),
+      convertedLabel: formatYen(row.amount_base_minor),
+      myShareLabel: selfUserId ? formatYen(mine ? mine.amount_base_minor : 0) : "",
+      targetNames: shares.map((s) => db.nameOf(s.user_id)),
       shares: shareList,
     });
-  });
+  }
 
-  const names = Array.from(new Set([...participants, ...Object.keys(paid), ...Object.keys(owe)]));
+  // 精算済みの送金: 払った側の立替を増やし、受け取った側の負担を増やす（相殺）
+  for (const s of settlementsOf(planId)) {
+    bump(paid, s.from_user_id, s.amount_base_minor);
+    bump(owe, s.to_user_id, s.amount_base_minor);
+    details.push({
+      id: s.id,
+      kind: "settlement",
+      date: (s.settled_at || "").slice(0, 10),
+      payer: db.nameOf(s.from_user_id),
+      category: "精算",
+      title: `${db.nameOf(s.from_user_id)} → ${db.nameOf(s.to_user_id)} 精算`,
+      mode: SPLIT_LABEL.none,
+      amountLabel: formatYen(s.amount_base_minor),
+      convertedLabel: formatYen(s.amount_base_minor),
+      myShareLabel: "",
+      targetNames: [db.nameOf(s.to_user_id)],
+      shares: [{ name: db.nameOf(s.to_user_id), amount: s.amount_base_minor, amountLabel: formatYen(s.amount_base_minor) }],
+    });
+  }
+
+  const ids = [...new Set([...memberIds, ...Object.keys(paid), ...Object.keys(owe)])];
   const net: Record<string, number> = {};
   const expenseByPerson: Record<string, number> = {};
-  names.forEach((name) => {
-    net[name] = (paid[name] || 0) - (owe[name] || 0);
-    expenseByPerson[name] = Math.round(owe[name] || 0);
-  });
+  for (const id of ids) {
+    net[id] = (paid[id] || 0) - (owe[id] || 0);
+    expenseByPerson[db.nameOf(id) || id] = Math.round(owe[id] || 0);
+  }
 
-  const transfers = settleTransfers(net);
-  const yourNet = profileName ? net[profileName] || 0 : 0;
-  // newest first（明細の見やすさ）
-  details.reverse();
+  const transfers: SettlementTransfer[] = settleTransfers(net).map((t) => ({
+    from: db.nameOf(t.fromId),
+    to: db.nameOf(t.toId),
+    fromId: t.fromId,
+    toId: t.toId,
+    amount: t.amount,
+    amountLabel: formatYen(t.amount),
+  }));
+
+  const yourNet = selfUserId ? net[selfUserId] || 0 : 0;
+  details.reverse(); // newest first
 
   return {
     expenseTotal: formatYen(total),
     expenseByPerson,
-    yourPaid: profileName ? formatYen(paid[profileName] || 0) : "—",
-    yourDue: profileName ? formatYen(Math.max(0, -yourNet)) : "¥0",
+    yourPaid: selfUserId ? formatYen(paid[selfUserId] || 0) : "—",
+    yourDue: selfUserId ? formatYen(Math.max(0, -yourNet)) : "¥0",
     transfers,
     expenseDetails: details,
     baseCurrency,

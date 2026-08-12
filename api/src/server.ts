@@ -5,8 +5,10 @@
 //
 // エンドポイント（フロントの shared/backend.ts のリモート契約に対応）:
 //   GET    /api/health
-//   GET    /api/store              → { store: {key: value}, versions: {key: n} }
-//   PUT    /api/store/<key>        → body {value, version?} → {ok, version}
+//   GET    /api/bootstrap          → 関係テーブルの全データ（routes.ts）
+//   その他 /api/users|plans|expenses|friendships …（routes.ts）
+//   GET    /api/store              → 旧 KV。フロント切替が済んだら消す
+//   PUT    /api/store/<key>        → body {value, version?}
 //   DELETE /api/store/<key>
 //
 // 認証は固定トークン1本。静的サイトから呼ぶ以上ブラウザに露出するので、
@@ -14,7 +16,9 @@
 
 import http from "node:http";
 import { config } from "./config.js";
-import { dump, put, remove, ping, VersionConflict } from "./store.js";
+import { dump, put, remove, VersionConflict } from "./store.js";
+import { ping, BadRequest } from "./repo.js";
+import { route } from "./routes.js";
 
 // ---- レート制限（プロセス内・1分窓） -----------------------------------
 
@@ -50,7 +54,7 @@ function corsHeaders(origin: string | undefined): Record<string, string> {
   if (!allowed) return {};
   return {
     "Access-Control-Allow-Origin": origin,
-    "Access-Control-Allow-Methods": "GET,PUT,DELETE,OPTIONS",
+    "Access-Control-Allow-Methods": "GET,POST,PATCH,PUT,DELETE,OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type,Authorization",
     "Access-Control-Max-Age": "86400",
     Vary: "Origin",
@@ -108,6 +112,19 @@ function readBody(req: http.IncomingMessage): Promise<string> {
   });
 }
 
+async function readJsonBody(req: http.IncomingMessage): Promise<Record<string, unknown>> {
+  const raw = await readBody(req);
+  if (!raw.trim()) return {};
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : { value: parsed };
+  } catch {
+    throw new Error("INVALID_JSON");
+  }
+}
+
 // ---- ルーティング -------------------------------------------------------
 
 const server = http.createServer(async (req, res) => {
@@ -149,6 +166,14 @@ const server = http.createServer(async (req, res) => {
   }
 
   try {
+    // 関係テーブル（新）。該当しなければ下の KV（旧）へ落ちる。
+    const body = req.method === "GET" || req.method === "DELETE" ? {} : await readJsonBody(req);
+    const handled = await route(req.method || "GET", path, body);
+    if (handled) {
+      send(res, handled.status, handled.body, cors);
+      return;
+    }
+
     if (path === "/api/store" && req.method === "GET") {
       send(res, 200, await dump(), cors);
       return;
@@ -163,14 +188,7 @@ const server = http.createServer(async (req, res) => {
       }
 
       if (req.method === "PUT") {
-        const raw = await readBody(req);
-        let parsed: { value?: unknown; version?: number };
-        try {
-          parsed = JSON.parse(raw) as { value?: unknown; version?: number };
-        } catch {
-          send(res, 400, { error: "invalid json" }, cors);
-          return;
-        }
+        const parsed = body as { value?: unknown; version?: number };
         if (!("value" in parsed)) {
           send(res, 400, { error: "value is required" }, cors);
           return;
@@ -200,6 +218,16 @@ const server = http.createServer(async (req, res) => {
   } catch (error) {
     if ((error as Error).message === "PAYLOAD_TOO_LARGE") {
       send(res, 413, { error: "payload too large" }, cors);
+      return;
+    }
+    if ((error as Error).message === "INVALID_JSON" || error instanceof BadRequest) {
+      send(res, 400, { error: (error as Error).message }, cors);
+      return;
+    }
+    // 外部キー違反などは呼び出し側の誤りとして 409 を返す
+    const code = (error as { code?: string }).code || "";
+    if (code.startsWith("ER_NO_REFERENCED_ROW") || code === "ER_DUP_ENTRY" || code === "ER_CHECK_CONSTRAINT_VIOLATED") {
+      send(res, 409, { error: code }, cors);
       return;
     }
     console.error("[travel-api]", error);
