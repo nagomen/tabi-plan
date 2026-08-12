@@ -2127,10 +2127,11 @@ function renderMembers(data: TripData): void {
             const self = Boolean(myName) && n === myName;
             // アイコン/名前をタップするとその人の旅行履歴ページへ。
             return (
-              `<a class="tl-member-chip${self ? " is-self" : ""}" href="person.html?name=${encodeURIComponent(n)}" title="${escapeHtml(n)}さんの旅行履歴を見る">` +
+              `<a class="tl-member-row${self ? " is-self" : ""}" href="person.html?name=${encodeURIComponent(n)}" title="${escapeHtml(n)}さんの旅行履歴を見る">` +
               `<span class="tl-member-avatar">${escapeHtml(n.slice(0, 1) || "?")}</span>` +
-              `<span>${escapeHtml(n)}</span>` +
+              `<span class="tl-member-name">${escapeHtml(n)}</span>` +
               (self ? `<span class="tl-member-self-badge">自分</span>` : "") +
+              `<span class="tl-member-go">${icon("chevronRight")}</span>` +
               "</a>"
             );
           })

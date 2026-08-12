@@ -428,78 +428,106 @@
   /* メンバー画面（members ビューのときだけ表示。home では出さない） */
   .tl-members { display: none; padding: 22px 0; }
   .trip-live[data-section-view="members"] .tl-members { display: block; }
-  .tl-members-note { margin: 2px 0 16px; color: var(--muted); font-size: 13px; }
-  .tl-members-list { display: flex; flex-wrap: wrap; gap: 8px; }
-  .tl-member-chip {
-    display: inline-flex;
+  /* ---- メンバー ------------------------------------------------------
+     枠つきのチップを並べると線が増えて混み合うので、罫線区切りの行にする。
+     費用・タスクと同じ規則（見出し＋罫線＋余白）で揃えた。 */
+  .tl-members-note {
+    margin: 2px 0 10px;
+    color: var(--muted);
+    font-size: 12.5px;
+    line-height: 1.65;
+  }
+
+  .tl-members-list { display: grid; }
+
+  .tl-member-row {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto auto;
     align-items: center;
-    gap: 8px;
-    padding: 8px 14px 8px 10px;
-    border: 1px solid var(--line);
-    background: #fff;
-    font-size: 14px;
-    font-weight: 600;
+    gap: 10px;
+    min-height: 52px;
+    padding: 6px 0;
+    border-top: 1px solid var(--line);
     color: inherit;
     text-decoration: none;
-    cursor: pointer;
-    transition: border-color .12s ease, background-color .12s ease;
   }
-  .tl-member-chip:hover { border-color: var(--green); background: var(--green-soft); }
+
+  .tl-member-row:first-child { border-top: 0; }
+  .tl-member-row:hover .tl-member-name,
+  .tl-member-row:focus-visible .tl-member-name { color: var(--green); }
+
   .tl-member-avatar {
-    display: grid;
+    display: inline-grid;
     place-items: center;
-    width: 26px;
-    height: 26px;
+    width: 30px;
+    height: 30px;
     border-radius: 50%;
     background: var(--green);
     color: #fff;
     font-size: 13px;
     font-weight: 700;
   }
-  .tl-member-chip.is-self { border-color: var(--green); }
-  .tl-member-self-badge { color: var(--green); font-size: 11px; font-weight: 700; }
-  .tl-members-empty { color: var(--muted); font-size: 13px; }
+
+  .tl-member-name { font-size: 14px; font-weight: 600; }
+
+  .tl-member-self-badge {
+    color: var(--green);
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+  }
+
+  .tl-member-go { display: inline-grid; place-items: center; color: var(--line-strong); }
+  .tl-member-go .hi,
+  .tl-member-go svg { width: 16px; height: 16px; }
+
+  /* 招待は「入力欄＋塗りボタン」の箱をやめ、下罫線とテキスト操作にする。 */
   .tl-members-invite {
-    margin-top: 22px;
-    padding-top: 18px;
+    display: grid;
+    gap: 8px;
+    margin-top: 16px;
+    padding-top: 14px;
     border-top: 1px solid var(--line);
-    max-width: 460px;
   }
-  .tl-members-field { display: grid; gap: 6px; margin-bottom: 12px; }
-  .tl-members-field span { color: var(--muted); font-size: 12px; font-weight: 700; }
+
+  .tl-members-field { display: grid; gap: 4px; }
+  .tl-members-field span { color: var(--muted); font-size: 11.5px; font-weight: 600; }
   .tl-members-field input {
-    min-height: 44px;
-    border: 1px solid var(--line-strong);
-    background: #fff;
-    color: var(--ink);
-    padding: 8px 12px;
+    min-height: 40px;
+    padding: 0 2px;
+    border: 0;
+    border-bottom: 1px solid var(--line);
+    background: none;
     font: inherit;
-    font-size: 15px;
+    font-size: 14px;
   }
-  .tl-members-field input:focus-visible { outline: none; border-color: var(--green); box-shadow: 0 0 0 3px var(--green-soft); }
-  .tl-members-invite-note { margin: 10px 0 0; color: var(--muted); font-size: 12px; }
+  .tl-members-field input:focus-visible { outline: none; border-bottom-color: var(--green); }
+
+  .tl-members-invite-note { margin: 2px 0 0; color: var(--muted); font-size: 11.5px; line-height: 1.6; }
+
   .tl-members-leave {
-    margin-top: 22px;
-    padding-top: 16px;
+    display: grid;
+    gap: 4px;
+    margin-top: 16px;
+    padding-top: 12px;
     border-top: 1px solid var(--line);
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    flex-wrap: wrap;
   }
+
   .tl-members-leave-btn {
-    appearance: none;
-    border: 1px solid var(--red);
-    background: #fff;
+    justify-self: start;
+    min-height: 36px;
+    padding: 0 2px;
+    border: 0;
+    border-bottom: 1px solid currentColor;
+    background: none;
     color: var(--red);
     font: inherit;
-    font-size: 13px;
-    font-weight: 700;
-    padding: 8px 14px;
+    font-size: 12.5px;
+    font-weight: 600;
     cursor: pointer;
   }
-  .tl-members-leave-btn:hover { background: var(--red); color: #fff; }
-  .tl-members-leave-note { color: var(--muted); font-size: 12px; }
+
+  .tl-members-leave-note { color: var(--muted); font-size: 11.5px; line-height: 1.6; }
 
   .trip-live[data-section-view="plan"] .tl-card-grid,
   .trip-live[data-section-view="money"] .tl-card-grid,
@@ -3634,3 +3662,25 @@
 }
 .tl-task-add button .hi,
 .tl-task-add button svg { width: 17px; height: 17px; }
+
+/* 招待ボタンは塗りの箱をやめ、下罫線つきのテキストにする。
+   .tl-button の基本定義がこのファイルの中ほどにあるため、
+   ここ（末尾）に置かないと background が上書きされてしまう。 */
+.tl-members-invite .tl-button {
+  justify-self: start;
+  min-height: 40px;
+  padding: 0 2px;
+  border: 0;
+  border-bottom: 2px solid currentColor;
+  border-radius: 0;
+  background: none;
+  color: var(--green);
+  font-size: 14px;
+  font-weight: 620;
+}
+
+.tl-members-invite .tl-button:hover,
+.tl-members-invite .tl-button:focus-visible {
+  background: none;
+  color: #063f32;
+}
