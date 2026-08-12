@@ -1759,14 +1759,14 @@
 @media (max-width: 680px) {
   .pe-field > span,
   .pe-sec-title {
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 600;
   }
   .pe-field > span em,
   .pe-sec-note,
   .pe-cover-note,
   .pe-calsync-note {
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 500;
     line-height: 1.5;
   }
@@ -1793,4 +1793,55 @@
 .pe-field > span em {
   flex: 1 1 auto;
   min-width: 0;
+}
+
+/* ---- スマホ版を一段コンパクトにする ------------------------------------
+   見出し・行程の行・チップ・ボタンをそれぞれ 1 段落として、
+   縦の余白も詰める。
+   入力欄（input / select / textarea）だけは 16px のまま。
+   iOS Safari は 16px 未満の入力にフォーカスするとページを拡大し、
+   そのまま戻らないため。 */
+@media (max-width: 680px) {
+  .ah-title { font-size: 16px; }
+  .pe-head h1 { font-size: 15.5px; }
+  .pe-meta { font-size: 10px; }
+
+  .pe-step-n { width: 30px; height: 30px; font-size: 12px; }
+  .pe-step-t b { font-size: 12px; }
+
+  /* 都市帯・日付・行程の行 */
+  .pe-cityband b { font-size: 13px; }
+  .pe-cityband span { font-size: 10.5px; }
+  .pe-day-badge b { font-size: 12px; }
+  .pe-day-badge span { font-size: 9.5px; }
+  .pe-daychip b { font-size: 11.5px; }
+  .pe-daychip span { font-size: 10px; }
+  .pe-row-title { font-size: 12px; }
+  .pe-row-time { font-size: 11px; }
+  .pe-seg { font-size: 11px; }
+  .pe-stay-main,
+  .pe-start-main { font-size: 11.5px; }
+  .pe-day-empty { font-size: 11.5px; }
+  .pe-days-count,
+  .pe-trip-summary,
+  .pe-hint { font-size: 11px; }
+
+  /* ボタン類 */
+  .pe-mini,
+  .pe-calsync-btn { font-size: 11px; min-height: 34px; }
+  .pe-q { font-size: 12px; }
+  .pe-calsync-label { font-size: 11.5px; }
+
+  /* 縦の詰め */
+  .pe-basic-grid { gap: 14px; }
+  .pe-field input,
+  .pe-field select,
+  .pe-field textarea,
+  .pe-primary-field input,
+  .pe-range-button {
+    min-height: 38px;
+    padding: 4px 0 7px;
+  }
+  .pe-edit-grid { gap: 12px; }
+  .pe-row { min-height: 42px; }
 }
