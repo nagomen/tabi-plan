@@ -1603,6 +1603,14 @@
     font-weight: 600;
   }
 
+  /* 見出しの文字。<b> はブラウザ既定が bold(700) なので、ここで明示的に落とす。
+     12px の日本語は太いと字面が潰れて読みにくいため、字間も少し開ける。 */
+  .tl-subhead b {
+    font-size: 12.5px;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+  }
+
   /* heroicon は 16px・緑・線幅そろえ。span で包んで縦位置を安定させる。 */
   .tl-subhead-ic {
     display: inline-flex;
