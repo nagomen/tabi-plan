@@ -22,6 +22,15 @@ window.TRIP_CONFIG = {
     activeRadiusKm: 180,
     overviewRadiusKm: 620
   },
+  // 共有ストア（MySQL）。これを有効にすると計画・費用・アカウント・権限などが
+  // 端末をまたいで共有される。apiToken は静的サイトに埋まる＝公開値なので、
+  // 権限管理ではなく無差別アクセス避けとして扱うこと。
+  sharedBackend: {
+    enabled: true,
+    mode: "api",
+    apiBaseUrl: "https://travel-api.vote-jt.com",
+    apiToken: "8BVHM317b2euKzNhl6YKAQlFtie9RtNx6JsrDhtP"
+  },
   geocoding: {
     // 計画エディタの場所検索。Mapbox 公開トークン（pk.…）を入れると
     // 多言語POI検索になり「プラザホテル ニューヨーク」等も引ける。
