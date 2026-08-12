@@ -1599,7 +1599,8 @@
     margin: 0;
     color: var(--muted);
     font-size: 12px;
-    font-weight: 700;
+    /* 見出しは行の内容より控えめにする。700 だと金額と競って重く見える。 */
+    font-weight: 600;
   }
 
   /* heroicon は 16px・緑・線幅そろえ。span で包んで縦位置を安定させる。 */
@@ -1620,7 +1621,7 @@
   .tl-subhead small {
     margin-left: auto;
     font-size: 11px;
-    font-weight: 700;
+    font-weight: 600;
   }
 
   .tl-settlement-history {
@@ -3350,7 +3351,8 @@
       border-bottom-color: var(--green);
     }
     .tl-money-panel { display: none; }
-    .tl-money-panel.is-active { display: block; }
+    /* タブの下線と最初の見出しがくっつくので余白を入れる */
+    .tl-money-panel.is-active { display: block; padding-top: 14px; }
     /* タブ見出しがあるので、パネル内の h3 は重複になる */
     .tl-money-panel[data-money-panel="settle"] .tl-transfer-list { margin-top: 0; padding-top: 0; border-top: 0; }
     /* 見出しは隠さない。精算する金額・精算履歴・支払い台帳の3つが
