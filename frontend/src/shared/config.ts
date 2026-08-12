@@ -64,10 +64,21 @@ export interface GeocodingConfig {
 }
 
 export interface SharedBackendConfig {
-  /** local=端末保存のみ / appsScript=Apps Script の共有ストアへ同期 */
-  mode: "local" | "appsScript";
-  /** true のとき Apps Script から共有ストアを読み込む */
+  /**
+   * local=端末保存のみ
+   * appsScript=Apps Script の共有ストアへ同期
+   * api=自前の共有ストア API（MySQL）へ同期
+   */
+  mode: "local" | "appsScript" | "api";
+  /** true のとき共有ストアから読み込む */
   enabled: boolean;
+  /** mode="api" のときのベースURL（例 https://travel-api.example.com）。末尾スラッシュ不要。 */
+  apiBaseUrl?: string;
+  /**
+   * mode="api" のときのトークン。静的サイトに埋まる＝公開値なので、
+   * 権限管理ではなく無差別アクセス避けとして扱うこと。
+   */
+  apiToken?: string;
 }
 
 export interface TripConfig {

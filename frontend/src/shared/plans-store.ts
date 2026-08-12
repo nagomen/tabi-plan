@@ -347,6 +347,9 @@ function deleteDevFile(slug: string): void {
  *      （実際にそうなっていた）。種に含まれる slug だけ更新し、他は残す。
  */
 function hydrateFromDevFiles(): void {
+  // 共有ストア API が正のときは種を当てない。
+  // 当てると、ページを開くたびに古いコミット内容で共有中の計画を上書きしてしまう。
+  if (Backend.sharedApiEnabled()) return;
   const files = devPlanFiles();
   if (!files) return;
   const metas: PlanMeta[] = files.map((f) => {

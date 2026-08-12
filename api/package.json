@@ -1,0 +1,19 @@
+{
+  "name": "tabi-plan-api",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "start": "node dist/server.js",
+    "dev": "tsc --watch --preserveWatchOutput & node --watch dist/server.js"
+  },
+  "dependencies": {
+    "mysql2": "^3.11.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.43",
+    "typescript": "^5.5.4"
+  }
+}

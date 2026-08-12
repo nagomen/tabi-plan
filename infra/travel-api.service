@@ -1,0 +1,28 @@
+[Unit]
+Description=Tabi Plan shared-store API (travel dashboard)
+Documentation=https://github.com/rjajoo0414/2608-tohoku-travel-dashboard
+After=network.target mysql.service
+Wants=mysql.service
+
+[Service]
+Type=simple
+User=__APP_USER__
+WorkingDirectory=__APP_DIR__
+# 秘密情報はリポジトリではなくサーバー側に置く
+EnvironmentFile=__ENV_FILE__
+ExecStart=/usr/bin/node __APP_DIR__/api/dist/server.js
+Restart=always
+RestartSec=3
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=travel-api
+
+# 最低限の隔離。Vote 側には一切触れない。
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=read-only
+ReadWritePaths=__APP_DIR__
+
+[Install]
+WantedBy=multi-user.target

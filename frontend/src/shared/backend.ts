@@ -28,6 +28,9 @@ import { callAppsScript, postAppsScript } from "./apps-script";
 
 const cache = new Map<string, unknown>();
 let preloaded = false;
+// 複数モジュールが同時に preload() を呼ぶため、実行中は同じ Promise を返す。
+// これが無いと共有ストアの取得がページ表示ごとに何度も走る。
+let preloading: Promise<void> | null = null;
 
 function config(): TripConfig {
   return normalizeTripConfig(
@@ -41,6 +44,111 @@ function config(): TripConfig {
 function remoteEnabled(): boolean {
   const cfg = config();
   return Boolean(cfg.sharedBackend?.enabled && cfg.sharedBackend.mode === "appsScript" && cfg.appsScriptUrl);
+}
+
+// ---- 共有ストア API（MySQL）--------------------------------------------
+// Apps Script と同じ役割の、自前バックエンド版。
+// 読みは preload でまとめて取り、書きは write-through で非同期に投げる
+// （getJSON を同期のまま保つため。この設計は冒頭のコメント参照）。
+
+function apiConfig(): { base: string; token: string } | null {
+  const shared = config().sharedBackend;
+  if (!shared?.enabled || shared.mode !== "api") return null;
+  const base = (shared.apiBaseUrl || "").replace(/\/+$/, "");
+  if (!base) return null;
+  return { base, token: shared.apiToken || "" };
+}
+
+function apiHeaders(token: string): Record<string, string> {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  return headers;
+}
+
+/** 共有ストア API を使う構成かどうか（プラン種の抑止判定にも使う）。 */
+export function sharedApiEnabled(): boolean {
+  return apiConfig() !== null;
+}
+
+/** キーごとのサーバー側バージョン。楽観ロックの再送判断に使う。 */
+const versions = new Map<string, number>();
+
+/** 直近サーバーへ送った（またはサーバーから受け取った）内容。無駄な PUT を避ける。 */
+const lastSynced = new Map<string, string>();
+
+function apiPersist(key: string, value: unknown): void {
+  const api = apiConfig();
+  if (!api) return;
+  const serialized = JSON.stringify(value);
+  // 中身が変わっていないなら送らない。
+  // 起動時のハイドレートで同じ値が何十件も書き直されるため、これが無いと
+  // ページを開くたびに大量の PUT が飛んでレート制限に当たる。
+  if (lastSynced.get(key) === serialized) return;
+  lastSynced.set(key, serialized);
+  const url = `${api.base}/api/store/${encodeURIComponent(key)}`;
+  const body = JSON.stringify({ value, version: versions.get(key) });
+  void fetch(url, { method: "PUT", headers: apiHeaders(api.token), body })
+    .then(async (res) => {
+      if (res.ok) {
+        const data = (await res.json()) as { version?: number };
+        if (typeof data.version === "number") versions.set(key, data.version);
+        emitSyncEvent({ ok: true, source: "api", key });
+        return;
+      }
+      if (res.status === 409) {
+        // 別端末が先に書いた。手元の版を進めて次回に備える。
+        // 費用のように配列を持つキーは、呼び出し側（ExpenseStore.merge など）が
+        // id で和集合マージしてから書き直すことで取りこぼしを防ぐ。
+        const data = (await res.json()) as { version?: number };
+        if (typeof data.version === "number") versions.set(key, data.version);
+        lastSynced.delete(key); // 次回は必ず送り直す
+        emitSyncEvent({ ok: false, source: "api", key, conflict: true });
+        return;
+      }
+      lastSynced.delete(key); // 失敗したので次回また送る
+      emitSyncEvent({ ok: false, source: "api", key, error: `HTTP ${res.status}` });
+    })
+    .catch((error: unknown) => {
+      lastSynced.delete(key);
+      emitSyncEvent({ ok: false, source: "api", key, error: String(error) });
+    });
+}
+
+function apiDelete(key: string): void {
+  const api = apiConfig();
+  if (!api) return;
+  void fetch(`${api.base}/api/store/${encodeURIComponent(key)}`, {
+    method: "DELETE",
+    headers: apiHeaders(api.token),
+  })
+    .then(() => {
+      versions.delete(key);
+      lastSynced.delete(key);
+      emitSyncEvent({ ok: true, source: "api", key });
+    })
+    .catch((error: unknown) => emitSyncEvent({ ok: false, source: "api", key, error: String(error) }));
+}
+
+/** 共有ストアを丸ごと取得してキャッシュと localStorage を満たす。 */
+async function apiLoadAll(): Promise<void> {
+  const api = apiConfig();
+  if (!api) return;
+  const res = await fetch(`${api.base}/api/store`, { headers: apiHeaders(api.token) });
+  if (!res.ok) throw new Error(`共有ストアの取得に失敗しました (HTTP ${res.status})`);
+  const data = (await res.json()) as {
+    store?: Record<string, unknown>;
+    versions?: Record<string, number>;
+  };
+  for (const [key, value] of Object.entries(data.store || {})) {
+    cache.set(key, value);
+    lastSynced.set(key, JSON.stringify(value));
+    try {
+      localStorage.setItem(key, JSON.stringify(value));
+    } catch {
+      /* ignore */
+    }
+  }
+  for (const [key, version] of Object.entries(data.versions || {})) versions.set(key, version);
 }
 
 function authToken(): string {
@@ -206,6 +314,14 @@ function mergeSeed(key: string, seed: unknown, mine: unknown): unknown {
  */
 export async function preload(): Promise<void> {
   if (preloaded) return;
+  if (preloading) return preloading;
+  preloading = runPreload().finally(() => {
+    preloading = null;
+  });
+  return preloading;
+}
+
+async function runPreload(): Promise<void> {
   try {
     for (let i = 0; i < localStorage.length; i += 1) {
       const key = localStorage.key(i);
@@ -224,7 +340,9 @@ export async function preload(): Promise<void> {
   // data/store のファイルを流し込む。
   // dev: ファイルが真実（/api/store で書き戻るので上書きしてよい）。
   // 本番: git で配る「種」。書き戻せないので、訪問者が既に持っているデータは壊さない。
-  const ds = devStore();
+  // 共有ストア API が正のときは、git の種を当てない。
+  // 当ててしまうと、ページを開くたびに古いコミット内容で共有データを上書きする。
+  const ds = sharedApiEnabled() ? null : devStore();
   if (ds) {
     for (const [key, value] of Object.entries(ds)) {
       const next = import.meta.env.DEV ? value : mergeSeed(key, value, cache.get(key));
@@ -264,12 +382,27 @@ export async function preload(): Promise<void> {
       });
     }
   }
+  // 共有ストア API（MySQL）。サーバーが正なので、種やローカルより後に当てて上書きする。
+  if (apiConfig()) {
+    try {
+      await apiLoadAll();
+      emitSyncEvent({ ok: true, source: "api" });
+    } catch (error) {
+      // 落ちても localStorage の内容で動き続ける（オフライン時と同じ扱い）
+      emitSyncEvent({
+        ok: false,
+        source: "api",
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
   preloaded = true;
 }
 
 /** 認証後などに共有ストアを明示的に再取得する。 */
 export async function reload(): Promise<void> {
   preloaded = false;
+  preloading = null;
   await preload();
 }
 
@@ -300,6 +433,7 @@ export function setJSON(key: string, value: unknown): boolean {
   }
   devPersist(key, value); // 開発時は data/store/<key>.json にも保存
   remotePersist(key, value);
+  apiPersist(key, value);
   return ok;
 }
 
@@ -313,4 +447,5 @@ export function removeJSON(key: string): void {
   }
   devDelete(key);
   remoteDelete(key);
+  apiDelete(key);
 }
