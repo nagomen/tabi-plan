@@ -94,6 +94,8 @@ export interface RateDetail {
 }
 
 export interface ExpenseDetail {
+  id?: string;
+  kind?: "expense" | "settlement";
   date: string;
   payer: string;
   category: string;

@@ -8,7 +8,7 @@
 #
 # 前提:
 #   - Node 22 が入っていること（Vote の setup-vps.sh が導入済み）
-#   - TravelPlan データベースと travelapp ユーザーが作成済み（api/schema.sql）
+#   - TravelPlan データベースと travelapp ユーザーが作成済み（api/schema/）
 #   - 秘密情報が $ENV_FILE に置いてあること（.env.sample 参照）
 #   - TLS は既存の Cloudflare Origin Certificate（*.vote-jt.com）を流用するので
 #     certbot は不要

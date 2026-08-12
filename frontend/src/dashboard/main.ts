@@ -269,7 +269,8 @@ function mapsEmbedDirections(places: ItineraryItem[]): string {
 const state: AppState = { data: SAMPLE, days: [], active: 0, viewEnd: 0, source: "sample" };
 let mobileView = "home";
 const leafletState: LeafletState = { map: null, layer: null, followActive: true };
-let expenseDetailsOpen = false;
+let expenseDetailsOpen = true;
+let editingExpenseId: string | null = null;
 let syncInFlight: Promise<void> | null = null;
 let lastSyncAt = 0;
 
@@ -814,6 +815,14 @@ function refreshMapLayout(): void {
 function setExpenseSheet(open: boolean): void {
   const sheet = root.querySelector<HTMLElement>("[data-expense-sheet]");
   if (!sheet) return;
+  if (!open) {
+    editingExpenseId = null;
+    renderExpenseEntry(state.data || SAMPLE, { force: true });
+  }
+  const title = sheet.querySelector<HTMLElement>("[data-expense-sheet-title]");
+  if (title) title.textContent = editingExpenseId ? "費用を編集" : "費用を追加";
+  const panel = sheet.querySelector<HTMLElement>("[role='dialog']");
+  if (panel) panel.setAttribute("aria-label", editingExpenseId ? "費用を編集" : "費用を追加");
   sheet.hidden = !open;
   document.documentElement.style.overflow = open ? "hidden" : "";
   if (open) {
@@ -839,13 +848,59 @@ function renderTransfers(settlement: Settlement): void {
       <span>${escapeHtml(transfer.from)} → ${escapeHtml(transfer.to)}</span>
       <div class="tl-transfer-act">
         <b>${escapeHtml(transfer.amountLabel || "")}</b>
-        <button type="button" class="tl-paypay" data-paypay data-to="${escapeHtml(transfer.to)}" data-amount="${Number(transfer.amount || 0)}">PayPayで送る</button>
-        <button type="button" data-settlement-complete data-from="${escapeHtml(transfer.from)}" data-to="${escapeHtml(transfer.to)}" data-amount="${Number(transfer.amount || 0)}">精算完了</button>
+        <button type="button" class="tl-icon-action tl-paypay" data-paypay data-to="${escapeHtml(transfer.to)}" data-amount="${Number(transfer.amount || 0)}" aria-label="${escapeHtml(transfer.to)}へPayPayで送る" title="PayPayで送る">${icon("paperAirplane")}</button>
+        <button type="button" class="tl-icon-action" data-settlement-complete data-from="${escapeHtml(transfer.from)}" data-to="${escapeHtml(transfer.to)}" data-amount="${Number(transfer.amount || 0)}" aria-label="${escapeHtml(transfer.from)}から${escapeHtml(transfer.to)}への精算を完了" title="精算完了">${icon("checkCircle")}</button>
       </div>
       ${transfer.completedLabel ? `<small>完了済み ${escapeHtml(transfer.completedLabel)} を差し引き済み</small>` : ""}
     </div>`,
   ).join("") + `<div class="tl-expense-status" data-settlement-status aria-live="polite"></div>`;
   setupSettlementCompleteHandlers(mount);
+}
+
+function confirmTransferAction(options: {
+  tone?: "paypay" | "complete";
+  iconName: IconName;
+  title: string;
+  message: string;
+  confirmLabel: string;
+}): Promise<boolean> {
+  return new Promise((resolve) => {
+    const existing = document.querySelector(".tl-confirm-modal");
+    if (existing) existing.remove();
+    const modal = document.createElement("div");
+    modal.className = `tl-confirm-modal ${options.tone ? `is-${options.tone}` : ""}`;
+    modal.innerHTML = `
+      <div class="tl-confirm-scrim" data-confirm-cancel></div>
+      <section class="tl-confirm-card" role="dialog" aria-modal="true" aria-labelledby="transferConfirmTitle">
+        <div class="tl-confirm-icon">${icon(options.iconName)}</div>
+        <div class="tl-confirm-copy">
+          <h2 id="transferConfirmTitle">${escapeHtml(options.title)}</h2>
+          <p>${escapeHtml(options.message)}</p>
+        </div>
+        <div class="tl-confirm-actions">
+          <button type="button" class="tl-confirm-btn ghost" data-confirm-cancel>キャンセル</button>
+          <button type="button" class="tl-confirm-btn" data-confirm-ok>${escapeHtml(options.confirmLabel)}</button>
+        </div>
+      </section>`;
+    document.body.appendChild(modal);
+    const previousOverflow = document.documentElement.style.overflow;
+    document.documentElement.style.overflow = "hidden";
+    const finish = (ok: boolean): void => {
+      document.documentElement.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", onKeydown);
+      modal.remove();
+      resolve(ok);
+    };
+    const onKeydown = (event: KeyboardEvent): void => {
+      if (event.key === "Escape") finish(false);
+    };
+    modal.querySelectorAll<HTMLElement>("[data-confirm-cancel]").forEach((el) => {
+      el.addEventListener("click", () => finish(false));
+    });
+    modal.querySelector<HTMLButtonElement>("[data-confirm-ok]")?.addEventListener("click", () => finish(true));
+    document.addEventListener("keydown", onKeydown);
+    setTimeout(() => modal.querySelector<HTMLButtonElement>("[data-confirm-ok]")?.focus(), 30);
+  });
 }
 
 /** PayPay 受取リンクを開き、金額をクリップボードへコピーして送金を補助する。 */
@@ -879,8 +934,19 @@ async function payViaPayPay(to: string, amount: number, status: HTMLElement | nu
 function setupSettlementCompleteHandlers(mount: HTMLElement): void {
   const status = mount.querySelector<HTMLElement>("[data-settlement-status]");
   mount.querySelectorAll<HTMLButtonElement>("[data-paypay]").forEach((button) => {
-    button.addEventListener("click", () => {
-      void payViaPayPay(button.dataset.to || "", Number(button.dataset.amount || 0), status);
+    button.addEventListener("click", async () => {
+      const to = button.dataset.to || "";
+      const amount = Number(button.dataset.amount || 0);
+      if (!to || !amount) return;
+      const ok = await confirmTransferAction({
+        tone: "paypay",
+        iconName: "paperAirplane",
+        title: "PayPayで送金しますか",
+        message: `${to} に ${formatYen(amount)} を送る準備をします。金額をコピーしてPayPayを開きます。`,
+        confirmLabel: "PayPayを開く",
+      });
+      if (!ok) return;
+      void payViaPayPay(to, amount, status);
     });
   });
   mount.querySelectorAll<HTMLButtonElement>("[data-settlement-complete]").forEach((button) => {
@@ -889,6 +955,14 @@ function setupSettlementCompleteHandlers(mount: HTMLElement): void {
       const to = button.dataset.to || "";
       const amount = Number(button.dataset.amount || 0);
       if (!from || !to || !amount) return;
+      const ok = await confirmTransferAction({
+        tone: "complete",
+        iconName: "checkCircle",
+        title: "精算完了マークをつけますか",
+        message: `${from} から ${to} への ${formatYen(amount)} の精算を完了として記録します。実際の送金が済んでいる場合だけ進めてください。`,
+        confirmLabel: "完了にする",
+      });
+      if (!ok) return;
       button.disabled = true;
       if (status) status.textContent = `${from} → ${to} を精算完了にしています...`;
       try {
@@ -943,15 +1017,16 @@ function renderExpenseDetails(settlement: Settlement): void {
 
   const participants = expenseParticipants(state.data || SAMPLE);
   const profileName = currentProfileName(participants);
+  const canManageExpenses = usingLocalExpenses() && !READ_ONLY;
   const details = settlement.expenseDetails || [];
-  const related = profileName ? details.filter((detail) => {
+  const related = canManageExpenses ? details : profileName ? details.filter((detail) => {
     const shares = detail.shares || [];
     const targetNames = detail.targetNames || [];
     return targetNames.includes(profileName) ||
       shares.some((share) => share.name === profileName && Number(share.amount || 0) > 0);
   }) : [];
 
-  button.textContent = expenseDetailsOpen ? "費用明細を閉じる" : "費用明細を見る";
+  button.innerHTML = `${icon(expenseDetailsOpen ? "chevronUp" : "documentText")}<span>${expenseDetailsOpen ? "台帳を閉じる" : "費用台帳"}</span>`;
   button.setAttribute("aria-expanded", String(expenseDetailsOpen));
   mount.classList.toggle("is-visible", expenseDetailsOpen);
 
@@ -971,7 +1046,7 @@ function renderExpenseDetails(settlement: Settlement): void {
   }
 
   if (!related.length) {
-    mount.innerHTML = `<div class="tl-expense-empty">${escapeHtml(profileName)}に関連する費用はまだありません。</div>`;
+    mount.innerHTML = `<div class="tl-expense-empty">${canManageExpenses ? "入力済みの費用はまだありません。" : `${escapeHtml(profileName)}に関連する費用はまだありません。`}</div>`;
     return;
   }
 
@@ -992,7 +1067,7 @@ function renderExpenseDetails(settlement: Settlement): void {
 
   mount.innerHTML = `
     <div class="tl-expense-details-head">
-      <b>${escapeHtml(profileName)}に関連する費用</b>
+      <b>${canManageExpenses ? "費用台帳" : `${escapeHtml(profileName)}に関連する費用`}</b>
       <span>${related.length}件</span>
     </div>
     <div class="tl-expense-table-wrap">
@@ -1006,11 +1081,12 @@ function renderExpenseDetails(settlement: Settlement): void {
             <th data-col="mode">精算範囲</th>
             <th data-col="amount">支払額</th>
             <th data-col="share">自分の負担</th>
+            ${canManageExpenses ? `<th data-col="actions">操作</th>` : ""}
           </tr>
         </thead>
         <tbody>
           ${related.map((detail) => `
-            <tr>
+            <tr data-expense-row="${escapeHtml(detail.id || "")}">
               <td data-col="date"><span class="tl-date-long">${escapeHtml(detail.date || "")}</span><span class="tl-date-short">${escapeHtml(mdLabel(detail.date || ""))}</span></td>
               <td data-col="title">${escapeHtml(detail.title || "立替")}${detail.category ? `<br><small>${escapeHtml(detail.category)}</small>` : ""}</td>
               <td data-col="payer">${escapeHtml(detail.payer || "")}</td>
@@ -1018,11 +1094,59 @@ function renderExpenseDetails(settlement: Settlement): void {
               <td data-col="mode">${escapeHtml(detail.mode || "")}</td>
               <td data-col="amount">${escapeHtml(detail.convertedLabel || detail.amountLabel || "")}${detail.amountLabel && detail.convertedLabel && detail.amountLabel !== detail.convertedLabel ? `<br><small>${escapeHtml(detail.amountLabel)}</small>` : ""}</td>
               <td data-col="share">${escapeHtml(shareFor(detail))}</td>
+              ${canManageExpenses ? `<td data-col="actions">
+                <button type="button" class="tl-icon-action" data-expense-edit="${escapeHtml(detail.id || "")}" aria-label="${escapeHtml(detail.title || "費用")}を編集" title="編集">${icon("pencilSquare")}</button>
+                <button type="button" class="tl-icon-action danger" data-expense-remove="${escapeHtml(detail.id || "")}" aria-label="${escapeHtml(detail.title || "費用")}を取り消す" title="取り消し">${icon("xCircle")}</button>
+              </td>` : ""}
             </tr>
           `).join("")}
         </tbody>
       </table>
     </div>`;
+  setupExpenseDetailActions(mount);
+}
+
+function setupExpenseDetailActions(mount: HTMLElement): void {
+  mount.querySelectorAll<HTMLButtonElement>("[data-expense-edit]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const id = button.dataset.expenseEdit || "";
+      const record = ExpenseStore.get(CONFIG.tripSlug, id);
+      if (!record || record.kind !== "expense") return;
+      editingExpenseId = id;
+      renderExpenseEntry(state.data || SAMPLE, { force: true });
+      setExpenseSheet(true);
+    });
+  });
+  mount.querySelectorAll<HTMLButtonElement>("[data-expense-remove]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const id = button.dataset.expenseRemove || "";
+      const removed = ExpenseStore.remove(CONFIG.tripSlug, id);
+      if (!removed) return;
+      renderBase();
+      renderActive();
+      showExpenseUndo(removed);
+    });
+  });
+}
+
+function showExpenseUndo(record: ExpenseStore.ExpenseRecord): void {
+  const status = root.querySelector<HTMLElement>("[data-settlement-status]");
+  if (!status) return;
+  status.classList.remove("is-error");
+  status.classList.add("is-ok");
+  status.innerHTML = `${escapeHtml(record.title || "費用")}を取り消しました。<button type="button" class="tl-inline-undo" data-expense-undo="${escapeHtml(record.id)}">元に戻す</button>`;
+  const undo = status.querySelector<HTMLButtonElement>("[data-expense-undo]");
+  if (!undo) return;
+  undo.addEventListener("click", () => {
+    ExpenseStore.restore(CONFIG.tripSlug, record);
+    renderBase();
+    renderActive();
+    const nextStatus = root.querySelector<HTMLElement>("[data-settlement-status]");
+    if (nextStatus) {
+      nextStatus.textContent = `${record.title || "費用"}を元に戻しました。`;
+      nextStatus.classList.add("is-ok");
+    }
+  });
 }
 
 interface ParticipantSource {
@@ -1084,12 +1208,13 @@ function expenseCurrencies(data: TripData): string[] {
     .filter(Boolean);
 }
 
-function renderExpenseEntry(data: TripData): void {
+function renderExpenseEntry(data: TripData, options: { force?: boolean } = {}): void {
   const mount = root.querySelector<HTMLElement>("[data-expense-entry]");
   if (!mount) return;
   const existingForm = mount.querySelector<HTMLFormElement>("[data-expense-form-native]");
-  if (existingForm && existingForm.dataset.dirty === "true") return;
+  if (!options.force && existingForm && existingForm.dataset.dirty === "true") return;
   const participants = expenseParticipants(data);
+  const editingRecord = editingExpenseId ? ExpenseStore.get(CONFIG.tripSlug, editingExpenseId) : undefined;
   const currencyOptions = expenseCurrencies(data).map((code) => `<option>${escapeHtml(code)}</option>`).join("");
   const profileName = currentProfileName(participants);
   const payerOptions = participants.map((name) => `<option value="${escapeHtml(name)}" ${name === profileName ? "selected" : ""}>${escapeHtml(name)}</option>`).join("");
@@ -1109,38 +1234,50 @@ function renderExpenseEntry(data: TripData): void {
       <a href="expense-entry.html">別ページで入力する</a>
     </div>`}
     <form class="tl-expense-form" data-expense-form-native>
-      <div class="tl-expense-grid">
-        <label class="tl-field">
-          <span>支払日 <b class="tl-required-mark" aria-label="必須">*</b></span>
-          <input type="date" name="paidDate" required>
-        </label>
-        <label class="tl-field">
-          <span>支払者 <b class="tl-required-mark" aria-label="必須">*</b></span>
-          <select name="payer" required>${payerOptions}</select>
-        </label>
-        <label class="tl-field">
-          <span>カテゴリ <b class="tl-required-mark" aria-label="必須">*</b></span>
-          <select name="category" required>
-            <option>食費</option>
-            <option>交通</option>
-            <option>宿泊</option>
-            <option>観光</option>
-            <option>通信</option>
-            <option>その他</option>
-          </select>
-        </label>
-        <label class="tl-field">
-          <span>通貨 <b class="tl-required-mark" aria-label="必須">*</b></span>
-          <select name="currency" required>${currencyOptions}</select>
+      <div class="tl-expense-primary">
+        <label class="tl-field tl-amount-field">
+          <span>金額 <b class="tl-required-mark" aria-label="必須">*</b></span>
+          <input type="number" name="amount" required min="1" step="1" inputmode="decimal" placeholder="0">
         </label>
         <label class="tl-field wide">
           <span>内容 <b class="tl-required-mark" aria-label="必須">*</b></span>
           <input type="text" name="title" required placeholder="例: 空港からホテルまでのタクシー">
         </label>
-        <label class="tl-field wide">
-          <span>金額 <b class="tl-required-mark" aria-label="必須">*</b></span>
-          <input type="number" name="amount" required min="1" step="1" inputmode="decimal" placeholder="例: 12000">
+        <label class="tl-field">
+          <span>支払者 <b class="tl-required-mark" aria-label="必須">*</b></span>
+          <select name="payer" required>${payerOptions}</select>
         </label>
+      </div>
+
+      <div class="tl-expense-editors" aria-label="費用の詳細">
+        <details class="tl-expense-editor">
+          <summary>${icon("calendarDays")}<span>支払日</span><b data-expense-summary-date></b>${icon("chevronDown")}</summary>
+          <label class="tl-field">
+            <span>支払日 <b class="tl-required-mark" aria-label="必須">*</b></span>
+            <input type="date" name="paidDate" required>
+          </label>
+        </details>
+        <details class="tl-expense-editor">
+          <summary>${icon("listBullet")}<span>カテゴリ</span><b data-expense-summary-category></b>${icon("chevronDown")}</summary>
+          <label class="tl-field">
+            <span>カテゴリ <b class="tl-required-mark" aria-label="必須">*</b></span>
+            <select name="category" required>
+              <option>食費</option>
+              <option>交通</option>
+              <option>宿泊</option>
+              <option>観光</option>
+              <option>通信</option>
+              <option>その他</option>
+            </select>
+          </label>
+        </details>
+        <details class="tl-expense-editor">
+          <summary>${icon("currencyYen")}<span>通貨</span><b data-expense-summary-currency></b>${icon("chevronDown")}</summary>
+          <label class="tl-field">
+            <span>通貨 <b class="tl-required-mark" aria-label="必須">*</b></span>
+            <select name="currency" required>${currencyOptions}</select>
+          </label>
+        </details>
       </div>
 
       <div class="tl-split">
@@ -1164,36 +1301,70 @@ function renderExpenseEntry(data: TripData): void {
         <div class="tl-share-total" data-share-total>合計 ¥0</div>
       </div>
 
-      <div class="tl-expense-grid">
-        <label class="tl-field">
-          <span>支払方法</span>
-          <select name="paymentMethod">
-            <option>カード</option>
-            <option>現金</option>
-            <option>送金</option>
-            <option>その他</option>
-          </select>
-        </label>
-        ${usingLocalExpenses() ? "" : `<label class="tl-field tl-photo-field">
-          <span>レシート写真</span>
-          <input type="file" name="receiptPhoto" accept="image/*" capture="environment">
-        </label>`}
-        <label class="tl-field wide">
-          <span>メモ</span>
-          <textarea name="note" placeholder="任意。為替メモや補足があれば入力"></textarea>
-        </label>
+      <div class="tl-expense-editors" aria-label="任意項目">
+        <details class="tl-expense-editor">
+          <summary>${icon("banknotes")}<span>支払方法</span><b data-expense-summary-payment></b>${icon("chevronDown")}</summary>
+          <label class="tl-field">
+            <span>支払方法</span>
+            <select name="paymentMethod">
+              <option>カード</option>
+              <option>現金</option>
+              <option>送金</option>
+              <option>その他</option>
+            </select>
+          </label>
+          ${usingLocalExpenses() ? "" : `<label class="tl-field tl-photo-field">
+            <span>レシート写真</span>
+            <input type="file" name="receiptPhoto" accept="image/*" capture="environment">
+          </label>`}
+        </details>
+        <details class="tl-expense-editor">
+          <summary>${icon("pencilSquare")}<span>メモ</span><b data-expense-summary-note>任意</b>${icon("chevronDown")}</summary>
+          <label class="tl-field wide">
+            <span>メモ</span>
+            <textarea name="note" placeholder="任意。為替メモや補足があれば入力"></textarea>
+          </label>
+        </details>
       </div>
 
       <div class="tl-expense-submit">
         <div class="tl-expense-status" data-expense-status aria-live="polite"></div>
-        <button type="submit">保存</button>
+        <button type="submit">${editingRecord ? "更新" : "保存"}</button>
       </div>
     </form>`;
 
   const form = qs<HTMLFormElement>("[data-expense-form-native]", mount);
   (form.elements.namedItem("paidDate") as HTMLInputElement).value = todayISO();
   applyProfileDefaults(form, participants);
+  if (editingRecord && editingRecord.kind === "expense") {
+    fillExpenseForm(form, editingRecord, participants);
+  }
   setupExpenseEntryHandlers(form, participants);
+}
+
+function fillExpenseForm(form: HTMLFormElement, record: ExpenseStore.ExpenseRecord, participants: string[]): void {
+  const setField = (name: string, value: string | number | undefined): void => {
+    const field = form.elements.namedItem(name) as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement | null;
+    if (field) field.value = String(value ?? "");
+  };
+  setField("paidDate", record.paidDate || todayISO());
+  setField("payer", record.payer);
+  setField("category", record.category);
+  setField("currency", record.currency || "JPY");
+  setField("title", record.title);
+  setField("amount", record.amount);
+  setField("paymentMethod", record.paymentMethod);
+  setField("note", record.note);
+  qsa<HTMLInputElement>("input[name='splitMode']", form).forEach((input) => {
+    input.checked = input.value === record.splitMode;
+  });
+  qsa<HTMLInputElement>("input[name='targets']", form).forEach((input) => {
+    input.checked = record.targets && record.targets.length ? record.targets.includes(input.value) : true;
+  });
+  participants.forEach((name) => {
+    const input = qsa<HTMLInputElement>("[data-share-name]", form).find((item) => item.dataset.shareName === name);
+    if (input) input.value = record.individual && record.individual[name] ? String(record.individual[name]) : "";
+  });
 }
 
 function setupExpenseEntryHandlers(form: HTMLFormElement, participants: string[]): void {
@@ -1211,6 +1382,18 @@ function setupExpenseEntryHandlers(form: HTMLFormElement, participants: string[]
     status.textContent = message || "";
     status.classList.toggle("is-error", type === "error");
     status.classList.toggle("is-ok", type === "ok");
+  };
+  const setSummary = (selector: string, value: string): void => {
+    const node = form.querySelector<HTMLElement>(selector);
+    if (node) node.textContent = value;
+  };
+  const updateEditorSummaries = (): void => {
+    setSummary("[data-expense-summary-date]", mdLabel((field("paidDate") as HTMLInputElement).value || todayISO()));
+    setSummary("[data-expense-summary-category]", (field("category") as HTMLSelectElement).value || "食費");
+    setSummary("[data-expense-summary-currency]", (field("currency") as HTMLSelectElement).value || "JPY");
+    setSummary("[data-expense-summary-payment]", (field("paymentMethod") as HTMLSelectElement).value || "カード");
+    const note = ((field("note") as HTMLTextAreaElement).value || "").trim();
+    setSummary("[data-expense-summary-note]", note ? "入力済み" : "任意");
   };
 
   const activeMode = (): string => (field("splitMode") as HTMLInputElement).value;
@@ -1249,12 +1432,15 @@ function setupExpenseEntryHandlers(form: HTMLFormElement, participants: string[]
     form.dataset.dirty = "true";
     if ((event.target as HTMLInputElement).name === "splitMode") updateMode();
     updateShareTotal();
+    updateEditorSummaries();
   });
   form.addEventListener("input", () => {
     form.dataset.dirty = "true";
     updateShareTotal();
+    updateEditorSummaries();
   });
   updateMode();
+  updateEditorSummaries();
 
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -1293,7 +1479,7 @@ function setupExpenseEntryHandlers(form: HTMLFormElement, participants: string[]
     try {
       if (usingLocalExpenses()) {
         // 端末内 JSON に保存（Apps Script 不要）。精算は renderBase で再計算。
-        ExpenseStore.add(CONFIG.tripSlug, {
+        const payload = {
           kind: "expense",
           paidDate: (field("paidDate") as HTMLInputElement).value,
           payer: (field("payer") as HTMLSelectElement).value,
@@ -1306,7 +1492,12 @@ function setupExpenseEntryHandlers(form: HTMLFormElement, participants: string[]
           individual,
           paymentMethod: (field("paymentMethod") as HTMLSelectElement).value,
           note: (field("note") as HTMLTextAreaElement).value,
-        });
+        } satisfies Partial<ExpenseStore.ExpenseRecord>;
+        if (editingExpenseId) {
+          ExpenseStore.update(CONFIG.tripSlug, editingExpenseId, payload);
+        } else {
+          ExpenseStore.add(CONFIG.tripSlug, payload);
+        }
       } else {
         const receiptInput = field("receiptPhoto") as HTMLInputElement;
         const photo = receiptInput && receiptInput.files ? receiptInput.files[0] : null;
@@ -1339,6 +1530,7 @@ function setupExpenseEntryHandlers(form: HTMLFormElement, participants: string[]
       }
       form.reset();
       form.dataset.dirty = "false";
+      editingExpenseId = null;
       (field("paidDate") as HTMLInputElement).value = todayISO();
       applyProfileDefaults(form, participants);
       qsa<HTMLInputElement>("input[name='targets']", form).forEach((input) => { input.checked = true; });

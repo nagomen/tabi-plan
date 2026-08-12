@@ -54,6 +54,10 @@ export function list(slug: string): ExpenseRecord[] {
   return readAll(slug);
 }
 
+export function get(slug: string, id: string): ExpenseRecord | undefined {
+  return readAll(slug).find((record) => record.id === id);
+}
+
 export function add(slug: string, input: Partial<ExpenseRecord>): ExpenseRecord {
   const record: ExpenseRecord = {
     id: newId(),
@@ -78,8 +82,38 @@ export function add(slug: string, input: Partial<ExpenseRecord>): ExpenseRecord 
   return record;
 }
 
-export function remove(slug: string, id: string): void {
-  writeAll(slug, readAll(slug).filter((r) => r.id !== id));
+export function update(slug: string, id: string, input: Partial<ExpenseRecord>): ExpenseRecord | undefined {
+  const records = readAll(slug);
+  const index = records.findIndex((record) => record.id === id);
+  if (index < 0) return undefined;
+  const current = records[index];
+  const next: ExpenseRecord = {
+    ...current,
+    ...input,
+    id: current.id,
+    kind: input.kind || current.kind,
+    amount: Number(input.amount ?? current.amount) || 0,
+    targets: input.targets || [],
+    individual: input.individual || {},
+    createdAt: current.createdAt,
+  };
+  records[index] = next;
+  writeAll(slug, records);
+  return next;
+}
+
+export function remove(slug: string, id: string): ExpenseRecord | undefined {
+  const records = readAll(slug);
+  const removed = records.find((record) => record.id === id);
+  writeAll(slug, records.filter((r) => r.id !== id));
+  return removed;
+}
+
+export function restore(slug: string, record: ExpenseRecord): void {
+  const records = readAll(slug).filter((item) => item.id !== record.id);
+  records.push(record);
+  records.sort((a, b) => String(a.createdAt || "").localeCompare(String(b.createdAt || "")));
+  writeAll(slug, records);
 }
 
 /**
@@ -233,6 +267,8 @@ export function computeSettlement(
       amountLabel: formatYen(share.amount),
     }));
     details.push({
+      id: record.id,
+      kind: record.kind,
       date: record.paidDate,
       payer: record.payer,
       category: record.category,
