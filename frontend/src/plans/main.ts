@@ -19,7 +19,6 @@ import { mountAppHeader } from "../shared/app-header";
 import { getUser } from "../shared/user-store";
 import { getViews } from "../shared/views-store";
 import { planCoverThumbnail } from "../shared/cover";
-import { checklistSummary } from "../shared/checklist";
 import { splitNames } from "../shared/friend-store";
 import { decodeInvite } from "../shared/invite";
 import {
@@ -802,29 +801,6 @@ function rowHtml(
         : "";
 
   const coverSrc = planCoverThumbnail(meta);
-  const taskSummary = checklistSummary(dataForPlan(meta)?.checklist ?? undefined);
-  const progressHtml = taskSummary.total
-    ? '<span class="plan-progress" title="タスク 完了' +
-      taskSummary.done +
-      " / 進行中" +
-      taskSummary.doing +
-      " / 未着手" +
-      taskSummary.todo +
-      '">' +
-      '<span class="plan-progress-bar" aria-hidden="true">' +
-      '<i class="done" style="flex:' + taskSummary.done + '"></i>' +
-      '<i class="doing" style="flex:' + taskSummary.doing + '"></i>' +
-      '<i class="todo" style="flex:' + taskSummary.todo + '"></i>' +
-      "</span>" +
-      '<span class="plan-progress-text">タスク ' +
-      taskSummary.done +
-      "/" +
-      taskSummary.total +
-      " 完了" +
-      (taskSummary.doing ? "・進行中 " + taskSummary.doing : "") +
-      "</span>" +
-      "</span>"
-    : "";
   const sourceLabelText = SOURCE_LABEL[src] || src;
   const views = getViews(meta.slug);
   const viewsBadge =
@@ -882,7 +858,6 @@ function rowHtml(
     authorLine +
     (metaLine ? '<span class="plan-meta">' + metaLine + "</span>" : "") +
     (compactLocations ? '<span class="plan-route">' + escapeHtml(compactLocations) + "</span>" : "") +
-    progressHtml +
     "</span>" +
     "</a>" +
     '<div class="plan-tools">' +
