@@ -1710,11 +1710,14 @@
     }
     .pe-map-show[hidden] { display: none; }
 
-    /* iOS Safari zooms the page when focused form text is below 16px. */
+    /* 入力欄も他の文字に合わせて 14px にする。
+       16px 未満だと iOS Safari がフォーカス時にページを自動拡大するので、
+       各ページの viewport に maximum-scale=1 を入れて抑えている
+       （iOS 10 以降、利用者のピンチ操作による拡大は残る）。 */
     .pe input:not([type="checkbox"]):not([type="radio"]),
     .pe select,
     .pe textarea {
-      font-size: 16px !important;
+      font-size: 14px !important;
     }
   }
 
@@ -1770,11 +1773,11 @@
     font-weight: 500;
     line-height: 1.5;
   }
-  /* input と select は iOS のズーム防止で 16px 固定なので、
-     期間ボタンもそこに合わせる（!important は上の 16px 指定に勝つため）。 */
+  /* 期間ボタンも入力欄と同じ大きさにする
+     （!important は上の入力欄指定と同じ土俵に乗せるため）。 */
   .pe-range-button,
   .pe-range-button.is-empty {
-    font-size: 16px !important;
+    font-size: 14px !important;
     font-weight: 400;
   }
 }
@@ -1798,9 +1801,7 @@
 /* ---- スマホ版を一段コンパクトにする ------------------------------------
    見出し・行程の行・チップ・ボタンをそれぞれ 1 段落として、
    縦の余白も詰める。
-   入力欄（input / select / textarea）だけは 16px のまま。
-   iOS Safari は 16px 未満の入力にフォーカスするとページを拡大し、
-   そのまま戻らないため。 */
+   入力欄も同じ流れで 14px にそろえる。 */
 @media (max-width: 680px) {
   .ah-title { font-size: 16px; }
   .pe-head h1 { font-size: 15.5px; }
