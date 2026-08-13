@@ -1846,3 +1846,50 @@
   .pe-edit-grid { gap: 12px; }
   .pe-row { min-height: 42px; }
 }
+
+/* ---- 宿カードを他の行と同じ寸法にする ----------------------------------
+   高さ 63px / 名前 14px / アイコン 34px と、予定の行（高さ 49px・
+   名前 12〜14px・種別チップ 23px）より一段大きかった。
+   色（薄紅の地・赤の枠・赤い丸）はそのままにして、寸法だけそろえる。
+   出発地カード（.pe-start）が既に 26px のアイコンなので、それに合わせる。 */
+.pe-stay {
+  gap: 9px;
+  margin-top: 5px;
+  padding: 9px 10px;
+}
+.pe-stay-ic {
+  width: 26px;
+  height: 26px;
+}
+.pe-stay-ic .hi {
+  width: 15px;
+  height: 15px;
+}
+/* 宿名と補足を1行に並べる。予定の行が「台北101 台北101」と
+   同じ行に出しているのと同じ形にすると、高さもそろう。 */
+.pe-stay-main {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.pe-stay-main b {
+  font-size: 14px;
+  font-weight: 500;
+  min-width: 0;
+}
+.pe-stay-main span {
+  flex: none;
+}
+/* 削除ボタンも予定の行（30px）に合わせる。高さを決めているのはここ。 */
+.pe-stay .pe-icon-btn {
+  width: 30px;
+  height: 30px;
+}
+.pe-stay-main span {
+  font-size: 11.5px;
+}
+
+@media (max-width: 680px) {
+  .pe-stay-main b { font-size: 12px; }
+  .pe-stay-main span { font-size: 11px; }
+}
