@@ -224,6 +224,23 @@ const KIND_COLOR: Record<ItemKind, string> = {
 
 const TRANSPORTS = ["電車", "新幹線", "飛行機", "車", "バス", "フェリー", "徒歩", "その他"];
 
+/**
+ * 行程の行に出す移動手段のアイコン。
+ * heroicons に電車・バス・船・徒歩の絵柄がないので、
+ * 陸路（車・バス）は truck、鉄道と船は ticket（きっぷを買う移動）に寄せる。
+ * 正確な手段名は title と展開後の選択欄に残す。
+ */
+const TRANSPORT_ICONS: Record<string, IconName> = {
+  電車: "ticket",
+  新幹線: "ticket",
+  フェリー: "ticket",
+  飛行機: "paperAirplane",
+  車: "truck",
+  バス: "truck",
+  徒歩: "user",
+  その他: "arrowsRightLeft",
+};
+
 type CountryCode =
   | "JP" | "TH" | "US" | "FR" | "GB" | "KR" | "TW" | "CN" | "HK" | "SG"
   | "VN" | "MY" | "ID" | "PH" | "IN" | "MN" | "DE" | "ES" | "IT" | "AU";
@@ -1017,13 +1034,20 @@ function rowSummary(item: Item): string {
   if (item.kind === "move") {
     const from = item.from || "出発";
     const to = item.to || "到着";
-    const mid = [item.transport, item.duration].filter(Boolean).join(" ");
+    const means = item.transport.trim();
+    const meansIcon = means
+      ? `<span class="mid" title="${escapeHtml(means)}" aria-label="${escapeHtml(means)}">` +
+        icon(TRANSPORT_ICONS[means] || "arrowsRightLeft") +
+        "</span>"
+      : "";
+    const dur = item.duration.trim() ? `<span class="dur">${escapeHtml(item.duration)}</span>` : "";
     return (
       `<span class="pe-chip" data-kind="move">${icon(k.icon)}${k.label}</span>` +
       `<span class="pe-row-time">${escapeHtml(item.time)}</span>` +
       `<span class="pe-seg"><span class="ep">${escapeHtml(from)}</span>` +
       `<span class="arr">${icon("arrowLongRight")}</span>` +
-      (mid ? `<span class="mid">${escapeHtml(mid)}</span>` : "") +
+      meansIcon +
+      dur +
       `<span class="arr">${icon("arrowLongRight")}</span>` +
       `<span class="ep">${escapeHtml(to)}</span></span>` +
       `<span class="pe-row-caret">${icon("chevronDown")}</span>`
@@ -1221,14 +1245,9 @@ function renderDays(): void {
         ? `<div class="pe-start"><span class="pe-start-ic">${icon("buildingOffice2")}</span>` +
           `<div class="pe-start-main"><b>前日の宿泊先</b><br><span>${escapeHtml(coverPrev.stay.title)}</span></div></div>`
         : "";
-      // 都市バンド（ルート都市の滞在範囲が変わる初日に挿入）
-      const city = cityForDate(day.date);
-      const prevCity = index > 0 ? cityForDate(model.days[index - 1].date) : null;
-      const band = city && city.id !== (prevCity ? prevCity.id : -1)
-        ? `<div class="pe-cityband">${icon("mapPin")}<b>${escapeHtml(city.name)}</b><span>${cityRangeLabel(city)}</span></div>`
-        : "";
+      // 都市名は各日の見出し（.pe-day-route）に出ているので、
+      // 以前ここにあった都市バンドは二重表示になるため外した。
       return (
-        band +
         `<article class="pe-day" data-day="${index}">` +
         dayHeader(day, index) +
         `<div class="pe-day-body">` +
@@ -2281,14 +2300,6 @@ cityInput.addEventListener("keydown", (e) => {
 qs<HTMLButtonElement>(root, "[data-city-add]").addEventListener("click", () => {
   void addCity(cityInput.value); cityInput.value = "";
 });
-
-function cityRangeLabel(city: City): string {
-  const a = parseISO(city.fromDate);
-  const b = parseISO(city.toDate);
-  if (!a || !b) return "";
-  const f = (d: Date): string => `${d.getMonth() + 1}/${d.getDate()}`;
-  return city.fromDate === city.toDate ? f(a) : `${f(a)}〜${f(b)}`;
-}
 
 // 都市の滞在期間（開始/終了日）の割り当て
 citiesEl.addEventListener("change", (event) => {
