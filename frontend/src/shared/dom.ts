@@ -12,6 +12,19 @@ export function escapeHtml(value: unknown): string {
   return String(value ?? "").replace(/[&<>"']/g, (ch) => ESCAPE_MAP[ch]);
 }
 
+export function safeHref(value: unknown): string {
+  const raw = String(value ?? "").trim();
+  if (!raw) return "#";
+  try {
+    const parsed = new URL(raw, window.location.href);
+    if (parsed.protocol === "http:" || parsed.protocol === "https:") return parsed.href;
+  } catch {
+    /* ignore */
+  }
+  if (/^(?:\.{0,2}\/|\/)[^\s<>"']+$/.test(raw) && !raw.startsWith("//")) return raw;
+  return "#";
+}
+
 /** catch 節の unknown からメッセージ文字列を取り出す */
 export function errorMessage(error: unknown): string {
   if (error instanceof Error) return error.message;

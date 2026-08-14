@@ -7,17 +7,18 @@
 //   GET    /api/health
 //   GET    /api/bootstrap          → 関係テーブルの全データ（routes.ts）
 //   その他 /api/users|plans|expenses|friendships …（routes.ts）
-//   GET    /api/store              → 旧 KV。フロント切替が済んだら消す
+//   GET    /api/store              → 旧 KV。LEGACY_STORE_TOKEN がある時だけ管理用途で開く
 //   PUT    /api/store/<key>        → body {value, version?}
 //   DELETE /api/store/<key>
 //
-// 認証は固定トークン1本。静的サイトから呼ぶ以上ブラウザに露出するので、
-// 「無差別スキャンを弾く」以上の意味は持たせない（README 参照）。
+// API_TOKEN はアプリ配信元からの基本ゲート。ユーザー権限はサーバー発行の
+// X-Travel-Session を検証して判定し、ブラウザ側の userId は信頼しない。
 
 import http from "node:http";
+import crypto from "node:crypto";
 import { config } from "./config.js";
 import { dump, put, remove, VersionConflict } from "./store.js";
-import { ping, BadRequest } from "./repo.js";
+import { ping, BadRequest, signUp, logIn } from "./repo.js";
 import { route } from "./routes.js";
 
 // ---- レート制限（プロセス内・1分窓） -----------------------------------
@@ -55,10 +56,39 @@ function corsHeaders(origin: string | undefined): Record<string, string> {
   return {
     "Access-Control-Allow-Origin": origin,
     "Access-Control-Allow-Methods": "GET,POST,PATCH,PUT,DELETE,OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type,Authorization,X-Travel-User-Id",
+    "Access-Control-Allow-Headers": "Content-Type,Authorization,X-Travel-Session",
     "Access-Control-Max-Age": "86400",
     Vary: "Origin",
   };
+}
+
+const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 30;
+
+function b64url(input: Buffer | string): string {
+  return Buffer.from(input).toString("base64url");
+}
+
+function signPayload(payload: string): string {
+  return crypto.createHmac("sha256", config.sessionSecret).update(payload).digest("base64url");
+}
+
+function sessionForUser(userId: string): string {
+  const payload = b64url(JSON.stringify({ sub: userId, exp: Date.now() + SESSION_TTL_MS }));
+  return `${payload}.${signPayload(payload)}`;
+}
+
+function userIdFromSession(token: string): string {
+  if (!token || !token.includes(".")) return "";
+  const [payload, signature] = token.split(".", 2);
+  if (!signature || signature.length !== signPayload(payload).length) return "";
+  if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(signPayload(payload)))) return "";
+  try {
+    const parsed = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as { sub?: string; exp?: number };
+    if (!parsed.sub || !parsed.exp || parsed.exp < Date.now()) return "";
+    return parsed.sub;
+  } catch {
+    return "";
+  }
 }
 
 function send(
@@ -85,6 +115,18 @@ function authorized(req: http.IncomingMessage): boolean {
   // 定数時間比較
   let diff = 0;
   for (let i = 0; i < token.length; i += 1) diff |= token.charCodeAt(i) ^ config.apiToken.charCodeAt(i);
+  return diff === 0;
+}
+
+function authorizedLegacyStore(req: http.IncomingMessage): boolean {
+  if (!config.legacyStoreToken) return false;
+  const header = req.headers.authorization || "";
+  const bearer = header.startsWith("Bearer ") ? header.slice(7) : "";
+  const custom = req.headers["x-travel-legacy-token"];
+  const token = bearer || (typeof custom === "string" ? custom : "");
+  if (token.length !== config.legacyStoreToken.length) return false;
+  let diff = 0;
+  for (let i = 0; i < token.length; i += 1) diff |= token.charCodeAt(i) ^ config.legacyStoreToken.charCodeAt(i);
   return diff === 0;
 }
 
@@ -168,7 +210,26 @@ const server = http.createServer(async (req, res) => {
   try {
     // 関係テーブル（新）。該当しなければ下の KV（旧）へ落ちる。
     const body = req.method === "GET" || req.method === "DELETE" ? {} : await readJsonBody(req);
-    const actorUserId = typeof req.headers["x-travel-user-id"] === "string" ? req.headers["x-travel-user-id"] : "";
+    if (path === "/api/auth/signup" && req.method === "POST") {
+      const result = await signUp({
+        email: typeof body.email === "string" ? body.email : "",
+        password: typeof body.password === "string" ? body.password : "",
+        displayName: typeof body.display_name === "string" ? body.display_name : "",
+      });
+      send(res, 200, { ...result, session: sessionForUser(result.user.id) }, cors);
+      return;
+    }
+    if (path === "/api/auth/login" && req.method === "POST") {
+      const result = await logIn({
+        email: typeof body.email === "string" ? body.email : "",
+        password: typeof body.password === "string" ? body.password : "",
+      });
+      send(res, 200, { ...result, session: sessionForUser(result.user.id) }, cors);
+      return;
+    }
+    const actorUserId = typeof req.headers["x-travel-session"] === "string"
+      ? userIdFromSession(req.headers["x-travel-session"])
+      : "";
     const handled = await route(req.method || "GET", path, body, actorUserId);
     if (handled) {
       send(res, handled.status, handled.body, cors);
@@ -176,12 +237,20 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (path === "/api/store" && req.method === "GET") {
+      if (!authorizedLegacyStore(req)) {
+        send(res, config.legacyStoreToken ? 401 : 410, { error: "legacy store is disabled" }, cors);
+        return;
+      }
       send(res, 200, await dump(), cors);
       return;
     }
 
     const match = /^\/api\/store\/(.+)$/.exec(path);
     if (match) {
+      if (!authorizedLegacyStore(req)) {
+        send(res, config.legacyStoreToken ? 401 : 410, { error: "legacy store is disabled" }, cors);
+        return;
+      }
       const key = decodeURIComponent(match[1]);
       if (!key || key.length > 191) {
         send(res, 400, { error: "invalid key" }, cors);

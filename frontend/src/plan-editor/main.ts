@@ -32,7 +32,7 @@ import { mountAppHeader } from "../shared/app-header";
 import * as Permissions from "../shared/permissions-store";
 import { currentAccount } from "../shared/account-store";
 import { listFriends } from "../shared/friendship-store";
-import { canEditPlan, planHasOwner } from "../shared/membership";
+import { canEditPlan, canManagePlan, planHasOwner } from "../shared/membership";
 
 initPageTransitions();
 
@@ -196,6 +196,7 @@ interface Model {
   slug: string;
   title: string;
   members: string;
+  memberIds: string[];
   note: string;
   cover: string;
   startDate: string;
@@ -334,9 +335,10 @@ const isNew = !planParam;
 let slug = isNew ? "" : TripPlans.safeSlug(planParam);
 
 const model: Model = {
-  slug, title: "", members: "", note: "", cover: "", startDate: "", endDate: "", cities: [], days: [], candidates: [],
+  slug, title: "", members: "", memberIds: [], note: "", cover: "", startDate: "", endDate: "", cities: [], days: [], candidates: [],
 };
 let dirty = false;
+let editRevision = 0;
 let seq = 1;
 let openItemId: number | null = null;
 let armed: { itemId: number; target: GeoTarget } | null = null;
@@ -767,6 +769,7 @@ let persistTimer = 0;
 function markDirty(): void {
   if (editorLocked) return;
   dirty = true;
+  editRevision += 1;
   if (model.title.trim()) {
     statusEl.textContent = "編集中…";
     statusEl.className = "is-dirty";
@@ -785,9 +788,11 @@ function nowHM(): string {
 }
 
 // 自動保存（localStorage）。旅行名があれば slug を採番して保存する。
-function persist(): void {
+async function persist(): Promise<void> {
   if (editorLocked) return;
   if (!model.title.trim()) return;
+  const revision = editRevision;
+  const mutationCheckpoint = db.mutationCheckpoint();
   if (!slug) {
     slug = TripPlans.uniqueSlug(model.title);
     model.slug = slug;
@@ -796,12 +801,27 @@ function persist(): void {
     try { history.replaceState(null, "", "plan-editor.html?plan=" + encodeURIComponent(slug)); } catch { /* ignore */ }
   }
   Permissions.ensureOwner(slug, model.members);
-  TripPlans.saveLocalPlan(slug, buildData());
+  const saved = TripPlans.saveLocalPlan(slug, buildData(), model.memberIds);
+  if (!saved) {
+    dirty = true;
+    statusEl.textContent = "ログインしてから保存してください";
+    statusEl.className = "is-dirty";
+    return;
+  }
   TripPlans.setActiveSlug(slug);
-  dirty = false;
-  statusEl.textContent = `自動保存しました ${nowHM()}`;
-  statusEl.className = "is-ok";
-  savebarNoteEl.textContent = "";
+  try {
+    await db.flushMutations(mutationCheckpoint);
+    if (revision !== editRevision) return;
+    dirty = false;
+    statusEl.textContent = `自動保存しました ${nowHM()}`;
+    statusEl.className = "is-ok";
+    savebarNoteEl.textContent = "";
+  } catch (error) {
+    dirty = true;
+    statusEl.textContent = "保存できませんでした";
+    statusEl.className = "is-dirty";
+    savebarNoteEl.textContent = errorMessage(error);
+  }
 }
 
 // ---- レンダリング: 都市（ルート） ---------------------------------------
@@ -1798,80 +1818,104 @@ function hasMemberAccount(): boolean {
 }
 
 function memberArray(): string[] { return splitNames(model.members); }
-function setMembers(arr: string[]): void {
-  model.members = arr.join("、");
+function setMembers(ids: string[]): void {
+  model.memberIds = [...new Set(ids.filter(Boolean))];
+  model.members = model.memberIds.map((id) => db.nameOf(id)).filter(Boolean).join("、");
   markDirty();
   updateMemberVisibility();
   renderMembers();
   renderMemberSelect();
 }
-function addMember(name: string): void {
-  const n = name.trim();
-  if (!n) return;
-  const arr = memberArray();
-  if (!arr.includes(n)) arr.push(n);
-  setMembers(arr);
+function addMember(userId: string): void {
+  if (!userId) return;
+  setMembers([...model.memberIds, userId]);
 }
-function removeMember(name: string): void {
-  setMembers(memberArray().filter((x) => x !== name));
+function removeMember(userId: string): void {
+  setMembers(model.memberIds.filter((id) => id !== userId));
 }
 
 function renderMembers(): void {
   const account = currentAccount();
   const me = account?.name || "";
   const arr = memberArray();
-  membersMount.innerHTML = arr
-    .map((name) => {
-      const self = Boolean(me) && name === me;
+  const meta = slug ? TripPlans.get(slug) : null;
+  const stored = meta ? db.planBySlug(meta.slug) : null;
+  const ownerId = stored?.owner_user_id || account?.id || "";
+  const memberAccounts = model.memberIds.map((id) => ({ id, name: db.nameOf(id) })).filter((member) => member.name);
+  const displayMembers = memberAccounts.length
+    ? memberAccounts
+    : arr.map((name) => ({ id: listFriends().find((friend) => friend.name === name)?.id || "", name }));
+  membersMount.innerHTML = displayMembers
+    .map((member) => {
+      const self = account?.id ? member.id === account.id : Boolean(me) && member.name === me;
       return (
         `<span class="pe-chip-m${self ? " is-self" : ""}">` +
-        `<span>${escapeHtml(name)}</span>` +
+        `<span>${escapeHtml(member.name)}</span>` +
         (self ? `<span class="pe-chip-self">自分</span>` : "") +
+        (member.id === ownerId ? `<span class="pe-chip-self">Owner</span>` : "") +
+        (meta && canManagePlan(meta) && member.id && !self && member.id !== ownerId
+          ? `<button class="pe-chip-ic" type="button" data-transfer-owner="${escapeHtml(member.id)}" data-transfer-name="${escapeHtml(member.name)}" title="所有権を移譲" aria-label="${escapeHtml(member.name)}へ所有権を移譲">${icon("arrowsRightLeft")}</button>`
+          : "") +
         (!account || self
           ? ""
-          : `<button class="pe-chip-ic invite" type="button" data-invite="${escapeHtml(name)}" title="招待リンクを送る" aria-label="${escapeHtml(name)}を招待">${icon("paperAirplane")}</button>`) +
-        `<button class="pe-chip-ic del" type="button" data-rm="${escapeHtml(name)}" title="削除" aria-label="${escapeHtml(name)}を削除">${icon("xMark")}</button>` +
+          : `<button class="pe-chip-ic invite" type="button" data-invite="${escapeHtml(member.name)}" title="招待リンクを送る" aria-label="${escapeHtml(member.name)}を招待">${icon("paperAirplane")}</button>`) +
+        (member.id && member.id !== ownerId
+          ? `<button class="pe-chip-ic del" type="button" data-rm="${escapeHtml(member.id)}" title="削除" aria-label="${escapeHtml(member.name)}を削除">${icon("xMark")}</button>`
+          : "") +
         `</span>`
       );
     })
     .join("");
 }
 
-function memberCandidateNames(): string[] {
+function memberCandidates(): { id: string; name: string }[] {
   const account = currentAccount();
   if (!account) return [];
-  const excluded = new Set([account.name, ...memberArray()].map((name) => name.trim()).filter(Boolean));
-
-  const names = new Set<string>();
-  listFriends().forEach((friend) => {
-    const name = (friend.name || friend.email).trim();
-    if (name && !excluded.has(name)) names.add(name);
-  });
-
-  return [...names].sort((a, b) => a.localeCompare(b, "ja")).slice(0, 12);
+  const excluded = new Set([account.id, ...model.memberIds]);
+  return listFriends()
+    .filter((friend) => friend.id && !excluded.has(friend.id))
+    .map((friend) => ({ id: friend.id, name: (friend.name || friend.email).trim() }))
+    .filter((friend) => friend.name)
+    .sort((a, b) => a.name.localeCompare(b.name, "ja"))
+    .slice(0, 12);
 }
 
 function renderMemberSelect(): void {
-  const names = memberCandidateNames();
+  const candidates = memberCandidates();
   memberSelect.innerHTML =
     `<option value="">友達を選択</option>` +
-    (names.length
-      ? names.map((name) => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join("")
+    (candidates.length
+      ? candidates.map((friend) => `<option value="${escapeHtml(friend.id)}">${escapeHtml(friend.name)}</option>`).join("")
       : `<option value="" disabled>追加できる友達がいません</option>`);
   memberSelect.value = "";
-  memberSelect.disabled = !names.length;
-  memberAddBtn.disabled = !names.length;
-  memberHint.hidden = names.length > 0;
+  memberSelect.disabled = !candidates.length;
+  memberAddBtn.disabled = !candidates.length;
+  memberHint.hidden = candidates.length > 0;
 }
 
 function updateMemberVisibility(): void {
-  const enabled = hasMemberAccount();
+  const meta = slug ? TripPlans.get(slug) : null;
+  const enabled = hasMemberAccount() && (!meta || canManagePlan(meta));
   memberField.hidden = !enabled;
   memberField.classList.toggle("is-enabled", enabled);
 }
 
+function updateWorkspaceControlVisibility(): void {
+  const meta = slug ? TripPlans.get(slug) : null;
+  const accountId = currentAccount()?.id || "";
+  const memberEditor = !meta || Boolean(
+    meta.id && accountId && db.members().some((member) =>
+      member.plan_id === meta.id && member.user_id === accountId &&
+      (member.role === "owner" || member.role === "editor") && member.status === "active"
+    )
+  );
+  const candidateSection = root?.querySelector<HTMLElement>("[data-cand-section]");
+  if (candidateSection) candidateSection.hidden = !memberEditor;
+}
+
 function refreshMemberField(): void {
   updateMemberVisibility();
+  updateWorkspaceControlVisibility();
   renderMembers();
   renderMemberSelect();
 }
@@ -1890,9 +1934,28 @@ membersMount.addEventListener("click", (event) => {
   if (!(t instanceof Element)) return;
   const rm = t.closest<HTMLElement>("[data-rm]");
   if (rm) { removeMember(rm.dataset.rm || ""); return; }
+  const transfer = t.closest<HTMLElement>("[data-transfer-owner]");
+  if (transfer) {
+    void transferOwnership(transfer.dataset.transferOwner || "", transfer.dataset.transferName || "");
+    return;
+  }
   const inv = t.closest<HTMLElement>("[data-invite]");
   if (inv) { void shareInvite(inv.dataset.invite || ""); }
 });
+
+async function transferOwnership(userId: string, name: string): Promise<void> {
+  const meta = slug ? TripPlans.get(slug) : null;
+  const planId = meta?.id || (slug ? TripPlans.planIdOf(slug) : "");
+  if (!meta || !planId || !userId || !canManagePlan(meta)) return;
+  if (!window.confirm(`${name}さんへ所有権を移譲しますか？あなたは編集者になります。`)) return;
+  try {
+    await db.transferPlanOwnership(planId, userId);
+    refreshMemberField();
+    toast(`${name}さんへ所有権を移譲しました`);
+  } catch (error) {
+    toast(errorMessage(error) || "所有権を移譲できませんでした");
+  }
+}
 
 function commitMemberSelect(): void {
   const v = memberSelect.value.trim();
@@ -2078,6 +2141,8 @@ async function shareInvite(name: string): Promise<void> {
   if (!slug) { slug = TripPlans.uniqueSlug(model.title); model.slug = slug; }
   persist();
   const data = buildData();
+  const meta = TripPlans.get(slug);
+  if (meta && !canManagePlan(meta)) { toast("招待できるのは計画の所有者だけです"); return; }
   const planId = TripPlans.planIdOf(slug);
   if (!planId) { toast("保存してから招待してください"); return; }
   const invite = await db.createInvite(planId, { invited_name: name, role: "editor" });
@@ -2376,6 +2441,7 @@ function loadExisting(): boolean {
   const trip = data.trip || { title: "", dates: "", members: "", note: "" };
   model.title = trip.title || "";
   model.members = trip.members || "";
+  model.memberIds = meta?.memberIds ? [...meta.memberIds] : [];
   model.note = trip.note || "";
   model.cover = trip.cover || "";
   model.candidates = Array.isArray(data.candidates) ? data.candidates : [];
@@ -2448,19 +2514,42 @@ function save(): void {
     qs<HTMLInputElement>(root!, '[data-f="title"]').focus();
     return;
   }
-  // 保存の最後に公開範囲（公開／招待制）を選ばせる。
-  openVisibilityChooser(doSave);
+  const meta = slug ? TripPlans.get(slug) : null;
+  // 公開範囲は owner の管理設定。editor は本文だけを保存する。
+  if (meta && !canManagePlan(meta)) {
+    void doSave(meta.visibility === "invite" ? "invite" : "public", false);
+    return;
+  }
+  openVisibilityChooser((visibility) => void doSave(visibility, true));
 }
 
-function doSave(visibility: PlanVisibility): void {
+async function doSave(visibility: PlanVisibility, updateVisibility = true): Promise<void> {
   if (editorLocked) return;
+  const mutationCheckpoint = db.mutationCheckpoint();
   if (!slug) { slug = TripPlans.uniqueSlug(model.title || "trip"); model.slug = slug; }
   model.visibility = visibility;
-  // 先に公開範囲をメタへ反映してから保存する（dev のファイル書き出しに visibility を含めるため）。
-  TripPlans.upsert({ slug, visibility, published: true });
+  if (updateVisibility && !TripPlans.upsert({ slug, visibility, published: true })) {
+    statusEl.textContent = "ログインしてから保存してください";
+    statusEl.className = "is-dirty";
+    return;
+  }
   Permissions.ensureOwner(slug, model.members);
-  TripPlans.saveLocalPlan(slug, buildData());
+  if (!TripPlans.saveLocalPlan(slug, buildData(), model.memberIds)) {
+    dirty = true;
+    statusEl.textContent = "保存できませんでした";
+    statusEl.className = "is-dirty";
+    return;
+  }
   TripPlans.setActiveSlug(slug);
+  try {
+    await db.flushMutations(mutationCheckpoint);
+  } catch (error) {
+    dirty = true;
+    statusEl.textContent = "保存できませんでした";
+    statusEl.className = "is-dirty";
+    savebarNoteEl.textContent = errorMessage(error);
+    return;
+  }
   dirty = false;
   const visLabel = visibility === "invite" ? "招待制" : "公開";
   statusEl.textContent = `保存しました（${visLabel}）`;
@@ -2496,9 +2585,7 @@ function openVisibilityChooser(onConfirm: (v: PlanVisibility) => void): void {
     visOption("public", current, "公開", "「みんなの計画」一覧に載り、誰でも見られます。", "globeAlt") +
     visOption("invite", current, "限定", "一覧には出さず、招待リンクを渡した人にだけ共有します。", "users") +
     `</div>` +
-    // 試作段階の正直な但し書き。閲覧制御はサーバーが入るまで実装できないので、
-    // 「限定」を秘密の保証として読ませない。
-    `<p class="pe-modal-note">※ 現在は端末内で動く試作のため、「限定」は一覧に出さない設定です。リンクを受け取った人がさらに転送することは防げません。</p>` +
+    `<p class="pe-modal-note">限定は一覧に表示されず、参加者または招待リンクからログインして参加した人だけが閲覧できます。公開では行程・地図などの閲覧用情報が表示され、メンバー・費用・精算は公開されません。</p>` +
     `<div class="pe-modal-actions">` +
     `<button type="button" class="pe-modal-btn ghost" data-cancel>キャンセル</button>` +
     `<button type="submit" class="pe-modal-btn">この設定で保存</button>` +

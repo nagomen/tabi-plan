@@ -14,17 +14,16 @@ import { mountAppHeader } from "../shared/app-header";
 import { icon, type IconName } from "../shared/icons";
 import { getUser } from "../shared/user-store";
 import * as Backend from "../shared/backend";
-import { currentAccount, searchAccounts, type Account } from "../shared/account-store";
+import { currentAccount, searchAccountsRemote, type Account } from "../shared/account-store";
 import * as Friendships from "../shared/friendship-store";
 import { isHistoryPublic } from "../shared/history-privacy";
 import { personTrips, historyPins, distinctPlaceCount, countriesFromPins, type PersonTrip, type HistoryPin } from "../shared/travel-history";
 import { countryOf } from "../shared/country";
 import * as TripPlans from "../shared/plans-store";
 import type { PlanMeta } from "../shared/plans-store";
-import * as Permissions from "../shared/permissions-store";
 import { planCoverThumbnail } from "../shared/cover";
 import { getViews } from "../shared/views-store";
-import { splitNames } from "../shared/friend-store";
+import { canEditPlan, canViewPlan, ownerNameOf } from "../shared/membership";
 
 // ---- 対象の名前 ---------------------------------------------------------
 
@@ -98,15 +97,16 @@ function canViewHistory(): boolean {
   return Boolean(personName) && (isSelf || isHistoryPublic(personName));
 }
 
-function exactPersonAccounts(): Account[] {
+async function exactPersonAccounts(): Promise<Account[]> {
   const key = personName.trim().toLowerCase();
   if (!key) return [];
-  return searchAccounts(personName, { excludeSelf: true }).filter((account) =>
+  const accounts = await searchAccountsRemote(personName, { excludeSelf: true });
+  return accounts.filter((account) =>
     account.name.trim().toLowerCase() === key || account.email.trim().toLowerCase() === key,
   );
 }
 
-function renderFriendAction(message = ""): void {
+async function renderFriendAction(message = ""): Promise<void> {
   if (!friendActionEl) return;
   if (!personName) {
     friendActionEl.innerHTML = "";
@@ -122,7 +122,7 @@ function renderFriendAction(message = ""): void {
     friendActionEl.innerHTML = '<span class="pv-friend-badge">' + icon("checkCircle") + '<span>あなたのページ</span></span>';
     return;
   }
-  const matches = exactPersonAccounts();
+  const matches = await exactPersonAccounts();
   if (matches.length !== 1) {
     const text = matches.length > 1 ? "同じ名前のアカウントが複数あります" : "この名前のアカウントが見つかりません";
     friendActionEl.innerHTML = '<span class="pv-friend-note">' + icon("informationCircle") + '<span>' + escapeHtml(text) + '</span></span>';
@@ -157,7 +157,7 @@ friendActionEl?.addEventListener("click", (event) => {
   const accountId = button.dataset.sendFriendRequest || "";
   try {
     Friendships.sendFriendRequest({ accountId });
-    renderFriendAction("申請を送信しました");
+    void renderFriendAction("申請を送信しました");
   } catch (err) {
     friendActionEl.innerHTML += '<span class="pv-friend-message is-error">' +
       escapeHtml(err instanceof Error ? err.message : "送信できませんでした") + '</span>';
@@ -227,18 +227,7 @@ function samePerson(a: string | undefined, b: string): boolean {
 }
 
 function planCreatorName(meta: PlanMeta): string {
-  const store = Permissions.readPermissionStore();
-  const owner = store.planPermissions
-    .filter((row) => row.planSlug === meta.slug && row.status === "active" && row.role === "owner" && row.displayName)
-    .sort((a, b) => {
-      if (a.source === "owner" && b.source !== "owner") return -1;
-      if (a.source !== "owner" && b.source === "owner") return 1;
-      return Date.parse(a.createdAt || "") - Date.parse(b.createdAt || "");
-    })[0];
-  const inviteCreator = store.planInvites
-    .filter((row) => row.planSlug === meta.slug && row.createdByName)
-    .sort((a, b) => Date.parse(a.createdAt || "") - Date.parse(b.createdAt || ""))[0];
-  return owner?.displayName || inviteCreator?.createdByName || splitNames(meta.members)[0] || "";
+  return ownerNameOf(meta);
 }
 
 function isCreatedByPerson(meta: PlanMeta): boolean {
@@ -246,8 +235,8 @@ function isCreatedByPerson(meta: PlanMeta): boolean {
 }
 
 function canShowCreatedPlan(meta: PlanMeta): boolean {
-  if (!TripPlans.isPublished(meta) && !Permissions.canEdit(meta.slug)) return false;
-  return Permissions.canView(meta.slug, TripPlans.planVisibility(meta));
+  if (!TripPlans.isPublished(meta) && !canEditPlan(meta)) return false;
+  return canViewPlan(meta);
 }
 
 function createdPlanLocations(meta: PlanMeta, max = 3): string {
@@ -290,7 +279,7 @@ function renderCreatedPlans(): void {
   mount.innerHTML = plans.map((meta) => {
     const locations = createdPlanLocations(meta);
     const views = getViews(meta.slug);
-    const href = `index.html?plan=${encodeURIComponent(meta.slug)}${Permissions.canEdit(meta.slug) ? "" : "&view=1"}`;
+    const href = `index.html?plan=${encodeURIComponent(meta.slug)}${canEditPlan(meta) ? "" : "&view=1"}`;
     const cover = planCoverThumbnail(meta);
     return (
       `<a class="pv-created-card" href="${escapeHtml(href)}">` +
@@ -568,7 +557,7 @@ $("[data-cal-next]")?.addEventListener("click", () => {
 // 全モジュール変数の宣言後に描画を開始する。
 async function init(): Promise<void> {
   await Backend.preload();
-  renderFriendAction();
+  await renderFriendAction();
   boot();
 }
 

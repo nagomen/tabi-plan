@@ -15,7 +15,7 @@ import { getUser, setUserName } from "../shared/user-store";
 import { isMemberOf } from "../shared/membership";
 import { friendCandidates } from "../shared/friend-store";
 import { getPayLink, setPayLink } from "../shared/payment-links";
-import { currentAccount, logOut, updateName, isLoggedIn, searchAccounts, type Account } from "../shared/account-store";
+import { currentAccount, logOut, updateName, isLoggedIn, searchAccounts, searchAccountsRemote, type Account } from "../shared/account-store";
 import * as Friendships from "../shared/friendship-store";
 import { isHistoryPublic, setHistoryPublic } from "../shared/history-privacy";
 import { mountAppHeader } from "../shared/app-header";
@@ -521,7 +521,7 @@ function renderFriends(): void {
     : "";
 }
 
-friendSearchForm.addEventListener("submit", (event) => {
+friendSearchForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const query = friendSearchInput.value.trim();
   if (!query) {
@@ -533,7 +533,7 @@ friendSearchForm.addEventListener("submit", (event) => {
     friendNote("検索するにはログインが必要です");
     return;
   }
-  const results = searchAccounts(query, { excludeSelf: true });
+  const results = await searchAccountsRemote(query, { excludeSelf: true });
   friendNote(results.length ? "" : "見つかりませんでした");
   renderFriendSearchResults(results);
 });

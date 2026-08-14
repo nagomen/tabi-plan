@@ -6,7 +6,7 @@
 // そのぶん、最初の中身はこのスクリプトで入れる。
 //
 // 使い方:
-//   API_BASE=http://127.0.0.1:8001 API_TOKEN=xxxx node api/scripts/seed-from-data.mjs
+//   API_BASE=http://127.0.0.1:8001 LEGACY_STORE_TOKEN=xxxx node api/scripts/seed-from-data.mjs
 //   --force を付けると、サーバー側に既にあるキーも上書きする。
 //
 // 端末固有のキー（trip-dashboard-user）は配らない。
@@ -17,7 +17,7 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const API_BASE = (process.env.API_BASE || "http://127.0.0.1:8001").replace(/\/+$/, "");
-const API_TOKEN = process.env.API_TOKEN || "";
+const LEGACY_STORE_TOKEN = process.env.LEGACY_STORE_TOKEN || "";
 const FORCE = process.argv.includes("--force");
 
 const DEVICE_LOCAL = new Set(["trip-dashboard-user"]);
@@ -60,13 +60,13 @@ function collectStore() {
 async function api(pathname, init = {}) {
   const res = await fetch(`${API_BASE}${pathname}`, {
     ...init,
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${API_TOKEN}`, ...(init.headers || {}) },
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${LEGACY_STORE_TOKEN}`, ...(init.headers || {}) },
   });
   return res;
 }
 
 async function main() {
-  if (!API_TOKEN) throw new Error("API_TOKEN が未設定です");
+  if (!LEGACY_STORE_TOKEN) throw new Error("LEGACY_STORE_TOKEN が未設定です");
 
   const health = await api("/api/health");
   if (!health.ok) throw new Error(`API に到達できません: HTTP ${health.status}`);

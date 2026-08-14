@@ -185,17 +185,12 @@ function emit(detail: Record<string, unknown>): void {
   }
 }
 
-function currentUserIdForRequest(): string {
+function sessionTokenForRequest(): string {
   try {
-    const raw = localStorage.getItem("trip-dashboard-identity");
-    if (raw) {
-      const parsed = JSON.parse(raw) as { userId?: string };
-      if (parsed.userId) return parsed.userId;
-    }
     const session = localStorage.getItem("trip-dashboard-session");
     if (session) {
-      const parsed = JSON.parse(session) as { userId?: string };
-      if (parsed.userId) return parsed.userId;
+      const parsed = JSON.parse(session) as { token?: string };
+      if (parsed.token) return parsed.token;
     }
   } catch {
     /* ignore */
@@ -206,13 +201,13 @@ function currentUserIdForRequest(): string {
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   const cfg = api();
   if (!cfg) throw new Error("共有ストアが設定されていません");
-  const userId = currentUserIdForRequest();
+  const sessionToken = sessionTokenForRequest();
   const res = await fetch(cfg.base + path, {
     method,
     headers: {
       "Content-Type": "application/json",
       ...(cfg.token ? { Authorization: `Bearer ${cfg.token}` } : {}),
-      ...(userId ? { "X-Travel-User-Id": userId } : {}),
+      ...(sessionToken ? { "X-Travel-Session": sessionToken } : {}),
     },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
@@ -223,15 +218,86 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   return (await res.json()) as T;
 }
 
-/** 書き込みは投げっぱなしにせず、失敗をイベントで知らせる。 */
+export async function authSignUp(input: {
+  email: string;
+  password: string;
+  display_name: string;
+}): Promise<{ user: { id: string; display_name: string; email: string }; session: string }> {
+  const result = await request<{ user: { id: string; display_name: string; email: string }; session: string }>(
+    "POST", "/api/auth/signup", input,
+  );
+  rememberAuthenticatedUser(result.user);
+  return result;
+}
+
+export async function authLogIn(input: {
+  email: string;
+  password: string;
+}): Promise<{ user: { id: string; display_name: string; email: string }; session: string }> {
+  const result = await request<{ user: { id: string; display_name: string; email: string }; session: string }>(
+    "POST", "/api/auth/login", input,
+  );
+  rememberAuthenticatedUser(result.user);
+  return result;
+}
+
+// 計画作成直後のメンバー・本文保存など、前の書き込みに依存する操作を順番に送る。
+// 失敗時は bootstrap を読み直して、楽観更新した表示をサーバーの正しい状態へ戻す。
+let mutationQueue: Promise<void> = Promise.resolve();
+let mutationSequence = 0;
+let recoveredThrough = 0;
+const mutationErrors = new Map<number, unknown>();
+let recovery: Promise<void> | null = null;
+
+function recoverAfterMutations(tail: Promise<void>, sequence: number): void {
+  void tail.then(() => {
+    if (mutationQueue !== tail || sequence <= recoveredThrough || !mutationErrors.size) return;
+    recovery = reload().catch(() => undefined).finally(() => {
+      recoveredThrough = Math.max(recoveredThrough, sequence);
+      recovery = null;
+    });
+  });
+}
+
 function send(method: string, path: string, body?: unknown): void {
-  void request(method, path, body).then(
-    () => emit({ ok: true, path }),
-    (error: unknown) => {
+  const sequence = ++mutationSequence;
+  const tail = mutationQueue.then(async () => {
+    try {
+      await request(method, path, body);
+      emit({ ok: true, path });
+    } catch (error) {
+      mutationErrors.set(sequence, error);
       console.error("[db]", method, path, error);
       emit({ ok: false, path, error: String(error) });
-    },
-  );
+    }
+  });
+  mutationQueue = tail;
+  recoverAfterMutations(tail, sequence);
+}
+
+/** これから始める保存が、過去の別操作のエラーを拾わないための基準点。 */
+export function mutationCheckpoint(): number {
+  return mutationSequence;
+}
+
+/** checkpoint より後、この時点までに登録された書き込みを待つ。 */
+export async function flushMutations(checkpoint: number): Promise<void> {
+  const target = mutationSequence;
+  await mutationQueue;
+  const failed = [...mutationErrors.entries()]
+    .filter(([sequence]) => sequence > checkpoint && sequence <= target)
+    .sort(([a], [b]) => a - b)[0];
+  if (failed) {
+    if (recovery) await recovery;
+    else if (recoveredThrough < target) {
+      await reload().catch(() => undefined);
+      recoveredThrough = target;
+    }
+  }
+  for (const sequence of [...mutationErrors.keys()]) {
+    if (sequence <= target) mutationErrors.delete(sequence);
+  }
+  if (failed) throw failed[1];
 }
 
 // ---- 起動 ---------------------------------------------------------------
@@ -286,6 +352,15 @@ export const paymentLinks = (): PaymentLinkRow[] => snap.paymentLinks;
 export const userSettings = (): UserSettingRow[] => snap.userSettings;
 export const friendships = (): FriendshipRow[] => snap.friendships;
 
+function rememberAuthenticatedUser(user: { id: string; display_name: string; email: string }): void {
+  const existing = snap.users.find((row) => row.id === user.id);
+  if (existing) existing.display_name = user.display_name;
+  else snap.users.push({ id: user.id, display_name: user.display_name });
+  const credential = snap.credentials.find((row) => row.user_id === user.id);
+  if (credential) credential.email = user.email;
+  else snap.credentials.push({ user_id: user.id, email: user.email });
+}
+
 export function userById(id: string | null | undefined): UserRow | undefined {
   return id ? snap.users.find((u) => u.id === id) : undefined;
 }
@@ -334,6 +409,26 @@ export async function ensureUser(displayName: string): Promise<UserRow> {
   return created;
 }
 
+/** 新規登録用。同名ユーザーがいても、別人として新しい users 行を作る。 */
+export async function createUser(displayName: string): Promise<UserRow> {
+  const created = await request<UserRow>("POST", "/api/users", { display_name: displayName });
+  if (!snap.users.some((u) => u.id === created.id)) snap.users.push(created);
+  return created;
+}
+
+export async function searchUsers(query: string): Promise<{ id: string; display_name: string; email: string }[]> {
+  const res = await request<{ users: { id: string; display_name: string; email: string }[] }>(
+    "POST", "/api/users/search", { query },
+  );
+  for (const user of res.users) {
+    if (!snap.users.some((row) => row.id === user.id)) snap.users.push({ id: user.id, display_name: user.display_name });
+    if (user.email && !snap.credentials.some((row) => row.user_id === user.id)) {
+      snap.credentials.push({ user_id: user.id, email: user.email });
+    }
+  }
+  return res.users;
+}
+
 /**
  * 同期版。id をこちら側で決めてキャッシュへ入れ、登録は非同期で追いかける。
  * 呼び出し側（計画の保存など）を同期のまま保つために使う。
@@ -354,22 +449,6 @@ export function renameUser(userId: string, displayName: string): void {
   const user = userById(userId);
   if (user) user.display_name = displayName;
   send("PATCH", `/api/users/${encodeURIComponent(userId)}`, { display_name: displayName });
-}
-
-export async function saveCredentials(input: { user_id: string; email: string; salt: string; hash: string }): Promise<void> {
-  await request("PUT", `/api/users/${encodeURIComponent(input.user_id)}/credentials`, input);
-  const row = snap.credentials.find((c) => c.user_id === input.user_id);
-  if (row) row.email = input.email;
-  else snap.credentials.push({ user_id: input.user_id, email: input.email });
-}
-
-export async function lookupCredential(email: string): Promise<
-  { user_id: string; display_name: string; email: string; salt: string; hash: string; iterations: number } | null
-> {
-  const res = await request<{ credential: null | { user_id: string; display_name: string; email: string; salt: string; hash: string; iterations: number } }>(
-    "POST", "/api/users/credentials/lookup", { email },
-  );
-  return res.credential;
 }
 
 export function setPaymentLink(userId: string, handle: string): void {
@@ -421,6 +500,16 @@ export async function acceptInvite(token: string): Promise<{ planSlug: string }>
   return result;
 }
 
+export async function leavePlan(planId: string): Promise<void> {
+  await request("DELETE", `/api/plans/${encodeURIComponent(planId)}/members/me`);
+  await reload();
+}
+
+export async function transferPlanOwnership(planId: string, userId: string): Promise<void> {
+  await request("POST", `/api/plans/${encodeURIComponent(planId)}/owner-transfer`, { user_id: userId });
+  await reload();
+}
+
 /**
  * 同期版の計画作成。id をこちら側で決めてキャッシュへ入れ、登録は非同期で追いかける。
  * 計画の保存（plan-editor など）を同期のまま保つために使う。
@@ -449,12 +538,9 @@ export function updatePlan(planId: string, patch: Partial<PlanRow>): void {
   send("PATCH", `/api/plans/${encodeURIComponent(planId)}`, patch);
 }
 
-export function deletePlan(planId: string): void {
-  snap.plans = snap.plans.filter((p) => p.id !== planId);
-  snap.members = snap.members.filter((m) => m.plan_id !== planId);
-  snap.itinerary = snap.itinerary.filter((i) => i.plan_id !== planId);
-  snap.expenses = snap.expenses.filter((e) => e.plan_id !== planId);
-  send("DELETE", `/api/plans/${encodeURIComponent(planId)}`);
+export async function deletePlan(planId: string): Promise<void> {
+  await request("DELETE", `/api/plans/${encodeURIComponent(planId)}`);
+  await reload();
 }
 
 export function replaceMembers(planId: string, list: { user_id: string; role?: PlanMemberRow["role"] }[]): void {

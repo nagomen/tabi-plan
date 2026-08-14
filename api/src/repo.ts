@@ -7,6 +7,7 @@
 
 import mysql from "mysql2/promise";
 import crypto from "node:crypto";
+import { promisify } from "node:util";
 import { config } from "./config.js";
 import type { Bootstrap, ExpenseRow, ExpenseShareRow, PlanMemberRow, PlanRow, SettlementRow } from "./types.js";
 
@@ -24,6 +25,8 @@ export const pool = mysql.createPool({
 });
 
 type Row = mysql.RowDataPacket;
+const pbkdf2 = promisify(crypto.pbkdf2);
+const PASSWORD_ITERATIONS = 100_000;
 
 let idSeq = 0;
 export function newId(prefix: string): string {
@@ -60,9 +63,14 @@ async function restrictedBootstrapForUser(userId = ""): Promise<Bootstrap> {
     : "";
   const actorParams = userId ? [userId] : [];
   const publicPredicate = "(p.visibility = 'public' AND p.status = 'published')";
-  const workspacePredicate = userId ? "(pm.user_id IS NOT NULL OR p.open_editing = 1)" : "p.open_editing = 1";
-  const visibleWhere = `p.deleted_at IS NULL AND (${publicPredicate} OR ${workspacePredicate})`;
-  const workspaceWhere = `p.deleted_at IS NULL AND ${workspacePredicate}`;
+  // open_editing は公開済み計画の本文をログイン利用者が編集するための権限。
+  // メンバー・費用・精算を含むワークスペース情報は正式な参加者だけに返す。
+  const memberPredicate = userId ? "pm.user_id IS NOT NULL" : "FALSE";
+  const collaborativePredicate = userId
+    ? "(p.open_editing = 1 AND p.visibility = 'public' AND p.status = 'published')"
+    : "FALSE";
+  const visibleWhere = `p.deleted_at IS NULL AND (${publicPredicate} OR ${memberPredicate} OR ${collaborativePredicate})`;
+  const workspaceWhere = `p.deleted_at IS NULL AND ${memberPredicate}`;
 
   const [plans, workspaceRows, credentials, userSettings, friendships] = await Promise.all([
     all<PlanRow>(`SELECT p.id, p.slug, p.title, p.note, p.start_date, p.end_date, p.dates_label, p.cover_url,
@@ -194,11 +202,15 @@ export async function planRole(planId: string, userId: string): Promise<"owner" 
 }
 
 export async function canEditPlan(planId: string, userId: string): Promise<boolean> {
-  const plans = await all<{ open_editing: 0 | 1 }>("SELECT open_editing FROM plans WHERE id = ? AND deleted_at IS NULL LIMIT 1", [planId]);
+  if (!userId) return false;
+  const plans = await all<{ visibility: "public" | "invite"; status: "draft" | "published"; open_editing: 0 | 1 }>(
+    "SELECT visibility, status, open_editing FROM plans WHERE id = ? AND deleted_at IS NULL LIMIT 1",
+    [planId],
+  );
   if (!plans[0]) return false;
-  if (plans[0].open_editing) return true;
   const role = await planRole(planId, userId);
-  return role === "owner" || role === "editor";
+  if (role === "owner" || role === "editor") return true;
+  return Boolean(plans[0].open_editing && plans[0].visibility === "public" && plans[0].status === "published");
 }
 
 export async function canManagePlan(planId: string, userId: string): Promise<boolean> {
@@ -207,9 +219,14 @@ export async function canManagePlan(planId: string, userId: string): Promise<boo
   return role === "owner";
 }
 
-export async function canInvitePlan(planId: string, userId: string): Promise<boolean> {
+/** 正式メンバーとして、費用・精算を含むワークスペースを更新できるか。 */
+export async function canEditPlanWorkspace(planId: string, userId: string): Promise<boolean> {
   const role = await planRole(planId, userId);
   return role === "owner" || role === "editor";
+}
+
+export async function canInvitePlan(planId: string, userId: string): Promise<boolean> {
+  return canManagePlan(planId, userId);
 }
 
 export async function canViewPlan(planId: string, userId: string): Promise<boolean> {
@@ -219,7 +236,6 @@ export async function canViewPlan(planId: string, userId: string): Promise<boole
   );
   const plan = plans[0];
   if (!plan) return false;
-  if (plan.open_editing) return true;
   if (userId && await planRole(planId, userId)) return true;
   return plan.visibility === "public" && plan.status === "published";
 }
@@ -233,6 +249,70 @@ function tokenHash(token: string): Buffer {
   return crypto.createHash("sha256").update(token, "utf8").digest();
 }
 
+function safeUrl(value: unknown): string {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  try {
+    const parsed = new URL(raw);
+    if (parsed.protocol === "https:" || parsed.protocol === "http:") return parsed.toString().slice(0, 1024);
+  } catch {
+    /* relative URLs are allowed for local static assets */
+  }
+  if (/^(?:\.{0,2}\/|\/)[^\s<>"']{1,1024}$/.test(raw) && !raw.startsWith("//")) return raw.slice(0, 1024);
+  return "";
+}
+
+async function activeMemberIds(planId: string, conn: mysql.PoolConnection | mysql.Pool = pool): Promise<string[]> {
+  const [rows] = await conn.query<Row[]>(
+    "SELECT user_id FROM plan_members WHERE plan_id = ? AND status = 'active'",
+    [planId],
+  );
+  return (rows as unknown as { user_id: string }[]).map((row) => row.user_id);
+}
+
+async function activeMemberSet(planId: string, conn: mysql.PoolConnection | mysql.Pool = pool): Promise<Set<string>> {
+  return new Set(await activeMemberIds(planId, conn));
+}
+
+function assertMember(memberIds: Set<string>, userId: string, label: string): void {
+  if (!userId || !memberIds.has(userId)) throw new BadRequest(`${label} は有効な計画参加者である必要があります`);
+}
+
+function friendshipPair(a: string, b: string): [string, string] {
+  return a < b ? [a, b] : [b, a];
+}
+
+async function ensureAcceptedFriendship(
+  a: string,
+  b: string,
+  requestedById: string,
+  conn: mysql.PoolConnection | mysql.Pool = pool,
+): Promise<void> {
+  if (!a || !b || a === b) return;
+  const [low, high] = friendshipPair(a, b);
+  await conn.query(
+    `INSERT INTO friendships (id, user_low_id, user_high_id, requested_by_id, status, responded_at)
+     VALUES (?, ?, ?, ?, 'accepted', CURRENT_TIMESTAMP)
+     ON DUPLICATE KEY UPDATE
+       status = 'accepted',
+       responded_at = CURRENT_TIMESTAMP`,
+    [newId("frd"), low, high, requestedById],
+  );
+}
+
+async function ensurePlanMembersAreFriends(
+  planId: string,
+  requestedById: string,
+  conn: mysql.PoolConnection | mysql.Pool = pool,
+): Promise<void> {
+  const ids = Array.from(new Set(await activeMemberIds(planId, conn)));
+  for (let i = 0; i < ids.length; i += 1) {
+    for (let j = i + 1; j < ids.length; j += 1) {
+      await ensureAcceptedFriendship(ids[i], ids[j], requestedById, conn);
+    }
+  }
+}
+
 export async function createInvite(input: {
   planId: string;
   createdById: string;
@@ -241,8 +321,8 @@ export async function createInvite(input: {
 }): Promise<{ token: string }> {
   const token = crypto.randomBytes(32).toString("base64url");
   await pool.query(
-    `INSERT INTO plan_invites (id, plan_id, token_hash, role, status, invited_name, created_by_id)
-     VALUES (?, ?, ?, ?, 'pending', ?, ?)`,
+    `INSERT INTO plan_invites (id, plan_id, token_hash, role, status, invited_name, created_by_id, expires_at)
+     VALUES (?, ?, ?, ?, 'pending', ?, ?, DATE_ADD(CURRENT_TIMESTAMP, INTERVAL 30 DAY))`,
     [
       newId("inv"),
       input.planId,
@@ -257,52 +337,76 @@ export async function createInvite(input: {
 
 export async function acceptInvite(token: string, userId: string): Promise<{ planSlug: string }> {
   if (!userId) throw new BadRequest("ログインが必要です");
-  const rows = await all<{
-    id: string;
-    plan_id: string;
-    role: "editor" | "viewer";
-    status: "pending" | "accepted" | "revoked" | "expired";
-    created_by_id: string;
-    accepted_by_id: string | null;
-    expires_at: string | null;
-    slug: string;
-  }>(
-    `SELECT i.id, i.plan_id, i.role, i.status, i.created_by_id, i.accepted_by_id, i.expires_at, p.slug
-       FROM plan_invites i
-       JOIN plans p ON p.id = i.plan_id AND p.deleted_at IS NULL
-      WHERE i.token_hash = ?
-      LIMIT 1`,
-    [tokenHash(token)],
-  );
-  const invite = rows[0];
-  if (!invite) throw new BadRequest("招待リンクが無効です");
-  if (invite.status === "revoked" || invite.status === "expired") throw new BadRequest("この招待リンクは使えません");
-  if (invite.status === "accepted" && invite.accepted_by_id !== userId) throw new BadRequest("この招待リンクは既に使われています");
-  if (invite.expires_at && new Date(invite.expires_at).getTime() < Date.now()) {
-    await pool.query("UPDATE plan_invites SET status = 'expired' WHERE id = ?", [invite.id]);
-    throw new BadRequest("この招待リンクは期限切れです");
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const [rows] = await conn.query<Row[]>(
+      `SELECT i.id, i.plan_id, i.role, i.status, i.created_by_id, i.accepted_by_id, i.expires_at, p.slug
+         FROM plan_invites i
+         JOIN plans p ON p.id = i.plan_id AND p.deleted_at IS NULL
+        WHERE i.token_hash = ?
+        LIMIT 1
+        FOR UPDATE`,
+      [tokenHash(token)],
+    );
+    const invite = (rows as unknown as {
+      id: string;
+      plan_id: string;
+      role: "editor" | "viewer";
+      status: "pending" | "accepted" | "revoked" | "expired";
+      created_by_id: string;
+      accepted_by_id: string | null;
+      expires_at: string | null;
+      slug: string;
+    }[])[0];
+    if (!invite) throw new BadRequest("招待リンクが無効です");
+    if (invite.status === "revoked" || invite.status === "expired") throw new BadRequest("この招待リンクは使えません");
+    if (invite.status === "accepted" && invite.accepted_by_id !== userId) throw new BadRequest("この招待リンクは既に使われています");
+    if (invite.expires_at && new Date(invite.expires_at).getTime() < Date.now()) {
+      await conn.query("UPDATE plan_invites SET status = 'expired' WHERE id = ?", [invite.id]);
+      throw new BadRequest("この招待リンクは期限切れです");
+    }
+    await conn.query(
+      `INSERT INTO plan_members (plan_id, user_id, role, status, invited_by_id)
+       VALUES (?, ?, ?, 'active', ?)
+       ON DUPLICATE KEY UPDATE
+         role = IF(role = 'owner', role, VALUES(role)),
+         status = 'active',
+         invited_by_id = VALUES(invited_by_id)`,
+      [invite.plan_id, userId, invite.role, invite.created_by_id],
+    );
+    const [updated] = await conn.query<mysql.ResultSetHeader>(
+      `UPDATE plan_invites
+          SET status = 'accepted', accepted_by_id = ?, accepted_at = CURRENT_TIMESTAMP
+        WHERE id = ? AND status = 'pending'`,
+      [userId, invite.id],
+    );
+    if (updated.affectedRows !== 1 && invite.accepted_by_id !== userId) {
+      throw new BadRequest("この招待リンクは既に使われています");
+    }
+    await ensurePlanMembersAreFriends(invite.plan_id, userId, conn);
+    await conn.commit();
+    return { planSlug: invite.slug };
+  } catch (error) {
+    await conn.rollback();
+    throw error;
+  } finally {
+    conn.release();
   }
-  await pool.query(
-    `INSERT INTO plan_members (plan_id, user_id, role, status, invited_by_id)
-     VALUES (?, ?, ?, 'active', ?)
-     ON DUPLICATE KEY UPDATE
-       role = IF(role = 'owner', role, VALUES(role)),
-       status = 'active',
-       invited_by_id = VALUES(invited_by_id)`,
-    [invite.plan_id, userId, invite.role, invite.created_by_id],
-  );
-  await pool.query(
-    `UPDATE plan_invites
-        SET status = 'accepted', accepted_by_id = ?, accepted_at = CURRENT_TIMESTAMP
-      WHERE id = ? AND status = 'pending'`,
-    [userId, invite.id],
-  );
-  return { planSlug: invite.slug };
 }
 
 // ---- ユーザー -----------------------------------------------------------
 
 const nameKey = (s: string): string => String(s || "").trim().toLowerCase();
+const emailKey = (s: string): string => String(s || "").trim().toLowerCase();
+
+async function passwordHash(password: string, salt: Buffer, iterations = PASSWORD_ITERATIONS): Promise<Buffer> {
+  return pbkdf2(String(password || ""), salt, iterations, 32, "sha256");
+}
+
+function timingSafeEqual(a: Buffer, b: Buffer): boolean {
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
 
 export async function createUser(displayName: string, id?: string): Promise<{ id: string; display_name: string }> {
   const name = String(displayName || "").trim().slice(0, 64);
@@ -310,6 +414,62 @@ export async function createUser(displayName: string, id?: string): Promise<{ id
   const userId = id || newId("usr");
   await pool.query("INSERT INTO users (id, display_name, name_key) VALUES (?, ?, ?)", [userId, name, nameKey(name)]);
   return { id: userId, display_name: name };
+}
+
+export async function signUp(input: {
+  email: string;
+  password: string;
+  displayName: string;
+}): Promise<{ user: { id: string; display_name: string; email: string } }> {
+  const email = emailKey(input.email);
+  const displayName = String(input.displayName || "").trim().slice(0, 64) || email.split("@")[0] || "ユーザー";
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new BadRequest("メールアドレスの形式が正しくありません");
+  if (String(input.password || "").length < 8) throw new BadRequest("パスワードは8文字以上にしてください");
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const [existing] = await conn.query<Row[]>("SELECT user_id FROM user_credentials WHERE email = ? LIMIT 1", [email]);
+    if ((existing as unknown[]).length) throw new BadRequest("このメールアドレスは既に登録されています");
+    const userId = newId("usr");
+    const salt = crypto.randomBytes(16);
+    const hash = await passwordHash(input.password, salt);
+    await conn.query("INSERT INTO users (id, display_name, name_key) VALUES (?, ?, ?)", [userId, displayName, nameKey(displayName)]);
+    await conn.query(
+      `INSERT INTO user_credentials (user_id, email, password_salt, password_hash, iterations)
+       VALUES (?, ?, ?, ?, ?)`,
+      [userId, email, salt, hash, PASSWORD_ITERATIONS],
+    );
+    await conn.commit();
+    return { user: { id: userId, display_name: displayName, email } };
+  } catch (error) {
+    await conn.rollback();
+    throw error;
+  } finally {
+    conn.release();
+  }
+}
+
+export async function logIn(input: {
+  email: string;
+  password: string;
+}): Promise<{ user: { id: string; display_name: string; email: string } }> {
+  const email = emailKey(input.email);
+  const rows = await all<{
+    user_id: string; display_name: string; email: string; salt: Buffer; hash: Buffer; iterations: number;
+  }>(
+    `SELECT c.user_id, u.display_name, c.email, c.password_salt AS salt, c.password_hash AS hash, c.iterations
+       FROM user_credentials c JOIN users u ON u.id = c.user_id
+      WHERE c.email = ? LIMIT 1`,
+    [email],
+  );
+  const found = rows[0];
+  const salt = found?.salt || crypto.randomBytes(16);
+  const expected = found?.hash || crypto.randomBytes(32);
+  const candidate = await passwordHash(input.password, salt, found?.iterations || PASSWORD_ITERATIONS);
+  if (!found || !timingSafeEqual(candidate, expected)) {
+    throw new BadRequest("メールアドレスまたはパスワードが違います");
+  }
+  return { user: { id: found.user_id, display_name: found.display_name, email: found.email } };
 }
 
 /** 表示名から既存ユーザーを引き、無ければ作る（招待前でも実体を持たせる方針）。 */
@@ -330,30 +490,25 @@ export async function renameUser(userId: string, displayName: string): Promise<v
   await pool.query("UPDATE users SET display_name = ?, name_key = ? WHERE id = ?", [name, nameKey(name), userId]);
 }
 
-export async function upsertCredentials(input: {
-  user_id: string; email: string; salt: string; hash: string;
-}): Promise<void> {
-  await pool.query(
-    `INSERT INTO user_credentials (user_id, email, password_salt, password_hash)
-     VALUES (?, ?, FROM_BASE64(?), FROM_BASE64(?))
-     ON DUPLICATE KEY UPDATE email = VALUES(email),
-       password_salt = VALUES(password_salt), password_hash = VALUES(password_hash)`,
-    [input.user_id, String(input.email).toLowerCase(), input.salt, input.hash],
-  );
-}
-
-/** ログイン照合用。ハッシュは base64 で返す（比較はフロントで定数時間比較する）。 */
-export async function credentialByEmail(email: string): Promise<
-  { user_id: string; display_name: string; email: string; salt: string; hash: string; iterations: number } | null
+export async function searchUsers(query: string, actorUserId: string): Promise<
+  { id: string; display_name: string; email: string }[]
 > {
-  const rows = await all<{ user_id: string; display_name: string; email: string; salt: string; hash: string; iterations: number }>(
-    `SELECT c.user_id, u.display_name, c.email, TO_BASE64(c.password_salt) AS salt,
-            TO_BASE64(c.password_hash) AS hash, c.iterations
-       FROM user_credentials c JOIN users u ON u.id = c.user_id
-      WHERE c.email = ? LIMIT 1`,
-    [String(email || "").toLowerCase()],
+  if (!actorUserId) throw new BadRequest("ログインが必要です");
+  const q = String(query || "").trim().slice(0, 64);
+  if (!q) return [];
+  const key = nameKey(q);
+  const email = emailKey(q);
+  const rows = await all<{ id: string; display_name: string; email: string | null }>(
+    `SELECT u.id, u.display_name, CASE WHEN c.email = ? THEN c.email ELSE '' END AS email
+       FROM users u
+       LEFT JOIN user_credentials c ON c.user_id = u.id
+      WHERE u.id <> ?
+        AND (u.name_key LIKE ? OR c.email = ?)
+      ORDER BY u.created_at DESC
+      LIMIT 20`,
+    [email, actorUserId, `%${key}%`, email],
   );
-  return rows[0] || null;
+  return rows.map((row) => ({ id: row.id, display_name: row.display_name, email: row.email || "" }));
 }
 
 export async function setPaymentLink(userId: string, handle: string): Promise<void> {
@@ -378,18 +533,24 @@ export async function setUserSettings(userId: string, historyPublic: boolean): P
 
 // ---- 計画 ---------------------------------------------------------------
 
-const PLAN_FIELDS = new Set([
-  "slug", "title", "note", "start_date", "end_date", "dates_label", "cover_url",
-  "base_currency", "source", "visibility", "status", "open_editing", "owner_user_id",
+const PLAN_EDIT_FIELDS = new Set([
+  "title", "note", "start_date", "end_date", "dates_label", "cover_url", "base_currency",
+]);
+const PLAN_COLLABORATE_FIELDS = new Set([
+  "title", "note", "start_date", "end_date", "dates_label", "cover_url",
+]);
+const PLAN_MANAGE_FIELDS = new Set([
+  "slug", "source", "visibility", "status", "open_editing",
   "external_spreadsheet_id", "external_apps_script_url", "external_schema",
 ]);
+const PLAN_CREATE_FIELDS = new Set([...PLAN_EDIT_FIELDS, ...PLAN_MANAGE_FIELDS, "owner_user_id"]);
 
 export async function createPlan(input: Record<string, unknown>): Promise<{ id: string }> {
   const id = String(input.id || newId("pln"));
   const cols: string[] = ["id"];
   const vals: unknown[] = [id];
   for (const [k, v] of Object.entries(input)) {
-    if (!PLAN_FIELDS.has(k)) continue;
+    if (!PLAN_CREATE_FIELDS.has(k)) continue;
     cols.push(k);
     vals.push(v === "" ? null : v);
   }
@@ -416,11 +577,18 @@ export async function createPlan(input: Record<string, unknown>): Promise<{ id: 
   return { id };
 }
 
-export async function updatePlan(id: string, input: Record<string, unknown>): Promise<void> {
+export async function updatePlan(
+  id: string,
+  input: Record<string, unknown>,
+  scope: "collaborate" | "edit" | "manage" = "edit",
+): Promise<void> {
+  const allowedFields = scope === "manage"
+    ? new Set([...PLAN_EDIT_FIELDS, ...PLAN_MANAGE_FIELDS])
+    : scope === "edit" ? PLAN_EDIT_FIELDS : PLAN_COLLABORATE_FIELDS;
   const sets: string[] = [];
   const vals: unknown[] = [];
   for (const [k, v] of Object.entries(input)) {
-    if (!PLAN_FIELDS.has(k)) continue;
+    if (!allowedFields.has(k)) continue;
     sets.push(`${k} = ?`);
     vals.push(v === "" ? null : v);
   }
@@ -436,17 +604,100 @@ export async function deletePlan(id: string): Promise<void> {
 export async function replaceMembers(
   planId: string,
   members: { user_id: string; role?: string }[],
+  actorUserId = "",
 ): Promise<void> {
+  const byUserId = new Map<string, { user_id: string; role: "owner" | "editor" | "viewer" }>();
+  for (const member of members) {
+    const userId = String(member?.user_id || "").trim();
+    if (!userId) continue;
+    const role = member.role === "owner" || member.role === "viewer" ? member.role : "editor";
+    byUserId.set(userId, { user_id: userId, role });
+  }
+  const normalized = [...byUserId.values()];
+  const owners = normalized.filter((member) => member.role === "owner");
+  const owner = owners[0];
+  if (owners.length !== 1) throw new BadRequest("計画には owner が1人だけ必要です");
+  if (actorUserId && !normalized.some((member) => member.user_id === actorUserId && member.role === "owner")) {
+    throw new BadRequest("自分の owner 権限は残してください。所有権の移譲には専用操作が必要です");
+  }
+
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
-    await conn.query("DELETE FROM plan_members WHERE plan_id = ?", [planId]);
-    const rows = members
-      .filter((m) => m && m.user_id)
-      .map((m) => [planId, m.user_id, m.role === "owner" || m.role === "viewer" ? m.role : "editor", "active"]);
-    if (rows.length) {
-      await conn.query("INSERT INTO plan_members (plan_id, user_id, role, status) VALUES ?", [rows]);
+    const activeIds = normalized.map((member) => member.user_id);
+    const activeIn = inClause(activeIds);
+    await conn.query(
+      `UPDATE plan_members SET status = 'revoked'
+       WHERE plan_id = ? AND user_id NOT IN (${activeIn.sql})`,
+      [planId, ...activeIn.params],
+    );
+    const rows = normalized.map((member) => [planId, member.user_id, member.role, "active"]);
+    await conn.query(
+      `INSERT INTO plan_members (plan_id, user_id, role, status) VALUES ?
+       ON DUPLICATE KEY UPDATE role = VALUES(role), status = 'active'`,
+      [rows],
+    );
+    const ownerIds = normalized.filter((member) => member.role === "owner").map((member) => member.user_id);
+    const ownerIn = inClause(ownerIds);
+    const preferredOwner = normalized.some((member) => member.user_id === actorUserId && member.role === "owner")
+      ? actorUserId
+      : owner.user_id;
+    await conn.query(
+      `UPDATE plans
+       SET owner_user_id = CASE
+         WHEN owner_user_id IS NULL OR owner_user_id NOT IN (${ownerIn.sql}) THEN ?
+         ELSE owner_user_id
+       END
+       WHERE id = ?`,
+      [...ownerIn.params, preferredOwner, planId],
+    );
+    await ensurePlanMembersAreFriends(planId, actorUserId || owner.user_id, conn);
+    await conn.commit();
+  } catch (error) {
+    await conn.rollback();
+    throw error;
+  } finally {
+    conn.release();
+  }
+}
+
+export async function leavePlan(planId: string, userId: string): Promise<void> {
+  const role = await planRole(planId, userId);
+  if (!role) throw new BadRequest("この計画の参加者ではありません");
+  if (role === "owner") {
+    throw new BadRequest("所有者は脱退できません。先に所有権を移譲してください");
+  }
+  await pool.query(
+    "UPDATE plan_members SET status = 'left' WHERE plan_id = ? AND user_id = ? AND status = 'active'",
+    [planId, userId],
+  );
+}
+
+export async function transferPlanOwnership(planId: string, actorUserId: string, targetUserId: string): Promise<void> {
+  if (!targetUserId || targetUserId === actorUserId) throw new BadRequest("移譲先の参加者を指定してください");
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const [rows] = await conn.query<Row[]>(
+      `SELECT user_id, role FROM plan_members
+       WHERE plan_id = ? AND user_id IN (?, ?) AND status = 'active'
+       FOR UPDATE`,
+      [planId, actorUserId, targetUserId],
+    );
+    const members = rows as unknown as { user_id: string; role: "owner" | "editor" | "viewer" }[];
+    if (!members.some((member) => member.user_id === actorUserId && member.role === "owner")) {
+      throw new BadRequest("所有権を移譲できるのは現在の owner だけです");
     }
+    if (!members.some((member) => member.user_id === targetUserId)) {
+      throw new BadRequest("移譲先は有効な計画参加者である必要があります");
+    }
+    await conn.query(
+      `UPDATE plan_members
+       SET role = CASE WHEN user_id = ? THEN 'owner' ELSE 'editor' END
+       WHERE plan_id = ? AND (role = 'owner' OR user_id = ?)`,
+      [targetUserId, planId, targetUserId],
+    );
+    await conn.query("UPDATE plans SET owner_user_id = ? WHERE id = ?", [targetUserId, planId]);
     await conn.commit();
   } catch (error) {
     await conn.rollback();
@@ -497,9 +748,10 @@ export async function replacePlanContent(planId: string, body: {
       const rows: unknown[][] = [];
       body.links.forEach((l, i) => {
         const key = String(l.link_key || `link${i}`).slice(0, 40);
-        if (!l.url || seen.has(key)) return;
+        const url = safeUrl(l.url);
+        if (!url || seen.has(key)) return;
         seen.add(key);
-        rows.push([newId("lnk"), planId, key, String(l.label || key).slice(0, 80), String(l.url).slice(0, 1024), l.caption || null, i]);
+        rows.push([newId("lnk"), planId, key, String(l.label || key).slice(0, 80), url, l.caption || null, i]);
       });
       if (rows.length) await conn.query("INSERT INTO plan_links (id, plan_id, link_key, label, url, caption, sort_order) VALUES ?", [rows]);
     }
@@ -570,8 +822,39 @@ const CATEGORIES = new Set(["food", "transport", "lodging", "sightseeing", "comm
 const SPLIT = new Set(["equal_all", "equal_selected", "custom", "none"]);
 const PAY = new Set(["card", "cash", "transfer", "other"]);
 
+function normalizeShares(shares: ExpenseInput["shares"]): { user_id: string; amount_base_minor: number }[] {
+  const byUser = new Map<string, number>();
+  for (const share of shares || []) {
+    const userId = String(share?.user_id || "").trim();
+    const amount = Math.round(Number(share?.amount_base_minor) || 0);
+    if (!userId || amount <= 0) continue;
+    byUser.set(userId, (byUser.get(userId) || 0) + amount);
+  }
+  return [...byUser.entries()].map(([user_id, amount_base_minor]) => ({ user_id, amount_base_minor }));
+}
+
+async function validateExpenseInput(
+  planId: string,
+  input: ExpenseInput,
+  base: number,
+  conn: mysql.PoolConnection,
+): Promise<{ splitMethod: string; shares: { user_id: string; amount_base_minor: number }[] }> {
+  const splitMethod = SPLIT.has(String(input.split_method)) ? String(input.split_method) : "equal_all";
+  const memberIds = await activeMemberSet(planId, conn);
+  assertMember(memberIds, String(input.payer_user_id || ""), "支払者");
+  const shares = normalizeShares(input.shares);
+  for (const share of shares) assertMember(memberIds, share.user_id, "負担者");
+  const shareTotal = shares.reduce((sum, share) => sum + share.amount_base_minor, 0);
+  if (splitMethod === "none") {
+    if (shareTotal !== 0) throw new BadRequest("精算不要の費用には負担額を設定できません");
+  } else if (shareTotal !== base) {
+    throw new BadRequest("負担額の合計が支払額と一致していません");
+  }
+  return { splitMethod, shares };
+}
+
 /** 費用を1件追加する。行の INSERT なので、複数端末の同時追加でも衝突しない。 */
-export async function createExpense(planId: string, input: ExpenseInput): Promise<{ id: string }> {
+export async function createExpense(planId: string, input: ExpenseInput, actorUserId: string): Promise<{ id: string }> {
   const id = input.id && /^[\w-]{1,32}$/.test(input.id) ? input.id : newId("exp");
   const amount = Math.round(Number(input.amount_minor) || 0);
   const rate = Number(input.fx_rate) > 0 ? Number(input.fx_rate) : 1;
@@ -579,6 +862,7 @@ export async function createExpense(planId: string, input: ExpenseInput): Promis
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
+    const { splitMethod, shares } = await validateExpenseInput(planId, input, base, conn);
     await conn.query(
       `INSERT INTO expenses (id, plan_id, paid_on, payer_user_id, category, title, amount_minor,
          currency, fx_rate, amount_base_minor, split_method, payment_method, note, receipt_url, created_by_id)
@@ -588,12 +872,12 @@ export async function createExpense(planId: string, input: ExpenseInput): Promis
         CATEGORIES.has(String(input.category)) ? input.category : "other",
         String(input.title || "").slice(0, 200), amount,
         String(input.currency || "JPY").toUpperCase().slice(0, 3), rate, base,
-        SPLIT.has(String(input.split_method)) ? input.split_method : "equal_all",
+        splitMethod,
         PAY.has(String(input.payment_method)) ? input.payment_method : null,
-        input.note || null, input.receipt_url || null, input.created_by_id || null,
+        input.note || null, safeUrl(input.receipt_url), actorUserId || null,
       ],
     );
-    await insertShares(conn, id, input.shares);
+    await insertShares(conn, id, shares);
     await conn.commit();
     return { id };
   } catch (error) {
@@ -620,9 +904,14 @@ async function insertShares(
 export async function updateExpense(id: string, input: ExpenseInput): Promise<void> {
   const amount = Math.round(Number(input.amount_minor) || 0);
   const rate = Number(input.fx_rate) > 0 ? Number(input.fx_rate) : 1;
+  const base = Math.round(amount * rate);
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
+    const [expenseRows] = await conn.query<Row[]>("SELECT plan_id FROM expenses WHERE id = ? FOR UPDATE", [id]);
+    const planId = (expenseRows as unknown as { plan_id: string }[])[0]?.plan_id;
+    if (!planId) throw new BadRequest("費用が見つかりません");
+    const { splitMethod, shares } = await validateExpenseInput(planId, input, base, conn);
     await conn.query(
       `UPDATE expenses SET paid_on = ?, payer_user_id = ?, category = ?, title = ?, amount_minor = ?,
          currency = ?, fx_rate = ?, amount_base_minor = ?, split_method = ?, payment_method = ?,
@@ -631,14 +920,14 @@ export async function updateExpense(id: string, input: ExpenseInput): Promise<vo
         input.paid_on || null, input.payer_user_id,
         CATEGORIES.has(String(input.category)) ? input.category : "other",
         String(input.title || "").slice(0, 200), amount,
-        String(input.currency || "JPY").toUpperCase().slice(0, 3), rate, Math.round(amount * rate),
-        SPLIT.has(String(input.split_method)) ? input.split_method : "equal_all",
+        String(input.currency || "JPY").toUpperCase().slice(0, 3), rate, base,
+        splitMethod,
         PAY.has(String(input.payment_method)) ? input.payment_method : null,
-        input.note || null, input.receipt_url || null, id,
+        input.note || null, safeUrl(input.receipt_url), id,
       ],
     );
     await conn.query("DELETE FROM expense_shares WHERE expense_id = ?", [id]);
-    await insertShares(conn, id, input.shares);
+    await insertShares(conn, id, shares);
     await conn.commit();
   } catch (error) {
     await conn.rollback();
@@ -658,19 +947,36 @@ export async function restoreExpense(id: string): Promise<void> {
 }
 
 export async function createSettlement(planId: string, input: {
-  from_user_id: string; to_user_id: string; amount_base_minor: number; note?: string | null; created_by_id?: string | null;
-}): Promise<{ id: string }> {
+  from_user_id: string; to_user_id: string; amount_base_minor: number; note?: string | null;
+}, actorUserId: string): Promise<{ id: string }> {
+  const amount = Math.round(Number(input.amount_base_minor) || 0);
+  if (amount <= 0) throw new BadRequest("精算額は1以上にしてください");
+  if (input.from_user_id === input.to_user_id) throw new BadRequest("送金元と送金先は別の参加者にしてください");
+  const memberIds = await activeMemberSet(planId);
+  assertMember(memberIds, String(input.from_user_id || ""), "送金元");
+  assertMember(memberIds, String(input.to_user_id || ""), "送金先");
+  assertMember(memberIds, actorUserId, "記録者");
   const id = newId("stl");
   await pool.query(
     `INSERT INTO settlements (id, plan_id, from_user_id, to_user_id, amount_base_minor, note, created_by_id)
      VALUES (?,?,?,?,?,?,?)`,
-    [id, planId, input.from_user_id, input.to_user_id, Math.round(Number(input.amount_base_minor) || 0),
-     input.note || null, input.created_by_id || null],
+    [id, planId, input.from_user_id, input.to_user_id, amount, input.note || null, actorUserId],
   );
   return { id };
 }
 
 // ---- 友達 ---------------------------------------------------------------
+
+export async function friendshipBetween(a: string, b: string): Promise<{
+  id: string; requested_by_id: string; status: string;
+} | null> {
+  const [low, high] = friendshipPair(a, b);
+  const rows = await all<{ id: string; requested_by_id: string; status: string }>(
+    "SELECT id, requested_by_id, status FROM friendships WHERE user_low_id = ? AND user_high_id = ? LIMIT 1",
+    [low, high],
+  );
+  return rows[0] || null;
+}
 
 export async function upsertFriendship(input: {
   a: string; b: string; requested_by_id: string; status?: string;
@@ -681,8 +987,12 @@ export async function upsertFriendship(input: {
   );
   if (existing[0]) {
     await pool.query(
-      "UPDATE friendships SET status = ?, responded_at = CURRENT_TIMESTAMP WHERE id = ?",
-      [input.status || "pending", existing[0].id],
+      `UPDATE friendships
+          SET status = ?,
+              requested_by_id = CASE WHEN ? = 'pending' THEN ? ELSE requested_by_id END,
+              responded_at = CASE WHEN ? = 'pending' THEN NULL ELSE CURRENT_TIMESTAMP END
+        WHERE id = ?`,
+      [input.status || "pending", input.status || "pending", input.requested_by_id, input.status || "pending", existing[0].id],
     );
     return existing[0];
   }

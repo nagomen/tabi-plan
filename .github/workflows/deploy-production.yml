@@ -49,6 +49,13 @@ jobs:
       - name: Type-check and build
         run: npm run build
 
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist
+          if-no-files-found: error
+
   deploy:
     name: Deploy to nginx VPS
     needs: build
@@ -56,10 +63,60 @@ jobs:
     environment: production
 
     steps:
-      - name: Deploy over SSH
+      - name: Validate production settings
+        env:
+          APP_DIR: ${{ vars.PRODUCTION_APP_DIR }}
+          DOMAIN: ${{ vars.PRODUCTION_DOMAIN }}
+        run: |
+          if [ -z "$APP_DIR" ]; then
+            echo "PRODUCTION_APP_DIR repository variable is required." >&2
+            exit 1
+          fi
+          if [ -z "$DOMAIN" ]; then
+            echo "PRODUCTION_DOMAIN repository variable is required." >&2
+            exit 1
+          fi
+
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist
+
+      - name: Prepare VPS upload directory
         uses: appleboy/ssh-action@v1.2.0
         env:
-          APP_DIR: ${{ vars.PRODUCTION_APP_DIR || '~/travel-dashboard' }}
+          APP_DIR: ${{ vars.PRODUCTION_APP_DIR }}
+        with:
+          host: ${{ secrets.PRODUCTION_SSH_HOST }}
+          username: ${{ secrets.PRODUCTION_SSH_USER }}
+          key: ${{ secrets.PRODUCTION_SSH_KEY }}
+          port: ${{ secrets.PRODUCTION_SSH_PORT || 22 }}
+          envs: APP_DIR
+          script_stop: true
+          script: |
+            if [ -z "$APP_DIR" ]; then
+              echo "PRODUCTION_APP_DIR repository variable is required." >&2
+              exit 1
+            fi
+            mkdir -p "$APP_DIR/frontend"
+            rm -rf "$APP_DIR/frontend/dist"
+
+      - name: Upload build to VPS
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.PRODUCTION_SSH_HOST }}
+          username: ${{ secrets.PRODUCTION_SSH_USER }}
+          key: ${{ secrets.PRODUCTION_SSH_KEY }}
+          port: ${{ secrets.PRODUCTION_SSH_PORT || 22 }}
+          source: "frontend/dist"
+          target: ${{ vars.PRODUCTION_APP_DIR }}
+          overwrite: true
+
+      - name: Publish through nginx
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          APP_DIR: ${{ vars.PRODUCTION_APP_DIR }}
           DOMAIN: ${{ vars.PRODUCTION_DOMAIN }}
           REPO_BRANCH: ${{ inputs.ref }}
           INSTALL_NGINX: ${{ inputs.install_nginx && '1' || '0' }}
@@ -71,6 +128,10 @@ jobs:
           envs: APP_DIR,DOMAIN,REPO_BRANCH,INSTALL_NGINX
           script_stop: true
           script: |
+            if [ -z "$APP_DIR" ]; then
+              echo "PRODUCTION_APP_DIR repository variable is required." >&2
+              exit 1
+            fi
             if [ -z "$DOMAIN" ]; then
               echo "PRODUCTION_DOMAIN repository variable is required." >&2
               exit 1
@@ -80,4 +141,4 @@ jobs:
             if [ "$INSTALL_NGINX" = "1" ]; then
               args="--install-nginx"
             fi
-            DOMAIN="$DOMAIN" REPO_BRANCH="$REPO_BRANCH" bash infra/deploy-static.sh $args
+            DOMAIN="$DOMAIN" REPO_BRANCH="$REPO_BRANCH" bash infra/deploy-static.sh --skip-build $args

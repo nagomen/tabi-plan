@@ -117,7 +117,8 @@ CREATE TABLE plans (
   source          ENUM('local','google_sheets','apps_script','sample') NOT NULL DEFAULT 'local',
   visibility      ENUM('public','invite') NOT NULL DEFAULT 'public',
   status          ENUM('draft','published') NOT NULL DEFAULT 'draft',
-  -- ログイン不要の共同編集（現 openEditing）。計画ごとに持たせる。
+  -- 公開済み計画の本文を、ログイン済み利用者が共同編集できる設定。
+  -- メンバー・費用・精算・公開設定の権限は付与しない。
   open_editing    TINYINT(1)  NOT NULL DEFAULT 0,
   owner_user_id   VARCHAR(32) NULL,              -- 作成者。plan_members の owner と重複するが引きやすさのため保持
   -- 外部連携（source が google_sheets / apps_script のときだけ使う）

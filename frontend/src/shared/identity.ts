@@ -79,7 +79,17 @@ export function clearCurrentUser(): void {
 export async function identifyByName(displayName: string): Promise<db.UserRow | null> {
   const name = String(displayName || "").trim();
   if (!name) return null;
-  const user = await db.ensureUser(name);
+  const existing = db.findUserByName(name);
+  if (existing) {
+    write(existing.id);
+    return existing;
+  }
+  let user: db.UserRow;
+  try {
+    user = await db.ensureUser(name);
+  } catch {
+    return null;
+  }
   write(user.id);
   return user;
 }

@@ -1,8 +1,8 @@
 # Tabi Plan
 
-旅行の計画・共有ダッシュボードアプリです。行程・地図・チェックリスト・費用精算を仲間と共有できます。ローカル（この端末だけ）でも、Google Sheets / Apps Script 連携でも動作します。旅行ごとに `frontend/public/trip-config.js` を差し替えるだけで、コードを書き換えずに使い回せます。
+旅行の計画・共有ダッシュボードアプリです。行程・地図・チェックリスト・費用精算を仲間と共有できます。ローカル（この端末だけ）でも、共有ストア API / Google Sheets / Apps Script 連携でも動作します。旅行ごとに `frontend/public/trip-config.js` を差し替えるだけで、コードを書き換えずに使い回せます。
 
-GitHub Pages は公開サイトとして扱ってください。予約番号、宿泊先住所、電話番号、保険証券番号などの機密は置かず、Apps Script が返してよい情報だけを公開する設計です。読み取りだけの試作は Google Sheets をリンク閲覧可にする `googleSheets` モード、非公開運用やページからの書き込みは Apps Script Web App 経由の `appsScript` モードを使います。
+静的ファイルに含めた情報は公開情報として扱ってください。予約番号、宿泊先住所、電話番号、保険証券番号などの機密は置かず、非公開データは API 側の認可で制御します。GitHub Pages はプレビュー、本番は GitHub Actions から nginx 配信先へデプロイする運用を推奨します。
 
 ## ディレクトリ構成
 
@@ -46,7 +46,8 @@ npm workspaces 構成です。**ルートで `npm install` 1回**で frontend / 
 | --- | --- | --- | --- | --- |
 | デザイン確認 | `sample` | 不要 | 不可 | Google Sheets をまだ作っていない段階 |
 | 読み取りだけの試作 | `googleSheets` | リンクを知っている全員が閲覧可 | 不可 | 公開してよい行程、予算、リンクをすぐ表示したい場合 |
-| 本番運用 | `appsScript` | 非公開のままで可 | 可 | 立替入力、行程編集、レシート保存、パスワード認証を使う場合 |
+| 本番運用 | `sharedBackend.mode: "api"` | API 側の認可で制御 | 可 | 招待、参加者権限、非公開計画、費用精算を使う場合 |
+| Apps Script 運用 | `appsScript` | 非公開のままで可 | 可 | スプレッドシート中心で軽く共有する場合 |
 
 ## 新しい旅行で使う手順
 
@@ -55,8 +56,9 @@ npm workspaces 構成です。**ルートで `npm install` 1回**で frontend / 
 | 1 | 旅行 repo | `frontend/public/trip-config.example.js` を参考に `frontend/public/trip-config.js` を編集する | `tripSlug` は旅行ごとに必ず変える |
 | 2 | Apps Script | `setupTripDashboard({ ... })` を実行する | `appsScript` モードを使う場合。読み取り試作だけなら省略可 |
 | 3 | Apps Script | Web App としてデプロイする | 発行された URL を `appsScriptUrl` に入れる |
-| 4 | ローカル | ルートで `npm run build` を実行する | Pages に出す前に型検査とビルドで確認する |
-| 5 | GitHub | `main` に push する | Actions がビルド後に Pages へ公開する |
+| 4 | ローカル | ルートで `npm run build` を実行する | push 前に型検査とビルドで確認する |
+| 5 | GitHub | `restructure-frontend-backend-ts` に push する | Actions が preview Pages を更新する |
+| 6 | GitHub | `Deploy Production` を手動実行する | Actions が build 済み `frontend/dist` を nginx 配信先へ反映する |
 
 `tripSlug` は localStorage のキーに使います。旅行ごとに必ず変えてください。
 
@@ -72,25 +74,30 @@ window.TRIP_CONFIG = {
   currencies: ["JPY", "TWD", "USD"],
   sharedBackend: {
     enabled: true,
-    mode: "appsScript"
+    mode: "api",
+    apiBaseUrl: "",
+    apiToken: ""
   }
 };
 ```
 
-## GitHub Pages 自動デプロイ
+## GitHub Actions デプロイ
 
-`.github/workflows/deploy-pages.yml` は、`main` に push された `frontend/` を Vite でビルドし、出力 `frontend/dist` を GitHub Pages に自動デプロイします。`npm run build`（`tsc --noEmit` + `vite build`）が型検査とビルドを兼ねます。
+`.github/workflows/deploy-pages.yml` は preview 用です。`restructure-frontend-backend-ts` に push された `frontend/` を Vite でビルドし、出力 `frontend/dist` を GitHub Pages にデプロイします。
 
-| トリガー | ビルド対象 | 事前チェック | 初回だけ必要な設定 |
+`.github/workflows/deploy-production.yml` は本番用です。手動実行で GitHub Actions が `frontend/dist` をビルドし、SSH で VPS に転送して nginx の配信先へ atomic に反映します。
+
+| workflow | 用途 | トリガー | 反映先 |
 | --- | --- | --- | --- |
-| `main` への push（`frontend/**`） | `frontend/dist` | `npm run build`（型検査＋ビルド） | 旅行 repo の Settings > Pages で Source を `GitHub Actions` にする |
-| 手動実行 | `frontend/dist` | `npm run build` | Actions タブから `Deploy GitHub Pages` を実行する |
+| `Deploy Preview Pages` | preview | push / 手動 | GitHub Pages |
+| `Deploy Production` | production | 手動 | nginx VPS |
 
-旅行ごとに repo を分ける場合は、`frontend/public/trip-config.js` をその repo にコミットする運用で十分です。コミットしたくない場合だけ、GitHub の Repository variables に `TRIP_CONFIG_JSON` を設定してください。workflow 実行時に `tools/build-trip-config.js` が `frontend/public/trip-config.js` を生成します。
+旅行ごとに repo を分ける場合は、`frontend/public/trip-config.js` をその repo にコミットする運用で十分です。コミットしたくない場合だけ、GitHub の Repository variables に `TRIP_CONFIG_JSON` を設定してください。本番だけ設定を変える場合は `PRODUCTION_TRIP_CONFIG_JSON` を使います。
 
 | 変数 | 例 | 公開可否 |
 | --- | --- | --- |
 | `TRIP_CONFIG_JSON` | `{"tripSlug":"2703-taiwan","tripTitle":"2027年3月台湾旅行","mode":"appsScript","schema":"trip","spreadsheetId":"...","appsScriptUrl":"https://script.google.com/macros/s/.../exec","defaultParticipants":["A","B"],"currencies":["JPY","TWD"]}` | Pages に含まれるため公開情報として扱う |
+| `PRODUCTION_TRIP_CONFIG_JSON` | `{"tripSlug":"2703-taiwan","tripTitle":"2027年3月台湾旅行","mode":"local","schema":"trip","sharedBackend":{"enabled":true,"mode":"api","apiBaseUrl":"","apiToken":""}}` | nginx 配信物に含まれるため公開情報として扱う |
 
 `TRIP_CONFIG_JSON` に共有パスワード、予約番号、宿泊先住所、緊急連絡先、保険証券番号は入れないでください。
 
@@ -244,7 +251,7 @@ Apps Script が読む主なシートは次のとおりです。
 
 ## 公開範囲
 
-GitHub Pages は公開サイトとして扱うのが安全です。ページに出してよい情報だけを Apps Script が返す設計にしてください。非公開情報は Google Sheets 側で管理し、`公開ページに表示` を `FALSE` にします。
+GitHub Pages と nginx のどちらでも、静的ファイルは公開情報です。ページに出してよい設定だけを `trip-config.js` に入れ、非公開計画・参加者・費用・招待は API 側の認可で制御してください。
 
 Apps Script 側を変更した場合は、GitHub へ push するだけでは反映されません。
 

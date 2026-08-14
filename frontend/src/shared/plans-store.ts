@@ -243,6 +243,8 @@ export function upsert(meta: Partial<PlanMeta> & { slug: string }): PlanMeta | n
   if (db.isEnabled() && !db.isLoaded()) return null;
   const slug = safeSlug(meta.slug);
   const existing = db.planBySlug(slug);
+  const me = currentUserId();
+  if (!existing && db.isEnabled() && !me) return null;
   const dates = meta.dates !== undefined ? parseDatesLabel(meta.dates) : null;
   const patch: Partial<db.PlanRow> = {
     ...(meta.title !== undefined ? { title: meta.title } : {}),
@@ -260,7 +262,6 @@ export function upsert(meta: Partial<PlanMeta> & { slug: string }): PlanMeta | n
   if (existing) {
     db.updatePlan(existing.id, patch);
   } else {
-    const me = currentUserId();
     db.createPlanLocal({
       slug,
       title: meta.title || "無題の旅行",
@@ -276,27 +277,39 @@ export function upsert(meta: Partial<PlanMeta> & { slug: string }): PlanMeta | n
   if (meta.members !== undefined) {
     const row = db.planBySlug(slug);
     if (row) {
-      const ids = resolveMemberIds(meta.members);
-      const me = currentUserId();
-      const owner = row.owner_user_id || me;
-      // 自分は必ず参加者に残す（メンバー欄から自分が抜けても操作を失わない）
-      if (me && !ids.includes(me)) ids.unshift(me);
-      // 変わっていなければ書かない。参加者の入れ替えは owner 権限が要るので、
-      // タスクや行程を保存するたびに投げると 403 になる。
-      const current = memberIdsOf(row.id);
-      const same = current.length === ids.length && ids.every((id) => current.includes(id));
-      if (!same) {
-        db.replaceMembers(row.id, ids.map((id) => ({ user_id: id, role: id === owner ? "owner" : "editor" })));
+      const canReplaceMembers = Boolean(
+        me && db.members().some((member) =>
+          member.plan_id === row.id && member.user_id === me && member.role === "owner" && member.status === "active"
+        )
+      );
+      if (canReplaceMembers) {
+        const ids = meta.memberIds !== undefined
+          ? [...new Set(meta.memberIds.filter(Boolean))]
+          : resolveMemberIds(meta.members);
+        const owner = row.owner_user_id || me;
+        // 操作中の owner は必ず残す。所有権移譲は汎用のメンバー編集では扱わない。
+        if (me && !ids.includes(me)) ids.unshift(me);
+        const current = memberIdsOf(row.id);
+        const same = current.length === ids.length && ids.every((id) => current.includes(id));
+        if (!same) {
+          db.replaceMembers(row.id, ids.map((id) => {
+            const currentMember = db.members().find((member) => member.plan_id === row.id && member.user_id === id);
+            return {
+              user_id: id,
+              role: id === owner ? "owner" : currentMember?.role === "viewer" ? "viewer" : "editor",
+            };
+          }));
+        }
       }
     }
   }
   return get(slug);
 }
 
-export function remove(slug: string): void {
+export async function remove(slug: string): Promise<void> {
   const row = db.planBySlug(safeSlug(slug));
   if (!row) return;
-  db.deletePlan(row.id);
+  await db.deletePlan(row.id);
   if (getActiveSlug() === row.slug) clearActive();
 }
 
@@ -312,7 +325,7 @@ export function uniqueSlug(base: string): string {
 }
 
 /** ビュー型の計画本体を行へ戻して保存する。 */
-export function saveLocalPlan(slug: string, data: LocalPlanData): PlanMeta | null {
+export function saveLocalPlan(slug: string, data: LocalPlanData, memberIds?: string[]): PlanMeta | null {
   if (db.isEnabled() && !db.isLoaded()) return null;
   const target = safeSlug(slug);
   const trip = data.trip || ({} as TripInfo);
@@ -325,26 +338,37 @@ export function saveLocalPlan(slug: string, data: LocalPlanData): PlanMeta | nul
   }
   const existing = get(target);
 
-  upsert({
+  const canManageMembers = !existing || Boolean(
+    existing.id && currentUserId() && db.members().some((member) =>
+      member.plan_id === existing.id && member.user_id === currentUserId() && member.role === "owner" && member.status === "active"
+    )
+  );
+  const savedMeta = upsert({
     slug: target,
     title: trip.title || "無題の旅行",
     dates: trip.dates || "",
-    members: trip.members || "",
+    ...(canManageMembers ? { members: trip.members || "", ...(memberIds ? { memberIds } : {}) } : {}),
     note: trip.note || "",
     cover: (trip as { cover?: string }).cover || "",
-    source: "local",
-    published: existing ? isPublished(existing) : false,
+    ...(!existing ? { source: "local" as const, published: false } : {}),
   });
+  if (!savedMeta) return null;
 
   const row = db.planBySlug(target);
   if (!row) return null;
+  const canEditWorkspace = !existing || Boolean(
+    currentUserId() && db.members().some((member) =>
+      member.plan_id === row.id && member.user_id === currentUserId() &&
+      (member.role === "owner" || member.role === "editor") && member.status === "active"
+    )
+  );
 
   const num = (v: unknown): number | null => {
     const n = Number(v);
     return Number.isFinite(n) ? n : null;
   };
 
-  db.replacePlanContent(row.id, {
+  const planContent: db.PlanContent = {
     itinerary: (data.itinerary || []).map((it) => {
       const item = it as unknown as Record<string, unknown>;
       const kind = String(item.type || "sight");
@@ -383,7 +407,10 @@ export function saveLocalPlan(slug: string, data: LocalPlanData): PlanMeta | nul
       adopted: Boolean(c.adopted),
       votes: [...new Set((c.votes || []).map((n) => db.ensureUserLocal(n).id))],
     })),
-  });
+  };
+  db.replacePlanContent(row.id, canEditWorkspace
+    ? planContent
+    : { itinerary: planContent.itinerary, cities: planContent.cities });
 
   return get(target);
 }

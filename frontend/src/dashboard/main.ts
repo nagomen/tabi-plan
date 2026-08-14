@@ -17,12 +17,11 @@ import {
   mergeConfig,
   normalizeTripConfig,
   readGlobalTripConfig,
-  safeTripSlug,
   type TripConfig,
 } from "../shared/config";
 import * as TripPlans from "../shared/plans-store";
 import { getUser } from "../shared/user-store";
-import { canEditPlan, canViewPlan, isMemberOf, planHasOwner } from "../shared/membership";
+import { canEditPlan, canManagePlan, canViewPlan, isMemberOf, planHasOwner } from "../shared/membership";
 import { currentAccount } from "../shared/account-store";
 import { currentUserId, adoptLegacyIdentity, identifyByName } from "../shared/identity";
 import * as db from "../shared/db";
@@ -31,7 +30,7 @@ import { planCoverImage, planCoverImageForLocation } from "../shared/cover";
 import { splitNames } from "../shared/friend-store";
 import { buildInviteLink } from "../shared/invite";
 import * as ExpenseStore from "../shared/expense-store";
-import { escapeHtml, makeScopedQuery } from "../shared/dom";
+import { escapeHtml, errorMessage, makeScopedQuery, safeHref } from "../shared/dom";
 import {
   hasAuthSession as hasAuthSessionShared,
   getAuthToken as getAuthTokenShared,
@@ -133,15 +132,15 @@ function applyPlanConfig(): void {
   applyDocumentTripTitle(CONFIG.tripTitle);
 }
 
-/**
- * ログイン不要の共同編集を許す計画かどうか。
- * trip-config.js の設定はダッシュボードが開く全計画にマージされるため、
- * フラグを宣言した当の計画（同じ slug）を開いているときだけ有効にする。
- * これをしないと、他人のローカル計画まで誰でも編集できてしまう。
- */
-const OPEN_EDITING =
-  Boolean(BASE_TRIP_CONFIG.openEditing) &&
-  safeTripSlug(BASE_TRIP_CONFIG.tripSlug) === CONFIG.tripSlug;
+/** 正式メンバーではない、ログイン済みの公開共同編集者か。 */
+function isOpenEditingVisitor(): boolean {
+  const meta = TripPlans.get(CONFIG.tripSlug);
+  const row = db.planBySlug(CONFIG.tripSlug);
+  return Boolean(
+    meta && row && currentUserId() && !isMemberOf(meta) && row.open_editing &&
+    row.visibility === "public" && row.status === "published"
+  );
+}
 
 // ---- サンプルデータ -----------------------------------------------------
 
@@ -482,9 +481,9 @@ function showIdentityModal(required: boolean): Promise<boolean> {
 
     const participants = expenseParticipants(state.data || SAMPLE);
     const savedName = currentProfileName(participants) || (readProfile()?.name || "");
-    // ログイン不要の共同編集計画では、訪問者は連携元のメンバー表に載っていない。
+    // 公開共同編集者は正式メンバー表に載っていない。
     // 選択肢から選ばせると誰も自分を選べないので、自由入力（既存メンバーは候補表示）にする。
-    const freeText = OPEN_EDITING;
+    const freeText = isOpenEditingVisitor();
     const control = freeText
       ? `<input type="text" name="profileName" list="tlIdentityNames" required maxlength="24"
                autocomplete="name" placeholder="例: たろう" value="${escapeHtml(savedName)}">
@@ -783,7 +782,8 @@ function linkByKey(key: string): TripLink | Partial<TripLink> {
 }
 
 function isEditableLocalPlan(): boolean {
-  return !READ_ONLY && CONFIG.mode === "local";
+  const meta = TripPlans.get(CONFIG.tripSlug);
+  return !READ_ONLY && CONFIG.mode === "local" && Boolean(meta && isMemberOf(meta) && canEditPlan(meta));
 }
 
 function normalizePhotoUrl(value: string): string {
@@ -1977,8 +1977,8 @@ function renderBase(): void {
   const primaryLinks = primaryLinkKeys.map(linkByKey).filter((link): link is TripLink => Boolean(link.url));
   const docs = data.links.filter((link) => !["itinerary", "maps", "expenseForm", "photos", "expenseSheet"].includes(link.key)).concat(primaryLinks);
   setHtml("[data-docs]", docs.slice(0, 5).map((doc) =>
-    `<a class="tl-doc" href="${doc.url}" target="_blank" rel="noopener">
-      <span class="tl-doc-icon">${linkIcon(doc.key)}</span><b>${doc.label}</b><span>${icon("arrowTopRightOnSquare")}</span>
+    `<a class="tl-doc" href="${escapeHtml(safeHref(doc.url))}" target="_blank" rel="noopener">
+      <span class="tl-doc-icon">${linkIcon(doc.key)}</span><b>${escapeHtml(doc.label)}</b><span>${icon("arrowTopRightOnSquare")}</span>
     </a>`,
   ).join(""));
   setText("[data-links-title]", workspaceView ? "リンク・タスク" : "リンク");
@@ -1997,13 +1997,14 @@ function renderBase(): void {
 
 /** タスクを編集・保存できるのはこの端末のローカル計画のみ。 */
 function tasksEditable(): boolean {
-  return !READ_ONLY && CONFIG.mode === "local";
+  const meta = TripPlans.get(CONFIG.tripSlug);
+  return !READ_ONLY && CONFIG.mode === "local" && Boolean(meta && isMemberOf(meta) && canEditPlan(meta));
 }
 
 function canUseWorkspaceView(): boolean {
   const meta = TripPlans.get(CONFIG.tripSlug);
   if (!meta) return !READ_ONLY;
-  if (canEditPlan(meta) || isMemberOf(meta)) return true;
+  if (isMemberOf(meta)) return true;
   if (!planHasOwner(meta) && !READ_ONLY) return true;
   return false;
 }
@@ -2113,15 +2114,16 @@ function bindChecklist(): void {
 
 // ---- メンバー（参加者一覧・招待） ---------------------------------------
 
-/** 参加メンバー一覧を描画。招待はローカル計画かつ参加メンバーのみ表示。 */
+/** 参加メンバー一覧を描画。招待は owner、脱退は owner 以外の正式メンバーに表示。 */
 function renderMembers(data: TripData): void {
   const meta = TripPlans.get(CONFIG.tripSlug);
   const membersStr = (meta && meta.members) || (data.trip && data.trip.members) || "";
-  // ログイン不要の共同編集計画では、本人設定した名前をそのまま参加者として並べる
+  // 公開共同編集者は正式メンバーではないため、本人設定した名前を候補として扱う。
   // （連携元のメンバー表には載らないため、ここで補って「参加している」状態に見せる）。
-  const myName = getUser().name.trim() || (OPEN_EDITING ? (readProfile()?.name || "").trim() : "");
+  const openEditingVisitor = isOpenEditingVisitor();
+  const myName = getUser().name.trim() || (openEditingVisitor ? (readProfile()?.name || "").trim() : "");
   const names = splitNames(membersStr);
-  if (OPEN_EDITING && myName && !names.includes(myName)) names.unshift(myName);
+  if (openEditingVisitor && myName && !names.includes(myName)) names.unshift(myName);
 
   const countEl = root.querySelector<HTMLElement>("[data-members-count]");
   if (countEl) countEl.textContent = names.length ? `${names.length}人` : "";
@@ -2147,30 +2149,25 @@ function renderMembers(data: TripData): void {
   }
 
   const inviteEl = root.querySelector<HTMLElement>("[data-members-invite]");
-  if (inviteEl) inviteEl.hidden = READ_ONLY || CONFIG.mode !== "local";
+  if (inviteEl) inviteEl.hidden = READ_ONLY || CONFIG.mode !== "local" || !meta || !canManagePlan(meta);
 
   // 脱退は「名前を設定した参加メンバー」だけ（＝自分が一覧にいる）。
   const leaveEl = root.querySelector<HTMLElement>("[data-members-leave]");
-  if (leaveEl) leaveEl.hidden = READ_ONLY || !myName || !names.includes(myName);
+  if (leaveEl) leaveEl.hidden = READ_ONLY || !meta || !isMemberOf(meta) || canManagePlan(meta);
 }
 
 /** 自分をこの旅行のメンバーから外して一覧へ戻る（脱退）。 */
-function leaveTrip(): void {
+async function leaveTrip(): Promise<void> {
   if (READ_ONLY) return;
   const meta = TripPlans.get(CONFIG.tripSlug);
-  const myName = getUser().name.trim();
-  if (!meta || !myName) return;
-  const remaining = splitNames(meta.members || "").filter((n) => n !== myName);
-  const merged = remaining.join("、");
-  const data = TripPlans.getData(meta.slug);
-  if (meta.source === "local" && data) {
-    // ローカル計画: 本体データの members も更新（saveLocalPlan が meta も更新）
-    data.trip = { ...(data.trip || { title: "", dates: "", members: "", note: "" }), members: merged };
-    TripPlans.saveLocalPlan(meta.slug, data);
-  } else {
-    TripPlans.upsert({ slug: meta.slug, members: merged });
+  if (!meta || !meta.id || !isMemberOf(meta) || canManagePlan(meta)) return;
+  try {
+    await db.leavePlan(meta.id);
+    navigateWithPageTransition("plans.html");
+  } catch (error) {
+    const leaveButton = root.querySelector<HTMLButtonElement>("[data-leave-trip]");
+    if (leaveButton) flashButton(leaveButton, errorMessage(error) || "脱退できませんでした");
   }
-  navigateWithPageTransition("plans.html");
 }
 
 function flashButton(btn: HTMLButtonElement, msg: string): void {
@@ -2232,6 +2229,10 @@ async function shareTripInvite(): Promise<void> {
   const btn = root.querySelector<HTMLButtonElement>("[data-invite-share]");
   if (!meta || !planData) {
     if (btn) flashButton(btn, "招待に未対応");
+    return;
+  }
+  if (!canManagePlan(meta)) {
+    if (btn) flashButton(btn, "所有者のみ招待できます");
     return;
   }
   const nameInput = root.querySelector<HTMLInputElement>("[data-invite-name]");
@@ -2612,9 +2613,8 @@ async function syncData(isInitial: boolean, didRetryAuth?: boolean): Promise<voi
  * 持ち主が居ない計画は、名前未設定の本人までロックしないよう planHasOwner でガードする。
  */
 function computeReadOnly(): boolean {
-  // ログイン不要の共同編集計画は、?view=1 で開かれても編集できる。
-  // 「リンクを踏んだ人は全員参加者」という設定なので、閲覧専用シグナルより優先する。
-  if (OPEN_EDITING) return false;
+  // 公開共同編集はログイン済み利用者だけ。正式メンバー権限とは分離する。
+  if (isOpenEditingVisitor()) return false;
   const forcedView = new URLSearchParams(location.search).get("view") === "1";
   if (forcedView) return true;
   const meta = TripPlans.get(CONFIG.tripSlug);
@@ -2626,7 +2626,6 @@ function computeReadOnly(): boolean {
 }
 
 function computeAccessDenied(): boolean {
-  if (OPEN_EDITING) return false;
   const meta = TripPlans.get(CONFIG.tripSlug);
   return Boolean(meta) && !canViewPlan(meta!);
 }
@@ -2705,7 +2704,7 @@ async function init(): Promise<void> {
       const meta = TripPlans.get(CONFIG.tripSlug);
       const title = (meta && meta.title) || "この旅行";
       if (window.confirm(`「${title}」から脱退しますか？この操作でメンバーから外れます。`)) {
-        leaveTrip();
+        void leaveTrip();
       }
     });
   }
@@ -2735,12 +2734,12 @@ async function init(): Promise<void> {
   // リスナーは hidden でも必ず付ける: 表示されているのに何も起きないボタンは
   // 「壊れている」としか見えないため、押されたら理由を出せるようにしておく。
   qsa<HTMLElement>("[data-expense-open]").forEach((button) => {
-    button.hidden = READ_ONLY;
+    button.hidden = READ_ONLY || !canUseWorkspaceView();
     button.addEventListener("click", () => {
-      if (READ_ONLY) {
+      if (READ_ONLY || !canUseWorkspaceView()) {
         const status = root.querySelector<HTMLElement>("[data-settlement-status]");
         if (status) {
-          status.textContent = "閲覧のみの計画では費用を追加できません。";
+          status.textContent = "費用を追加できるのは計画の参加者だけです。";
           status.classList.add("is-error");
         }
         return;

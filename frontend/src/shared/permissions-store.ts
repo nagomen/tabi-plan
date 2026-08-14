@@ -378,11 +378,11 @@ export function canEdit(planSlug: string): boolean {
   const slug = safeTripSlug(planSlug);
   const row = db.planBySlug(slug);
   if (!row) return false;
-  if (row.open_editing) return true;
   const me = currentUserId();
   if (!me) return false;
   const member = db.members().find((m) => m.plan_id === row.id && m.user_id === me);
-  return Boolean(member && (member.role === "owner" || member.role === "editor"));
+  if (member && (member.role === "owner" || member.role === "editor")) return true;
+  return Boolean(row.open_editing && row.visibility === "public" && row.status === "published");
 }
 
 export function isParticipant(planSlug: string): boolean {

@@ -13,15 +13,17 @@ WEB_ROOT="${WEB_ROOT:-$WEB_BASE/current}"
 NGINX_CONF="${NGINX_CONF:-/etc/nginx/conf.d/travel-dashboard.conf}"
 KEEP_RELEASES="${KEEP_RELEASES:-5}"
 SKIP_GIT="${SKIP_GIT:-0}"
+SKIP_BUILD="${SKIP_BUILD:-0}"
 INSTALL_NGINX="${INSTALL_NGINX:-0}"
 
 for arg in "$@"; do
   case "$arg" in
     --skip-git) SKIP_GIT=1 ;;
+    --skip-build) SKIP_BUILD=1 ;;
     --install-nginx) INSTALL_NGINX=1 ;;
     --help|-h)
       cat <<'EOF'
-Usage: infra/deploy-static.sh [--skip-git] [--install-nginx]
+Usage: infra/deploy-static.sh [--skip-git] [--skip-build] [--install-nginx]
 
 Environment:
   APP_DIR       Repository directory. Default: $HOME/travel-dashboard
@@ -56,6 +58,10 @@ build_frontend() {
     git checkout "$REPO_BRANCH"
     git pull --ff-only origin "$REPO_BRANCH"
   fi
+  if [[ "$SKIP_BUILD" == "1" ]]; then
+    test -d "$APP_DIR/frontend/dist"
+    return
+  fi
   npm ci
   npm run build
 }
@@ -73,10 +79,10 @@ publish_release() {
 }
 
 main() {
+  build_frontend
   if [[ "$INSTALL_NGINX" == "1" ]]; then
     render_nginx
   fi
-  build_frontend
   publish_release
 }
 

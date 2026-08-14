@@ -19,6 +19,12 @@ function list(name: string): string[] {
     .filter(Boolean);
 }
 
+const apiToken = required("API_TOKEN");
+const sessionSecret = required("SESSION_SECRET");
+if (sessionSecret === apiToken) {
+  throw new Error("SESSION_SECRET は公開 API_TOKEN とは別の十分に長い秘密値にしてください");
+}
+
 export const config = {
   port: Number(optional("PORT", "8001")),
   host: optional("HOST", "127.0.0.1"),
@@ -32,7 +38,13 @@ export const config = {
   },
 
   /** 静的サイトから呼ぶので、この値はブラウザに見える。総当たり避け程度の意味しかない。 */
-  apiToken: required("API_TOKEN"),
+  apiToken,
+
+  /** ログインセッション署名用。API_TOKEN は静的サイトに露出するため絶対に流用しない。 */
+  sessionSecret,
+
+  /** 旧 KV ストアの管理用トークン。未設定なら /api/store は無効。 */
+  legacyStoreToken: optional("LEGACY_STORE_TOKEN", ""),
 
   /** CORS 許可オリジン。GitHub Pages のオリジンを入れる。 */
   allowedOrigins: list("ALLOWED_ORIGINS"),

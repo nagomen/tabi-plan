@@ -3,15 +3,12 @@
 // 保存は backend（差し替え口）経由なので、dev では data/store/trip-dashboard-accounts.json、
 // 本番では localStorage に入る。将来 backend.ts を API/DB 実装へ差し替えれば、そのまま移行できる。
 //
-// セキュリティについての重要な注意:
-//   - これは「サーバーが無い段階」のプロトタイプ認証であり、本物の認証ではない。
-//     アカウント一覧（ハッシュ含む）はクライアントから読めてしまう。
-//   - それでもパスワードは平文では保存しない。PBKDF2(SHA-256, 10万回, ランダムソルト)で
-//     ハッシュ化して保存し、照合は派生ハッシュの定数時間比較で行う。
-//   - 将来 backend を本物のサーバー実装に差し替えたら、署名・検証はサーバー側で行うこと。
-//     セッションは httpOnly Cookie / サーバー発行トークンへ移す。
+// API 有効時はサーバー発行セッションでログインする。
+// ローカル保存モードでは従来どおり PBKDF2 ハッシュを使うが、共有用途では API を使う前提。
 
 import * as Backend from "./backend";
+import * as db from "./db";
+import { setCurrentUser, clearCurrentUser } from "./identity";
 import { setUserName } from "./user-store";
 
 const ACCOUNTS_KEY = "trip-dashboard-accounts"; // 共有（dev: data/store のファイル）
@@ -40,6 +37,7 @@ interface Session {
   userId: string;
   email: string;
   name: string;
+  token?: string;
 }
 
 // ---- base64 ⇔ bytes -----------------------------------------------------
@@ -105,6 +103,20 @@ function toPublic(record: AccountRecord): Account {
   return { id: record.id, email: record.email, name: record.name, createdAt: record.createdAt };
 }
 
+function credentialToAccount(credential: {
+  id?: string;
+  user_id?: string;
+  display_name: string;
+  email: string;
+}): Account {
+  return {
+    id: credential.id || credential.user_id || "",
+    email: credential.email,
+    name: credential.display_name,
+    createdAt: "",
+  };
+}
+
 function newId(): string {
   return "usr_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 }
@@ -116,7 +128,7 @@ function readSession(): Session | null {
     const raw = localStorage.getItem(SESSION_KEY);
     if (!raw) return null;
     const s = JSON.parse(raw) as Partial<Session>;
-    return s && s.userId ? { userId: s.userId, email: s.email || "", name: s.name || "" } : null;
+    return s && s.userId ? { userId: s.userId, email: s.email || "", name: s.name || "", token: s.token || "" } : null;
   } catch {
     return null;
   }
@@ -149,9 +161,20 @@ export function isWeakPassword(password: string): boolean {
 /** メールアドレスで登録する。既存・不正値は Error を投げる。成功でログイン状態にする。 */
 export async function signUp(email: string, password: string, name: string): Promise<Account> {
   await Backend.preload();
+  if (db.isEnabled() && !db.isLoaded()) await db.load();
   const mail = normalizeEmail(email);
   if (!isValidEmail(mail)) throw new Error("メールアドレスの形式が正しくありません");
   if (isWeakPassword(password)) throw new Error("パスワードは8文字以上にしてください");
+  if (db.isEnabled()) {
+    const result = await db.authSignUp({
+      email: mail,
+      password,
+      display_name: (name || "").trim() || mail.split("@")[0],
+    });
+    const account = credentialToAccount(result.user);
+    startSession(account, result.session);
+    return account;
+  }
   const accounts = readAccounts();
   if (accounts.some((a) => normalizeEmail(a.email) === mail)) {
     throw new Error("このメールアドレスは既に登録されています");
@@ -175,7 +198,14 @@ export async function signUp(email: string, password: string, name: string): Pro
 /** ログイン。資格情報が誤っていれば Error を投げる。 */
 export async function logIn(email: string, password: string): Promise<Account> {
   await Backend.preload();
+  if (db.isEnabled() && !db.isLoaded()) await db.load();
   const mail = normalizeEmail(email);
+  if (db.isEnabled()) {
+    const result = await db.authLogIn({ email: mail, password });
+    const account = credentialToAccount(result.user);
+    startSession(account, result.session);
+    return account;
+  }
   const record = readAccounts().find((a) => normalizeEmail(a.email) === mail);
   // 存在しなくてもダミーで派生を回し、応答時間でユーザー有無を漏らさない
   const salt = record ? record.salt : randomSalt();
@@ -187,14 +217,16 @@ export async function logIn(email: string, password: string): Promise<Account> {
   return toPublic(record);
 }
 
-function startSession(record: AccountRecord): void {
-  writeSession({ userId: record.id, email: record.email, name: record.name });
+function startSession(record: AccountRecord | Account, token = ""): void {
+  writeSession({ userId: record.id, email: record.email, name: record.name, token });
+  setCurrentUser(record.id);
   // 既存の「本人」判定（メンバー表示など）と連動させる
   setUserName(record.name);
 }
 
 export function logOut(): void {
   writeSession(null);
+  clearCurrentUser();
   // セッションだけ消すと、旧来の名前ベース判定が前ユーザーのまま残る。
   setUserName("");
   clearDeviceProfiles();
@@ -224,6 +256,8 @@ export function currentAccount(): Account | null {
   if (!session) return null;
   const record = readAccounts().find((a) => a.id === session.userId);
   if (record) return toPublic(record);
+  const user = db.userById(session.userId);
+  if (user) return { id: user.id, email: session.email, name: user.display_name, createdAt: "" };
   // アカウント一覧側が見つからない場合でもセッション情報で最低限返す
   return { id: session.userId, email: session.email, name: session.name, createdAt: "" };
 }
@@ -237,26 +271,57 @@ export function findAccountByEmail(email: string): Account | null {
   const mail = normalizeEmail(email);
   if (!mail) return null;
   const record = readAccounts().find((a) => normalizeEmail(a.email) === mail);
-  return record ? toPublic(record) : null;
+  if (record) return toPublic(record);
+  const credential = db.credentials().find((row) => normalizeEmail(row.email) === mail);
+  const user = credential ? db.userById(credential.user_id) : undefined;
+  return user && credential ? { id: user.id, email: credential.email, name: user.display_name, createdAt: "" } : null;
 }
 
 /** id 指定でアカウントを探す（友達一覧の表示情報解決用）。 */
 export function findAccountById(id: string): Account | null {
   if (!id) return null;
   const record = readAccounts().find((a) => a.id === id);
-  return record ? toPublic(record) : null;
+  if (record) return toPublic(record);
+  const user = db.userById(id);
+  const credential = db.credentials().find((row) => row.user_id === id);
+  return user ? { id: user.id, email: credential?.email || "", name: user.display_name, createdAt: "" } : null;
 }
 
-/** 名前/メールの部分一致でアカウントを検索する（友達申請の候補探し用）。 */
-export function searchAccounts(query: string, opts: { excludeSelf?: boolean } = {}): Account[] {
+function accountsFromSnapshot(query: string, opts: { excludeSelf?: boolean } = {}): Account[] {
   const q = String(query || "").trim().toLowerCase();
   if (!q) return [];
   const selfId = opts.excludeSelf ? currentAccount()?.id : undefined;
-  return readAccounts()
+  const local = readAccounts()
     .filter((a) => a.id !== selfId)
     .filter((a) => a.name.toLowerCase().includes(q) || normalizeEmail(a.email).includes(q))
-    .slice(0, 20)
     .map(toPublic);
+  const remote = db.users()
+    .filter((user) => user.id !== selfId)
+    .map((user) => {
+      const credential = db.credentials().find((row) => row.user_id === user.id);
+      return { id: user.id, email: credential?.email || "", name: user.display_name, createdAt: "" };
+    })
+    .filter((account) => account.name.toLowerCase().includes(q) || normalizeEmail(account.email).includes(q));
+  return Array.from(new Map([...local, ...remote].map((account) => [account.id, account])).values()).slice(0, 20);
+}
+
+/** 名前/メールの部分一致でアカウントを検索する（既に読み込まれた情報のみ）。 */
+export function searchAccounts(query: string, opts: { excludeSelf?: boolean } = {}): Account[] {
+  return accountsFromSnapshot(query, opts);
+}
+
+/** サーバー側の公開範囲に沿ってユーザー検索し、候補をスナップショットへ反映して返す。 */
+export async function searchAccountsRemote(query: string, opts: { excludeSelf?: boolean } = {}): Promise<Account[]> {
+  const q = String(query || "").trim();
+  if (!q) return [];
+  if (db.isEnabled()) {
+    try {
+      await db.searchUsers(q);
+    } catch {
+      /* 検索 API が使えない場合は手元のスナップショットだけで返す */
+    }
+  }
+  return accountsFromSnapshot(q, opts);
 }
 
 /** ログイン中アカウントの表示名を更新する（プロフィール編集用）。 */
@@ -265,10 +330,17 @@ export function updateName(name: string): Account | null {
   if (!session) return null;
   const accounts = readAccounts();
   const i = accounts.findIndex((a) => a.id === session.userId);
-  if (i < 0) return null;
+  if (i < 0) {
+    const nextName = (name || "").trim() || session.name;
+    writeSession({ ...session, name: nextName });
+    setUserName(nextName);
+    if (db.isEnabled()) void db.renameUser(session.userId, nextName);
+    return { id: session.userId, email: session.email, name: nextName, createdAt: "" };
+  }
   accounts[i] = { ...accounts[i], name: (name || "").trim() || accounts[i].name };
   writeAccounts(accounts);
   writeSession({ ...session, name: accounts[i].name });
   setUserName(accounts[i].name);
+  if (db.isEnabled()) void db.renameUser(session.userId, accounts[i].name);
   return toPublic(accounts[i]);
 }

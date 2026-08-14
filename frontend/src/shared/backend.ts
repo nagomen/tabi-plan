@@ -74,6 +74,7 @@ const deferredKeys = new Set<string>();
 function apiPersist(key: string, value: unknown): void {
   const api = apiConfig();
   if (!api) return;
+  if (sharedApiEnabled()) return;
   // サーバーを読み終える前に書くと、まだ手元に無いデータを空で上書きしてしまう。
   // 起動時のマイグレーション（ensureSeed / migrateExistingToPublic）が
   // preload 完了前に走るため、実際に共有中の計画一覧が消える事故が起きた。
@@ -120,6 +121,7 @@ function apiPersist(key: string, value: unknown): void {
 function apiDelete(key: string): void {
   const api = apiConfig();
   if (!api) return;
+  if (sharedApiEnabled()) return;
   void fetch(`${api.base}/api/store/${encodeURIComponent(key)}`, {
     method: "DELETE",
     headers: apiHeaders(api.token),
@@ -136,6 +138,7 @@ function apiDelete(key: string): void {
 async function apiLoadAll(): Promise<void> {
   const api = apiConfig();
   if (!api) return;
+  if (sharedApiEnabled()) return;
   const res = await fetch(`${api.base}/api/store`, { headers: apiHeaders(api.token) });
   if (!res.ok) throw new Error(`共有ストアの取得に失敗しました (HTTP ${res.status})`);
   const data = (await res.json()) as {

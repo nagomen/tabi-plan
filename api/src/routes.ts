@@ -3,14 +3,16 @@
 //   GET    /api/bootstrap                    起動時に全データを1往復で取得
 //   POST   /api/users                        { display_name } / { display_name, ensure:true }
 //   PATCH  /api/users/<id>                   { display_name }
-//   PUT    /api/users/<id>/credentials       { email, salt, hash }
-//   POST   /api/users/credentials/lookup     { email } → 照合材料（ハッシュ比較はクライアント）
+//   POST   /api/auth/signup                  { email, password, display_name } → server.ts
+//   POST   /api/auth/login                   { email, password } → server.ts
 //   PUT    /api/users/<id>/payment-link      { handle }
 //   PUT    /api/users/<id>/settings          { history_public }
 //   POST   /api/plans                        計画を作る
 //   PATCH  /api/plans/<id>                   メタ更新
 //   DELETE /api/plans/<id>                   論理削除
 //   PUT    /api/plans/<id>/members           参加者を一括置換
+//   POST   /api/plans/<id>/owner-transfer    所有権を参加者へ移譲
+//   DELETE /api/plans/<id>/members/me        自分が計画から脱退
 //   PUT    /api/plans/<id>/content           行程・都市・リンク・チェックリスト・候補を一括置換
 //   POST   /api/plans/<id>/views             閲覧を1加算
 //   POST   /api/plans/<id>/invites           招待リンクを作る
@@ -33,6 +35,14 @@ type Body = Record<string, unknown>;
 
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
 const arr = (v: unknown): Record<string, unknown>[] => (Array.isArray(v) ? v : []);
+const PLAN_MANAGE_FIELDS = new Set([
+  "slug", "source", "visibility", "status", "open_editing", "owner_user_id",
+  "external_spreadsheet_id", "external_apps_script_url", "external_schema",
+]);
+const PLAN_EDIT_FIELDS = new Set([
+  "title", "note", "start_date", "end_date", "dates_label", "cover_url", "base_currency",
+]);
+const PLAN_PATCH_FIELDS = new Set([...PLAN_EDIT_FIELDS, ...PLAN_MANAGE_FIELDS]);
 
 async function forbiddenUnless(ok: boolean | Promise<boolean>): Promise<Handled | null> {
   return await ok ? null : { status: 403, body: { error: "forbidden" } };
@@ -41,7 +51,7 @@ async function forbiddenUnless(ok: boolean | Promise<boolean>): Promise<Handled 
 async function requireExpenseEdit(expenseId: string, actorUserId: string): Promise<Handled | null> {
   const planId = await repo.planIdForExpense(expenseId);
   if (!planId) return { status: 404, body: { error: "not found" } };
-  return forbiddenUnless(repo.canEditPlan(planId, actorUserId));
+  return forbiddenUnless(repo.canEditPlanWorkspace(planId, actorUserId));
 }
 
 export async function route(method: string, path: string, body: Body, actorUserId = ""): Promise<Handled | null> {
@@ -52,9 +62,14 @@ export async function route(method: string, path: string, body: Body, actorUserI
 
   // ---- ユーザー ----
   if (method === "POST" && path === "/api/users") {
+    if (!actorUserId) return { status: 403, body: { error: "forbidden" } };
     const name = str(body.display_name);
     const user = body.ensure ? await repo.ensureUserByName(name) : await repo.createUser(name, str(body.id) || undefined);
     return { status: 200, body: user };
+  }
+  if (method === "POST" && path === "/api/users/search") {
+    if (!actorUserId) return { status: 403, body: { error: "forbidden" } };
+    return { status: 200, body: { users: await repo.searchUsers(str(body.query), actorUserId) } };
   }
   let m = /^\/api\/users\/([\w-]{1,32})$/.exec(path);
   if (m && method === "PATCH") {
@@ -64,16 +79,10 @@ export async function route(method: string, path: string, body: Body, actorUserI
   }
   m = /^\/api\/users\/([\w-]{1,32})\/credentials$/.exec(path);
   if (m && method === "PUT") {
-    if (actorUserId && m[1] !== actorUserId) return { status: 403, body: { error: "forbidden" } };
-    await repo.upsertCredentials({
-      user_id: m[1], email: str(body.email), salt: str(body.salt), hash: str(body.hash),
-    });
-    return { status: 200, body: { ok: true } };
+    return { status: 410, body: { error: "credentials are managed by /api/auth" } };
   }
   if (method === "POST" && path === "/api/users/credentials/lookup") {
-    const found = await repo.credentialByEmail(str(body.email));
-    // 見つからなくても 200 を返し、応答時間と形で存在有無を漏らさない
-    return { status: 200, body: { credential: found } };
+    return { status: 410, body: { error: "credentials lookup is disabled" } };
   }
   m = /^\/api\/users\/([\w-]{1,32})\/payment-link$/.exec(path);
   if (m && method === "PUT") {
@@ -95,9 +104,20 @@ export async function route(method: string, path: string, body: Body, actorUserI
   }
   m = /^\/api\/plans\/([\w-]{1,32})$/.exec(path);
   if (m && method === "PATCH") {
-    const denied = await forbiddenUnless(repo.canEditPlan(m[1], actorUserId));
+    if (Object.prototype.hasOwnProperty.call(body, "owner_user_id")) {
+      return { status: 400, body: { error: "owner_user_id はこのAPIでは変更できません" } };
+    }
+    const unknownFields = Object.keys(body).filter((key) => !PLAN_PATCH_FIELDS.has(key));
+    if (unknownFields.length) {
+      return { status: 400, body: { error: `更新できない項目です: ${unknownFields.join(", ")}` } };
+    }
+    const managesPlan = Object.keys(body).some((key) => PLAN_MANAGE_FIELDS.has(key));
+    const memberEditor = await repo.canEditPlanWorkspace(m[1], actorUserId);
+    const denied = await forbiddenUnless(managesPlan
+      ? repo.canManagePlan(m[1], actorUserId)
+      : memberEditor || repo.canEditPlan(m[1], actorUserId));
     if (denied) return denied;
-    await repo.updatePlan(m[1], body);
+    await repo.updatePlan(m[1], body, managesPlan ? "manage" : memberEditor ? "edit" : "collaborate");
     return { status: 200, body: { ok: true } };
   }
   if (m && method === "DELETE") {
@@ -110,14 +130,32 @@ export async function route(method: string, path: string, body: Body, actorUserI
   if (m && method === "PUT") {
     const denied = await forbiddenUnless(repo.canManagePlan(m[1], actorUserId));
     if (denied) return denied;
-    await repo.replaceMembers(m[1], arr(body.members) as { user_id: string; role?: string }[]);
+    await repo.replaceMembers(m[1], arr(body.members) as { user_id: string; role?: string }[], actorUserId);
+    return { status: 200, body: { ok: true } };
+  }
+  m = /^\/api\/plans\/([\w-]{1,32})\/members\/me$/.exec(path);
+  if (m && method === "DELETE") {
+    if (!actorUserId) return { status: 403, body: { error: "forbidden" } };
+    await repo.leavePlan(m[1], actorUserId);
+    return { status: 200, body: { ok: true } };
+  }
+  m = /^\/api\/plans\/([\w-]{1,32})\/owner-transfer$/.exec(path);
+  if (m && method === "POST") {
+    const denied = await forbiddenUnless(repo.canManagePlan(m[1], actorUserId));
+    if (denied) return denied;
+    await repo.transferPlanOwnership(m[1], actorUserId, str(body.user_id));
     return { status: 200, body: { ok: true } };
   }
   m = /^\/api\/plans\/([\w-]{1,32})\/content$/.exec(path);
   if (m && method === "PUT") {
-    const denied = await forbiddenUnless(repo.canEditPlan(m[1], actorUserId));
-    if (denied) return denied;
-    await repo.replacePlanContent(m[1], body as Parameters<typeof repo.replacePlanContent>[1]);
+    const memberEditor = await repo.canEditPlanWorkspace(m[1], actorUserId);
+    if (!memberEditor) {
+      const denied = await forbiddenUnless(repo.canEditPlan(m[1], actorUserId));
+      if (denied) return denied;
+    }
+    // 公開共同編集者は旅行本文だけを変更できる。非公開リンクやタスクは正式メンバー用。
+    const content = memberEditor ? body : { itinerary: body.itinerary, cities: body.cities };
+    await repo.replacePlanContent(m[1], content as Parameters<typeof repo.replacePlanContent>[1]);
     return { status: 200, body: { ok: true } };
   }
   m = /^\/api\/plans\/([\w-]{1,32})\/views$/.exec(path);
@@ -147,19 +185,19 @@ export async function route(method: string, path: string, body: Body, actorUserI
   }
   m = /^\/api\/plans\/([\w-]{1,32})\/expenses$/.exec(path);
   if (m && method === "POST") {
-    const denied = await forbiddenUnless(repo.canEditPlan(m[1], actorUserId));
+    const denied = await forbiddenUnless(repo.canEditPlanWorkspace(m[1], actorUserId));
     if (denied) return denied;
-    return { status: 200, body: await repo.createExpense(m[1], body as unknown as repo.ExpenseInput) };
+    return { status: 200, body: await repo.createExpense(m[1], body as unknown as repo.ExpenseInput, actorUserId) };
   }
   m = /^\/api\/plans\/([\w-]{1,32})\/settlements$/.exec(path);
   if (m && method === "POST") {
-    const denied = await forbiddenUnless(repo.canEditPlan(m[1], actorUserId));
+    const denied = await forbiddenUnless(repo.canEditPlanWorkspace(m[1], actorUserId));
     if (denied) return denied;
     return {
       status: 200,
       body: await repo.createSettlement(m[1], body as unknown as {
         from_user_id: string; to_user_id: string; amount_base_minor: number;
-      }),
+      }, actorUserId),
     };
   }
 
@@ -187,12 +225,32 @@ export async function route(method: string, path: string, body: Body, actorUserI
 
   // ---- 友達 ----
   if (method === "POST" && path === "/api/friendships") {
-    if (!actorUserId || str(body.requested_by_id) !== actorUserId) return { status: 403, body: { error: "forbidden" } };
-    if (![str(body.a), str(body.b)].includes(actorUserId)) return { status: 403, body: { error: "forbidden" } };
+    if (!actorUserId) return { status: 403, body: { error: "forbidden" } };
+    const a = str(body.a);
+    const b = str(body.b);
+    const requestedBy = str(body.requested_by_id);
+    const status = str(body.status) || "pending";
+    if (![a, b].includes(actorUserId)) return { status: 403, body: { error: "forbidden" } };
+    const existing = await repo.friendshipBetween(a, b);
+    if (status === "pending") {
+      if (requestedBy !== actorUserId) return { status: 403, body: { error: "forbidden" } };
+    } else if (status === "accepted" || status === "declined") {
+      if (!existing || existing.status !== "pending" || existing.requested_by_id === actorUserId) {
+        return { status: 403, body: { error: "forbidden" } };
+      }
+    } else if (status === "canceled") {
+      if (!existing || existing.status !== "pending" || existing.requested_by_id !== actorUserId) {
+        return { status: 403, body: { error: "forbidden" } };
+      }
+    } else if (status === "removed") {
+      if (!existing || existing.status !== "accepted") return { status: 403, body: { error: "forbidden" } };
+    } else {
+      return { status: 400, body: { error: "invalid friendship status" } };
+    }
     return {
       status: 200,
       body: await repo.upsertFriendship({
-        a: str(body.a), b: str(body.b), requested_by_id: str(body.requested_by_id), status: str(body.status) || undefined,
+        a, b, requested_by_id: requestedBy, status,
       }),
     };
   }

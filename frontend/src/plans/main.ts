@@ -30,6 +30,7 @@ import {
 } from "../shared/apps-script";
 import * as Permissions from "../shared/permissions-store";
 import { isIdentified } from "../shared/identity";
+import { canEditPlan, ownerNameOf, roleOf } from "../shared/membership";
 
 // ---- 補助型 -------------------------------------------------------------
 
@@ -330,18 +331,7 @@ function compactLocationLabel(meta: PlanMeta, max = 3): string {
 }
 
 function creatorName(meta: PlanMeta): string {
-  const store = Permissions.readPermissionStore();
-  const owner = store.planPermissions
-    .filter((row) => row.planSlug === meta.slug && row.status === "active" && row.role === "owner" && row.displayName)
-    .sort((a, b) => {
-      if (a.source === "owner" && b.source !== "owner") return -1;
-      if (a.source !== "owner" && b.source === "owner") return 1;
-      return Date.parse(a.createdAt || "") - Date.parse(b.createdAt || "");
-    })[0];
-  const inviteCreator = store.planInvites
-    .filter((row) => row.planSlug === meta.slug && row.createdByName)
-    .sort((a, b) => Date.parse(a.createdAt || "") - Date.parse(b.createdAt || ""))[0];
-  return owner?.displayName || inviteCreator?.createdByName || splitNames(meta.members)[0] || "作成者不明";
+  return ownerNameOf(meta) || splitNames(meta.members)[0] || "作成者不明";
 }
 
 function personHref(name: string): string {
@@ -585,7 +575,7 @@ function renderSchedule(plan: PlanMeta | undefined): void {
     '<div class="schedule-head-main"><span class="schedule-head-kicker">Itinerary</span>' +
     '<b>' + escapeHtml(plan.title || "無題の旅行") + '</b>' +
     '<span class="schedule-head-meta">' + escapeHtml([plan.dates, locationLabel(plan)].filter(Boolean).join(" ・ ") || "日程情報") + '</span></div>' +
-    '<a href="' + planHref(plan, !Permissions.canEdit(plan.slug)) + '">旅行計画を開く ' + icon("arrowTopRightOnSquare") + '</a></div>';
+    '<a href="' + planHref(plan, !canEditPlan(plan)) + '">旅行計画を開く ' + icon("arrowTopRightOnSquare") + '</a></div>';
   if (!items.length) {
     locationScheduleEl.innerHTML = head + emptyList("この計画の日程データはまだありません。");
     return;
@@ -763,8 +753,8 @@ function rowHtml(
     variant === "public"
       ? creatorLinkHtml(meta, "plan-author")
       : "";
-  const openHref = planHref(meta, variant === "public" || !Permissions.canEdit(meta.slug));
-  const role = Permissions.permissionFor(meta.slug)?.role;
+  const openHref = planHref(meta, variant === "public" || !canEditPlan(meta));
+  const role = roleOf(meta);
   const roleBadge = role
     ? '<span class="role-badge ' + role + '">' + escapeHtml(Permissions.roleLabel(role)) + "</span>"
     : "";
@@ -780,16 +770,16 @@ function rowHtml(
       ? '<button class="plan-menu-item" type="button" data-dup>' +
         icon("documentDuplicate") +
         "<span>自分の計画に複製</span></button>"
-      : (isLocal || meta.source === "appsScript"
+      : ((role === "owner" || role === "editor") && (isLocal || meta.source === "appsScript")
           ? '<button class="plan-menu-item" type="button" data-edit>' + icon("pencilSquare") + "<span>編集</span></button>"
           : "") +
-        (isLocal
+        (role === "owner" && isLocal
           ? '<button class="plan-menu-item" type="button" data-publish>' + icon("globeAlt") + "<span>公開</span></button>"
           : "") +
         '<button class="plan-menu-item" type="button" data-dup>' +
         icon("documentDuplicate") +
         "<span>複製</span></button>" +
-        (meta.builtIn
+        (meta.builtIn || role !== "owner"
           ? ""
           : '<button class="plan-menu-item danger" type="button" data-del>' + icon("trash") + "<span>削除</span></button>");
 
@@ -1060,8 +1050,10 @@ hub.addEventListener("click", (event) => {
     const meta = TripPlans.get(slug);
     const name = meta && meta.title ? meta.title : "この計画";
     if (window.confirm("「" + name + "」を削除しますか？この操作は元に戻せません。")) {
-      TripPlans.remove(slug);
-      render();
+      void TripPlans.remove(slug).then(
+        () => render(),
+        (error) => showToast("削除できませんでした: " + errorMessage(error), true),
+      );
     }
     return;
   }

@@ -28,6 +28,19 @@ function memberRow(plan: PlanMeta): db.PlanMemberRow | undefined {
   return db.members().find((m) => m.plan_id === planId && m.user_id === me);
 }
 
+export function roleOf(plan: PlanMeta): db.PlanMemberRow["role"] | null {
+  return memberRow(plan)?.role || null;
+}
+
+export function ownerNameOf(plan: PlanMeta): string {
+  const planId = plan.id || db.planBySlug(plan.slug)?.id;
+  const stored = planId ? db.planById(planId) : undefined;
+  const ownerId = stored?.owner_user_id || db.members().find(
+    (member) => member.plan_id === planId && member.role === "owner" && member.status === "active",
+  )?.user_id;
+  return ownerId ? db.nameOf(ownerId) : "";
+}
+
 /** 自分がこの計画の参加者か。利用者が未確定なら false。 */
 export function isMemberOf(plan: PlanMeta): boolean {
   return Boolean(memberRow(plan));
@@ -49,15 +62,25 @@ export function isMine(plan: PlanMeta): boolean {
 export function planHasOwner(plan: PlanMeta): boolean {
   const planId = plan.id || db.planBySlug(plan.slug)?.id;
   if (!planId) return false;
-  return db.members().some((m) => m.plan_id === planId);
+  if (db.planById(planId)?.owner_user_id) return true;
+  return db.members().some((member) =>
+    member.plan_id === planId && member.role === "owner" && member.status === "active"
+  );
 }
 
 export function canEditPlan(plan: PlanMeta): boolean {
   const planId = plan.id || db.planBySlug(plan.slug)?.id;
-  // ログイン不要の共同編集計画は誰でも編集できる
-  if (planId && db.planById(planId)?.open_editing) return true;
   const row = memberRow(plan);
-  return row ? row.role === "owner" || row.role === "editor" : false;
+  if (row) return row.role === "owner" || row.role === "editor";
+  const stored = planId ? db.planById(planId) : undefined;
+  return Boolean(
+    currentUserId() && stored?.open_editing && stored.visibility === "public" && stored.status === "published"
+  );
+}
+
+/** 公開範囲・参加者・外部連携を管理できるのは owner だけ。 */
+export function canManagePlan(plan: PlanMeta): boolean {
+  return memberRow(plan)?.role === "owner";
 }
 
 export function canViewPlan(plan: PlanMeta): boolean {
