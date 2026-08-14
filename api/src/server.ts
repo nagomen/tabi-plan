@@ -62,7 +62,7 @@ function corsHeaders(origin: string | undefined): Record<string, string> {
   };
 }
 
-const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 30;
+const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * Math.max(1, config.sessionTtlDays);
 
 function b64url(input: Buffer | string): string {
   return Buffer.from(input).toString("base64url");

@@ -43,6 +43,9 @@ export const config = {
   /** ログインセッション署名用。API_TOKEN は静的サイトに露出するため絶対に流用しない。 */
   sessionSecret,
 
+  /** ログインセッションの保持日数。LINE から何度も開く用途なので長めに保つ。 */
+  sessionTtlDays: Number(optional("SESSION_TTL_DAYS", "365")),
+
   /** 旧 KV ストアの管理用トークン。未設定なら /api/store は無効。 */
   legacyStoreToken: optional("LEGACY_STORE_TOKEN", ""),
 
