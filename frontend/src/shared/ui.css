@@ -31,6 +31,19 @@ html {
   display: none !important;
 }
 
+/* ボタンの文字色を周囲から継ぐ。
+   iOS Safari は button / input[type=submit] の既定色をシステムの青にするため、
+   色を明示していないボタンだけが実機で青くなる（「観光を追加」などの
+   .pe-q が実際にそうなっていた）。Chrome や Firefox は buttontext=黒 なので
+   PC の確認では気づけない。ここで一度だけ継承にそろえる。
+   詳細度 (0,0,1) なので、色を持つクラス指定はそのまま勝つ。 */
+button,
+input[type="button"],
+input[type="submit"],
+input[type="reset"] {
+  color: inherit;
+}
+
 /* ブートクローク本体（html:not(.ui-ready){opacity:0}）は vite.config.ts の bootCloak() が
    各ページ <head> 先頭にインライン注入する。dev でも render-blocking にするためCSSバンドルに
    置かない。ここでは表示状態のみ明示しておく（インライン側と重複しても無害）。 */
