@@ -787,13 +787,10 @@ function markDirty(): void {
   if (editorLocked) return;
   dirty = true;
   editRevision += 1;
-  if (model.title.trim()) {
-    statusEl.textContent = "編集中…";
-    statusEl.className = "is-dirty";
-  } else {
-    statusEl.textContent = "旅行名を入れると自動保存されます";
-    statusEl.className = "is-dirty";
-  }
+  statusEl.textContent = model.title.trim() || hasContent()
+    ? "編集中…"
+    : "旅行名か行程を入れると自動保存されます";
+  statusEl.className = "is-dirty";
   window.clearTimeout(persistTimer);
   persistTimer = window.setTimeout(persist, 700);
   updateSteps();
@@ -804,14 +801,36 @@ function nowHM(): string {
   return `${d.getHours()}:${pad(d.getMinutes())}`;
 }
 
-// 自動保存（localStorage）。旅行名があれば slug を採番して保存する。
+const UNTITLED = "無題の旅行";
+
+/**
+ * 旅行名以外に何か入力されているか。
+ *
+ * 以前は旅行名が空だと persist() が即 return していたため、期間・訪問地・
+ * 行程を作り込んでも旅行名を入れずに離れると、ローカルにも DB にも
+ * 何も残らず消えていた。かといって開いただけで下書きを作ると空の計画が
+ * 量産されるので、「実際に何か入れたら残す」を境目にする。
+ */
+function hasContent(): boolean {
+  if (model.note.trim() || model.startDate || model.endDate) return true;
+  if (model.cities.some((c) => c.name.trim())) return true;
+  if (model.candidates.length) return true;
+  return model.days.some((d) => d.items.length > 0 || d.stay !== null || d.area.trim());
+}
+
+/** 保存する価値がある状態か（旅行名が空でも中身があれば下書きとして残す）。 */
+function worthSaving(): boolean {
+  return Boolean(model.title.trim()) || hasContent();
+}
+
+// 自動保存。旅行名が空でも中身があれば「無題の旅行」の下書きとして保存する。
 async function persist(): Promise<void> {
   if (editorLocked) return;
-  if (!model.title.trim()) return;
+  if (!worthSaving()) return;
   const revision = editRevision;
   const mutationCheckpoint = db.mutationCheckpoint();
   if (!slug) {
-    slug = TripPlans.uniqueSlug(model.title);
+    slug = TripPlans.uniqueSlug(model.title.trim() || UNTITLED);
     model.slug = slug;
     openLink.href = "index.html?plan=" + encodeURIComponent(slug);
     openLink.hidden = false;
@@ -830,7 +849,9 @@ async function persist(): Promise<void> {
     await db.flushMutations(mutationCheckpoint);
     if (revision !== editRevision) return;
     dirty = false;
-    statusEl.textContent = `自動保存しました ${nowHM()}`;
+    statusEl.textContent = model.title.trim()
+      ? `自動保存しました ${nowHM()}`
+      : `下書きを保存しました ${nowHM()}（旅行名は未入力）`;
     statusEl.className = "is-ok";
     savebarNoteEl.textContent = "";
   } catch (error) {
@@ -2734,7 +2755,7 @@ dayStripEl.addEventListener("click", (event) => {
 
 window.addEventListener("beforeunload", (event) => {
   if (editorLocked) return;
-  if (dirty && model.title.trim()) persist();
+  if (dirty && worthSaving()) persist();
   if (dirty) { event.preventDefault(); event.returnValue = ""; }
 });
 
