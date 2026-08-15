@@ -264,6 +264,7 @@ function send(method: string, path: string, body?: unknown): void {
   const tail = mutationQueue.then(async () => {
     try {
       await request(method, path, body);
+      scheduleCacheWrite();
       emit({ ok: true, path });
     } catch (error) {
       mutationErrors.set(sequence, error);
@@ -302,17 +303,93 @@ export async function flushMutations(checkpoint: number): Promise<void> {
 
 // ---- 起動 ---------------------------------------------------------------
 
-export async function load(): Promise<void> {
+/**
+ * 直前の bootstrap を端末に残しておく置き場。
+ *
+ * 以前は全ページが `db.load()`（＝API を1往復）を待ってから画面を組み立てていた。
+ * 転送量は gzip で 13KB ほどなので問題は往復のレイテンシで、実測では
+ * 4G 相当で中身が出るまで約 1.7 秒、電波が悪いと約 4.2 秒かかっていた。
+ * これがページ遷移のたびに起きるので「たまにカクつく」原因になっていた。
+ *
+ * そこで前回の結果で即座に立ち上げ、裏で取り直す（stale-while-revalidate）。
+ * 取り直しが終わったら trip-db-sync（refreshed: true）を投げるので、
+ * 描き直したい画面はそれを拾う。
+ */
+const CACHE_PREFIX = "trip-db-bootstrap:";
+
+function cacheKey(): string {
+  // セッションごとに分ける。アカウントを切り替えたときに前の人の
+  // データが残らないようにするため。
+  const token = sessionTokenForRequest();
+  return CACHE_PREFIX + (token ? token.slice(0, 24) : "anon");
+}
+
+function readCache(): Snapshot | null {
+  try {
+    const raw = localStorage.getItem(cacheKey());
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<Snapshot>;
+    // 形が変わった古いキャッシュは捨てる
+    if (!parsed || !Array.isArray(parsed.plans) || !Array.isArray(parsed.users)) return null;
+    return { ...emptySnapshot(), ...parsed } as Snapshot;
+  } catch {
+    return null;
+  }
+}
+
+function writeCache(value: Snapshot): void {
+  try {
+    localStorage.setItem(cacheKey(), JSON.stringify(value));
+  } catch {
+    // 容量超過などは黙って諦める（次回は素直に取りに行くだけ）
+  }
+}
+
+/** 楽観更新した内容も残したいので、書き込みが落ち着いたら控えを取り直す。 */
+let cacheTimer = 0;
+function scheduleCacheWrite(): void {
+  window.clearTimeout(cacheTimer);
+  cacheTimer = window.setTimeout(() => writeCache(snap), 400);
+}
+
+async function revalidate(): Promise<void> {
+  try {
+    const fresh = await request<Snapshot>("GET", "/api/bootstrap");
+    const changed = JSON.stringify(fresh) !== JSON.stringify(snap);
+    snap = fresh;
+    writeCache(fresh);
+    emit({ ok: true, path: "/api/bootstrap", refreshed: true, changed });
+  } catch (error) {
+    emit({ ok: false, path: "/api/bootstrap", error: String(error) });
+  }
+}
+
+/**
+ * @param options.fresh 控えを使わず必ずサーバーから読む。
+ *   計画エディタのように、読み込んだ後に利用者が編集を始める画面で使う
+ *   （裏で snap が差し替わると編集中の状態と食い違うため）。
+ */
+export async function load(options: { fresh?: boolean } = {}): Promise<void> {
   if (loaded) return;
   if (loading) return loading;
-  loading = (async () => {
-    if (!api()) {
+  if (!api()) {
+    loaded = true;
+    return;
+  }
+  if (!options.fresh) {
+    const cached = readCache();
+    if (cached) {
+      snap = cached;
       loaded = true;
+      void revalidate();
       return;
     }
+  }
+  loading = (async () => {
     try {
       snap = await request<Snapshot>("GET", "/api/bootstrap");
       loaded = true;
+      writeCache(snap);
       emit({ ok: true, path: "/api/bootstrap" });
     } catch (error) {
       // 取得できなくても画面は空で立ち上げる（オフライン時と同じ扱い）
@@ -325,11 +402,11 @@ export async function load(): Promise<void> {
   return loading;
 }
 
-/** サーバーから読み直す（他端末の変更を取り込む）。 */
+/** サーバーから読み直す（他端末の変更を取り込む）。控えは使わない。 */
 export async function reload(): Promise<void> {
   loaded = false;
   loading = null;
-  await load();
+  await load({ fresh: true });
 }
 
 // ---- 同期読み取り -------------------------------------------------------

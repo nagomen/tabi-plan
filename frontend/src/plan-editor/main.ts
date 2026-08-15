@@ -2761,6 +2761,8 @@ function bootstrapEditor(): void {
   if (!editable || editorLocked) applyEditorLock();
 }
 
-void db.load().then(bootstrapEditor);
+// 編集画面は控え（キャッシュ）を使わずサーバーの最新を待つ。
+// 裏で snap が差し替わると、編集中の内容と食い違うため。
+void db.load({ fresh: true }).then(bootstrapEditor);
 
 registerServiceWorker();

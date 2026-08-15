@@ -562,3 +562,9 @@ async function init(): Promise<void> {
 }
 
 void db.load().then(init);
+
+// 控え（キャッシュ）で先に描いているので、裏の取り直しで中身が変わったら描き直す。
+window.addEventListener("trip-db-sync", (event) => {
+  const detail = (event as CustomEvent<{ refreshed?: boolean; changed?: boolean }>).detail;
+  if (detail?.refreshed && detail.changed) void init();
+});
