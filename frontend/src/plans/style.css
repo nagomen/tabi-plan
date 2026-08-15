@@ -2820,3 +2820,12 @@
     display: none;
   }
 }
+
+/* PC は左右の余白をもう少し取る。中のセクションが 24px を持っているので、
+   外側に 24px 足して中身の左端を 48px にそろえる。 */
+@media (min-width: 861px) {
+  .hub {
+    padding-left: 24px;
+    padding-right: 24px;
+  }
+}

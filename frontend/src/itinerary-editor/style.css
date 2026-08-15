@@ -429,3 +429,13 @@
       width: 100%;
     }
   }
+
+/* PC は左右の余白をもう少し取る（全ページ共通で 48px）。 */
+@media (min-width: 861px) {
+  /* ツールバーは .ed-list の外にあるので、器の .edit-app に持たせる。
+     .ed-list と .ed-toolbar が自前で 18px を持つので、外側は 30px。 */
+  .edit-app {
+    padding-left: 30px;
+    padding-right: 30px;
+  }
+}

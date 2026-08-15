@@ -447,3 +447,12 @@
     .mp-bar { font-size: 9px; min-height: 13px; padding: 0 3px; line-height: 13px; }
     .mp-legend-dates { font-size: 11px; }
   }
+
+/* PC は左右の余白をもう少し取る。中のセクションが 20px を持っているので、
+   外側に 28px 足して中身の左端を 48px にそろえる。 */
+@media (min-width: 861px) {
+  .mp {
+    padding-left: 28px;
+    padding-right: 28px;
+  }
+}

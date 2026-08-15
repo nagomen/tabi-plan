@@ -3698,3 +3698,25 @@
   background: none;
   color: #063f32;
 }
+
+/* PC は左右の余白をもう少し取る（全ページ共通で中身の左端を 48px にそろえる）。
+   .tl-main 自身が余白を持つページなので、ここで直接指定する。 */
+@media (min-width: 861px) {
+  /* 日別ナビや主要リンクは .tl-main の外にあるので、ページの器に持たせる。
+     .tl-main は自前で 32px を持っているぶんを差し引いて 16px にする。 */
+  .trip-live {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+  .tl-main {
+    padding-left: 32px;
+    padding-right: 32px;
+  }
+  /* 日程バーとセクションタブは画面幅いっぱいの帯（width:100vw）なので、
+     帯はそのままに中身だけ他のページと同じ位置から始める。 */
+  .trip-live > .tl-days,
+  .trip-live > .tl-actions {
+    padding-left: 48px;
+    padding-right: 48px;
+  }
+}

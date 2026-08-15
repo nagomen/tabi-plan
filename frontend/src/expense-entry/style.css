@@ -611,3 +611,11 @@
       grid-template-columns: 1fr;
     }
   }
+
+/* PC は左右の余白をもう少し取る（全ページ共通で 48px）。 */
+@media (min-width: 861px) {
+  .expense-main {
+    padding-left: 48px;
+    padding-right: 48px;
+  }
+}

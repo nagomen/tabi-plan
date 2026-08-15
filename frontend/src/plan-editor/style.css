@@ -2167,3 +2167,13 @@
   .pe-day:first-child { border-top: 0; }
   .pe-day:first-child .pe-day-head { padding-top: 0; }
 }
+
+/* PC は左右の余白をもう少し取る。カードが 22px を持っているので、
+   外側に 26px 足して中身の左端を 48px にそろえる。
+   地図の列も同じだけ内側に入る。 */
+@media (min-width: 861px) {
+  .pe-stage {
+    padding-left: 26px;
+    padding-right: 26px;
+  }
+}
