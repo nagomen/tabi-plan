@@ -97,7 +97,18 @@ export async function searchLocations(
     if (provider === "mapbox" && compactSearchText(alias) !== compactSearchText(trimmed) && primary.length < 5) {
       collected = mergeResults(primary, await searchMapbox(enrichedQuery(alias, context), context, mapboxToken));
     }
-    const ranked = rankResults(collected, trimmed, context).slice(0, 5);
+    let coarse = keepCityScale(collected, context);
+    if (context.purpose === "city" && !coarse.length) {
+      const stem = cityStem(trimmed);
+      if (stem) {
+        const retry = provider === "mapbox"
+          ? await searchMapbox(enrichedQuery(stem, context), context, mapboxToken)
+          : await searchNominatim(enrichedQuery(stem, context), context);
+        const retryCoarse = keepCityScale(retry, context);
+        if (retryCoarse.length) coarse = retryCoarse;
+      }
+    }
+    const ranked = rankResults(coarse.length ? coarse : collected, trimmed, context).slice(0, 5);
     resultCache.set(key, { expiresAt: Date.now() + CACHE_TTL_MS, results: ranked });
     return ranked.map((result) => ({ ...result }));
   })().finally(() => pending.delete(key));
@@ -180,6 +191,40 @@ function mergeResults(first: GeoResult[], second: GeoResult[]): GeoResult[] {
     }
   }
   return merged;
+}
+
+/**
+ * 都市の粒度で使える地物の種別。
+ * Nominatim の addresstype と Mapbox の place_type の両方を並べている。
+ */
+const CITY_SCALE_TYPES = new Set([
+  "city", "town", "village", "hamlet", "municipality", "locality",
+  "suburb", "quarter", "neighbourhood", "neighborhood", "city_district", "borough", "district",
+  "county", "state", "province", "region", "state_district", "territory",
+  "island", "archipelago", "place", "country",
+]);
+
+/**
+ * ルート（訪問地）の検索では、道路・建物・店といった細かい地物を落として
+ * 「ざっくりした地名」だけ残す。行程の中の地点検索（purpose が city 以外）は
+ * 細かい地物こそ欲しいので触らない。
+ *
+ * 該当が無ければ空を返す。呼び出し側で言い換えを試し、それでも駄目なら
+ * 細かい候補をそのまま見せる（0件で「見つかりません」と出すより選べる）。
+ */
+function keepCityScale(results: GeoResult[], context: GeoContext): GeoResult[] {
+  if (context.purpose !== "city") return results;
+  return results.filter((result) => CITY_SCALE_TYPES.has(result.featureType.toLowerCase()));
+}
+
+/**
+ * 「金門島」のように地形の語尾が付いた入力の言い換え。
+ * OSM には「金門島」という名前の地物が無く、部分一致で通りや橋が返るが、
+ * 「金門」なら金門県が出る。語尾を落とした形を1つだけ試す。
+ */
+function cityStem(query: string): string {
+  const stem = query.trim().replace(/(諸島|群島|列島|半島|島|嶼)$/u, "");
+  return stem.length >= 2 && stem !== query.trim() ? stem : "";
 }
 
 function rankResults(results: GeoResult[], query: string, context: GeoContext): GeoResult[] {
@@ -317,10 +362,10 @@ async function searchNominatimOnce(
       params.set("viewbox", bboxAround(context.lat!, context.lng!, context.radiusKm || (context.requireNearby ? 60 : 120)));
       if (context.requireNearby) params.set("bounded", "1");
     }
-    if (context.purpose === "city") {
-      params.set("featuretype", "settlement");
-      params.set("layer", "address");
-    }
+    // featuretype / layer は指定しない。
+    // Nominatim 側でほぼ無視されるうえ（settlement を付けても道路や建物が
+    // そのまま返る）、layer=address はむしろ住所側の地物を引き寄せる。
+    // 都市の粒度への絞り込みは、返ってきた addresstype を見て自前で行う。
     const response = await fetch(`https://nominatim.openstreetmap.org/search?${params.toString()}`, {
       headers: { Accept: "application/json" },
     });
