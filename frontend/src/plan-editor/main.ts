@@ -1497,6 +1497,10 @@ function arm(itemId: number, target: GeoTarget, button: HTMLElement): void {
   mapHintEl.textContent = "地図をクリックして位置を指定";
   mapEl.style.cursor = "crosshair";
   button.classList.add("is-armed");
+  // 地図が閉じていると指定しようがないので開く。
+  // スマホでは地図がボトムシートなので、開けばそのまま操作できる。
+  if (root?.classList.contains("map-collapsed")) setMapCollapsed(false);
+  root?.querySelector(".pe-mapwrap")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
 
 // ---- ジオコーディング状態表示 -------------------------------------------

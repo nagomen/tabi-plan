@@ -1997,9 +1997,6 @@
   border-bottom: 2px solid transparent;
   background: transparent;
 }
-.pe-daychip:hover { border-bottom-color: var(--line-strong); }
-.pe-daychip.is-current,
-.pe-daychip[aria-current="true"] { border-bottom-color: var(--green); }
 
 /* 日のまとまり：カード（枠＋影）→ 上罫線で区切る */
 .pe-day {
@@ -2074,4 +2071,27 @@
   background: transparent;
   color: var(--green-deep);
   border-bottom-color: var(--green-deep);
+}
+
+/* 日付タブ：グレーの帯に白文字で少し立たせる。
+   「その日へ飛ぶ」ボタンで選択状態は持たないので、押せることが分かる
+   ホバーだけ用意する。 */
+.pe-daystrip {
+  gap: 2px;
+  background: var(--muted);
+  border-bottom: 0;
+}
+.pe-daychip {
+  padding: 5px 10px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: rgba(255, 255, 255, .82);
+}
+.pe-daychip b { color: inherit; }
+.pe-daychip span { color: rgba(255, 255, 255, .68); }
+.pe-daychip:hover {
+  background: rgba(255, 255, 255, .12);
+  border-bottom-color: transparent;
+  color: #fff;
 }
