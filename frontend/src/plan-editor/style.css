@@ -1505,9 +1505,10 @@
     }
     .pe-route-add .pe-mini {
       min-height: 38px;
-      padding: 0 12px;
-      border-color: var(--green);
-      background: var(--green-soft);
+      padding: 0 2px;
+      border: 0;
+      border-bottom: 2px solid var(--green);
+      background: transparent;
     }
     .pe-empty-cta { border: 0; background: transparent; padding: 32px 8px; }
     .pe-main > section[style] { padding: 12px 12px 0 !important; }
@@ -1884,4 +1885,193 @@
 @media (max-width: 680px) {
   .pe-stay-main b { font-size: 12px; }
   .pe-stay-main span { font-size: 11px; }
+}
+
+/* ---- 箱ボタンを罫線ベースにそろえる ------------------------------------
+   スマホ版のクイック追加（.pe-q）だけが「枠なし＋下罫線」になっていて、
+   PC 版と他のボタンは枠＋塗りの箱のままだった。画面に箱が並ぶほど
+   どれが主要な操作か分からなくなるので、罫線・文字・余白で組み直す。
+   塗りを残すのは主要な1アクション（保存・次のステップ）だけ。 */
+
+/* クイック追加：PC でも枠を外して下罫線にする */
+.pe-quick {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0 18px;
+  margin-top: 12px;
+}
+.pe-q {
+  justify-content: flex-start;
+  min-height: 40px;
+  padding: 0 2px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+}
+.pe-q:hover { background: transparent; }
+.pe-q[data-kind="sight"]:hover { border-bottom-color: var(--green); color: var(--green); }
+.pe-q[data-kind="food"]:hover { border-bottom-color: var(--amber); color: var(--amber); }
+.pe-q[data-kind="move"]:hover { border-bottom-color: var(--blue); color: var(--blue); }
+.pe-q[data-kind="stay"]:hover { border-bottom-color: var(--red); color: var(--red); }
+.pe-q[data-kind="todo"]:hover,
+.pe-q[data-kind="form"]:hover { border-bottom-color: var(--ink); color: var(--ink); }
+
+/* 小ボタン（検索・地図で指定・追加・完了・画像を選ぶ・カレンダー連携）：
+   緑の塗り箱 → 緑の文字＋下線 */
+.pe-mini,
+.pe-calsync-btn {
+  justify-content: flex-start;
+  min-height: 34px;
+  padding: 0 2px;
+  border: 0;
+  border-bottom: 2px solid var(--green-soft);
+  background: transparent;
+  color: var(--green);
+}
+.pe-mini:hover,
+.pe-calsync-btn:hover {
+  background: transparent;
+  border-bottom-color: var(--green);
+}
+.pe-mini.is-armed {
+  background: transparent;
+  color: var(--green-deep);
+  border-bottom-color: var(--green);
+}
+.pe-calsync-btn.primary {
+  border-bottom-width: 2px;
+  border-bottom-color: var(--green);
+}
+
+/* カレンダー連携の枠を外す */
+.pe-calsync {
+  padding: 14px 0 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+  background: transparent;
+}
+
+/* 行程の行：PC も枠なし＋下罫線（スマホと同じ） */
+.pe-row {
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  box-shadow: none;
+  overflow: visible;
+}
+.pe-row:hover {
+  transform: none;
+  box-shadow: none;
+  background: var(--wash);
+}
+.pe-node[data-kind="move"] > .pe-row {
+  border: 0;
+  border-bottom: 1px dashed var(--blue);
+}
+
+/* 宿：色はそのまま、箱の枠だけ外す */
+.pe-stay,
+.pe-stay.pe-stay-cont {
+  border: 0;
+  border-bottom: 1px solid rgba(207, 79, 61, .45);
+}
+.pe-stay.pe-stay-cont { border-bottom-style: dashed; }
+
+/* 空状態：破線の箱 → ただの文 */
+.pe-route-empty {
+  padding: 12px 2px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+}
+.pe-empty-cta {
+  padding: 32px 2px;
+  border: 0;
+  border-top: 1px solid var(--line);
+  background: transparent;
+}
+
+/* 日付タブ：枠付きチップ → 文字＋選択中だけ下線 */
+.pe-daychip {
+  padding: 5px 2px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+}
+.pe-daychip:hover { border-bottom-color: var(--line-strong); }
+.pe-daychip.is-current,
+.pe-daychip[aria-current="true"] { border-bottom-color: var(--green); }
+
+/* 日のまとまり：カード（枠＋影）→ 上罫線で区切る */
+.pe-day {
+  border: 0;
+  border-top: 1px solid var(--line);
+  background: transparent;
+  box-shadow: none;
+  overflow: visible;
+}
+.pe-days { gap: 0; }
+.pe-day-head { padding-top: 14px; }
+.pe-day-body { padding-left: 2px; padding-right: 2px; }
+
+/* Day バッジ：緑の塗り箱 → 文字だけ */
+.pe-day-badge {
+  min-width: 54px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  justify-items: start;
+}
+
+/* アイコンボタン：枠付きの四角 → アイコンのみ */
+.pe-icon-btn {
+  border: 0;
+  background: transparent;
+}
+.pe-icon-btn:hover { color: var(--ink); background: var(--wash); }
+.pe-icon-btn.danger:hover { color: var(--red); background: transparent; }
+
+/* 保存バーの副ボタン（書き出し）：枠 → 下線 */
+.pe-btn:not(.primary) {
+  border: 0;
+  border-bottom: 2px solid var(--line);
+  padding: 0 2px;
+  background: transparent;
+}
+.pe-btn:not(.primary):hover {
+  border-bottom-color: var(--ink);
+  background: transparent;
+}
+
+/* 訪問地の行：枠付きカード → 下罫線 */
+.pe-city {
+  padding: 9px 2px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+}
+
+/* ステップの戻る／地図の開閉：枠 → 下線（進むボタンだけ塗りを残す） */
+.pe-stepnav-btn:not(.primary),
+.pe-map-toggle {
+  border: 0;
+  border-bottom: 2px solid var(--line);
+  padding-left: 2px;
+  padding-right: 2px;
+  background: transparent;
+}
+.pe-stepnav-btn:not(.primary):hover,
+.pe-map-toggle:hover {
+  border-bottom-color: var(--ink);
+  background: transparent;
+}
+
+/* カレンダー連携の主ボタンも塗りをやめる（画面の主要操作は保存なので） */
+.pe-calsync-btn.primary {
+  background: transparent;
+  color: var(--green);
+}
+.pe-calsync-btn.primary:hover {
+  background: transparent;
+  color: var(--green-deep);
+  border-bottom-color: var(--green-deep);
 }
