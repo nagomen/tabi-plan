@@ -974,6 +974,16 @@ async function searchCity(city: City): Promise<void> {
   }
 }
 
+/**
+ * 日本語入力の変換中に来た Enter か。
+ * 変換確定の Enter を操作として拾うと、確定した文字が入力欄へ
+ * 書き戻されて残る（「金門島」を入れたのに欄に残る、が起きていた）。
+ * isComposing に対応しない環境向けに keyCode 229 も見る。
+ */
+function isComposingKey(event: KeyboardEvent): boolean {
+  return event.isComposing || event.keyCode === 229;
+}
+
 async function addCity(name: string): Promise<void> {
   const trimmed = name.trim();
   if (!trimmed) return;
@@ -2222,6 +2232,7 @@ function commitCandInput(): void {
 }
 qs<HTMLButtonElement>(root, "[data-cand-add]").addEventListener("click", commitCandInput);
 candInput.addEventListener("keydown", (e) => {
+  if (isComposingKey(e)) return;
   if (e.key === "Enter") {
     e.preventDefault();
     commitCandInput();
@@ -2374,10 +2385,13 @@ icsBtn.addEventListener("click", () => {
 });
 
 cityInput.addEventListener("keydown", (e) => {
-  if (e.key === "Enter") { e.preventDefault(); void addCity(cityInput.value); cityInput.value = ""; }
+  // 日本語入力の変換確定も Enter で来る。ここで追加してしまうと、
+  // 追加のあとに確定した文字が入力欄へ書き戻されて残ってしまう。
+  if (isComposingKey(e)) return;
+  if (e.key === "Enter") { e.preventDefault(); void addCity(cityInput.value); }
 });
 qs<HTMLButtonElement>(root, "[data-city-add]").addEventListener("click", () => {
-  void addCity(cityInput.value); cityInput.value = "";
+  void addCity(cityInput.value);
 });
 
 // 都市の滞在期間（開始/終了日）の割り当て

@@ -2206,10 +2206,22 @@
   }
 }
 
-/* ---- 確定した訪問地と入力欄を見分けやすくする --------------------------
-   どちらも「下線付きの入力欄」で同じに見えていたので、
-   確定済みは文字として見せ（触ったときだけ入力欄になる）、
-   これから入れる欄は破線の下線＋上の区切り線で「未確定」と分かるようにする。 */
+/* ---- 確定した訪問地はカード、これから入れる欄は下線 --------------------
+   どちらも「下線付きの入力欄」で同じに見えていたので、確定済みは
+   四角いカードに入れて「登録済みのもの」とはっきり分ける。
+   名前は下線を消して文字として見せ、触ったときだけ入力欄になる。 */
+.pe-city {
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 0;
+  background: #fff;
+}
+.pe-city + .pe-city { margin-top: 10px; }
+.pe-city.no-geo {
+  border-style: solid;
+  border-color: var(--line-strong);
+  background: var(--wash);
+}
 .pe-city-name {
   border-bottom-color: transparent;
   font-weight: 600;
@@ -2220,9 +2232,9 @@
 .pe-city.no-geo .pe-city-name { color: var(--muted); font-weight: 500; }
 
 .pe-route-add {
-  margin-top: 6px;
-  padding-top: 14px;
-  border-top: 1px solid var(--line);
+  margin-top: 14px;
+  padding-top: 0;
+  border-top: 0;
 }
 .pe-route-add input {
   border-bottom-style: dashed;
