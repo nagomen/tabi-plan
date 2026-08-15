@@ -30,7 +30,7 @@ import {
 import * as Permissions from "../shared/permissions-store";
 import { isIdentified } from "../shared/identity";
 import { canEditPlan, ownerNameOf, roleOf } from "../shared/membership";
-import { TILE_URL, TILE_OPTIONS } from "../shared/map-tiles";
+import { addBaseLayer } from "../shared/map-tiles";
 
 // ---- 補助型 -------------------------------------------------------------
 
@@ -643,7 +643,7 @@ function renderLocationMap(plans: PlanMeta[]): void {
       attributionControl: true,
       zoomControl: true,
     });
-    L.tileLayer(TILE_URL, TILE_OPTIONS).addTo(locationMapState.map);
+    addBaseLayer(L, locationMapState.map);
   }
   const map = locationMapState.map;
   if (locationMapState.layer) locationMapState.layer.remove();

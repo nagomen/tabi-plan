@@ -33,7 +33,7 @@ import * as Permissions from "../shared/permissions-store";
 import { currentAccount } from "../shared/account-store";
 import { listFriends } from "../shared/friendship-store";
 import { canEditPlan, canManagePlan, planHasOwner } from "../shared/membership";
-import { TILE_URL, TILE_OPTIONS } from "../shared/map-tiles";
+import { addBaseLayer } from "../shared/map-tiles";
 import {
   automaticGeocodingAvailable,
   cityAliasesFor,
@@ -1231,7 +1231,7 @@ let candidateLayer: L.LayerGroup | null = null;
 
 function initMap(): void {
   map = L.map(mapEl, { zoomControl: true, attributionControl: true }).setView([39.6, 140.6], 6);
-  L.tileLayer(TILE_URL, TILE_OPTIONS).addTo(map);
+  addBaseLayer(L, map);
   pinLayer = L.layerGroup().addTo(map);
   routeLayer = L.layerGroup().addTo(map);
   candidateLayer = L.layerGroup().addTo(map);
