@@ -2205,3 +2205,30 @@
     padding-right: 26px;
   }
 }
+
+/* ---- 確定した訪問地と入力欄を見分けやすくする --------------------------
+   どちらも「下線付きの入力欄」で同じに見えていたので、
+   確定済みは文字として見せ（触ったときだけ入力欄になる）、
+   これから入れる欄は破線の下線＋上の区切り線で「未確定」と分かるようにする。 */
+.pe-city-name {
+  border-bottom-color: transparent;
+  font-weight: 600;
+  color: var(--ink);
+}
+.pe-city-name:hover { border-bottom-color: var(--line); }
+.pe-city-name:focus { border-bottom-color: var(--green); }
+.pe-city.no-geo .pe-city-name { color: var(--muted); font-weight: 500; }
+
+.pe-route-add {
+  margin-top: 6px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+.pe-route-add input {
+  border-bottom-style: dashed;
+  font-weight: 500;
+}
+.pe-route-add input:focus {
+  border-bottom-style: solid;
+  border-bottom-color: var(--green);
+}

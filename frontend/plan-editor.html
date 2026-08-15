@@ -29,7 +29,7 @@
           <div class="pe-grid pe-basic-grid">
             <label class="pe-field pe-primary-field c3">
               <span data-ic-name>旅行名 <span class="pe-req">必須</span></span>
-              <input data-f="title" placeholder="例: 2026年8月 東北旅行">
+              <input data-f="title" maxlength="120" placeholder="例: 2026年8月 東北旅行">
             </label>
             <div class="pe-field pe-primary-field c3">
               <span data-ic-period>期間 <em>カレンダーで開始日→終了日を選択</em></span>
@@ -51,7 +51,7 @@
             </div>
             <label class="pe-field pe-soft-field c6">
               <span data-ic-note>共有メモ <em>任意</em></span>
-              <input data-f="note" placeholder="共有しておきたいメモ">
+              <input data-f="note" maxlength="5000" placeholder="共有しておきたいメモ">
             </label>
             <div class="pe-field pe-soft-field c6">
               <span data-ic-cover>サムネ画像 <em>任意・未設定なら目的地から自動／デフォルト画像</em></span>
@@ -60,7 +60,7 @@
                 <div class="pe-cover-actions">
                   <label class="pe-mini pe-cover-pick" data-ic-coverpick>画像を選ぶ<input type="file" accept="image/*" data-cover-input hidden></label>
                   <button class="pe-mini" type="button" data-cover-clear hidden>デフォルトに戻す</button>
-                  <span class="pe-cover-note">選んだ画像は WebP に変換して保存されます</span>
+                  <span class="pe-cover-note">選んだ画像は軽量な WebP に変換して保存されます</span>
                 </div>
               </div>
             </div>
@@ -73,7 +73,7 @@
             <p class="pe-sec-note">訪問する都市・エリアを順番に。期間を決めると滞在日も指定できます。</p>
             <div class="pe-route-list" data-cities></div>
             <div class="pe-route-add">
-              <input data-city-input placeholder="都市・エリアを入力（例: 盛岡）" aria-label="都市・エリアを入力">
+              <input data-city-input type="text" autocomplete="off" maxlength="100" placeholder="都市・エリアを入力（例: 盛岡）" aria-label="都市・エリアを入力">
               <button class="pe-mini" type="button" data-city-add>追加</button>
             </div>
           </div>
@@ -97,7 +97,7 @@
         <h3 class="pe-sec-title" data-ic-cand>行きたい候補 <span class="pe-cand-count" data-cand-count></span></h3>
         <p class="pe-sec-note">行きたい場所を出し合って投票。決まったら「行程に追加」で日程に入れられます。</p>
         <div class="pe-cand-add">
-          <input data-cand-input type="text" autocomplete="off" placeholder="例: 中尊寺、〇〇ラーメン" aria-label="候補を追加">
+          <input data-cand-input type="text" maxlength="200" autocomplete="off" placeholder="例: 中尊寺、〇〇ラーメン" aria-label="候補を追加">
           <button class="pe-mini" type="button" data-cand-add data-ic-candadd>追加</button>
         </div>
         <div class="pe-cand-list" data-candidates></div>
@@ -132,10 +132,11 @@
   <datalist id="pe-city-options"></datalist>
 
   <div class="pe-savebar">
-    <span class="pe-local-note" data-local-note>この端末にのみ保存（自動保存）</span>
+    <span class="pe-local-note" data-local-note></span>
     <span data-savebar-note></span>
     <button class="pe-btn" type="button" data-export>書き出し</button>
-    <button class="pe-btn primary" type="button" data-save>保存</button>
+    <button class="pe-btn green" type="button" data-save>下書きを保存</button>
+    <button class="pe-btn primary" type="button" data-publish-plan>公開設定</button>
   </div>
 </main>
 

@@ -988,6 +988,9 @@ async function addCity(name: string): Promise<void> {
     toDate: fromDate,
   };
   model.cities.push(city);
+  // 追加できた時点で入力欄を空にする。呼び出し側まかせだと
+  // 経路が増えたときに消し忘れる。
+  cityInput.value = "";
   markDirty();
   renderCities();
   refreshMap(false);
@@ -2633,17 +2636,17 @@ function focusPublishError(field: "title" | "dates" | "cities", step: 1 | 2): vo
 
 function publish(): void {
   if (editorLocked) return;
-  const invalid = validatePublishPlan(model);
-  if (invalid) {
-    statusEl.textContent = invalid.message;
-    statusEl.className = "is-dirty";
-    focusPublishError(invalid.field, invalid.step);
-    return;
-  }
   const meta = slug ? TripPlans.get(slug) : null;
   if (meta && !canManagePlan(meta)) {
     statusEl.textContent = "公開設定を変更できるのは計画の所有者だけです";
     statusEl.className = "is-dirty";
+    return;
+  }
+  const invalid = validatePublishPlan(model);
+  if (!TripPlans.isPublished(meta || { published: false }) && invalid) {
+    statusEl.textContent = invalid.message;
+    statusEl.className = "is-dirty";
+    focusPublishError(invalid.field, invalid.step);
     return;
   }
   openVisibilityChooser((visibility) => { void doPublish(visibility); });
@@ -2651,6 +2654,13 @@ function publish(): void {
 
 async function doPublish(visibility: PlanVisibility): Promise<void> {
   if (editorLocked) return;
+  const invalid = validatePublishPlan(model);
+  if (invalid) {
+    statusEl.textContent = invalid.message;
+    statusEl.className = "is-dirty";
+    focusPublishError(invalid.field, invalid.step);
+    return;
+  }
   setSaveActionsBusy(true);
   if (!(await persist(true))) {
     setSaveActionsBusy(false);
@@ -2687,6 +2697,29 @@ async function doPublish(visibility: PlanVisibility): Promise<void> {
   navigateWithPageTransition("index.html?plan=" + encodeURIComponent(slug));
 }
 
+async function doUnpublish(): Promise<void> {
+  if (!slug || editorLocked) return;
+  setSaveActionsBusy(true);
+  const mutationCheckpoint = db.mutationCheckpoint();
+  if (!TripPlans.upsert({ slug, published: false })) {
+    setSaveActionsBusy(false);
+    return;
+  }
+  try {
+    await db.flushMutations(mutationCheckpoint);
+    if (!(await persist(true))) throw new Error("下書きの内容を保存できませんでした");
+    statusEl.textContent = "下書きに戻しました";
+    statusEl.className = "is-ok";
+    savebarNoteEl.textContent = "この計画は公開一覧に表示されません。";
+  } catch (error) {
+    statusEl.textContent = "下書きに戻せませんでした";
+    statusEl.className = "is-dirty";
+    savebarNoteEl.textContent = errorMessage(error);
+  } finally {
+    setSaveActionsBusy(false);
+  }
+}
+
 function visOption(value: PlanVisibility, current: PlanVisibility, label: string, desc: string, glyph: IconName): string {
   const id = `pe-vis-${value}`;
   return (
@@ -2702,6 +2735,8 @@ function visOption(value: PlanVisibility, current: PlanVisibility, label: string
 function openVisibilityChooser(onConfirm: (v: PlanVisibility) => void): void {
   // 初回は安全側の「限定」を既定にし、公開は利用者が明示的に選ぶ。
   const current: PlanVisibility = model.visibility === "public" ? "public" : "invite";
+  const meta = slug ? TripPlans.get(slug) : null;
+  const isPublished = Boolean(meta && TripPlans.isPublished(meta));
   const modal = document.createElement("div");
   modal.className = "pe-modal";
   modal.innerHTML =
@@ -2714,12 +2749,17 @@ function openVisibilityChooser(onConfirm: (v: PlanVisibility) => void): void {
     `</div>` +
     `<p class="pe-modal-note">限定は一覧に表示されず、参加者または招待リンクからログインして参加した人だけが閲覧できます。公開では行程・地図などの閲覧用情報が表示され、メンバー・費用・精算は公開されません。</p>` +
     `<div class="pe-modal-actions">` +
+    (isPublished ? `<button type="button" class="pe-modal-btn ghost" data-unpublish>下書きに戻す</button>` : "") +
     `<button type="button" class="pe-modal-btn ghost" data-cancel>キャンセル</button>` +
     `<button type="submit" class="pe-modal-btn">この設定で公開</button>` +
     `</div></form>`;
   document.body.appendChild(modal);
   const form = modal.querySelector<HTMLFormElement>("form");
   modal.querySelector("[data-cancel]")?.addEventListener("click", () => modal.remove());
+  modal.querySelector("[data-unpublish]")?.addEventListener("click", () => {
+    modal.remove();
+    void doUnpublish();
+  });
   form?.addEventListener("submit", (e) => {
     e.preventDefault();
     const picked =
@@ -2751,7 +2791,7 @@ qs<HTMLButtonElement>(root, "[data-city-add]").innerHTML = icon("plus") + "<span
 const localNoteEl = qs<HTMLElement>(root, "[data-local-note]");
 localNoteEl.innerHTML = icon("informationCircle") + (db.isEnabled()
   ? "クラウドに自動保存（公開するまでは下書き）"
-  : "この端末に自動保存（公開するまでは下書き）");
+  : "保存先が未設定（JSON書き出しのみ利用できます）");
 
 // 書き出し（JSON）— ローカル保存のバックアップ
 function exportJson(): void {
@@ -2876,7 +2916,10 @@ document.addEventListener("visibilitychange", () => {
 // 読む前に触ると「権限がありません」になったり、計画を二重に作ってしまう。
 function bootstrapEditor(): void {
   if (db.isEnabled() && !currentAccount()) {
-    navigateWithPageTransition("login.html?returnTo=" + encodeURIComponent("plan-editor.html"), { replace: true });
+    navigateWithPageTransition(
+      "login.html?returnTo=" + encodeURIComponent("plan-editor.html" + location.search),
+      { replace: true },
+    );
     return;
   }
   const editable = loadExisting();
@@ -2904,6 +2947,10 @@ function bootstrapEditor(): void {
 
 // 編集画面は控え（キャッシュ）を使わずサーバーの最新を待つ。
 // 裏で snap が差し替わると、編集中の内容と食い違うため。
-void db.load({ fresh: true }).then(bootstrapEditor);
+void db.load({ fresh: true, strict: db.isEnabled() }).then(bootstrapEditor).catch((error) => {
+  lockEditor("旅行データを読み込めませんでした。接続を確認して再読み込みしてください");
+  savebarNoteEl.textContent = errorMessage(error);
+  applyEditorLock();
+});
 
 registerServiceWorker();
