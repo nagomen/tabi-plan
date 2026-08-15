@@ -976,12 +976,22 @@ async function searchCity(city: City): Promise<void> {
 
 /**
  * 日本語入力の変換中に来た Enter か。
+ *
  * 変換確定の Enter を操作として拾うと、確定した文字が入力欄へ
  * 書き戻されて残る（「金門島」を入れたのに欄に残る、が起きていた）。
- * isComposing に対応しない環境向けに keyCode 229 も見る。
+ * 判定は compositionstart / compositionend で持つ。keyCode 229 を見る書き方は、
+ * 変換を終えたあとの Enter まで 229 で来る環境があり、
+ * 「Enter を押しても追加されない」になってしまう。
  */
+const composingInputs = new WeakSet<EventTarget>();
+
+function watchComposition(input: HTMLElement): void {
+  input.addEventListener("compositionstart", () => { composingInputs.add(input); });
+  input.addEventListener("compositionend", () => { composingInputs.delete(input); });
+}
+
 function isComposingKey(event: KeyboardEvent): boolean {
-  return event.isComposing || event.keyCode === 229;
+  return event.isComposing || (event.target !== null && composingInputs.has(event.target));
 }
 
 async function addCity(name: string): Promise<void> {
@@ -2231,6 +2241,7 @@ function commitCandInput(): void {
   candInput.focus();
 }
 qs<HTMLButtonElement>(root, "[data-cand-add]").addEventListener("click", commitCandInput);
+watchComposition(candInput);
 candInput.addEventListener("keydown", (e) => {
   if (isComposingKey(e)) return;
   if (e.key === "Enter") {
@@ -2384,6 +2395,7 @@ icsBtn.addEventListener("click", () => {
   toast("カレンダー(.ics)を書き出しました");
 });
 
+watchComposition(cityInput);
 cityInput.addEventListener("keydown", (e) => {
   // 日本語入力の変換確定も Enter で来る。ここで追加してしまうと、
   // 追加のあとに確定した文字が入力欄へ書き戻されて残ってしまう。

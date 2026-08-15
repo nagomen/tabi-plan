@@ -2151,6 +2151,8 @@
     border-radius: 0;
     background: #fff;
     padding: 20px 22px;
+    /* ぼかさない影。輪郭が出るぶんカードの重なりがはっきりする */
+    box-shadow: 5px 5px 0 #d7ded9;
   }
   /* 中央寄せの狭いカラムはやめ、カードの幅に合わせる */
   .pe-setup-inner { max-width: none; }
@@ -2215,6 +2217,7 @@
   border: 1px solid var(--line);
   border-radius: 0;
   background: #fff;
+  box-shadow: 4px 4px 0 #d7ded9;
 }
 .pe-city + .pe-city { margin-top: 10px; }
 .pe-city.no-geo {
