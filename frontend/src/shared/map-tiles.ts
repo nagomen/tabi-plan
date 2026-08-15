@@ -61,10 +61,54 @@ export function addBaseLayer(L: typeof LType, map: LType.Map): void {
         maplibreGL?: (options: Record<string, unknown>) => LType.Layer;
       }).maplibreGL;
       if (!factory) throw new Error("maplibreGL レイヤーを作れませんでした");
-      factory({ style: VECTOR_STYLE, attribution: VECTOR_ATTRIBUTION }).addTo(map);
+      const layer = factory({ style: VECTOR_STYLE, attribution: VECTOR_ATTRIBUTION });
+      layer.addTo(map);
+      useJapaneseLabels(layer);
     } catch (error) {
       console.warn("[map] ベクタータイルを読めないのでラスターに落とします", error);
       L.tileLayer(RASTER_URL, RASTER_OPTIONS).addTo(map);
     }
   })();
+}
+
+/**
+ * ラベルを日本語優先にする。
+ *
+ * 既定のスタイルは「臺北市 / Taipei」のように現地語と英語を並べる。
+ * タイルには OSM の name:ja が入っているので（台北市・中壢区など）、
+ * それを最優先にして、無ければ現地名 → ローマ字の順に落とす。
+ *
+ * 国道番号などの標識は text-field が ["get","ref"] で name を見ていないので、
+ * name を含む指定の層だけ書き換える（書き換えると標識が消えてしまう）。
+ */
+function useJapaneseLabels(layer: LType.Layer): void {
+  const gl = (layer as unknown as { getMaplibreMap?: () => MaplibreMap }).getMaplibreMap?.();
+  if (!gl) return;
+  const apply = (): void => {
+    const layers = gl.getStyle()?.layers ?? [];
+    for (const entry of layers) {
+      if (entry.type !== "symbol") continue;
+      const field = entry.layout?.["text-field"];
+      if (!field || !JSON.stringify(field).includes("name")) continue;
+      try {
+        gl.setLayoutProperty(entry.id, "text-field", [
+          "coalesce",
+          ["get", "name:ja"],
+          ["get", "name"],
+          ["get", "name:latin"],
+        ]);
+      } catch {
+        // 一部の層で弾かれても、他の層の書き換えは続ける
+      }
+    }
+  };
+  if (gl.isStyleLoaded()) apply();
+  else gl.once("styledata", apply);
+}
+
+interface MaplibreMap {
+  isStyleLoaded: () => boolean;
+  once: (event: string, handler: () => void) => void;
+  getStyle: () => { layers?: { id: string; type: string; layout?: Record<string, unknown> }[] } | undefined;
+  setLayoutProperty: (layerId: string, name: string, value: unknown) => void;
 }
