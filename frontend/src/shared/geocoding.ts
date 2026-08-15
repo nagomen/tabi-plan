@@ -116,6 +116,34 @@ export async function searchLocations(
   return task;
 }
 
+/**
+ * 座標から「その地点が属する都市名」を引く。
+ * reverseLocation は建物の粒度（zoom=18）で住所を返すので、訪問地の登録には
+ * 細かすぎる。市区町村→郡→州の順に、最初に見つかった名前を返す。
+ */
+export async function reverseCityName(lat: number, lng: number): Promise<string> {
+  return scheduleNominatim(async () => {
+    const params = new URLSearchParams({
+      format: "jsonv2", "accept-language": "ja", addressdetails: "1",
+      lat: String(lat), lon: String(lng), zoom: "10",
+    });
+    const response = await fetch(`https://nominatim.openstreetmap.org/reverse?${params.toString()}`, {
+      headers: { Accept: "application/json" },
+    });
+    if (!response.ok) throw new Error(`地名の確認に失敗しました (${response.status})`);
+    const data = await response.json() as {
+      name?: string;
+      address?: Record<string, string>;
+    };
+    const address = data.address || {};
+    const picked = [
+      "city", "town", "village", "municipality", "city_district", "suburb",
+      "county", "state_district", "state", "province", "region", "island", "country",
+    ].map((key) => address[key]).find((value) => value && value.trim());
+    return String(picked || data.name || "").trim();
+  });
+}
+
 export async function reverseLocation(lat: number, lng: number, mapboxToken = ""): Promise<string> {
   const key = `${lat.toFixed(5)},${lng.toFixed(5)},${mapboxToken ? "mapbox" : "nominatim"}`;
   const cached = reverseCache.get(key);

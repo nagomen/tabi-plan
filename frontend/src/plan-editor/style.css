@@ -691,6 +691,20 @@
   .pe-city-sep { color: var(--muted); }
   .pe-city.no-geo { border-style: dashed; }
   .pe-city.no-geo .pe-city-name { color: var(--muted); }
+  /* 地図に位置が無い訪問地の案内。行の下に1行で出す
+     （.pe-city は折り返す並びなので、幅いっぱいを取って改行させる）。 */
+  .pe-city-nogeo {
+    flex: 1 0 100%;
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 2px 0 0;
+    color: var(--muted);
+    font-size: 11.5px;
+    font-weight: 500;
+  }
+  .pe-city-nogeo .pe-mini { min-height: 28px; }
   .pe-city button[data-act="city-del"] { border: 0; background: none; color: var(--muted); cursor: pointer; display: inline-grid; place-items: center; padding: 2px; flex: none; }
   .pe-city button[data-act="city-del"]:hover { color: var(--red); }
 

@@ -34,10 +34,12 @@ import { currentAccount } from "../shared/account-store";
 import { listFriends } from "../shared/friendship-store";
 import { canEditPlan, canManagePlan, planHasOwner } from "../shared/membership";
 import { addBaseLayer } from "../shared/map-tiles";
+import { validatePublishPlan } from "./validation";
 import {
   automaticGeocodingAvailable,
   cityAliasesFor,
   geocodingAttribution,
+  reverseCityName,
   reverseLocation,
   searchLocations,
   type GeoContext,
@@ -367,9 +369,15 @@ const model: Model = {
 };
 let dirty = false;
 let editRevision = 0;
+let lastSavedContentFingerprint = "";
+let persistRunning: Promise<boolean> | null = null;
+let persistRequested = false;
+let saveActionsBusy = false;
 let seq = 1;
 let openItemId: number | null = null;
 let armed: { itemId: number; target: GeoTarget } | null = null;
+// 地図クリックで訪問地の位置を決めるときの対象（都市の id）
+let armedCity: number | null = null;
 let editorLocked = false;
 
 function lockEditor(message: string): false {
@@ -647,7 +655,7 @@ function markDirty(): void {
     : "旅行名か行程を入れると自動保存されます";
   statusEl.className = "is-dirty";
   window.clearTimeout(persistTimer);
-  persistTimer = window.setTimeout(persist, 700);
+  persistTimer = window.setTimeout(() => { void persist(); }, 900);
   updateSteps();
 }
 
@@ -678,10 +686,29 @@ function worthSaving(): boolean {
   return Boolean(model.title.trim()) || hasContent();
 }
 
-// 自動保存。旅行名が空でも中身があれば「無題の旅行」の下書きとして保存する。
-async function persist(): Promise<void> {
-  if (editorLocked) return;
-  if (!worthSaving()) return;
+function contentFingerprint(data: LocalPlanData): string {
+  return JSON.stringify({
+    itinerary: data.itinerary || [],
+    cities: data.cities || [],
+    links: data.links || [],
+    checklist: data.checklist || [],
+    candidates: data.candidates || [],
+  });
+}
+
+/**
+ * 1回分の保存処理。旅行名・メモなどメタ情報だけの変更では本文を全置換しない。
+ * 行程等が変わった時だけ content API を使う。
+ */
+async function performPersist(explicit = false): Promise<boolean> {
+  if (editorLocked) return false;
+  if (!worthSaving()) {
+    if (explicit) {
+      statusEl.textContent = "旅行名または旅行内容を入力してください";
+      statusEl.className = "is-dirty";
+    }
+    return false;
+  }
   const revision = editRevision;
   const mutationCheckpoint = db.mutationCheckpoint();
   if (!slug) {
@@ -692,29 +719,67 @@ async function persist(): Promise<void> {
     try { history.replaceState(null, "", "plan-editor.html?plan=" + encodeURIComponent(slug)); } catch { /* ignore */ }
   }
   Permissions.ensureOwner(slug, model.members);
-  const saved = TripPlans.saveLocalPlan(slug, buildData(), model.memberIds);
+  const data = buildData();
+  const nextContentFingerprint = contentFingerprint(data);
+  const contentChanged = nextContentFingerprint !== lastSavedContentFingerprint;
+  const existing = TripPlans.get(slug);
+  const saved = contentChanged
+    ? TripPlans.saveLocalPlan(slug, data, model.memberIds)
+    : TripPlans.upsert({
+      slug,
+      title: model.title.trim() || UNTITLED,
+      dates: datesString(),
+      members: model.members,
+      memberIds: model.memberIds,
+      note: model.note,
+      cover: model.cover,
+      ...(!existing ? { source: "local" as const, published: false } : {}),
+    });
   if (!saved) {
     dirty = true;
     statusEl.textContent = "ログインしてから保存してください";
     statusEl.className = "is-dirty";
-    return;
+    return false;
   }
   TripPlans.setActiveSlug(slug);
   try {
     await db.flushMutations(mutationCheckpoint);
-    if (revision !== editRevision) return;
+    if (contentChanged) lastSavedContentFingerprint = nextContentFingerprint;
+    if (revision !== editRevision) return true;
     dirty = false;
-    statusEl.textContent = model.title.trim()
-      ? `自動保存しました ${nowHM()}`
+    statusEl.textContent = explicit
+      ? `下書きを保存しました ${nowHM()}`
+      : model.title.trim()
+        ? `自動保存しました ${nowHM()}`
       : `下書きを保存しました ${nowHM()}（旅行名は未入力）`;
     statusEl.className = "is-ok";
     savebarNoteEl.textContent = "";
+    return true;
   } catch (error) {
     dirty = true;
     statusEl.textContent = "保存できませんでした";
     statusEl.className = "is-dirty";
     savebarNoteEl.textContent = errorMessage(error);
+    return false;
   }
+}
+
+// 自動保存。連続入力中の保存要求は同時実行せず、最新状態を最後にもう一度保存する。
+async function persist(explicit = false): Promise<boolean> {
+  window.clearTimeout(persistTimer);
+  if (persistRunning) {
+    persistRequested = true;
+    const result = await persistRunning;
+    if (explicit && dirty) return persist(true);
+    return result;
+  }
+  persistRunning = performPersist(explicit);
+  const result = await persistRunning.finally(() => { persistRunning = null; });
+  if (persistRequested) {
+    persistRequested = false;
+    void persist();
+  }
+  return result;
 }
 
 // ---- レンダリング: 都市（ルート） ---------------------------------------
@@ -789,9 +854,9 @@ function updateSteps(): void {
   }
   if (nextBtn) {
     nextBtn.hidden = false;
-    nextBtn.disabled = viewStep < 3 && !done[viewStep - 1];
-    const label = viewStep === 1 ? "目的地へ" : viewStep === 2 ? "行程へ" : "保存する";
-    const glyph = viewStep === 3 ? "bookmark" : "chevronRight";
+    nextBtn.disabled = saveActionsBusy || (viewStep < 3 && !done[viewStep - 1]);
+    const label = viewStep === 1 ? "目的地へ" : viewStep === 2 ? "行程へ" : "公開設定へ";
+    const glyph = viewStep === 3 ? "globeAlt" : "chevronRight";
     nextBtn.innerHTML = `<span>${label}</span>` + icon(glyph);
   }
   stepReasonEl.textContent = viewStep < 3 && !done[viewStep - 1] ? stepBlockReason(viewStep) : "";
@@ -799,7 +864,17 @@ function updateSteps(): void {
 
 /** ステップのタップで表示を切り替える（スマホのウィザード送り）。 */
 function setViewStep(step: number): void {
-  viewStep = Math.min(3, Math.max(1, step));
+  const target = Math.min(3, Math.max(1, step));
+  if (target > viewStep) {
+    const done = stepCompletion();
+    for (let current = viewStep; current < target; current += 1) {
+      if (!done[current - 1]) {
+        stepReasonEl.textContent = stepBlockReason(current);
+        return;
+      }
+    }
+  }
+  viewStep = target;
   updateSteps();
   scrollStepIntoView();
 }
@@ -815,7 +890,7 @@ document.querySelector<HTMLButtonElement>("[data-step-prev]")?.addEventListener(
 document.querySelector<HTMLButtonElement>("[data-step-next]")?.addEventListener("click", () => {
   const done = stepCompletion();
   if (viewStep >= 3) {
-    save();
+    publish();
     return;
   }
   if (!done[viewStep - 1]) return;
@@ -847,6 +922,11 @@ function renderCities(): void {
         `<button class="pe-mini pe-city-action" type="button" data-city-geo="${c.id}" title="地図で探す" aria-label="地図で探す">${icon("mapPin")}</button>` +
         dateCtl +
         `<button class="pe-icon-btn danger pe-city-action" type="button" data-city-del="${c.id}" aria-label="削除">${icon("xCircle")}</button>` +
+        (noGeo
+          ? `<p class="pe-city-nogeo" data-city-nogeo="${c.id}">地図に未登録です。` +
+            `<button class="pe-mini" type="button" data-city-pin="${c.id}">${icon("mapPin")}<span>地図で指定</span></button>` +
+            `</p>`
+          : "") +
         `<div class="pe-geo-results pe-city-results" data-city-geores="${c.id}" hidden></div>` +
         `</div>`;
     })
@@ -1007,7 +1087,8 @@ function rowControls(item: Item): string {
 }
 
 function fieldInput(item: Item, key: ItemStrKey, ph: string): string {
-  return `<input data-field="${key}" data-item="${item.id}" value="${escapeHtml(item[key])}" placeholder="${escapeHtml(ph)}">`;
+  const maxLength = key === "note" ? 5000 : key === "duration" || key === "transport" ? 60 : key === "time" ? 32 : 200;
+  return `<input data-field="${key}" data-item="${item.id}" maxlength="${maxLength}" value="${escapeHtml(item[key])}" placeholder="${escapeHtml(ph)}">`;
 }
 
 function placeBlock(item: Item, target: GeoTarget, label: string, ph: string): string {
@@ -1348,6 +1429,7 @@ function formatLatLng(lat: number, lng: number): string {
 }
 
 async function onMapClick(latlng: L.LatLng): Promise<void> {
+  if (armedCity !== null) { void applyCityPin(armedCity, latlng.lat, latlng.lng); return; }
   if (!armed) return;
   const itemId = armed.itemId;
   const target = armed.target;
@@ -1376,6 +1458,7 @@ async function onMapClick(latlng: L.LatLng): Promise<void> {
 
 function disarm(): void {
   armed = null;
+  armedCity = null;
   mapHintEl.textContent = "";
   mapEl.style.cursor = "";
   daysEl.querySelectorAll(".pe-mini.is-armed").forEach((b) => b.classList.remove("is-armed"));
@@ -1393,6 +1476,47 @@ function arm(itemId: number, target: GeoTarget, button: HTMLElement): void {
   // スマホでは地図がボトムシートなので、開けばそのまま操作できる。
   if (root?.classList.contains("map-collapsed")) setMapCollapsed(false);
   root?.querySelector(".pe-mapwrap")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+/**
+ * 訪問地の位置を地図のクリックで決める待受に入る。
+ * 名前で見つからない土地でも、ピンさえ置けば登録できるようにするため。
+ */
+function armCity(cityId: number, button: HTMLElement): void {
+  if (armedCity === cityId) { disarm(); return; }
+  disarm();
+  armedCity = cityId;
+  mapHintEl.textContent = "地図をクリックすると、その場所の都市名で登録します";
+  mapEl.style.cursor = "crosshair";
+  button.classList.add("is-armed");
+  if (root?.classList.contains("map-collapsed")) setMapCollapsed(false);
+  root?.querySelector(".pe-mapwrap")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+/** 地図で置いたピンから訪問地を確定する。 */
+async function applyCityPin(cityId: number, lat: number, lng: number): Promise<void> {
+  const city = model.cities.find((c) => c.id === cityId);
+  if (!city) return;
+  city.lat = lat.toFixed(6);
+  city.lng = lng.toFixed(6);
+  disarm();
+  markDirty();
+  renderCities();
+  refreshMap(false);
+  const notice = citiesEl.querySelector<HTMLElement>(`[data-city-nogeo="${cityId}"]`);
+  if (notice) notice.textContent = "この地点の地名を確認中…";
+  try {
+    const name = await reverseCityName(lat, lng);
+    const current = model.cities.find((c) => c.id === cityId);
+    if (!current) return;
+    if (name) current.name = name;
+    markDirty();
+    renderCities();
+    refreshMap(false);
+    toast(name ? `「${name}」で登録しました` : "位置を登録しました（地名は取得できませんでした）");
+  } catch {
+    toast("位置は登録しましたが、地名を取得できませんでした");
+  }
 }
 
 // ---- ジオコーディング状態表示 -------------------------------------------
@@ -1678,14 +1802,16 @@ root.querySelectorAll<HTMLInputElement>("[data-f]").forEach((input) => {
 });
 
 // ---- サムネ画像（任意・未設定なら自動/デフォルト） ----------------------
-// 選んだ画像は canvas で WebP に変換して data URL としてプラン内に保存する。
+// 選んだ画像は canvas で小容量 WebP に変換し、上限を超える画像は保存しない。
 
 const coverInput = qs<HTMLInputElement>(root, "[data-cover-input]");
 const coverClearBtn = qs<HTMLButtonElement>(root, "[data-cover-clear]");
 const coverPreview = qs<HTMLElement>(root, "[data-cover-preview]");
 
-/** 画像ファイルを最大辺 maxSize まで縮小し、WebP の data URL に変換する。 */
-function fileToWebpDataUrl(file: File, maxSize = 1000, quality = 0.82): Promise<string> {
+const MAX_COVER_DATA_URL_LENGTH = 300_000;
+
+/** 画像ファイルを縮小し、API/DBの契約内に収まる WebP data URL に変換する。 */
+function fileToWebpDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     if (!/^image\//.test(file.type || "")) {
       reject(new Error("画像ファイルを選択してください"));
@@ -1699,19 +1825,30 @@ function fileToWebpDataUrl(file: File, maxSize = 1000, quality = 0.82): Promise<
       img.onload = (): void => {
         const nw = img.naturalWidth || img.width;
         const nh = img.naturalHeight || img.height;
-        const scale = Math.min(1, maxSize / Math.max(nw, nh));
-        const w = Math.max(1, Math.round(nw * scale));
-        const h = Math.max(1, Math.round(nh * scale));
         const canvas = document.createElement("canvas");
-        canvas.width = w;
-        canvas.height = h;
         const ctx = canvas.getContext("2d");
         if (!ctx) {
           reject(new Error("canvas を初期化できませんでした"));
           return;
         }
-        ctx.drawImage(img, 0, 0, w, h);
-        resolve(canvas.toDataURL("image/webp", quality));
+        const attempts = [
+          { maxSize: 720, quality: 0.78 },
+          { maxSize: 560, quality: 0.70 },
+          { maxSize: 420, quality: 0.64 },
+        ];
+        for (const attempt of attempts) {
+          const scale = Math.min(1, attempt.maxSize / Math.max(nw, nh));
+          canvas.width = Math.max(1, Math.round(nw * scale));
+          canvas.height = Math.max(1, Math.round(nh * scale));
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          const dataUrl = canvas.toDataURL("image/webp", attempt.quality);
+          if (dataUrl.length <= MAX_COVER_DATA_URL_LENGTH) {
+            resolve(dataUrl);
+            return;
+          }
+        }
+        reject(new Error("画像を十分に小さくできませんでした。別の画像を選んでください"));
       };
       img.src = String(reader.result || "");
     };
@@ -2092,7 +2229,10 @@ async function shareInvite(name: string, userId = ""): Promise<void> {
   if (editorLocked) return;
   if (!model.title.trim()) { toast("先に旅行名を入力してください"); return; }
   if (!slug) { slug = TripPlans.uniqueSlug(model.title); model.slug = slug; }
-  persist();
+  if (!(await persist(true))) {
+    toast("計画を保存できなかったため、招待を作成しませんでした");
+    return;
+  }
   const data = buildData();
   const meta = TripPlans.get(slug);
   if (meta && !canManagePlan(meta)) { toast("招待できるのは計画の所有者だけです"); return; }
@@ -2285,6 +2425,11 @@ citiesEl.addEventListener("click", (event) => {
     refreshMap(true);
     return;
   }
+  const pinBtn = t.closest<HTMLElement>("[data-city-pin]");
+  if (pinBtn) {
+    armCity(Number(pinBtn.dataset.cityPin || 0), pinBtn);
+    return;
+  }
   const geoBtn = t.closest<HTMLElement>("[data-city-geo]");
   if (geoBtn) {
     const city = model.cities.find((c) => c.id === Number(geoBtn.dataset.cityGeo || 0));
@@ -2465,42 +2610,58 @@ function normalizeKind(type: string | undefined): ItemKind {
   return (["sight", "food", "move", "stay", "todo", "form"] as ItemKind[]).includes(t as ItemKind) ? (t as ItemKind) : "sight";
 }
 
-function save(): void {
+async function save(): Promise<void> {
   if (editorLocked) {
     statusEl.textContent = "この計画を編集する権限がありません";
     statusEl.className = "is-dirty";
     return;
   }
-  if (!model.title.trim()) {
-    statusEl.textContent = "旅行名を入れてください";
+  setSaveActionsBusy(true);
+  try {
+    await persist(true);
+  } finally {
+    setSaveActionsBusy(false);
+  }
+}
+
+function focusPublishError(field: "title" | "dates" | "cities", step: 1 | 2): void {
+  setViewStep(step);
+  if (field === "title") qs<HTMLInputElement>(root!, '[data-f="title"]').focus();
+  else if (field === "dates") rangeTrigger.focus();
+  else cityInput.focus();
+}
+
+function publish(): void {
+  if (editorLocked) return;
+  const invalid = validatePublishPlan(model);
+  if (invalid) {
+    statusEl.textContent = invalid.message;
     statusEl.className = "is-dirty";
-    qs<HTMLInputElement>(root!, '[data-f="title"]').focus();
+    focusPublishError(invalid.field, invalid.step);
     return;
   }
   const meta = slug ? TripPlans.get(slug) : null;
-  // 公開範囲は owner の管理設定。editor は本文だけを保存する。
   if (meta && !canManagePlan(meta)) {
-    void doSave(meta.visibility === "invite" ? "invite" : "public", false);
+    statusEl.textContent = "公開設定を変更できるのは計画の所有者だけです";
+    statusEl.className = "is-dirty";
     return;
   }
-  openVisibilityChooser((visibility) => void doSave(visibility, true));
+  openVisibilityChooser((visibility) => { void doPublish(visibility); });
 }
 
-async function doSave(visibility: PlanVisibility, updateVisibility = true): Promise<void> {
+async function doPublish(visibility: PlanVisibility): Promise<void> {
   if (editorLocked) return;
-  const mutationCheckpoint = db.mutationCheckpoint();
-  if (!slug) { slug = TripPlans.uniqueSlug(model.title || "trip"); model.slug = slug; }
-  model.visibility = visibility;
-  if (updateVisibility && !TripPlans.upsert({ slug, visibility, published: true })) {
-    statusEl.textContent = "ログインしてから保存してください";
-    statusEl.className = "is-dirty";
+  setSaveActionsBusy(true);
+  if (!(await persist(true))) {
+    setSaveActionsBusy(false);
     return;
   }
-  Permissions.ensureOwner(slug, model.members);
-  if (!TripPlans.saveLocalPlan(slug, buildData(), model.memberIds)) {
-    dirty = true;
-    statusEl.textContent = "保存できませんでした";
+  const mutationCheckpoint = db.mutationCheckpoint();
+  model.visibility = visibility;
+  if (!TripPlans.upsert({ slug, visibility, published: true })) {
+    statusEl.textContent = "ログインしてから保存してください";
     statusEl.className = "is-dirty";
+    setSaveActionsBusy(false);
     return;
   }
   TripPlans.setActiveSlug(slug);
@@ -2511,6 +2672,7 @@ async function doSave(visibility: PlanVisibility, updateVisibility = true): Prom
     statusEl.textContent = "保存できませんでした";
     statusEl.className = "is-dirty";
     savebarNoteEl.textContent = errorMessage(error);
+    setSaveActionsBusy(false);
     return;
   }
   dirty = false;
@@ -2521,6 +2683,7 @@ async function doSave(visibility: PlanVisibility, updateVisibility = true): Prom
   openLink.hidden = false;
   savebarNoteEl.textContent = `保存しました（${visLabel}）。右上の「表示」でダッシュボードを確認できます。`;
   try { history.replaceState(null, "", "plan-editor.html?plan=" + encodeURIComponent(slug)); } catch { /* ignore */ }
+  setSaveActionsBusy(false);
   navigateWithPageTransition("index.html?plan=" + encodeURIComponent(slug));
 }
 
@@ -2537,7 +2700,8 @@ function visOption(value: PlanVisibility, current: PlanVisibility, label: string
 
 /** 保存時に公開範囲を選ばせるモーダル。確定で onConfirm(選択値) を呼ぶ。 */
 function openVisibilityChooser(onConfirm: (v: PlanVisibility) => void): void {
-  const current: PlanVisibility = model.visibility === "invite" ? "invite" : "public";
+  // 初回は安全側の「限定」を既定にし、公開は利用者が明示的に選ぶ。
+  const current: PlanVisibility = model.visibility === "public" ? "public" : "invite";
   const modal = document.createElement("div");
   modal.className = "pe-modal";
   modal.innerHTML =
@@ -2551,7 +2715,7 @@ function openVisibilityChooser(onConfirm: (v: PlanVisibility) => void): void {
     `<p class="pe-modal-note">限定は一覧に表示されず、参加者または招待リンクからログインして参加した人だけが閲覧できます。公開では行程・地図などの閲覧用情報が表示され、メンバー・費用・精算は公開されません。</p>` +
     `<div class="pe-modal-actions">` +
     `<button type="button" class="pe-modal-btn ghost" data-cancel>キャンセル</button>` +
-    `<button type="submit" class="pe-modal-btn">この設定で保存</button>` +
+    `<button type="submit" class="pe-modal-btn">この設定で公開</button>` +
     `</div></form>`;
   document.body.appendChild(modal);
   const form = modal.querySelector<HTMLFormElement>("form");
@@ -2570,10 +2734,24 @@ function openVisibilityChooser(onConfirm: (v: PlanVisibility) => void): void {
 // 戻る（<）は共通ヘッダー側で描画済み。開くボタンだけ eye アイコンに差し替える。
 openLink.innerHTML = icon("eye");
 const saveBtn = qs<HTMLButtonElement>(root, "[data-save]");
-saveBtn.innerHTML = icon("bookmark") + "<span>保存</span>";
-saveBtn.addEventListener("click", save);
+const publishBtn = qs<HTMLButtonElement>(root, "[data-publish-plan]");
+const stepNextBtn = qs<HTMLButtonElement>(root, "[data-step-next]");
+function setSaveActionsBusy(busy: boolean): void {
+  saveActionsBusy = busy;
+  saveBtn.disabled = busy;
+  publishBtn.disabled = busy;
+  stepNextBtn.disabled = busy || (viewStep < 3 && !stepCompletion()[viewStep - 1]);
+  saveBtn.innerHTML = busy ? icon("arrowPath") + "<span>保存中…</span>" : icon("bookmark") + "<span>下書きを保存</span>";
+}
+saveBtn.innerHTML = icon("bookmark") + "<span>下書きを保存</span>";
+publishBtn.innerHTML = icon("globeAlt") + "<span>公開設定</span>";
+saveBtn.addEventListener("click", () => { void save(); });
+publishBtn.addEventListener("click", publish);
 qs<HTMLButtonElement>(root, "[data-city-add]").innerHTML = icon("plus") + "<span>追加</span>";
-qs<HTMLElement>(root, "[data-local-note]").insertAdjacentHTML("afterbegin", icon("informationCircle") + " ");
+const localNoteEl = qs<HTMLElement>(root, "[data-local-note]");
+localNoteEl.innerHTML = icon("informationCircle") + (db.isEnabled()
+  ? "クラウドに自動保存（公開するまでは下書き）"
+  : "この端末に自動保存（公開するまでは下書き）");
 
 // 書き出し（JSON）— ローカル保存のバックアップ
 function exportJson(): void {
@@ -2686,17 +2864,26 @@ dayStripEl.addEventListener("click", (event) => {
 
 window.addEventListener("beforeunload", (event) => {
   if (editorLocked) return;
-  if (dirty && worthSaving()) persist();
   if (dirty) { event.preventDefault(); event.returnValue = ""; }
+});
+
+// タブが背面へ移る時は、beforeunload の非同期処理に頼らず先に保存を開始する。
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden" && dirty && worthSaving()) void persist();
 });
 
 // 共有ストア（MySQL）を読み終えてから既存計画を読み込む。
 // 読む前に触ると「権限がありません」になったり、計画を二重に作ってしまう。
 function bootstrapEditor(): void {
+  if (db.isEnabled() && !currentAccount()) {
+    navigateWithPageTransition("login.html?returnTo=" + encodeURIComponent("plan-editor.html"), { replace: true });
+    return;
+  }
   const editable = loadExisting();
   if (slug) { openLink.href = "index.html?plan=" + encodeURIComponent(slug); openLink.hidden = false; }
   syncBasicInputs();
   rebuildDays();
+  lastSavedContentFingerprint = contentFingerprint(buildData());
   renderCities();
   renderDays();
   renderCandidates();
@@ -2710,6 +2897,8 @@ function bootstrapEditor(): void {
     setMapCollapsed(true);
   }
   statusEl.textContent = isNew ? "下書き（自動保存・未保存）" : editable ? "読み込み完了" : statusEl.textContent;
+  const meta = slug ? TripPlans.get(slug) : null;
+  publishBtn.hidden = Boolean(meta && !canManagePlan(meta));
   if (!editable || editorLocked) applyEditorLock();
 }
 
