@@ -2095,3 +2095,75 @@
   border-bottom-color: transparent;
   color: #fff;
 }
+
+/* ---- PC：セクションを同じ幅の四角いカードにそろえる --------------------
+   これまで上半分（ステップ・基本情報・ルート）は中央寄せの 840px、
+   行程まわりは画面いっぱい（1439px）と幅がばらばらで、
+   セクションの境目も罫線だったり無かったりで揃っていなかった。
+   同じ幅・同じ余白の四角いカードを縦に積む形に統一する。
+   （中のボタンや行は罫線ベースのまま。囲うのはセクションだけ） */
+@media (min-width: 861px) {
+  .pe-main {
+    display: grid;
+    gap: 18px;
+    align-content: start;
+    padding: 20px 22px 32px;
+    border-right: 1px solid var(--line);
+    background: var(--wash);
+  }
+  .pe-main > [data-step-panel] {
+    display: grid;
+    gap: 18px;
+  }
+
+  .pe-panel,
+  .pe-setup-top,
+  .pe-form-panel > [data-step-panel] {
+    border: 1px solid var(--line);
+    border-radius: 0;
+    background: #fff;
+    padding: 20px 22px;
+  }
+  /* 中央寄せの狭いカラムはやめ、カードの幅に合わせる */
+  .pe-setup-inner { max-width: none; }
+  /* 手順・基本情報・ルートはそれぞれ別のカードにする。
+     .pe-setup 自体は枠を持たず、カードを縦に並べる入れ物に徹する。 */
+  .pe-setup.pe-panel {
+    display: grid;
+    gap: 18px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+  }
+  .pe-setup-inner,
+  .pe-form-panel {
+    display: grid;
+    gap: 18px;
+    justify-items: stretch;
+    width: 100%;
+  }
+  .pe-setup.pe-panel { justify-items: stretch; }
+  .pe-stepnav { padding: 0 2px; }
+
+  /* 行程カード：日付タブをカードの端まで伸ばしたいので、
+     余白はカード側ではなく中の要素が持つ */
+  .pe-panel--flush { padding: 0; }
+  .pe-panel--flush > .pe-panel-head { padding: 18px 22px 12px; }
+  .pe-panel--flush > .pe-days { padding: 14px 22px 4px; }
+  .pe-panel--flush > .pe-hint { padding: 4px 22px 18px; }
+  /* 日付タブは長い旅程でも日をまたげるよう、貼り付いたままにする */
+  .pe-panel--flush > .pe-daystrip { padding: 9px 22px; }
+
+  /* 候補・カレンダー連携は個別の余白を持っていたのでカード側にそろえる */
+  .pe-cand.pe-panel { padding: 20px 22px; }
+  .pe-calsync.pe-panel {
+    margin-top: 0;
+    padding: 20px 22px;
+    border-top: 1px solid var(--line);
+  }
+  .pe-calsync-final { margin: 0; }
+
+  /* 日のまとまりの上罫線は、カードの中で最初の1本だけ消す */
+  .pe-day:first-child { border-top: 0; }
+  .pe-day:first-child .pe-day-head { padding-top: 0; }
+}
