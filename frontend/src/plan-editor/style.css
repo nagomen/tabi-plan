@@ -1031,6 +1031,20 @@
   .pe-geo-results button:last-child { border-bottom: 0; }
   .pe-geo-results button:hover { background: var(--green-soft); }
   .pe-geo-results small { display: block; color: var(--muted); font-weight: 600; }
+  .pe-geo-results .pe-geo-attribution { padding: 5px 10px; font-size: 10px; font-weight: 500; }
+  /* 検索中・見つからなかった等の1行メッセージ。
+     候補ボタンと同じ余白・文字サイズにそろえる。 */
+  .pe-geo-results .pe-geo-msg {
+    margin: 0;
+    padding: 8px 10px;
+    background: #fff;
+    color: var(--muted);
+    font-size: 12.5px;
+    font-weight: 500;
+    line-height: 1.5;
+  }
+  .pe-geo-results .pe-geo-msg.is-warn { color: var(--red); }
+  .pe-city > .pe-city-results { grid-column: 1 / -1; flex: 1 0 100%; width: 100%; font-weight: 500; }
 
   /* 移動（区間） */
   .pe-node[data-kind="move"] > .pe-row { background: var(--blue-soft); border-style: dashed; border-color: var(--blue); }

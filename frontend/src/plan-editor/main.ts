@@ -130,7 +130,8 @@ function countryFromCoords(latValue: string, lngValue: string): CountryCode | nu
   if (inBox(41, 52, -5.5, 10)) return "FR";
   if (inBox(49, 61, -8.5, 2.5)) return "GB";
   if (inBox(33, 39, 124, 132)) return "KR";
-  if (inBox(21, 26, 119, 123)) return "TW";
+  // 台湾本島に加えて金門・馬祖（東経118度台）も台湾の検索文脈に含める。
+  if (inBox(21, 27, 118, 123)) return "TW";
   if (inBox(22.1, 22.6, 113.8, 114.4)) return "HK";
   if (inBox(18, 54, 73, 135)) return "CN";
   if (inBox(1.1, 1.6, 103.5, 104.1)) return "SG";
@@ -262,7 +263,7 @@ const COUNTRY_TEXT_HINTS: [RegExp, CountryCode][] = [
   [/フランス|france|paris|パリ/i, "FR"],
   [/イギリス|英国|united kingdom|uk|london|ロンドン/i, "GB"],
   [/韓国|south korea|korea|seoul|ソウル/i, "KR"],
-  [/台湾|taiwan|taipei|台北/i, "TW"],
+  [/台湾|taiwan|taipei|台北|桃園|taoyuan|金門|kinmen|馬祖|matsu/i, "TW"],
   [/香港|hong kong/i, "HK"],
   [/中国|china|shanghai|上海|beijing|北京/i, "CN"],
   [/シンガポール|singapore/i, "SG"],
@@ -554,7 +555,14 @@ function geocodeContextForDay(day: Day, item?: Item, target?: GeoTarget): GeoCon
   const cityName = (city?.name || day.area || "").trim();
   const hasCityCoords = city ? hasLatLng(city.lat, city.lng) : false;
   const endpointText = target === "from" ? item?.from : target === "to" ? item?.to : item?.place;
-  const countryCode = countryFromText(endpointText) || countryForCity(city);
+  const endpointCountry = countryFromText(endpointText);
+  const isMoveEndpoint = target === "from" || target === "to";
+  // 国・都市を含む移動地点は旅行中の都市から独立して検索する。
+  // 例: 金門島の日程にある「羽田空港」へ金門島の座標を付けない。
+  if (isMoveEndpoint && endpointCountry) {
+    return { countryCode: endpointCountry, purpose: "move" };
+  }
+  const countryCode = endpointCountry || countryForCity(city);
   if (!cityName && !hasCityCoords && !countryCode) return undefined;
   return {
     cityName,
@@ -562,7 +570,7 @@ function geocodeContextForDay(day: Day, item?: Item, target?: GeoTarget): GeoCon
     lat: hasCityCoords ? num(city!.lat) : undefined,
     lng: hasCityCoords ? num(city!.lng) : undefined,
     countryCode: countryCode || undefined,
-    purpose: target === "from" || target === "to" ? "move" : "place",
+    purpose: isMoveEndpoint ? "move" : "place",
     requireNearby: item?.kind === "stay" && target === "place",
     radiusKm: item?.kind === "stay" ? 60 : 120,
   };
@@ -618,6 +626,18 @@ function conciseGeoLabel(label: string): string {
 }
 
 let persistTimer = 0;
+/**
+ * 都市検索の状態メッセージ。
+ *
+ * .pe-geo-results の見た目は中の button と small にしか付いていないので、
+ * textContent で直に文字を入れると素のまま（余白も文字サイズも無し）に
+ * なっていた。指定の当たる要素に包んで出す。
+ */
+function showCityGeoMessage(target: HTMLElement, text: string, kind?: "warn"): void {
+  target.innerHTML =
+    '<p class="pe-geo-msg' + (kind === "warn" ? " is-warn" : "") + '">' + escapeHtml(text) + "</p>";
+}
+
 function markDirty(): void {
   if (editorLocked) return;
   dirty = true;
@@ -847,7 +867,7 @@ async function searchCity(city: City): Promise<void> {
   if (button) button.setAttribute("aria-busy", "true");
   if (resultsEl) {
     resultsEl.hidden = false;
-    resultsEl.textContent = "候補を検索中…";
+    showCityGeoMessage(resultsEl, "候補を検索中…");
   }
   try {
     const results = await geocodeSearch(query, {
@@ -858,7 +878,7 @@ async function searchCity(city: City): Promise<void> {
     cityGeoCache.set(city.id, results);
     if (!resultsEl) return;
     if (!results.length) {
-      resultsEl.textContent = "都市候補が見つかりませんでした。国名を加えて再検索してください。";
+      showCityGeoMessage(resultsEl, "都市候補が見つかりませんでした。国名を加えて再検索してください。", "warn");
       return;
     }
     resultsEl.innerHTML = results.map((result, index) =>
@@ -867,7 +887,7 @@ async function searchCity(city: City): Promise<void> {
     ).join("") + `<small class="pe-geo-attribution">${escapeHtml(geocodingAttribution(results))}</small>`;
   } catch (error) {
     if (cityGeoRequestSeq.get(city.id) === requestId && resultsEl) {
-      resultsEl.textContent = errorMessage(error) || "都市検索に失敗しました";
+      showCityGeoMessage(resultsEl, errorMessage(error) || "都市検索に失敗しました", "warn");
     }
   } finally {
     if (cityGeoRequestSeq.get(city.id) === requestId && button) button.removeAttribute("aria-busy");
