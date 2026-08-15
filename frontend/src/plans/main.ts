@@ -22,15 +22,15 @@ import { planCoverThumbnail } from "../shared/cover";
 import { splitNames } from "../shared/friend-store";
 import { decodeInvite } from "../shared/invite";
 import {
-  callAppsScript,
   postAppsScript,
-  sha256Hex,
+  authenticateAppsScript,
   isAuthError,
   type AppsScriptResponse,
 } from "../shared/apps-script";
 import * as Permissions from "../shared/permissions-store";
 import { isIdentified } from "../shared/identity";
 import { canEditPlan, ownerNameOf, roleOf } from "../shared/membership";
+import { TILE_URL, TILE_OPTIONS } from "../shared/map-tiles";
 
 // ---- 補助型 -------------------------------------------------------------
 
@@ -643,10 +643,7 @@ function renderLocationMap(plans: PlanMeta[]): void {
       attributionControl: true,
       zoomControl: true,
     });
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      maxZoom: 18,
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-    }).addTo(locationMapState.map);
+    L.tileLayer(TILE_URL, TILE_OPTIONS).addTo(locationMapState.map);
   }
   const map = locationMapState.map;
   if (locationMapState.layer) locationMapState.layer.remove();
@@ -1167,8 +1164,7 @@ async function authenticate(url: string): Promise<string> {
   for (;;) {
     const prompt = await askPassword();
     try {
-      const passwordHash = await sha256Hex(prompt.value);
-      const res = await callAppsScript(url, { action: "auth", passwordHash });
+      const res = await authenticateAppsScript(url, prompt.value);
       savePublishToken(res.token, res.expiresAt);
       prompt.modal.remove();
       return res.token || "";

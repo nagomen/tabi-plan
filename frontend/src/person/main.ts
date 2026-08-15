@@ -24,6 +24,7 @@ import type { PlanMeta } from "../shared/plans-store";
 import { planCoverThumbnail } from "../shared/cover";
 import { getViews } from "../shared/views-store";
 import { canEditPlan, canViewPlan, ownerNameOf } from "../shared/membership";
+import { TILE_URL, TILE_OPTIONS } from "../shared/map-tiles";
 
 // ---- 対象の名前 ---------------------------------------------------------
 
@@ -353,10 +354,7 @@ function renderMap(): void {
   }
 
   personMap = L.map(mapEl, { scrollWheelZoom: false, attributionControl: true });
-  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    maxZoom: 18,
-    attribution: "&copy; OpenStreetMap",
-  }).addTo(personMap);
+  L.tileLayer(TILE_URL, TILE_OPTIONS).addTo(personMap);
   markersLayer = L.layerGroup().addTo(personMap);
   updateMapMarkers();
 }

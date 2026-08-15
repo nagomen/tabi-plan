@@ -7,6 +7,7 @@ import { escapeHtml } from "../shared/dom";
 import type { MapDefaults } from "../shared/config";
 import type { ItineraryItem } from "../shared/types";
 import type { DayGroup, RoutePoint, StopGroup, LeafletState } from "./types";
+import { TILE_URL, TILE_OPTIONS } from "../shared/map-tiles";
 
 function shortDate(date: string | undefined): string {
   return String(date || "").replace(/^\d{4}-0?/, "").replace("-", "/");
@@ -169,10 +170,7 @@ export async function renderLeafletMap(
       scrollWheelZoom: true,
       attributionControl: true,
     });
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      maxZoom: 18,
-      attribution: "&copy; OpenStreetMap",
-    }).addTo(leafletState.map);
+    L.tileLayer(TILE_URL, TILE_OPTIONS).addTo(leafletState.map);
   }
   const lmap = leafletState.map;
 
