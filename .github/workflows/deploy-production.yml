@@ -152,6 +152,39 @@ jobs:
     environment: production
 
     steps:
+      # AI 機能のキーはリポジトリには置かない。Secrets からサーバーの
+      # 環境ファイルへ書き込む。未設定なら何もしない（機能だけ無効になる）。
+      - name: Sync OpenAI key to VPS
+        if: ${{ secrets.OPENAI_KEY != '' }}
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          ENV_FILE: ${{ vars.PRODUCTION_API_ENV_FILE || '~/secure_env/travel-api.env' }}
+          OPENAI_KEY: ${{ secrets.OPENAI_KEY }}
+          OPENAI_MODEL: ${{ vars.PRODUCTION_OPENAI_MODEL }}
+        with:
+          host: ${{ secrets.PRODUCTION_SSH_HOST }}
+          username: ${{ secrets.PRODUCTION_SSH_USER }}
+          key: ${{ secrets.PRODUCTION_SSH_KEY }}
+          port: ${{ secrets.PRODUCTION_SSH_PORT || 22 }}
+          envs: ENV_FILE,OPENAI_KEY,OPENAI_MODEL
+          script_stop: true
+          script: |
+            file="${ENV_FILE/#\~/$HOME}"
+            if [ ! -f "$file" ]; then
+              echo "$file がありません。" >&2
+              exit 1
+            fi
+            umask 077
+            tmp="$(mktemp)"
+            grep -v -E '^(OPENAI_KEY|OPENAI_MODEL)=' "$file" > "$tmp" || true
+            printf 'OPENAI_KEY=%s\n' "$OPENAI_KEY" >> "$tmp"
+            if [ -n "$OPENAI_MODEL" ]; then
+              printf 'OPENAI_MODEL=%s\n' "$OPENAI_MODEL" >> "$tmp"
+            fi
+            install -m 600 "$tmp" "$file"
+            rm -f "$tmp"
+            echo "OPENAI_KEY を書き込みました（値は出力しません）"
+
       - name: Deploy API on VPS
         uses: appleboy/ssh-action@v1.2.0
         env:
