@@ -381,6 +381,7 @@ export async function generateItinerary(input: {
   end_date: string;
   note?: string;
   people?: number;
+  cities?: { name: string; from_date: string; to_date: string }[];
 }): Promise<ItineraryDraft> {
   return request<ItineraryDraft>("POST", "/api/ai/itinerary", input);
 }

@@ -1052,8 +1052,12 @@ function splitMoveTitle(title: string): Partial<Item> {
 
 async function runAiDraft(): Promise<void> {
   if (editorLocked) return;
-  const area = aiArea.value.trim() || model.cities.map((c) => c.name).filter(Boolean).join("、") || model.title.trim();
-  if (!area) { setAiStatus("行き先を入れてください", "warn"); aiArea.focus(); return; }
+  const cities = model.cities
+    .filter((city) => city.name.trim())
+    .map((city) => ({ name: city.name.trim(), from_date: city.fromDate, to_date: city.toDate }));
+  // 行き先の入力は任意。空なら登録済みの訪問地、それも無ければ旅行名から拾う。
+  const area = aiArea.value.trim() || cities.map((city) => city.name).join("、") || model.title.trim();
+  if (!area) { setAiStatus("行き先を入れるか、訪問地を登録してください", "warn"); aiArea.focus(); return; }
   if (!model.startDate || !model.endDate) { setAiStatus("先に期間を決めてください", "warn"); return; }
   const filled = model.days.some((day) => day.items.length || day.stay) || model.cities.length;
   if (filled && !window.confirm("いまの訪問地と行程を、作り直した下書きで置き換えます。よろしいですか。")) return;
@@ -1066,6 +1070,7 @@ async function runAiDraft(): Promise<void> {
       start_date: model.startDate,
       end_date: model.endDate,
       note: aiNote.value.trim() || undefined,
+      cities,
     });
     applyItineraryDraft(draft);
     markDirty();

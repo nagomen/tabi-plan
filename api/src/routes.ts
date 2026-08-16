@@ -293,6 +293,11 @@ export async function route(method: string, path: string, body: Body, actorUserI
         endDate: str(body.end_date),
         note: str(body.note),
         people: Number(body.people) || undefined,
+        cities: arr(body.cities).map((city) => ({
+          name: str(city.name),
+          from_date: str(city.from_date),
+          to_date: str(city.to_date),
+        })),
       });
       return { status: 200, body: draft };
     } catch (error) {

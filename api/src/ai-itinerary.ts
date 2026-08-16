@@ -19,6 +19,8 @@ export interface ItineraryInput {
   endDate: string;
   note?: string;
   people?: number;
+  /** すでに登録されている訪問地。行き先の指定が無いときはこれを使う。 */
+  cities?: { name: string; from_date?: string; to_date?: string }[];
 }
 
 export interface ItineraryDraft {
@@ -99,8 +101,17 @@ function daysBetween(startDate: string, endDate: string): string[] {
 
 function prompt(input: ItineraryInput, dates: string[]): string {
   const people = input.people && input.people > 0 ? `${input.people}人` : "人数の指定なし";
+  const cities = (input.cities || []).filter((city) => city.name && city.name.trim());
+  const cityLines = cities.map((city) => {
+    const span = city.from_date && city.to_date ? `（${city.from_date}〜${city.to_date}）` : "";
+    return `  - ${city.name}${span}`;
+  });
   return [
     `行き先: ${input.area}`,
+    cities.length
+      ? ["すでに決まっている訪問地と滞在期間:", ...cityLines,
+         "この順番と滞在期間はそのまま守り、cities にも同じ内容を返すこと。"].join("\n")
+      : "",
     `日程: ${dates[0]} 〜 ${dates[dates.length - 1]}（全${dates.length}日）`,
     `対象の日付: ${dates.join(", ")}`,
     `人数: ${people}`,
@@ -130,8 +141,10 @@ export function checkCooldown(userId: string): number {
 
 export async function generateItinerary(userId: string, input: ItineraryInput): Promise<ItineraryDraft> {
   if (!config.ai.apiKey) throw new Error("AI の設定がされていません");
-  const area = String(input.area || "").trim();
-  if (!area) throw new Error("行き先を入れてください");
+  const cities = (input.cities || []).filter((city) => city.name && city.name.trim());
+  const area = String(input.area || "").trim()
+    || cities.map((city) => city.name.trim()).join("、");
+  if (!area) throw new Error("行き先を入れるか、訪問地を登録してください");
   const dates = daysBetween(input.startDate, input.endDate);
 
   lastRunAt.set(userId, Date.now());
@@ -148,7 +161,7 @@ export async function generateItinerary(userId: string, input: ItineraryInput): 
           role: "system",
           content: "あなたは旅行の行程を組むプランナーです。実在する場所だけを、日本語で簡潔に挙げます。",
         },
-        { role: "user", content: prompt({ ...input, area }, dates) },
+        { role: "user", content: prompt({ ...input, area, cities }, dates) },
       ],
       response_format: {
         type: "json_schema",
