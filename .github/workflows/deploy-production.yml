@@ -58,7 +58,9 @@ jobs:
 
   deploy:
     name: Deploy to nginx VPS
-    needs: build
+    needs:
+      - build
+      - deploy-api
     runs-on: ubuntu-latest
     environment: production
 
@@ -142,3 +144,43 @@ jobs:
               args="--install-nginx"
             fi
             DOMAIN="$DOMAIN" REPO_BRANCH="$REPO_BRANCH" bash infra/deploy-static.sh --skip-build $args
+
+  deploy-api:
+    name: Deploy API and migrate database
+    needs: build
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Deploy API on VPS
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          APP_DIR: ${{ vars.PRODUCTION_APP_DIR }}
+          API_DOMAIN: ${{ vars.PRODUCTION_API_DOMAIN }}
+          REPO_BRANCH: ${{ inputs.ref }}
+          INSTALL_NGINX: ${{ inputs.install_nginx && '1' || '0' }}
+        with:
+          host: ${{ secrets.PRODUCTION_SSH_HOST }}
+          username: ${{ secrets.PRODUCTION_SSH_USER }}
+          key: ${{ secrets.PRODUCTION_SSH_KEY }}
+          port: ${{ secrets.PRODUCTION_SSH_PORT || 22 }}
+          envs: APP_DIR,API_DOMAIN,REPO_BRANCH,INSTALL_NGINX
+          script_stop: true
+          script: |
+            if [ -z "$APP_DIR" ]; then
+              echo "PRODUCTION_APP_DIR repository variable is required." >&2
+              exit 1
+            fi
+            cd "$APP_DIR"
+            git fetch origin "$REPO_BRANCH"
+            git checkout "$REPO_BRANCH"
+            git pull --ff-only origin "$REPO_BRANCH"
+            args="--skip-git"
+            if [ "$INSTALL_NGINX" = "1" ]; then
+              if [ -z "$API_DOMAIN" ]; then
+                echo "PRODUCTION_API_DOMAIN repository variable is required when install_nginx is enabled." >&2
+                exit 1
+              fi
+              args="$args --install-nginx"
+            fi
+            APP_DIR="$APP_DIR" API_DOMAIN="$API_DOMAIN" REPO_BRANCH="$REPO_BRANCH" bash infra/deploy-api.sh $args
