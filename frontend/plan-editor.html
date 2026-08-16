@@ -76,6 +76,17 @@
               <input data-city-input type="text" autocomplete="off" maxlength="100" placeholder="都市・エリアを入力（例: 盛岡）" aria-label="都市・エリアを入力">
               <button class="pe-mini" type="button" data-city-add>追加</button>
             </div>
+
+            <div class="pe-ai" data-ai-block>
+              <span class="pe-ai-head" data-ic-ai>AI にたたき台を作らせる</span>
+              <p class="pe-ai-note">行き先と期間だけ決めれば、訪問地と日ごとの予定を一通り入れます。作ったあとは自由に直せます。</p>
+              <div class="pe-ai-form">
+                <input data-ai-area type="text" autocomplete="off" maxlength="120" placeholder="行き先（例: 台湾 台北と九份）" aria-label="行き先">
+                <input data-ai-note type="text" autocomplete="off" maxlength="200" placeholder="希望（任意・例: 温泉と海鮮、歩きすぎない）" aria-label="希望">
+                <button class="pe-mini" type="button" data-ai-run>下書きを作る</button>
+              </div>
+              <p class="pe-ai-status" data-ai-status></p>
+            </div>
           </div>
         </div>
         <div class="pe-stepnav" aria-label="作成ステップの移動">

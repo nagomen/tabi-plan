@@ -29,7 +29,6 @@ import { splitNames } from "../shared/friend-store";
 import { buildInviteLink } from "../shared/invite";
 import { gcalUrl, buildIcs, type CalEvent } from "../shared/calendar";
 import { mountAppHeader } from "../shared/app-header";
-import * as Permissions from "../shared/permissions-store";
 import { currentAccount } from "../shared/account-store";
 import { listFriends } from "../shared/friendship-store";
 import { canEditPlan, canManagePlan, planHasOwner } from "../shared/membership";
@@ -334,6 +333,7 @@ const tripSummaryEl = qs<HTMLElement>(root, "[data-trip-summary]");
 qs<HTMLElement>(root, "[data-ic-route]").insertAdjacentHTML("afterbegin", icon("map") + " ");
 qs<HTMLElement>(root, "[data-ic-days]").insertAdjacentHTML("afterbegin", icon("calendarDays") + " ");
 qs<HTMLElement>(root, "[data-ic-cand]").insertAdjacentHTML("afterbegin", icon("star") + " ");
+qs<HTMLElement>(root, "[data-ic-ai]").insertAdjacentHTML("afterbegin", icon("sparkles") + " ");
 
 // 入力ラベル・操作ボタンにも Heroicon を添える
 const ICON_MOUNTS: [string, IconName][] = [
@@ -718,7 +718,6 @@ async function performPersist(explicit = false): Promise<boolean> {
     openLink.hidden = false;
     try { history.replaceState(null, "", "plan-editor.html?plan=" + encodeURIComponent(slug)); } catch { /* ignore */ }
   }
-  Permissions.ensureOwner(slug, model.members);
   const data = buildData();
   const nextContentFingerprint = contentFingerprint(data);
   const contentChanged = nextContentFingerprint !== lastSavedContentFingerprint;
@@ -993,6 +992,102 @@ function watchComposition(input: HTMLElement): void {
 function isComposingKey(event: KeyboardEvent): boolean {
   return event.isComposing || (event.target !== null && composingInputs.has(event.target));
 }
+
+// ---- AI で下書きを作る ---------------------------------------------------
+
+const aiArea = qs<HTMLInputElement>(root, "[data-ai-area]");
+const aiNote = qs<HTMLInputElement>(root, "[data-ai-note]");
+const aiRun = qs<HTMLButtonElement>(root, "[data-ai-run]");
+const aiStatus = qs<HTMLElement>(root, "[data-ai-status]");
+
+function setAiStatus(text: string, kind?: "warn" | "ok"): void {
+  aiStatus.textContent = text;
+  aiStatus.className = "pe-ai-status" + (kind ? " is-" + kind : "");
+}
+
+/** 生成結果を編集中のモデルへ流し込む。 */
+function applyItineraryDraft(draft: db.ItineraryDraft): void {
+  model.cities = draft.cities.map((city) => ({
+    id: seq++,
+    name: city.name.trim(),
+    lat: "", lng: "",
+    fromDate: city.from_date || "",
+    toDate: city.to_date || city.from_date || "",
+  }));
+  const byDate = new Map(draft.days.map((day) => [day.date, day]));
+  for (const day of model.days) {
+    const source = byDate.get(day.date);
+    if (!source) {
+      // 置き換えに同意してもらっているので、生成が届かなかった日は空にする。
+      // 前の予定が混ざったまま残るほうが分かりにくい。
+      day.items = [];
+      day.stay = null;
+      continue;
+    }
+    if (source.area) day.area = source.area;
+    const kinds: ItemKind[] = ["sight", "food", "move", "stay", "todo", "form"];
+    const items = source.items.filter((item) => kinds.includes(item.kind as ItemKind));
+    // 宿泊はその日の「錨」として別枠に持つ。予定の列には入れない。
+    const stay = items.find((item) => item.kind === "stay");
+    day.items = items
+      .filter((item) => item.kind !== "stay")
+      .map((item) => newItem(item.kind as ItemKind, {
+        time: item.time || "",
+        title: item.title || "",
+        place: item.place || "",
+        note: item.note || "",
+        ...(item.kind === "move" ? splitMoveTitle(item.title) : {}),
+      }));
+    day.stay = stay
+      ? newItem("stay", { title: stay.title || "", place: stay.place || "", note: stay.note || "", nights: 1 })
+      : null;
+  }
+}
+
+/** 「A → B」の移動タイトルから出発地・到着地を拾う。 */
+function splitMoveTitle(title: string): Partial<Item> {
+  const parts = String(title || "").split(/[→⇒]|->/).map((s) => s.trim()).filter(Boolean);
+  return parts.length >= 2 ? { from: parts[0], to: parts[1] } : {};
+}
+
+async function runAiDraft(): Promise<void> {
+  if (editorLocked) return;
+  const area = aiArea.value.trim() || model.cities.map((c) => c.name).filter(Boolean).join("、") || model.title.trim();
+  if (!area) { setAiStatus("行き先を入れてください", "warn"); aiArea.focus(); return; }
+  if (!model.startDate || !model.endDate) { setAiStatus("先に期間を決めてください", "warn"); return; }
+  const filled = model.days.some((day) => day.items.length || day.stay) || model.cities.length;
+  if (filled && !window.confirm("いまの訪問地と行程を、作り直した下書きで置き換えます。よろしいですか。")) return;
+
+  aiRun.disabled = true;
+  setAiStatus("作っています。20秒ほどかかります…");
+  try {
+    const draft = await db.generateItinerary({
+      area,
+      start_date: model.startDate,
+      end_date: model.endDate,
+      note: aiNote.value.trim() || undefined,
+    });
+    applyItineraryDraft(draft);
+    markDirty();
+    renderCities();
+    renderDays();
+    refreshMap(true);
+    const count = model.days.reduce((sum, day) => sum + day.items.length + (day.stay ? 1 : 0), 0);
+    setAiStatus(`下書きを作りました（訪問地 ${model.cities.length} 件・予定 ${count} 件）。中身は自由に直せます。`, "ok");
+  } catch (error) {
+    const message = errorMessage(error);
+    setAiStatus(/429/.test(message) ? "続けて作りすぎです。少し待ってからもう一度。" : message || "作れませんでした", "warn");
+  } finally {
+    aiRun.disabled = false;
+  }
+}
+
+aiRun.addEventListener("click", () => { void runAiDraft(); });
+watchComposition(aiArea);
+aiArea.addEventListener("keydown", (e) => {
+  if (isComposingKey(e)) return;
+  if (e.key === "Enter") { e.preventDefault(); void runAiDraft(); }
+});
 
 async function addCity(name: string): Promise<void> {
   const trimmed = name.trim();

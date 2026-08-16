@@ -19,19 +19,31 @@ function list(name: string): string[] {
     .filter(Boolean);
 }
 
+function integer(name: string, fallback: string, min: number, max: number): number {
+  const raw = optional(name, fallback);
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value) || value < min || value > max) {
+    throw new Error(`環境変数 ${name} は ${min}〜${max} の整数で指定してください`);
+  }
+  return value;
+}
+
 const apiToken = required("API_TOKEN");
 const sessionSecret = required("SESSION_SECRET");
+if (sessionSecret.length < 32) {
+  throw new Error("SESSION_SECRET は32文字以上のランダム値にしてください");
+}
 if (sessionSecret === apiToken) {
   throw new Error("SESSION_SECRET は公開 API_TOKEN とは別の十分に長い秘密値にしてください");
 }
 
 export const config = {
-  port: Number(optional("PORT", "8001")),
+  port: integer("PORT", "8001", 1, 65_535),
   host: optional("HOST", "127.0.0.1"),
 
   db: {
     host: optional("DB_HOST", "127.0.0.1"),
-    port: Number(optional("DB_PORT", "3306")),
+    port: integer("DB_PORT", "3306", 1, 65_535),
     user: required("DB_USER"),
     password: required("DB_PASSWORD"),
     database: optional("DB_NAME", "TravelPlan"),
@@ -43,18 +55,37 @@ export const config = {
   /** ログインセッション署名用。API_TOKEN は静的サイトに露出するため絶対に流用しない。 */
   sessionSecret,
 
-  /** ログインセッションの保持日数。LINE から何度も開く用途なので長めに保つ。 */
-  sessionTtlDays: Number(optional("SESSION_TTL_DAYS", "365")),
+  /** ログインセッションの保持日数。漏えい時の影響を抑えるため既定は30日。 */
+  sessionTtlDays: integer("SESSION_TTL_DAYS", "30", 1, 365),
 
-  /** 旧 KV ストアの管理用トークン。未設定なら /api/store は無効。 */
-  legacyStoreToken: optional("LEGACY_STORE_TOKEN", ""),
+  /**
+   * この時刻（Unix ms）より前に発行されたセッションを全失効する。
+   * インシデント時や秘密鍵ローテーション時の緊急遮断に使う。
+   */
+  sessionEpochMs: integer("SESSION_EPOCH_MS", "0", 0, Number.MAX_SAFE_INTEGER),
 
   /** CORS 許可オリジン。GitHub Pages のオリジンを入れる。 */
   allowedOrigins: list("ALLOWED_ORIGINS"),
 
   /** 1リクエストあたりの本文上限（バイト）。 */
-  maxBodyBytes: Number(optional("MAX_BODY_BYTES", String(2 * 1024 * 1024))),
+  maxBodyBytes: integer("MAX_BODY_BYTES", String(2 * 1024 * 1024), 1024, 50 * 1024 * 1024),
 
   /** 1オリジンIPあたりの毎分リクエスト上限。 */
-  rateLimitPerMinute: Number(optional("RATE_LIMIT_PER_MINUTE", "240")),
+  rateLimitPerMinute: integer("RATE_LIMIT_PER_MINUTE", "240", 1, 100_000),
+
+  /** サインアップ・ログインにだけ適用する、より厳しい毎分上限。 */
+  authRateLimitPerMinute: integer("AUTH_RATE_LIMIT_PER_MINUTE", "10", 1, 10_000),
+
+  /** Cloudflareが直接の信頼済みプロキシである環境だけ true にする。 */
+  trustCloudflareConnectingIp: optional("TRUST_CLOUDFLARE_CONNECTING_IP", "false") === "true",
+
+  /**
+   * 旅程の下書きを作る AI。キーはサーバーにだけ置く
+   * （静的サイトに出すと誰でも使えてしまう）。未設定なら機能ごと無効。
+   */
+  ai: {
+    apiKey: optional("OPENAI_KEY", ""),
+    model: optional("OPENAI_MODEL", "gpt-5.4-mini"),
+    timeoutMs: integer("OPENAI_TIMEOUT_MS", "60000", 1000, 300_000),
+  },
 } as const;

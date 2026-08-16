@@ -11,99 +11,17 @@
 //   一斉に壊れ、同名の別人を区別できなかった。id を正にして、表示名は
 //   users テーブルの1列（＝表示のためだけの値）に降格させる。
 
-import { readGlobalTripConfig, DEFAULT_CONFIG, mergeConfig, normalizeTripConfig, type TripConfig } from "./config";
+import { resolvedTripConfig } from "./config";
+import type {
+  CredentialRow, ExpenseCategory, ExpenseRow, ExpenseShareRow, ItineraryRow,
+  PaymentMethod, PlanMemberRow, PlanRow, SettlementRow, SplitMethod, UserRow,
+} from "@tabi/contracts";
+export type {
+  CredentialRow, ExpenseCategory, ExpenseRow, ExpenseShareRow, ItineraryKind, ItineraryRow,
+  PaymentMethod, PlanMemberRow, PlanRow, SettlementRow, SplitMethod, UserRow,
+} from "@tabi/contracts";
 
 // ---- 行の型（API と同じ形。snake_case のまま扱う） ---------------------
-
-export interface UserRow { id: string; display_name: string }
-export interface CredentialRow { user_id: string; email: string }
-
-export interface PlanRow {
-  id: string;
-  slug: string;
-  title: string;
-  note: string | null;
-  start_date: string | null;
-  end_date: string | null;
-  dates_label: string | null;
-  cover_url: string | null;
-  base_currency: string;
-  source: "local" | "google_sheets" | "apps_script" | "sample";
-  visibility: "public" | "invite";
-  status: "draft" | "published";
-  open_editing: 0 | 1;
-  owner_user_id: string | null;
-  external_spreadsheet_id: string | null;
-  external_apps_script_url: string | null;
-  external_schema: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface PlanMemberRow {
-  plan_id: string;
-  user_id: string;
-  role: "owner" | "editor" | "viewer";
-  status: "active" | "left" | "revoked";
-}
-
-export type ItineraryKind = "sight" | "move" | "food" | "stay" | "todo" | "form";
-
-export interface ItineraryRow {
-  id: string;
-  plan_id: string;
-  item_date: string | null;
-  day_index: number | null;
-  sort_order: number;
-  kind: ItineraryKind;
-  start_time: string | null;
-  title: string;
-  place: string | null;
-  area: string | null;
-  note: string | null;
-  map_query: string | null;
-  lat: number | null;
-  lng: number | null;
-  from_place: string | null;
-  to_place: string | null;
-  transport: string | null;
-  duration_minutes: number | null;
-}
-
-export type ExpenseCategory = "food" | "transport" | "lodging" | "sightseeing" | "communication" | "other";
-export type SplitMethod = "equal_all" | "equal_selected" | "custom" | "none";
-export type PaymentMethod = "card" | "cash" | "transfer" | "other";
-
-export interface ExpenseRow {
-  id: string;
-  plan_id: string;
-  paid_on: string | null;
-  payer_user_id: string;
-  category: ExpenseCategory;
-  title: string;
-  amount_minor: number;
-  currency: string;
-  fx_rate: number;
-  amount_base_minor: number;
-  split_method: SplitMethod;
-  payment_method: PaymentMethod | null;
-  note: string | null;
-  receipt_url: string | null;
-  created_at: string;
-  deleted_at: string | null;
-}
-
-export interface ExpenseShareRow { expense_id: string; user_id: string; amount_base_minor: number }
-
-export interface SettlementRow {
-  id: string;
-  plan_id: string;
-  from_user_id: string;
-  to_user_id: string;
-  amount_base_minor: number;
-  note: string | null;
-  settled_at: string;
-}
 
 export interface CityRow { id: string; plan_id: string; name: string; sort_order: number }
 export interface LinkRow { id: string; plan_id: string; link_key: string; label: string; url: string; caption: string | null; sort_order: number }
@@ -113,6 +31,11 @@ export interface CandidateVoteRow { candidate_id: string; user_id: string }
 export interface ViewRow { plan_id: string; view_count: number }
 export interface PaymentLinkRow { user_id: string; provider: string; handle: string }
 export interface UserSettingRow { user_id: string; history_public: 0 | 1 }
+export interface PendingInviteRow {
+  id: string; plan_id: string; plan_slug: string; plan_title: string;
+  role: "editor" | "viewer"; invited_name: string | null;
+  created_at: string; expires_at: string | null;
+}
 export interface FriendshipRow {
   id: string; user_low_id: string; user_high_id: string; requested_by_id: string;
   status: string; created_at: string; responded_at: string | null;
@@ -135,6 +58,7 @@ interface Snapshot {
   views: ViewRow[];
   paymentLinks: PaymentLinkRow[];
   userSettings: UserSettingRow[];
+  pendingInvites: PendingInviteRow[];
   friendships: FriendshipRow[];
 }
 
@@ -142,7 +66,7 @@ function emptySnapshot(): Snapshot {
   return {
     users: [], credentials: [], plans: [], members: [], itinerary: [], cities: [], links: [],
     checklist: [], candidates: [], candidateVotes: [], expenses: [], expenseShares: [],
-    settlements: [], views: [], paymentLinks: [], userSettings: [], friendships: [],
+    settlements: [], views: [], paymentLinks: [], userSettings: [], pendingInvites: [], friendships: [],
   };
 }
 
@@ -152,17 +76,8 @@ let loading: Promise<void> | null = null;
 
 // ---- 設定 ---------------------------------------------------------------
 
-function config(): TripConfig {
-  return normalizeTripConfig(
-    mergeConfig(
-      DEFAULT_CONFIG as unknown as Record<string, unknown>,
-      readGlobalTripConfig() as Record<string, unknown>,
-    ) as unknown as TripConfig,
-  );
-}
-
 function api(): { base: string; token: string } | null {
-  const shared = config().sharedBackend;
+  const shared = resolvedTripConfig().sharedBackend;
   if (!shared?.enabled || shared.mode !== "api") return null;
   return { base: (shared.apiBaseUrl || "").replace(/\/+$/, ""), token: shared.apiToken || "" };
 }
@@ -239,6 +154,10 @@ export async function authLogIn(input: {
   );
   rememberAuthenticatedUser(result.user);
   return result;
+}
+
+export async function authLogOut(): Promise<void> {
+  await request("POST", "/api/auth/logout", {});
 }
 
 // 計画作成直後のメンバー・本文保存など、前の書き込みに依存する操作を順番に送る。
@@ -331,6 +250,8 @@ function readCache(): Snapshot | null {
     const parsed = JSON.parse(raw) as Partial<Snapshot>;
     // 形が変わった古いキャッシュは捨てる
     if (!parsed || !Array.isArray(parsed.plans) || !Array.isArray(parsed.users)) return null;
+    // version 導入前のキャッシュは競合検知に使えないので破棄する。
+    if (parsed.plans.some((plan) => !plan || typeof plan.version !== "number")) return null;
     return { ...emptySnapshot(), ...parsed } as Snapshot;
   } catch {
     return null;
@@ -369,7 +290,7 @@ async function revalidate(): Promise<void> {
  *   計画エディタのように、読み込んだ後に利用者が編集を始める画面で使う
  *   （裏で snap が差し替わると編集中の状態と食い違うため）。
  */
-export async function load(options: { fresh?: boolean } = {}): Promise<void> {
+export async function load(options: { fresh?: boolean; strict?: boolean } = {}): Promise<void> {
   if (loaded) return;
   if (loading) return loading;
   if (!api()) {
@@ -392,9 +313,11 @@ export async function load(options: { fresh?: boolean } = {}): Promise<void> {
       writeCache(snap);
       emit({ ok: true, path: "/api/bootstrap" });
     } catch (error) {
-      // 取得できなくても画面は空で立ち上げる（オフライン時と同じ扱い）
-      loaded = true;
+      // 編集画面では空データのまま新規作成すると既存計画と衝突するため失敗を返す。
+      // 一覧など読み取り画面は従来どおり空表示で立ち上げられる。
+      loaded = !options.strict;
       emit({ ok: false, path: "/api/bootstrap", error: String(error) });
+      if (options.strict) throw error;
     }
   })().finally(() => {
     loading = null;
@@ -403,7 +326,7 @@ export async function load(options: { fresh?: boolean } = {}): Promise<void> {
 }
 
 /** サーバーから読み直す（他端末の変更を取り込む）。控えは使わない。 */
-export async function reload(): Promise<void> {
+async function reload(): Promise<void> {
   loaded = false;
   loading = null;
   await load({ fresh: true });
@@ -427,6 +350,7 @@ export const settlements = (): SettlementRow[] => snap.settlements;
 export const views = (): ViewRow[] => snap.views;
 export const paymentLinks = (): PaymentLinkRow[] => snap.paymentLinks;
 export const userSettings = (): UserSettingRow[] => snap.userSettings;
+export const pendingInvites = (): PendingInviteRow[] => snap.pendingInvites;
 export const friendships = (): FriendshipRow[] => snap.friendships;
 
 function rememberAuthenticatedUser(user: { id: string; display_name: string; email: string }): void {
@@ -436,6 +360,29 @@ function rememberAuthenticatedUser(user: { id: string; display_name: string; ema
   const credential = snap.credentials.find((row) => row.user_id === user.id);
   if (credential) credential.email = user.email;
   else snap.credentials.push({ user_id: user.id, email: user.email });
+}
+
+export interface ItineraryDraft {
+  cities: { name: string; from_date: string; to_date: string }[];
+  days: {
+    date: string;
+    area: string;
+    items: { kind: string; time: string; title: string; place: string; note: string }[];
+  }[];
+}
+
+/**
+ * 行き先と日程から旅程の下書きを作ってもらう。
+ * 生成そのものは API 側で行う（OpenAI のキーはサーバーにしか置かない）。
+ */
+export async function generateItinerary(input: {
+  area: string;
+  start_date: string;
+  end_date: string;
+  note?: string;
+  people?: number;
+}): Promise<ItineraryDraft> {
+  return request<ItineraryDraft>("POST", "/api/ai/itinerary", input);
 }
 
 export function userById(id: string | null | undefined): UserRow | undefined {
@@ -482,13 +429,6 @@ export async function ensureUser(displayName: string): Promise<UserRow> {
     display_name: displayName,
     ensure: true,
   });
-  if (!snap.users.some((u) => u.id === created.id)) snap.users.push(created);
-  return created;
-}
-
-/** 新規登録用。同名ユーザーがいても、別人として新しい users 行を作る。 */
-export async function createUser(displayName: string): Promise<UserRow> {
-  const created = await request<UserRow>("POST", "/api/users", { display_name: displayName });
   if (!snap.users.some((u) => u.id === created.id)) snap.users.push(created);
   return created;
 }
@@ -546,27 +486,12 @@ export function setHistoryPublic(userId: string, isPublic: boolean): void {
   send("PUT", `/api/users/${encodeURIComponent(userId)}/settings`, { history_public: isPublic });
 }
 
-export async function createPlan(input: Partial<PlanRow>): Promise<PlanRow> {
-  const res = await request<{ id: string }>("POST", "/api/plans", input);
-  const row: PlanRow = {
-    id: res.id, slug: input.slug || res.id, title: input.title || "無題の旅行", note: input.note ?? null,
-    start_date: input.start_date ?? null, end_date: input.end_date ?? null, dates_label: input.dates_label ?? null,
-    cover_url: input.cover_url ?? null, base_currency: input.base_currency || "JPY",
-    source: input.source || "local", visibility: input.visibility || "public",
-    status: input.status || "draft", open_editing: input.open_editing || 0,
-    owner_user_id: input.owner_user_id ?? null,
-    external_spreadsheet_id: input.external_spreadsheet_id ?? null,
-    external_apps_script_url: input.external_apps_script_url ?? null,
-    external_schema: input.external_schema ?? null,
-    created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
-  };
-  snap.plans.push(row);
-  return row;
-}
-
-export async function createInvite(planId: string, input: { invited_name?: string; role?: "editor" | "viewer" }): Promise<{ token: string }> {
-  return request<{ token: string }>("POST", `/api/plans/${encodeURIComponent(planId)}/invites`, {
+export async function createInvite(planId: string, input: {
+  invited_name?: string; invited_user_id?: string; role?: "editor" | "viewer";
+}): Promise<{ id: string; token: string }> {
+  return request<{ id: string; token: string }>("POST", `/api/plans/${encodeURIComponent(planId)}/invites`, {
     invited_name: input.invited_name || "",
+    invited_user_id: input.invited_user_id || "",
     role: input.role || "editor",
   });
 }
@@ -597,7 +522,7 @@ export function createPlanLocal(input: Partial<PlanRow> & { slug: string }): Pla
     start_date: input.start_date ?? null, end_date: input.end_date ?? null, dates_label: input.dates_label ?? null,
     cover_url: input.cover_url ?? null, base_currency: input.base_currency || "JPY",
     source: input.source || "local", visibility: input.visibility || "public",
-    status: input.status || "draft", open_editing: input.open_editing || 0,
+    status: input.status || "draft", version: input.version || 1, open_editing: input.open_editing || 0,
     owner_user_id: input.owner_user_id ?? null,
     external_spreadsheet_id: input.external_spreadsheet_id ?? null,
     external_apps_script_url: input.external_apps_script_url ?? null,
@@ -611,8 +536,10 @@ export function createPlanLocal(input: Partial<PlanRow> & { slug: string }): Pla
 
 export function updatePlan(planId: string, patch: Partial<PlanRow>): void {
   const row = planById(planId);
-  if (row) Object.assign(row, patch);
-  send("PATCH", `/api/plans/${encodeURIComponent(planId)}`, patch);
+  if (!row || !Object.keys(patch).length) return;
+  const expectedVersion = row.version;
+  Object.assign(row, patch, { version: expectedVersion + 1 });
+  send("PATCH", `/api/plans/${encodeURIComponent(planId)}`, { ...patch, expected_version: expectedVersion });
 }
 
 export async function deletePlan(planId: string): Promise<void> {
@@ -639,6 +566,9 @@ export interface PlanContent {
 
 /** 行程・都市・リンク・チェックリスト・候補を一括置換（エディタの保存に対応）。 */
 export function replacePlanContent(planId: string, content: PlanContent): void {
+  const plan = planById(planId);
+  if (!plan) return;
+  const expectedVersion = plan.version;
   if (content.itinerary) {
     snap.itinerary = snap.itinerary.filter((i) => i.plan_id !== planId).concat(
       content.itinerary.map((it, i) => ({ ...it, id: localId("itm"), plan_id: planId, sort_order: i })),
@@ -674,7 +604,8 @@ export function replacePlanContent(planId: string, content: PlanContent): void {
       for (const uid of new Set(c.votes || [])) snap.candidateVotes.push({ candidate_id: id, user_id: uid });
     }
   }
-  send("PUT", `/api/plans/${encodeURIComponent(planId)}/content`, content);
+  plan.version = expectedVersion + 1;
+  send("PUT", `/api/plans/${encodeURIComponent(planId)}/content`, { ...content, expected_version: expectedVersion });
 }
 
 export function countView(planId: string): void {
@@ -766,7 +697,7 @@ export async function addSettlement(planId: string, input: {
   snap.settlements.push({
     id: res.id, plan_id: planId, from_user_id: input.from_user_id, to_user_id: input.to_user_id,
     amount_base_minor: input.amount_base_minor, note: input.note ?? null,
-    settled_at: new Date().toISOString(),
+    settled_at: new Date().toISOString(), deleted_at: null,
   });
 }
 
