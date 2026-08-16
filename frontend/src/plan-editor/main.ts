@@ -1049,12 +1049,25 @@ function setAiSessionExpiredStatus(): void {
   aiStatus.append(link, "してから、もう一度作成してください。");
 }
 
-function aiCandidateLimit(): number {
-  return Math.max(1, Math.min(6, model.days.length * 2));
-}
-
 function selectedAiCandidates(): db.ItineraryOptions["candidates"] {
   return (aiOptions?.candidates || []).filter((candidate) => aiSelectedIds.has(candidate.id));
+}
+
+function aiCandidateGroups(): { city: string; candidates: db.ItineraryOptions["candidates"] }[] {
+  const groups = new Map<string, db.ItineraryOptions["candidates"]>();
+  for (const candidate of aiOptions?.candidates || []) {
+    const city = candidate.area.trim() || "その他";
+    const group = groups.get(city) || [];
+    group.push(candidate);
+    groups.set(city, group);
+  }
+  return Array.from(groups, ([city, candidates]) => ({ city, candidates }));
+}
+
+function unselectedAiCities(): string[] {
+  return aiCandidateGroups()
+    .filter((group) => !group.candidates.some((candidate) => aiSelectedIds.has(candidate.id)))
+    .map((group) => group.city);
 }
 
 function aiPreferences(): AiPreferences {
@@ -1140,26 +1153,52 @@ function setAiStage(stage: AiStage): void {
 
 function updateAiSelection(): void {
   const count = aiSelectedIds.size;
-  const limit = aiCandidateLimit();
-  aiSelection.textContent = count
-    ? `${count}件選択中（最大${limit}件）。次にペースや移動条件を指定します。`
-    : `行きたい場所を1〜${limit}件選んでください。`;
-  aiToPreferences.disabled = count === 0;
-  aiCandidateList.querySelectorAll<HTMLInputElement>("[data-ai-candidate]").forEach((input) => {
-    input.disabled = count >= limit && !input.checked;
-  });
+  const groups = aiCandidateGroups();
+  const missing = unselectedAiCities();
+  aiSelection.textContent = missing.length
+    ? `各都市から1件以上選んでください。未選択: ${missing.join("、")}`
+    : `${groups.length}都市から合計${count}件選択中。次にペースや移動条件を指定します。`;
+  aiSelection.classList.toggle("is-warn", missing.length > 0);
+  aiToPreferences.disabled = count === 0 || missing.length > 0;
+  for (const group of groups) {
+    const selectedCount = group.candidates.filter((candidate) => aiSelectedIds.has(candidate.id)).length;
+    const counter = aiCandidateList.querySelector<HTMLElement>(`[data-ai-city-count="${CSS.escape(group.city)}"]`);
+    if (counter) counter.textContent = `${selectedCount}/${group.candidates.length}件選択`;
+  }
 }
 
+/**
+ * 候補の種類ごとの色とアイコン。
+ * 一覧が文字だけだと似た箱が並ぶので、種類が目で分かるようにする。
+ */
+const AI_CATEGORY_LOOK: Record<string, { icon: IconName; tone: string }> = {
+  定番: { icon: "star", tone: "classic" },
+  文化: { icon: "buildingOffice2", tone: "culture" },
+  自然: { icon: "sun", tone: "nature" },
+  グルメ: { icon: "cake", tone: "food" },
+  体験: { icon: "sparkles", tone: "activity" },
+  買い物: { icon: "shoppingBag", tone: "shopping" },
+};
+
 function renderAiCandidates(): void {
-  aiCandidateList.innerHTML = (aiOptions?.candidates || []).map((candidate) =>
-    `<label class="pe-ai-candidate">` +
-      `<input type="checkbox" data-ai-candidate value="${escapeHtml(candidate.id)}">` +
-      `<span class="pe-ai-candidate-check">${icon("check")}</span>` +
-      `<span class="pe-ai-candidate-body"><span><b>${escapeHtml(candidate.name)}</b>` +
-      `<em>${escapeHtml(candidate.category)}</em></span>` +
-      `<small>${escapeHtml(candidate.area)}・目安 ${escapeHtml(formatDurationMinutes(candidate.duration_minutes))}</small>` +
-      `<p>${escapeHtml(candidate.reason)}</p></span>` +
-    `</label>`
+  aiCandidateList.innerHTML = aiCandidateGroups().map((group) =>
+    `<section class="pe-ai-city-group">` +
+      `<header><h3>${icon("mapPin")}<span>${escapeHtml(group.city)}</span></h3>` +
+      `<span data-ai-city-count="${escapeHtml(group.city)}">0/${group.candidates.length}件選択</span></header>` +
+      `<div class="pe-ai-city-options">` + group.candidates.map((candidate) => {
+        const look = AI_CATEGORY_LOOK[candidate.category] || { icon: "mapPin" as IconName, tone: "other" };
+        return `<label class="pe-ai-candidate" data-tone="${look.tone}">` +
+          `<input type="checkbox" data-ai-candidate value="${escapeHtml(candidate.id)}">` +
+          `<span class="pe-ai-candidate-check">${icon("check")}</span>` +
+          `<span class="pe-ai-candidate-body">` +
+          `<span class="pe-ai-candidate-top">` +
+          `<b>${escapeHtml(candidate.name)}</b>` +
+          `<em class="pe-ai-cat">${icon(look.icon)}<span>${escapeHtml(candidate.category)}</span></em>` +
+          "</span>" +
+          `<small>${icon("clock")}<span>${escapeHtml(formatDurationMinutes(candidate.duration_minutes))}</span></small>` +
+          `<p>${escapeHtml(candidate.reason)}</p></span>` +
+          "</label>";
+      }).join("") + `</div></section>`
   ).join("");
   updateAiSelection();
 }
@@ -1321,20 +1360,19 @@ aiCandidateList.addEventListener("change", (event) => {
   const input = event.target;
   if (!(input instanceof HTMLInputElement) || !input.matches("[data-ai-candidate]")) return;
   if (input.checked) {
-    if (aiSelectedIds.size >= aiCandidateLimit()) {
-      input.checked = false;
-      setAiStatus(`日数に合わせて最大${aiCandidateLimit()}件まで選べます。`, "warn");
-    } else {
-      aiSelectedIds.add(input.value);
-      setAiStatus("");
-    }
+    aiSelectedIds.add(input.value);
+    setAiStatus("");
   } else {
     aiSelectedIds.delete(input.value);
   }
   updateAiSelection();
 });
 aiToPreferences.addEventListener("click", () => {
-  if (!aiSelectedIds.size) return;
+  const missing = unselectedAiCities();
+  if (!aiSelectedIds.size || missing.length) {
+    setAiStatus(`各都市から1件以上選んでください。未選択: ${missing.join("、")}`, "warn");
+    return;
+  }
   setAiStatus("");
   setAiStage("preferences");
 });

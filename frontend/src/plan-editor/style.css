@@ -2363,6 +2363,36 @@
 .pe-ai-stage { display: grid; gap: 12px; }
 .pe-ai-candidates {
   display: grid;
+  gap: 18px;
+}
+.pe-ai-city-group {
+  display: grid;
+  gap: 8px;
+}
+.pe-ai-city-group > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--line-strong);
+}
+.pe-ai-city-group h3 {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: var(--green-deep);
+  font-size: 13px;
+}
+.pe-ai-city-group h3 .hi { width: 15px; height: 15px; }
+.pe-ai-city-group > header > span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 600;
+}
+.pe-ai-city-options {
+  display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
 }
@@ -2372,15 +2402,41 @@
   grid-template-columns: auto minmax(0, 1fr);
   gap: 9px;
   min-width: 0;
-  padding: 11px;
+  padding: 12px 13px 12px 15px;
   border: 1px solid var(--line);
   background: #fff;
   cursor: pointer;
+  transition: transform .12s ease, box-shadow .12s ease, border-color .12s ease;
+}
+/* 種類の色を左端に一本入れる。並んだときに何の候補か目で拾える */
+.pe-ai-candidate::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: var(--tone, var(--line-strong));
+}
+.pe-ai-candidate[data-tone="classic"] { --tone: var(--amber); }
+.pe-ai-candidate[data-tone="culture"] { --tone: var(--violet); }
+.pe-ai-candidate[data-tone="nature"] { --tone: var(--green); }
+.pe-ai-candidate[data-tone="food"] { --tone: #c2703a; }
+.pe-ai-candidate[data-tone="activity"] { --tone: var(--blue); }
+.pe-ai-candidate[data-tone="shopping"] { --tone: var(--red); }
+
+.pe-ai-candidate:hover {
+  border-color: var(--line-strong);
+  transform: translate(-2px, -2px);
+  box-shadow: 4px 4px 0 #e2e8e4;
 }
 .pe-ai-candidate:has(input:checked) {
   border-color: var(--green);
   background: #f2f9f6;
+  transform: translate(-2px, -2px);
+  box-shadow: 4px 4px 0 var(--green-soft);
 }
+.pe-ai-candidate:has(input:checked):hover { box-shadow: 4px 4px 0 #cfe6dc; }
 .pe-ai-candidate:has(input:disabled) { opacity: .48; cursor: default; }
 .pe-ai-candidate input {
   position: absolute;
@@ -2391,11 +2447,15 @@
 .pe-ai-candidate-check {
   display: inline-grid;
   place-items: center;
-  width: 20px;
-  height: 20px;
-  border: 1px solid var(--line-strong);
+  width: 22px;
+  height: 22px;
+  border: 1.5px solid var(--line-strong);
+  border-radius: 50%;
   color: transparent;
+  transition: transform .12s ease, background-color .12s ease, border-color .12s ease;
 }
+.pe-ai-candidate:hover .pe-ai-candidate-check { border-color: var(--green); }
+.pe-ai-candidate input:checked + .pe-ai-candidate-check { transform: scale(1.06); }
 .pe-ai-candidate input:focus-visible + .pe-ai-candidate-check { outline: 2px solid var(--green); outline-offset: 2px; }
 .pe-ai-candidate input:checked + .pe-ai-candidate-check {
   border-color: var(--green);
@@ -2410,17 +2470,39 @@
   justify-content: space-between;
   gap: 8px;
 }
-.pe-ai-candidate-body b { color: var(--ink); font-size: 12.5px; }
-.pe-ai-candidate-body em {
+.pe-ai-candidate-body b { color: var(--ink); font-size: 12.5px; line-height: 1.4; }
+/* 種類は色付きの小さな札にする */
+.pe-ai-candidate-body em.pe-ai-cat {
   flex: none;
-  color: var(--green);
-  font-size: 9px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  /* color-mix 未対応のブラウザでも札に見えるよう、先に無彩色を置く */
+  background: var(--wash);
+  background: color-mix(in srgb, var(--tone) 12%, #fff);
+  color: var(--tone);
+  font-size: 9.5px;
   font-style: normal;
   font-weight: 700;
+  letter-spacing: .02em;
+  white-space: nowrap;
 }
-.pe-ai-candidate-body small { display: block; margin-top: 2px; color: var(--muted); font-size: 10px; }
+.pe-ai-candidate-body em.pe-ai-cat .hi { width: 11px; height: 11px; }
+.pe-ai-candidate-body small {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 10px;
+}
+.pe-ai-candidate-body small .hi { width: 11px; height: 11px; flex: none; }
+.pe-ai-candidate-body small .hi:nth-of-type(2) { margin-left: 6px; }
 .pe-ai-candidate-body p { margin: 5px 0 0; color: var(--muted); font-size: 10.5px; line-height: 1.45; }
 .pe-ai-selection { margin: 0; color: var(--muted); font-size: 11px; }
+.pe-ai-selection.is-warn { color: var(--red); }
 
 .pe-ai-choice { margin: 0; padding: 0; border: 0; }
 .pe-ai-choice legend,
@@ -2484,7 +2566,7 @@
   .pe-ai-flow li { display: grid; grid-template-columns: 23px 1fr; gap: 4px 6px; }
   .pe-ai-flow li:not(:last-child)::after { position: absolute; top: 11px; left: 27px; right: 4px; margin: 0; }
   .pe-ai-flow li span { grid-column: 1 / 3; font-size: 9px; }
-  .pe-ai-candidates { grid-template-columns: 1fr; }
+  .pe-ai-city-options { grid-template-columns: 1fr; }
   .pe-ai-bubble { max-width: 82%; }
   .pe-ai-selects { grid-template-columns: 1fr 1fr; }
   .pe-ai-actions { display: grid; grid-template-columns: 1fr; }
