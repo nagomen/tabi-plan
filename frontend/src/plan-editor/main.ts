@@ -35,6 +35,7 @@ import { canEditPlan, canManagePlan, planHasOwner } from "../shared/membership";
 import { addBaseLayer } from "../shared/map-tiles";
 import { validatePublishPlan } from "./validation";
 import { formatDurationMinutes } from "../shared/travel-duration";
+import { AiConsultationState, type AiStage } from "./ai-consultation-state";
 import {
   automaticGeocodingAvailable,
   cityAliasesFor,
@@ -1017,11 +1018,8 @@ const aiWalking = qs<HTMLSelectElement>(root, "[data-ai-walking]");
 const aiTransport = qs<HTMLSelectElement>(root, "[data-ai-transport]");
 const aiExtra = qs<HTMLTextAreaElement>(root, "[data-ai-extra]");
 
-type AiStage = "idle" | "candidates" | "preferences" | "building" | "done";
-type AiPreferences = NonNullable<db.ItineraryAiInput["preferences"]>;
-let aiStage: AiStage = "idle";
-let aiOptions: db.ItineraryOptions | null = null;
-const aiSelectedIds = new Set<string>();
+type AiPreferences = db.ItineraryAiPreferences;
+const aiConsultation = new AiConsultationState();
 
 aiRunIcon.innerHTML = icon("sparkles");
 
@@ -1030,7 +1028,7 @@ function setAiBusy(busy: boolean, label = "考えています"): void {
   aiRun.disabled = busy;
   aiBuild.disabled = busy;
   aiRun.classList.toggle("is-busy", busy);
-  aiRunLabel.textContent = busy ? label : "候補を見せてもらう";
+  aiRunLabel.textContent = busy ? label : "AI生成する";
   aiBar.hidden = !busy;
 }
 
@@ -1050,24 +1048,15 @@ function setAiSessionExpiredStatus(): void {
 }
 
 function selectedAiCandidates(): db.ItineraryOptions["candidates"] {
-  return (aiOptions?.candidates || []).filter((candidate) => aiSelectedIds.has(candidate.id));
+  return aiConsultation.selectedCandidates();
 }
 
 function aiCandidateGroups(): { city: string; candidates: db.ItineraryOptions["candidates"] }[] {
-  const groups = new Map<string, db.ItineraryOptions["candidates"]>();
-  for (const candidate of aiOptions?.candidates || []) {
-    const city = candidate.area.trim() || "その他";
-    const group = groups.get(city) || [];
-    group.push(candidate);
-    groups.set(city, group);
-  }
-  return Array.from(groups, ([city, candidates]) => ({ city, candidates }));
+  return aiConsultation.candidateGroups();
 }
 
 function unselectedAiCities(): string[] {
-  return aiCandidateGroups()
-    .filter((group) => !group.candidates.some((candidate) => aiSelectedIds.has(candidate.id)))
-    .map((group) => group.city);
+  return aiConsultation.unselectedCities();
 }
 
 function aiPreferences(): AiPreferences {
@@ -1106,17 +1095,17 @@ function aiTypingBubble(): string {
 }
 
 function renderAiThread(): void {
-  if (aiStage === "idle") {
+  if (aiConsultation.stage === "idle") {
     aiThread.innerHTML = "";
     return;
   }
   const selectedNames = selectedAiCandidates().map((candidate) => candidate.name);
-  const messages = [aiBubble("assistant", aiOptions?.message || "候補から行きたい場所を選んでください。")];
-  if (["preferences", "building", "done"].includes(aiStage)) {
+  const messages = [aiBubble("assistant", aiConsultation.options?.message || "候補から行きたい場所を選んでください。")];
+  if (["preferences", "building", "done"].includes(aiConsultation.stage)) {
     messages.push(aiBubble("user", `行きたい場所: ${selectedNames.join("、")}`));
     messages.push(aiBubble("assistant", "選択を受け取りました。最後に旅のペースと移動条件を決めてください。"));
   }
-  if (["building", "done"].includes(aiStage)) {
+  if (["building", "done"].includes(aiConsultation.stage)) {
     const preferences = aiPreferences();
     const condition = [
       `ペースは${preferences.pace}`,
@@ -1126,18 +1115,18 @@ function renderAiThread(): void {
       preferences.extra || "",
     ].filter(Boolean).join("、");
     messages.push(aiBubble("user", condition));
-    messages.push(aiBubble("assistant", aiStage === "done"
+    messages.push(aiBubble("assistant", aiConsultation.stage === "done"
       ? "行程を作成しました。相談はここで完了です。"
       : "条件を反映して、都市間移動を含む行程を組み立てています。"));
   }
-  if (aiStage === "building") messages.push(aiTypingBubble());
+  if (aiConsultation.stage === "building") messages.push(aiTypingBubble());
   aiThread.innerHTML = messages.join("");
   // 会話が伸びたら最後の発言が見えるようにする
   aiThread.scrollTop = aiThread.scrollHeight;
 }
 
 function setAiStage(stage: AiStage): void {
-  aiStage = stage;
+  aiConsultation.stage = stage;
   aiIntro.hidden = stage !== "idle";
   aiDialog.hidden = stage === "idle";
   aiCandidatesStage.hidden = stage !== "candidates";
@@ -1152,7 +1141,7 @@ function setAiStage(stage: AiStage): void {
 }
 
 function updateAiSelection(): void {
-  const count = aiSelectedIds.size;
+  const count = aiConsultation.selectedIds.size;
   const groups = aiCandidateGroups();
   const missing = unselectedAiCities();
   aiSelection.textContent = missing.length
@@ -1161,7 +1150,7 @@ function updateAiSelection(): void {
   aiSelection.classList.toggle("is-warn", missing.length > 0);
   aiToPreferences.disabled = count === 0 || missing.length > 0;
   for (const group of groups) {
-    const selectedCount = group.candidates.filter((candidate) => aiSelectedIds.has(candidate.id)).length;
+    const selectedCount = group.candidates.filter((candidate) => aiConsultation.selectedIds.has(candidate.id)).length;
     const counter = aiCandidateList.querySelector<HTMLElement>(`[data-ai-city-count="${CSS.escape(group.city)}"]`);
     if (counter) counter.textContent = `${selectedCount}/${group.candidates.length}件選択`;
   }
@@ -1204,9 +1193,8 @@ function renderAiCandidates(): void {
 }
 
 function resetAiConsultation(): void {
-  if (aiStage === "building") return;
-  aiOptions = null;
-  aiSelectedIds.clear();
+  if (aiConsultation.stage === "building") return;
+  aiConsultation.reset();
   setAiStatus("");
   setAiStage("idle");
 }
@@ -1262,7 +1250,7 @@ function splitMoveTitle(title: string): Partial<Item> {
   return parts.length >= 2 ? { from: parts[0], to: parts[1] } : {};
 }
 
-function aiBaseInput(): Omit<db.ItineraryAiInput, "preferences" | "selected_places"> | null {
+function aiBaseInput(): db.ItineraryAiBaseInput | null {
   const cities = model.cities
     .filter((city) => city.name.trim())
     .map((city) => ({ name: city.name.trim(), from_date: city.fromDate, to_date: city.toDate }));
@@ -1286,35 +1274,37 @@ function aiBaseInput(): Omit<db.ItineraryAiInput, "preferences" | "selected_plac
 }
 
 async function startAiConsultation(): Promise<void> {
-  if (editorLocked || aiStage !== "idle") return;
+  if (editorLocked || aiConsultation.stage !== "idle") return;
   const input = aiBaseInput();
   if (!input) return;
 
   setAiBusy(true, "候補を探しています");
   setAiStatus("旅程を作る前に、行きたい場所の候補を絞っています。");
   try {
-    aiOptions = await db.suggestItineraryOptions(input);
-    aiSelectedIds.clear();
+    aiConsultation.start(await db.suggestItineraryOptions(input));
     renderAiCandidates();
     setAiStage("candidates");
     setAiStatus("候補を選ぶと、次にペースや移動条件を指定できます。", "ok");
   } catch (error) {
     const message = errorMessage(error);
     if (/ログインセッションの期限が切れました/.test(message)) setAiSessionExpiredStatus();
-    else setAiStatus(/429/.test(message) ? "候補を作り直すには少し待ってください。" : message || "候補を作れませんでした", "warn");
+    else if (error instanceof db.ApiRequestError && error.status === 429) {
+      setAiStatus(`候補を作り直すには${error.retryAfter ? `約${error.retryAfter}秒` : "少し"}待ってください。`, "warn");
+    } else setAiStatus(message || "候補を作れませんでした", "warn");
   } finally {
     setAiBusy(false);
   }
 }
 
 async function runAiDraft(): Promise<void> {
-  if (editorLocked || aiStage !== "preferences") return;
+  if (editorLocked || aiConsultation.stage !== "preferences") return;
   const input = aiBaseInput();
   if (!input) return;
   const selected = selectedAiCandidates();
-  if (!selected.length) {
+  const missing = unselectedAiCities();
+  if (!selected.length || missing.length) {
     setAiStage("candidates");
-    setAiStatus("行きたい場所を1件以上選んでください。", "warn");
+    setAiStatus(`各都市から1件以上選んでください。未選択: ${missing.join("、")}`, "warn");
     return;
   }
   const filled = model.days.some((day) => day.items.length || day.stay);
@@ -1326,7 +1316,8 @@ async function runAiDraft(): Promise<void> {
   try {
     const draft = await db.generateItinerary({
       ...input,
-      selected_places: selected.map((candidate) => `${candidate.name}（${candidate.area}）`),
+      consultation_token: aiConsultation.options?.consultation_token || "",
+      selected_candidate_ids: selected.map((candidate) => candidate.id),
       preferences: aiPreferences(),
     });
     applyItineraryDraft(draft);
@@ -1334,16 +1325,32 @@ async function runAiDraft(): Promise<void> {
     renderCities();
     renderDays();
     refreshMap(true);
+    // 先行する自動保存があっても、AI適用後のrevisionがDBへ届くまで待つ。
+    const saved = await persist(true);
     const count = model.days.reduce((sum, day) => sum + day.items.length + (day.stay ? 1 : 0), 0);
     setAiStage("done");
-    setAiStatus(`行程を作成し、自動保存しました（訪問地 ${model.cities.length}件・予定 ${count}件）。`, "ok");
+    const omitted = draft.omitted_selected_places || [];
+    const saveText = saved ? "自動保存しました" : "作成しましたが保存できませんでした";
+    const omittedText = omitted.length ? ` 未採用: ${omitted.join("、")}。` : "";
+    setAiStatus(
+      `行程を${saveText}（訪問地 ${model.cities.length}件・予定 ${count}件）。${omittedText}`,
+      saved && !omitted.length ? "ok" : "warn",
+    );
   } catch (error) {
     const message = errorMessage(error);
-    setAiStage("preferences");
     if (/ログインセッションの期限が切れました/.test(message)) {
+      setAiStage("preferences");
       setAiSessionExpiredStatus();
+    } else if (error instanceof db.ApiRequestError && error.code === "invalid_ai_input") {
+      aiConsultation.reset();
+      setAiStage("idle");
+      setAiStatus(message || "条件が変わりました。候補選びからやり直してください。", "warn");
+    } else if (error instanceof db.ApiRequestError && error.status === 429) {
+      setAiStage("preferences");
+      setAiStatus(`続けて利用できません。${error.retryAfter ? `約${error.retryAfter}秒後に` : "少し待ってから"}もう一度お試しください。`, "warn");
     } else {
-      setAiStatus(/429/.test(message) ? "続けて作りすぎです。少し待ってからもう一度。" : message || "作れませんでした", "warn");
+      setAiStage("preferences");
+      setAiStatus(message || "作れませんでした", "warn");
     }
   } finally {
     setAiBusy(false);
@@ -1360,16 +1367,16 @@ aiCandidateList.addEventListener("change", (event) => {
   const input = event.target;
   if (!(input instanceof HTMLInputElement) || !input.matches("[data-ai-candidate]")) return;
   if (input.checked) {
-    aiSelectedIds.add(input.value);
+    aiConsultation.select(input.value, true);
     setAiStatus("");
   } else {
-    aiSelectedIds.delete(input.value);
+    aiConsultation.select(input.value, false);
   }
   updateAiSelection();
 });
 aiToPreferences.addEventListener("click", () => {
   const missing = unselectedAiCities();
-  if (!aiSelectedIds.size || missing.length) {
+  if (!aiConsultation.selectedIds.size || missing.length) {
     setAiStatus(`各都市から1件以上選んでください。未選択: ${missing.join("、")}`, "warn");
     return;
   }

@@ -2583,7 +2583,7 @@
   gap: 8px;
   min-height: 44px;
   padding: 0 20px;
-  border: 1px solid var(--green-deep);
+  border: 0;
   border-radius: 0;
   background: var(--green);
   color: #fff;
@@ -2593,13 +2593,15 @@
   letter-spacing: 0.02em;
   white-space: nowrap;
   cursor: pointer;
-  box-shadow: 4px 4px 0 var(--green-deep);
+  /* 影は同じ濃さの緑にすると、輪郭がつぶれて塊に見える。
+     地の緑より薄い緑を落として、面と影を分ける。 */
+  box-shadow: 4px 4px 0 #bcd8cb;
   transition: transform .12s ease, box-shadow .12s ease, background-color .12s ease;
 }
-.pe-ai-run:hover { background: var(--green-deep); }
+.pe-ai-run:hover { background: var(--green-deep); box-shadow: 5px 5px 0 #a9ccbc; }
 .pe-ai-run:active {
   transform: translate(4px, 4px);
-  box-shadow: 0 0 0 var(--green-deep);
+  box-shadow: 0 0 0 #bcd8cb;
 }
 .pe-ai-run .hi { width: 17px; height: 17px; }
 .pe-ai-run:disabled { cursor: progress; }
@@ -2607,7 +2609,7 @@
 /* 考えている間: 影を消して沈めたまま、星をゆっくり瞬かせる */
 .pe-ai-run.is-busy {
   transform: translate(2px, 2px);
-  box-shadow: 2px 2px 0 var(--green-deep);
+  box-shadow: 2px 2px 0 #bcd8cb;
   background: var(--green-deep);
 }
 .pe-ai-run.is-busy .pe-ai-run-ic {
@@ -2662,4 +2664,84 @@
 
 @media (max-width: 680px) {
   .pe-ai-run { width: 100%; justify-content: center; min-height: 46px; }
+}
+
+/* ---- 条件の入力を会話に馴染ませる --------------------------------------
+   上がチャットなのに、下だけ四角い入力欄が並んでいて別の画面に見えた。
+   「これから送る返事」の枠として、吹き出しと同じ角丸・同じ地色に置く。 */
+.pe-ai-compose {
+  position: relative;
+  margin-left: auto;
+  max-width: min(88%, 620px);
+  padding: 14px 16px 16px;
+  border-radius: 14px;
+  border-bottom-right-radius: 4px;
+  background: var(--green-soft);
+}
+.pe-ai-compose-who {
+  display: block;
+  margin-bottom: 10px;
+  color: var(--green);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: .05em;
+}
+.pe-ai-compose .pe-ai-choice legend,
+.pe-ai-compose .pe-ai-extra > span,
+.pe-ai-compose .pe-ai-selects label > span {
+  color: var(--green-deep);
+  font-size: 10.5px;
+}
+
+/* 選択肢は丸い札にする。押した感じが出るよう、選ぶと塗る */
+.pe-ai-compose .pe-ai-choice label {
+  min-height: 30px;
+  padding: 0 12px;
+  border: 1px solid #cbe0d6;
+  border-radius: 999px;
+  background: #fff;
+  color: var(--ink);
+  font-size: 11.5px;
+  transition: background-color .12s ease, color .12s ease, border-color .12s ease;
+}
+.pe-ai-compose .pe-ai-choice label:hover { border-color: var(--green); }
+.pe-ai-compose .pe-ai-choice label:has(input:checked) {
+  border-color: var(--green);
+  background: var(--green);
+  color: #fff;
+}
+/* 札の中の丸／四角は不要。選んだかどうかは塗りで分かる */
+.pe-ai-compose .pe-ai-choice input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+.pe-ai-compose .pe-ai-choice label:has(input:focus-visible) {
+  outline: 2px solid var(--green);
+  outline-offset: 2px;
+}
+
+/* 送信欄らしく、選択欄と自由記述も角を丸める */
+.pe-ai-compose .pe-ai-selects select,
+.pe-ai-compose .pe-ai-extra textarea {
+  border: 1px solid #cbe0d6;
+  border-radius: 10px;
+  padding: 8px 10px;
+}
+.pe-ai-compose .pe-ai-selects select:focus,
+.pe-ai-compose .pe-ai-extra textarea:focus {
+  outline: none;
+  border-color: var(--green);
+}
+.pe-ai-compose .pe-ai-actions { padding-top: 4px; }
+.pe-ai-compose .pe-ai-primary,
+.pe-ai-compose .pe-ai-secondary { border-radius: 999px; padding: 0 18px; }
+.pe-ai-compose .pe-ai-secondary { border-color: #cbe0d6; }
+
+@media (max-width: 680px) {
+  .pe-ai-compose { max-width: 100%; padding: 12px 13px 14px; }
+  .pe-ai-compose .pe-ai-selects { grid-template-columns: 1fr; }
+  .pe-ai-compose .pe-ai-selects select,
+  .pe-ai-compose .pe-ai-extra textarea { font-size: 16px; }
 }

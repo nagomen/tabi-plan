@@ -78,15 +78,72 @@
             </div>
 
             <div class="pe-ai" data-ai-block>
-              <span class="pe-ai-head" data-ic-ai>AI にたたき台を作らせる</span>
-              <p class="pe-ai-note">期間があれば作れます。行き先が空のときは、上の訪問地とその滞在期間をそのまま使います。作ったあとは自由に直せます。</p>
-              <div class="pe-ai-form">
-                <input data-ai-area type="text" autocomplete="off" maxlength="120" placeholder="行き先（任意・空なら上の訪問地から）" aria-label="行き先">
-                <input data-ai-note type="text" autocomplete="off" maxlength="200" placeholder="希望（任意・例: 温泉と海鮮、歩きすぎない）" aria-label="希望">
-                <button class="pe-ai-run" type="button" data-ai-run>
-                  <span class="pe-ai-run-ic" data-ai-run-ic aria-hidden="true"></span>
-                  <span data-ai-run-label>下書きを作る</span>
-                </button>
+              <span class="pe-ai-head" data-ic-ai>AI 旅行相談</span>
+
+              <div data-ai-intro>
+                <div class="pe-ai-form">
+                  <input data-ai-area type="text" autocomplete="off" maxlength="120" placeholder="行き先（任意・空なら上の訪問地から）" aria-label="AI相談の行き先">
+                  <input data-ai-note type="text" autocomplete="off" maxlength="200" placeholder="最初の希望（例: 温泉と海鮮、歩きすぎない）" aria-label="AI相談の最初の希望">
+                  <button class="pe-ai-run" type="button" data-ai-run>
+                    <span class="pe-ai-run-ic" data-ai-run-ic aria-hidden="true"></span>
+                    <span data-ai-run-label>AI生成する</span>
+                  </button>
+                </div>
+              </div>
+
+              <div class="pe-ai-dialog" data-ai-dialog hidden>
+                <ol class="pe-ai-flow" aria-label="AI相談の進み具合">
+                  <li data-ai-flow="candidates"><b>1</b><span>候補を選ぶ</span></li>
+                  <li data-ai-flow="preferences"><b>2</b><span>条件を決める</span></li>
+                  <li data-ai-flow="done"><b>3</b><span>行程を確認</span></li>
+                </ol>
+                <div class="pe-ai-thread" data-ai-thread aria-live="polite"></div>
+
+                <section class="pe-ai-stage" data-ai-candidates hidden>
+                  <div class="pe-ai-candidates" data-ai-candidate-list></div>
+                  <p class="pe-ai-selection" data-ai-selection></p>
+                  <div class="pe-ai-actions">
+                    <button class="pe-ai-secondary" type="button" data-ai-reset>最初から</button>
+                    <button class="pe-ai-primary" type="button" data-ai-to-preferences disabled>選んだ候補で次へ</button>
+                  </div>
+                </section>
+
+                <section class="pe-ai-stage pe-ai-compose" data-ai-preferences hidden>
+                  <span class="pe-ai-compose-who">あなたの返事</span>
+                  <fieldset class="pe-ai-choice"><legend>旅のペース</legend>
+                    <label><input type="radio" name="ai-pace" value="ゆったり">ゆったり</label>
+                    <label><input type="radio" name="ai-pace" value="標準" checked>標準</label>
+                    <label><input type="radio" name="ai-pace" value="充実">充実</label>
+                  </fieldset>
+                  <fieldset class="pe-ai-choice"><legend>興味（複数可）</legend>
+                    <label><input type="checkbox" name="ai-interest" value="定番">定番</label>
+                    <label><input type="checkbox" name="ai-interest" value="文化">文化</label>
+                    <label><input type="checkbox" name="ai-interest" value="自然">自然</label>
+                    <label><input type="checkbox" name="ai-interest" value="グルメ">グルメ</label>
+                    <label><input type="checkbox" name="ai-interest" value="体験">体験</label>
+                    <label><input type="checkbox" name="ai-interest" value="買い物">買い物</label>
+                  </fieldset>
+                  <div class="pe-ai-selects">
+                    <label><span>徒歩量</span><select data-ai-walking>
+                      <option value="少なめ">少なめ</option><option value="標準" selected>標準</option><option value="気にしない">気にしない</option>
+                    </select></label>
+                    <label><span>主な移動</span><select data-ai-transport>
+                      <option value="おまかせ" selected>おまかせ</option><option value="公共交通">公共交通</option><option value="車">車</option>
+                    </select></label>
+                  </div>
+                  <label class="pe-ai-extra"><span>追加条件（任意）</span>
+                    <textarea data-ai-extra maxlength="200" rows="2" placeholder="例: 朝は遅め、雨でも楽しめる場所を優先"></textarea>
+                  </label>
+                  <div class="pe-ai-actions">
+                    <button class="pe-ai-secondary" type="button" data-ai-back-candidates>候補を選び直す</button>
+                    <button class="pe-ai-primary" type="button" data-ai-build>この条件で行程を作る</button>
+                  </div>
+                </section>
+
+                <section class="pe-ai-stage pe-ai-done" data-ai-done hidden>
+                  <p>AI相談はここで終了です。作成した行程は、このあと自由に編集できます。</p>
+                  <button class="pe-ai-primary" type="button" data-ai-show-itinerary>行程を確認する</button>
+                </section>
               </div>
               <div class="pe-ai-bar" data-ai-bar hidden aria-hidden="true"><i></i></div>
               <p class="pe-ai-status" data-ai-status role="status"></p>
