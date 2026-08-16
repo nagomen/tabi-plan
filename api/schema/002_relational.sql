@@ -74,6 +74,22 @@ CREATE TABLE user_sessions (
   CONSTRAINT fk_user_sessions_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
+-- AIの費用上限・クールダウンを複数プロセスで共有する日次利用量。
+CREATE TABLE ai_usage_daily (
+  user_id           VARCHAR(32) NOT NULL,
+  usage_date        DATE NOT NULL,
+  request_count     INT UNSIGNED NOT NULL DEFAULT 0,
+  options_count     INT UNSIGNED NOT NULL DEFAULT 0,
+  itinerary_count   INT UNSIGNED NOT NULL DEFAULT 0,
+  input_tokens      BIGINT UNSIGNED NOT NULL DEFAULT 0,
+  output_tokens     BIGINT UNSIGNED NOT NULL DEFAULT 0,
+  last_options_at   DATETIME(3) NULL,
+  last_itinerary_at DATETIME(3) NULL,
+  PRIMARY KEY (user_id, usage_date),
+  KEY idx_ai_usage_date (usage_date),
+  CONSTRAINT fk_ai_usage_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
 -- 送金の受取先。旧 payment-links は「名前」がキーだったので改名で壊れていた。
 CREATE TABLE user_payment_links (
   user_id     VARCHAR(32) NOT NULL,

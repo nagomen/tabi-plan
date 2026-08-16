@@ -33,6 +33,7 @@ window.TRIP_CONFIG = {
   geocoding: {
     // 計画エディタの場所検索。Mapbox 公開トークン（pk.…）を入れると
     // 多言語POI検索になり「プラザホテル ニューヨーク」等も引ける。
+    // AI生成行程の施設住所と地図座標は設定なしでも登録し、設定時はMapboxで照合する。
     // 空なら明示的に検索ボタンを押した時だけ OpenStreetMap(Nominatim) を使う。
     // 公開Nominatimの規約に従い、入力中の自動候補には利用しない。
     // 取得: https://account.mapbox.com/ → Access tokens（無料枠あり）

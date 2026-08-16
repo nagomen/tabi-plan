@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 
 import { spawn } from "node:child_process";
-import { randomBytes } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import net from "node:net";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { persistentDevSessionSecret } from "./dev-session-secret.mjs";
 
 const rootDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const args = new Set(process.argv.slice(2));
@@ -24,6 +24,7 @@ Environment:
   LOCAL_DB_TUNNEL          Set to 0 when DB_HOST/DB_PORT is already reachable
   LOCAL_DB_AUTO_MIGRATE    Set to 0 to skip the idempotent schema migration
   LOCAL_FRONTEND_PORT      Vite port (default: 5173)
+  LOCAL_SESSION_SECRET_FILE  Persistent dev secret file (default: .env.local-session-secret)
 `);
   process.exit(0);
 }
@@ -141,8 +142,9 @@ for (const name of ["DB_USER", "DB_PASSWORD", "DB_NAME", "API_TOKEN"]) {
 }
 
 if (!apiEnv.SESSION_SECRET) {
-  apiEnv.SESSION_SECRET = randomBytes(48).toString("base64url");
-  console.warn("[dev:full] SESSION_SECRET が未設定のため、この起動中だけ有効な値を使います。");
+  const secretFile = resolve(rootDir, apiEnv.LOCAL_SESSION_SECRET_FILE || ".env.local-session-secret");
+  apiEnv.SESSION_SECRET = persistentDevSessionSecret(secretFile);
+  console.warn(`[dev:full] SESSION_SECRET が未設定のため、端末内の開発用秘密値を使います: ${secretFile}`);
 }
 
 const apiHost = apiEnv.HOST || "127.0.0.1";
@@ -214,10 +216,13 @@ try {
 
   const tscPath = resolve(rootDir, "node_modules/.bin/tsc");
   const vitePath = resolve(rootDir, "node_modules/.bin/vite");
-  await runOnce("APIをビルド", tscPath, ["-p", "api/tsconfig.json"], { env: apiEnv });
+  // watcherの初回コンパイルで起動直後のAPIが再起動し、Vite proxyが一瞬
+  // ECONNREFUSEDになるのを避ける。buildとwatchで同じincremental情報を共有する。
+  const incrementalArgs = ["--incremental", "--tsBuildInfoFile", "api/dist/.tsbuildinfo"];
+  await runOnce("APIをビルド", tscPath, ["-p", "api/tsconfig.json", ...incrementalArgs], { env: apiEnv });
 
   const typeWatcher = command("APIの型変更を監視", tscPath, [
-    "-p", "api/tsconfig.json", "--watch", "--preserveWatchOutput",
+    "-p", "api/tsconfig.json", "--watch", "--preserveWatchOutput", ...incrementalArgs,
   ], { env: apiEnv });
   children.push(typeWatcher);
 

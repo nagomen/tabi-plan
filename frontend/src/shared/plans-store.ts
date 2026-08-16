@@ -13,6 +13,8 @@ import type { TripConfig, MapDefaults } from "./config";
 import { safeTripSlug } from "./config";
 import * as db from "./db";
 import { currentUserId } from "./identity";
+import { formatDurationMinutes, parseDurationMinutes } from "./travel-duration";
+import { collisionResistantPlanSlug } from "./plan-slug";
 import type {
   TripData, TripInfo, ItineraryItem, TripLink, ChecklistItem, LocalInfoItem,
   RouteCity, Candidate, ItemType,
@@ -196,10 +198,14 @@ export function getData(slug: string): LocalPlanData | null {
       mapQuery: it.map_query || "",
       lat: it.lat ?? NaN,
       lng: it.lng ?? NaN,
-      from: it.from_place || "",
-      to: it.to_place || "",
+      origin: it.from_place || "",
+      originLat: it.from_lat == null ? undefined : Number(it.from_lat),
+      originLng: it.from_lng == null ? undefined : Number(it.from_lng),
+      destination: it.to_place || "",
+      destinationLat: it.to_lat == null ? undefined : Number(it.to_lat),
+      destinationLng: it.to_lng == null ? undefined : Number(it.to_lng),
       transport: it.transport || "",
-      duration: it.duration_minutes != null ? String(it.duration_minutes) : "",
+      duration: it.duration_minutes != null ? formatDurationMinutes(it.duration_minutes) : "",
     })) as unknown as ItineraryItem[],
     links: db.links().filter((l) => l.plan_id === row.id).map((l) => ({
       key: l.link_key, label: l.label, url: l.url, caption: l.caption || "", icon: "",
@@ -314,14 +320,10 @@ export async function remove(slug: string): Promise<void> {
 }
 
 export function uniqueSlug(base: string): string {
-  const slug = safeSlug(base);
   const existing = new Set(db.plans().map((p) => p.slug));
-  if (!existing.has(slug)) return slug;
-  for (let n = 2; n < 999; n += 1) {
-    const candidate = `${slug}-${n}`;
-    if (!existing.has(candidate)) return candidate;
-  }
-  return `${slug}-${Date.now().toString(36)}`;
+  // bootstrapは権限上見えてよい計画だけを返す。可視一覧の連番から空きを
+  // 探すと、見えていないinvite計画と衝突するため、新規slugには乱数を含める。
+  return collisionResistantPlanSlug(safeSlug(base), (candidate) => existing.has(candidate));
 }
 
 /** ビュー型の計画本体を行へ戻して保存する。 */
@@ -364,6 +366,7 @@ export function saveLocalPlan(slug: string, data: LocalPlanData, memberIds?: str
   );
 
   const num = (v: unknown): number | null => {
+    if (v === null || v === undefined || String(v).trim() === "") return null;
     const n = Number(v);
     return Number.isFinite(n) ? n : null;
   };
@@ -385,10 +388,14 @@ export function saveLocalPlan(slug: string, data: LocalPlanData, memberIds?: str
         map_query: (item.mapQuery as string) || null,
         lat: num(item.lat),
         lng: num(item.lng),
-        from_place: (item.from as string) || null,
-        to_place: (item.to as string) || null,
+        from_place: (item.origin as string) || null,
+        from_lat: num(item.originLat),
+        from_lng: num(item.originLng),
+        to_place: (item.destination as string) || null,
+        to_lat: num(item.destinationLat),
+        to_lng: num(item.destinationLng),
         transport: (item.transport as string) || null,
-        duration_minutes: num(item.duration),
+        duration_minutes: parseDurationMinutes(item.duration),
       };
     }),
     cities: areas.map((name) => ({ name })),

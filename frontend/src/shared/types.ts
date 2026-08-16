@@ -24,6 +24,9 @@ export interface ItineraryItem {
   weather?: string;
   origin?: string;
   destination?: string;
+  /** 移動予定の手段と概算所要時間。DB保存時にも独立した列として保持する。 */
+  transport?: string;
+  duration?: string;
   originLat?: number;
   originLng?: number;
   destinationLat?: number;

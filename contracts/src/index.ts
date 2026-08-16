@@ -49,9 +49,102 @@ export interface ItineraryRow {
   lat: number | null;
   lng: number | null;
   from_place: string | null;
+  from_lat: number | null;
+  from_lng: number | null;
   to_place: string | null;
+  to_lat: number | null;
+  to_lng: number | null;
   transport: string | null;
   duration_minutes: number | null;
+}
+
+// ---- AI旅行相談の通信DTO -----------------------------------------------
+
+export type AiPace = "ゆったり" | "標準" | "充実";
+export type AiWalkingPreference = "少なめ" | "標準" | "気にしない";
+export type AiTransportPreference = "公共交通" | "車" | "おまかせ";
+
+export interface ItineraryAiCity {
+  name: string;
+  from_date: string;
+  to_date: string;
+  /** AI出力時だけ使用。入力では省略できる。 */
+  address?: string;
+  latitude?: number | null;
+  longitude?: number | null;
+}
+
+export interface ItineraryAiBaseInput {
+  area: string;
+  start_date: string;
+  end_date: string;
+  note?: string;
+  people?: number;
+  cities?: ItineraryAiCity[];
+}
+
+export interface ItineraryAiPreferences {
+  pace: AiPace;
+  interests: string[];
+  walking: AiWalkingPreference;
+  transport: AiTransportPreference;
+  extra?: string;
+}
+
+export interface ItineraryAiGenerateInput extends ItineraryAiBaseInput {
+  consultation_token: string;
+  selected_candidate_ids: string[];
+  preferences: ItineraryAiPreferences;
+}
+
+export interface ItineraryCandidate {
+  id: string;
+  name: string;
+  area: string;
+  category: string;
+  reason: string;
+  duration_minutes: number;
+}
+
+export interface ItineraryOptions {
+  message: string;
+  candidates: ItineraryCandidate[];
+  /** 候補・都市・期間を最終生成へ安全に引き継ぐ、短時間有効な署名トークン。 */
+  consultation_token: string;
+}
+
+export interface ItineraryDraftItem {
+  kind: string;
+  time: string;
+  title: string;
+  place: string;
+  /** 地図検索用の確認済み住所または具体的な地域表記。 */
+  address: string;
+  latitude: number | null;
+  longitude: number | null;
+  note: string;
+  from_place: string;
+  to_place: string;
+  transport: string;
+  duration_minutes: number;
+  /** 都市間移動の両端。通常予定では省略される。 */
+  from_address?: string;
+  from_latitude?: number | null;
+  from_longitude?: number | null;
+  to_address?: string;
+  to_latitude?: number | null;
+  to_longitude?: number | null;
+}
+
+export interface ItineraryDraft {
+  cities: ItineraryAiCity[];
+  days: {
+    date: string;
+    area: string;
+    items: ItineraryDraftItem[];
+  }[];
+  /** 選択されたが日数・移動効率の都合で組み込めなかった候補名。 */
+  omitted_selected_places: string[];
 }
 
 export type ExpenseCategory = "food" | "transport" | "lodging" | "sightseeing" | "communication" | "other";

@@ -51,7 +51,8 @@ export async function bootstrapForUser(userId = ""): Promise<Bootstrap> {
   const [itinerary, cities, views] = visiblePlanIds.length
     ? await Promise.all([
       all<Bootstrap["itinerary"][number]>(`SELECT id, plan_id, item_date, day_index, sort_order, kind, start_time, title, place,
-           area, note, map_query, lat, lng, from_place, to_place, transport, duration_minutes
+           area, note, map_query, lat, lng, from_place, from_lat, from_lng,
+           to_place, to_lat, to_lng, transport, duration_minutes
          FROM itinerary_items
          WHERE plan_id IN (${visibleIn.sql})
          ORDER BY plan_id, item_date, sort_order`, visibleIn.params),

@@ -14,10 +14,12 @@
 import { resolvedTripConfig } from "./config";
 import type {
   CredentialRow, ExpenseCategory, ExpenseRow, ExpenseShareRow, ItineraryRow,
+  ItineraryAiBaseInput, ItineraryAiGenerateInput, ItineraryDraft, ItineraryOptions,
   PaymentMethod, PlanMemberRow, PlanRow, SettlementRow, SplitMethod, UserRow,
 } from "@tabi/contracts";
 export type {
   CredentialRow, ExpenseCategory, ExpenseRow, ExpenseShareRow, ItineraryKind, ItineraryRow,
+  ItineraryAiBaseInput, ItineraryAiGenerateInput, ItineraryAiPreferences, ItineraryDraft, ItineraryOptions,
   PaymentMethod, PlanMemberRow, PlanRow, SettlementRow, SplitMethod, UserRow,
 } from "@tabi/contracts";
 
@@ -73,6 +75,7 @@ function emptySnapshot(): Snapshot {
 let snap: Snapshot = emptySnapshot();
 let loaded = false;
 let loading: Promise<void> | null = null;
+const SESSION_STORAGE_KEY = "trip-dashboard-session";
 
 // ---- 設定 ---------------------------------------------------------------
 
@@ -102,7 +105,7 @@ function emit(detail: Record<string, unknown>): void {
 
 function sessionTokenForRequest(): string {
   try {
-    const session = localStorage.getItem("trip-dashboard-session");
+    const session = localStorage.getItem(SESSION_STORAGE_KEY);
     if (session) {
       const parsed = JSON.parse(session) as { token?: string };
       if (parsed.token) return parsed.token;
@@ -111,6 +114,39 @@ function sessionTokenForRequest(): string {
     /* ignore */
   }
   return "";
+}
+
+function expireBrowserSession(): void {
+  try {
+    localStorage.removeItem(SESSION_STORAGE_KEY);
+  } catch {
+    /* localStorage が使えない環境 */
+  }
+  try {
+    window.dispatchEvent(new CustomEvent("trip-session-expired"));
+  } catch {
+    /* ignore */
+  }
+}
+
+function responseErrorCode(text: string): string {
+  try {
+    const parsed = JSON.parse(text) as { error?: unknown };
+    return typeof parsed.error === "string" ? parsed.error : "";
+  } catch {
+    return "";
+  }
+}
+
+export class ApiRequestError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly code: string,
+    readonly retryAfter = 0,
+  ) {
+    super(message);
+  }
 }
 
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
@@ -128,7 +164,28 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new Error(`${method} ${path} → HTTP ${res.status} ${text.slice(0, 120)}`);
+    const code = responseErrorCode(text);
+    if (res.status === 401 && code === "session_required") {
+      expireBrowserSession();
+      throw new Error("ログインセッションの期限が切れました。再ログインしてください。");
+    }
+    let message = "リクエストに失敗しました";
+    let retryAfter = 0;
+    try {
+      const parsed = JSON.parse(text) as { error?: unknown; message?: unknown; retry_after?: unknown };
+      if (typeof parsed.message === "string" && parsed.message) message = parsed.message;
+      else if (typeof parsed.error === "string" && parsed.error) {
+        message = parsed.error === "forbidden"
+          ? "この計画を保存する権限がありません"
+          : parsed.error === "ER_DUP_ENTRY"
+            ? "同じURLの計画が既に存在します。別のURLで再試行してください"
+            : parsed.error === "internal error"
+              ? "サーバーで保存処理に失敗しました"
+              : parsed.error;
+      }
+      retryAfter = Math.max(0, Number(parsed.retry_after) || 0);
+    } catch { /* JSONでない上流情報は画面へ出さない */ }
+    throw new ApiRequestError(message, res.status, code || "request_failed", retryAfter);
   }
   return (await res.json()) as T;
 }
@@ -362,27 +419,15 @@ function rememberAuthenticatedUser(user: { id: string; display_name: string; ema
   else snap.credentials.push({ user_id: user.id, email: user.email });
 }
 
-export interface ItineraryDraft {
-  cities: { name: string; from_date: string; to_date: string }[];
-  days: {
-    date: string;
-    area: string;
-    items: { kind: string; time: string; title: string; place: string; note: string }[];
-  }[];
-}
-
 /**
  * 行き先と日程から旅程の下書きを作ってもらう。
  * 生成そのものは API 側で行う（OpenAI のキーはサーバーにしか置かない）。
  */
-export async function generateItinerary(input: {
-  area: string;
-  start_date: string;
-  end_date: string;
-  note?: string;
-  people?: number;
-  cities?: { name: string; from_date: string; to_date: string }[];
-}): Promise<ItineraryDraft> {
+export async function suggestItineraryOptions(input: ItineraryAiBaseInput): Promise<ItineraryOptions> {
+  return request<ItineraryOptions>("POST", "/api/ai/itinerary-options", input);
+}
+
+export async function generateItinerary(input: ItineraryAiGenerateInput): Promise<ItineraryDraft> {
   return request<ItineraryDraft>("POST", "/api/ai/itinerary", input);
 }
 

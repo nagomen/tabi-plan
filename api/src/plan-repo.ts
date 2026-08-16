@@ -146,12 +146,15 @@ export async function replacePlanContent(planId: string, body: {
         it.kind || "sight", it.start_time || null, String(it.title || "").slice(0, 200),
         it.place || null, it.area || null, it.note || null, it.map_query || null,
         it.lat ?? null, it.lng ?? null,
-        it.from_place || null, it.to_place || null, it.transport || null, it.duration_minutes ?? null,
+        it.from_place || null, it.from_lat ?? null, it.from_lng ?? null,
+        it.to_place || null, it.to_lat ?? null, it.to_lng ?? null,
+        it.transport || null, it.duration_minutes ?? null,
       ]);
       if (rows.length) {
         await conn.query(
           `INSERT INTO itinerary_items (id, plan_id, item_date, day_index, sort_order, kind, start_time,
-             title, place, area, note, map_query, lat, lng, from_place, to_place, transport, duration_minutes)
+             title, place, area, note, map_query, lat, lng, from_place, from_lat, from_lng,
+             to_place, to_lat, to_lng, transport, duration_minutes)
            VALUES ?`, [rows]);
       }
     }

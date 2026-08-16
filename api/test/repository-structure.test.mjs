@@ -20,3 +20,12 @@ test("plan repository delegates bootstrap, access, invites and membership", () =
   assert.match(source("routes.ts"), /inviteRepo\.createInvite/);
   assert.match(source("routes.ts"), /memberRepo\.replaceMembers/);
 });
+
+test("AI route distinguishes an expired login session from missing plan permission", () => {
+  const routes = source("routes.ts");
+  assert.match(routes, /path === "\/api\/ai\/itinerary"[\s\S]*status: 401, body: \{ error: "session_required" \}/);
+  assert.match(routes, /path === "\/api\/ai\/itinerary-options"[\s\S]*suggestItineraryOptions/);
+  assert.match(routes, /reserveAi\(actorUserId, "options"\)/);
+  assert.match(routes, /reserveAi\(actorUserId, "itinerary"\)/);
+  assert.doesNotMatch(routes, /causeDetail[^\n]*body/);
+});

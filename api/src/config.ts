@@ -87,5 +87,11 @@ export const config = {
     apiKey: optional("OPENAI_KEY", ""),
     model: optional("OPENAI_MODEL", "gpt-5.4-mini"),
     timeoutMs: integer("OPENAI_TIMEOUT_MS", "60000", 1000, 300_000),
+    maxOutputTokens: integer("OPENAI_MAX_OUTPUT_TOKENS", "12000", 512, 100_000),
+    maxRetries: integer("OPENAI_MAX_RETRIES", "2", 0, 5),
+    webSearchEnabled: optional("OPENAI_WEB_SEARCH_ENABLED", "true") === "true",
+    dailyRequestsPerUser: integer("AI_DAILY_REQUESTS_PER_USER", "40", 1, 10_000),
+    dailyTokensPerUser: integer("AI_DAILY_TOKENS_PER_USER", "400000", 1_000, 100_000_000),
+    cooldownSeconds: integer("AI_COOLDOWN_SECONDS", "20", 0, 3600),
   },
 } as const;

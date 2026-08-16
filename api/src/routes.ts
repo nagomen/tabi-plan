@@ -23,7 +23,8 @@
 //   POST   /api/expenses/<id>/restore        元に戻す
 //   POST   /api/plans/<id>/settlements       精算を記録
 //   POST   /api/friendships                  友達申請/承諾
-//   POST   /api/ai/itinerary                 行き先と日程から旅程の下書きを作る
+//   POST   /api/ai/itinerary-options         行き先から選択用の観光候補を作る
+//   POST   /api/ai/itinerary                 選択候補と条件から旅程の下書きを作る
 
 import * as repo from "./plan-repo.js";
 import * as accessRepo from "./plan-access-repo.js";
@@ -33,7 +34,9 @@ import * as memberRepo from "./plan-member-repo.js";
 import * as expenseRepo from "./expense-repo.js";
 import * as userRepo from "./user-repo.js";
 import { PLAN_MANAGE_FIELDS, PLAN_PATCH_FIELDS } from "./plan-contract.js";
-import { checkCooldown, generateItinerary } from "./ai-itinerary.js";
+import { generateItinerary, MAX_AI_CITIES, suggestItineraryOptions, type ItineraryInput } from "./ai-itinerary.js";
+import { AiInputError, AiOutputError, AiUnavailableError, AiUpstreamError } from "./ai-errors.js";
+import { reserveAiRequest, type AiScope } from "./ai-usage-repo.js";
 
 export interface Handled {
   status: number;
@@ -46,7 +49,82 @@ const str = (v: unknown): string => (typeof v === "string" ? v : "");
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === "object" && !Array.isArray(value);
 const arr = (v: unknown): Record<string, unknown>[] => (Array.isArray(v) ? v.filter(isRecord) : []);
+const strArr = (v: unknown): string[] => Array.isArray(v)
+  ? v.filter((item): item is string => typeof item === "string").map((item) => item.trim()).filter(Boolean)
+  : [];
 const PLAN_CONTENT_FIELDS = new Set(["itinerary", "cities", "links", "checklist", "candidates"]);
+
+function itineraryInput(body: Body): ItineraryInput {
+  const rawPreferences = isRecord(body.preferences) ? body.preferences : {};
+  const pace = ["ゆったり", "標準", "充実"].includes(str(rawPreferences.pace))
+    ? str(rawPreferences.pace) as "ゆったり" | "標準" | "充実"
+    : "標準";
+  const walking = ["少なめ", "標準", "気にしない"].includes(str(rawPreferences.walking))
+    ? str(rawPreferences.walking) as "少なめ" | "標準" | "気にしない"
+    : "標準";
+  const transport = ["公共交通", "車", "おまかせ"].includes(str(rawPreferences.transport))
+    ? str(rawPreferences.transport) as "公共交通" | "車" | "おまかせ"
+    : "おまかせ";
+  const peopleValue = body.people === undefined || body.people === null || body.people === ""
+    ? undefined
+    : Number(body.people);
+  if (peopleValue !== undefined && (!Number.isSafeInteger(peopleValue) || peopleValue < 1 || peopleValue > 100)) {
+    throw new AiInputError("人数は1〜100人で指定してください");
+  }
+  const cities = arr(body.cities);
+  if (cities.length > MAX_AI_CITIES) throw new AiInputError(`AI旅行相談の訪問地は最大${MAX_AI_CITIES}都市までです`);
+  return {
+    area: str(body.area).slice(0, 120),
+    startDate: str(body.start_date),
+    endDate: str(body.end_date),
+    note: str(body.note).slice(0, 200),
+    people: peopleValue,
+    selectedCandidateIds: strArr(body.selected_candidate_ids).slice(0, MAX_AI_CITIES * 3)
+      .map((value) => value.slice(0, 80)),
+    consultationToken: str(body.consultation_token).slice(0, 16_000),
+    preferences: {
+      pace,
+      walking,
+      transport,
+      interests: strArr(rawPreferences.interests).slice(0, 8).map((value) => value.slice(0, 40)),
+      extra: str(rawPreferences.extra).slice(0, 200),
+    },
+    cities: cities.map((city) => ({
+      name: str(city.name).slice(0, 100),
+      from_date: str(city.from_date),
+      to_date: str(city.to_date),
+    })),
+  };
+}
+
+function aiFailure(error: unknown): Handled {
+  const detail = error instanceof AiUpstreamError ? error.causeDetail : error instanceof Error ? error.stack : String(error);
+  console.error("[travel-ai] request failed", detail);
+  if (error instanceof AiInputError) {
+    return { status: 400, body: { error: error.code, message: error.message } };
+  }
+  if (error instanceof AiUnavailableError) {
+    return { status: 503, body: { error: error.code, message: error.message } };
+  }
+  if (error instanceof AiUpstreamError) {
+    const status = error.code === "ai_rate_limited" ? 429 : 502;
+    return { status, body: { error: error.code, message: error.message } };
+  }
+  if (error instanceof AiOutputError) {
+    return {
+      status: 502,
+      body: { error: error.code, message: "AIの行程が不完全だったため適用しませんでした。もう一度お試しください。" },
+    };
+  }
+  return { status: 500, body: { error: "ai_internal_error", message: "AI旅行相談でエラーが発生しました" } };
+}
+
+async function reserveAi(userId: string, scope: AiScope): Promise<Handled | null> {
+  const reservation = await reserveAiRequest(userId, scope);
+  return reservation.allowed
+    ? null
+    : { status: 429, body: { error: "ai_usage_limited", message: "続けて利用できません", retry_after: reservation.retryAfter } };
+}
 
 function expectedVersion(body: Body): number | null {
   if (!Object.prototype.hasOwnProperty.call(body, "expected_version")) return null;
@@ -278,30 +356,29 @@ export async function route(method: string, path: string, body: Body, actorUserI
     return { status: 200, body: { ok: true } };
   }
 
-  // ---- AI（旅程の下書き） ----
+  // ---- AI（候補選択 → 旅程確定の2回で終了） ----
+  if (method === "POST" && path === "/api/ai/itinerary-options") {
+    if (!actorUserId) return { status: 401, body: { error: "session_required" } };
+    try {
+      const input = itineraryInput(body);
+      const limited = await reserveAi(actorUserId, "options");
+      if (limited) return limited;
+      return { status: 200, body: await suggestItineraryOptions(actorUserId, input) };
+    } catch (error) {
+      return aiFailure(error);
+    }
+  }
   if (method === "POST" && path === "/api/ai/itinerary") {
     // キーはサーバーにしか無い。誰でも叩けると費用が伸びるのでログイン必須。
-    if (!actorUserId) return { status: 403, body: { error: "forbidden" } };
-    const wait = checkCooldown(actorUserId);
-    if (wait > 0) {
-      return { status: 429, body: { error: "too_many_requests", retry_after: wait } };
-    }
+    if (!actorUserId) return { status: 401, body: { error: "session_required" } };
     try {
-      const draft = await generateItinerary(actorUserId, {
-        area: str(body.area),
-        startDate: str(body.start_date),
-        endDate: str(body.end_date),
-        note: str(body.note),
-        people: Number(body.people) || undefined,
-        cities: arr(body.cities).map((city) => ({
-          name: str(city.name),
-          from_date: str(city.from_date),
-          to_date: str(city.to_date),
-        })),
-      });
+      const input = itineraryInput(body);
+      const limited = await reserveAi(actorUserId, "itinerary");
+      if (limited) return limited;
+      const draft = await generateItinerary(actorUserId, input);
       return { status: 200, body: draft };
     } catch (error) {
-      return { status: 502, body: { error: error instanceof Error ? error.message : "生成に失敗しました" } };
+      return aiFailure(error);
     }
   }
 

@@ -2222,7 +2222,8 @@ function timelineHtmlForDay(idx: number): string {
   return day.items.filter((i) => String(i.type) !== "stay").map((item) => {
     const type = String(item.type || "todo");
     const placeText = item.place && item.place !== item.title ? `場所: ${item.place}` : "";
-    const metaText = [placeText, item.note].filter(Boolean).join(" / ");
+    const moveText = type === "move" ? [item.transport, item.duration].filter(Boolean).join("・") : "";
+    const metaText = [moveText || placeText, item.note].filter(Boolean).join(" / ");
     const label = `<span class="tl-kind ${escapeHtml(type)}">${escapeHtml(item.typeLabel || item.type || "予定")}</span>`;
 
     let segA = item.origin || "";

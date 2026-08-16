@@ -224,13 +224,26 @@ function startSession(record: AccountRecord | Account, token = ""): void {
   setUserName(record.name);
 }
 
-export function logOut(): void {
-  if (db.isEnabled() && readSession()?.token) void db.authLogOut().catch(() => undefined);
+function clearLocalSession(): void {
   writeSession(null);
   clearCurrentUser();
-  // セッションだけ消すと、旧来の名前ベース判定が前ユーザーのまま残る。
   setUserName("");
   clearDeviceProfiles();
+}
+
+function notifyAccountLogout(reason: "logout" | "expired"): void {
+  try {
+    window.dispatchEvent(new CustomEvent("trip-account-logout", { detail: { reason } }));
+  } catch {
+    /* ignore */
+  }
+}
+
+export function logOut(): void {
+  if (db.isEnabled() && readSession()?.token) void db.authLogOut().catch(() => undefined);
+  // セッションだけ消すと、旧来の名前ベース判定が前ユーザーのまま残る。
+  clearLocalSession();
+  notifyAccountLogout("logout");
 }
 
 /**
@@ -251,6 +264,13 @@ function clearDeviceProfiles(): void {
   } catch {
     /* localStorage が使えない環境 */
   }
+}
+
+if (typeof window !== "undefined") {
+  window.addEventListener("trip-session-expired", () => {
+    clearLocalSession();
+    notifyAccountLogout("expired");
+  });
 }
 
 /** 現在ログイン中のアカウント（公開情報）。未ログインなら null。 */

@@ -45,3 +45,9 @@ test("new-plan form respects database length contracts", () => {
   assert.match(html, /data-save>下書きを保存/);
   assert.match(html, /data-publish-plan>公開設定/);
 });
+
+test("slug競合時は入力内容を保ったまま別URLで保存を再試行する", () => {
+  const source = fs.readFileSync(new URL("src/plan-editor/main.ts", root), "utf8");
+  assert.match(source, /error\.code === "ER_DUP_ENTRY"/);
+  assert.match(source, /return performPersist\(explicit, slugRetry \+ 1\)/);
+});

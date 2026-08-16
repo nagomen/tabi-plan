@@ -97,6 +97,23 @@ async function migrate004() {
   }
 }
 
+async function migrate005() {
+  await conn.query(`CREATE TABLE IF NOT EXISTS ai_usage_daily (
+    user_id           VARCHAR(32) NOT NULL,
+    usage_date        DATE NOT NULL,
+    request_count     INT UNSIGNED NOT NULL DEFAULT 0,
+    options_count     INT UNSIGNED NOT NULL DEFAULT 0,
+    itinerary_count   INT UNSIGNED NOT NULL DEFAULT 0,
+    input_tokens      BIGINT UNSIGNED NOT NULL DEFAULT 0,
+    output_tokens     BIGINT UNSIGNED NOT NULL DEFAULT 0,
+    last_options_at   DATETIME(3) NULL,
+    last_itinerary_at DATETIME(3) NULL,
+    PRIMARY KEY (user_id, usage_date),
+    KEY idx_ai_usage_date (usage_date),
+    CONSTRAINT fk_ai_usage_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+  ) ENGINE=InnoDB`);
+}
+
 async function applyMigration(id, migrate) {
   if (await exists("SELECT 1 FROM schema_migrations WHERE id = ?", [id])) {
     console.log(`[migrate] ${id}: already applied`);
@@ -115,6 +132,7 @@ async function main() {
 
   await applyMigration("003_security_hardening", migrate003);
   await applyMigration("004_cover_storage_contract", migrate004);
+  await applyMigration("005_ai_usage_limits", migrate005);
 }
 
 try {

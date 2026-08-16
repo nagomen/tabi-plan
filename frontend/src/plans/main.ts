@@ -500,7 +500,8 @@ function scheduleMapLink(query: string | undefined): string {
 function scheduleMetaText(item: LocalPlanData["itinerary"][number]): string {
   const title = itemTitle(item);
   const place = item.place && item.place !== title ? "場所: " + item.place : "";
-  return [place, item.note].filter(Boolean).join(" / ");
+  const move = String(item.type) === "move" ? [item.transport, item.duration].filter(Boolean).join("・") : "";
+  return [move || place, item.note].filter(Boolean).join(" / ");
 }
 
 function scheduleDayHead(rows: LocalPlanData["itinerary"], index: number): string {

@@ -66,9 +66,22 @@ npm run dev:full
 `http://localhost:5173/plans.html` を入口として表示します。フロントの `/api` はVite経由でローカルAPIへ
 転送されるため、本番APIのCORS設定やViteのポート自動変更には依存しません。終了は `Ctrl+C` です。
 5173が使用中の場合は、空いている次のポートを選び、実際のURLをターミナルに表示します。
+`SESSION_SECRET`を省略したローカル開発では、git管理外の`.env.local-session-secret`を初回だけ生成して再利用します。
+そのためAPIを再起動してもブラウザのログインセッションは維持されます。本番では必ず環境変数で固定値を設定してください。
 
 既にDBへ直接接続できる環境では `.env` の `LOCAL_DB_TUNNEL=0` を指定してください。
 マイグレーションを別途管理する場合は `LOCAL_DB_AUTO_MIGRATE=0` で起動時の適用を無効化できます。
+
+### AI旅行相談
+
+AI旅行相談は、候補提示と行程確定の2リクエストで終了します。OpenAI APIキーは必ずAPIサーバーの
+`OPENAI_KEY`へ設定し、フロントの`trip-config.js`には入れないでください。候補・行程の生成には
+Responses APIの構造化出力を使用し、既定ではWeb検索で観光地と都市間移動の実在性を補強します。
+
+主な運用設定は`.env.sample`の`OPENAI_*`と`AI_*`です。利用回数とトークン数は
+`ai_usage_daily`へ記録されるため、既存DBでは`npm run migrate -w api`を適用してください。
+Web検索を利用できないモデル・環境では`OPENAI_WEB_SEARCH_ENABLED=false`にできますが、候補や移動情報の
+根拠が弱くなるため本番では有効を推奨します。
 
 ## 構成
 
@@ -188,7 +201,7 @@ window.TRIP_CONFIG = {
 
 エディタの「検索」は、既定では無料の **OpenStreetMap（Nominatim）** を使います。公開APIの利用規約に従い、Nominatimは検索ボタンを押した明示操作に限り、入力中の自動候補には使いません。検索結果はセッション内でキャッシュし、旅行の国・都市座標を検索範囲へ反映します。
 
-多言語の施設検索と入力中の候補表示を使いたい場合は、`frontend/public/trip-config.js` に **Mapbox の公開トークン**を設定します。設定するとMapbox Search Boxへ切り替わり、国・都市座標・検索対象種別を使って候補を絞ります。Mapbox障害時に施設名をNominatimへ自動送信することはありません。
+多言語の施設検索と入力中の候補表示を使いたい場合は、`frontend/public/trip-config.js` に **Mapbox の公開トークン**を設定します。設定するとMapbox Search Boxへ切り替わり、AI生成行程が返した住所・地図座標も検索結果で照合します。Mapbox未設定でもAI生成時にWeb検索で確認した住所・座標を保存します。Mapbox障害時に施設名をNominatimへ自動送信することはありません。
 
 ```js
 window.TRIP_CONFIG = {
