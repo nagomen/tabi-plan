@@ -15,23 +15,22 @@ import {
 } from "../shared/config";
 import * as TripPlans from "../shared/plans-store";
 import type { ItineraryItem, ItineraryEdit, TripData } from "../shared/types";
-import { escapeHtml, errorMessage, makeScopedQuery } from "../shared/dom";
+import { escapeHtml, errorMessage, inputControl, makeScopedQuery, textAreaControl } from "../shared/dom";
 import { icon } from "../shared/icons";
 import {
-  hasAuthSession as hasAuthSessionShared,
   getAuthToken as getAuthTokenShared,
-  saveAuthSession as saveAuthSessionShared,
   clearAuthSession as clearAuthSessionShared,
+  requestPasswordGate,
 } from "../shared/auth";
 import {
   callAppsScript as callAppsScriptShared,
   postAppsScript as postAppsScriptShared,
-  sha256Hex,
   isAuthError,
   type AppsScriptParams,
   type AppsScriptResponse,
 } from "../shared/apps-script";
 import { mountAppHeader } from "../shared/app-header";
+import { setTripDocumentTitle } from "../shared/page-meta";
 
 initPageTransitions();
 
@@ -46,11 +45,6 @@ interface AppState {
 
 // ---- 設定 ---------------------------------------------------------------
 
-function applyDocumentTripTitle(title: string | undefined): void {
-  const tripTitle = title || "旅行";
-  document.title = `行程編集 | ${tripTitle}`;
-}
-
 // 選択中プラン（?plan= / active）を反映して、対象の旅行を編集する。
 const BASE_TRIP_CONFIG = readGlobalTripConfig();
 const PLAN_OVERRIDE = TripPlans.resolveConfigOverride(BASE_TRIP_CONFIG);
@@ -63,7 +57,7 @@ const CONFIG: TripConfig = normalizeTripConfig(
     ),
   ) as unknown as TripConfig,
 );
-applyDocumentTripTitle(CONFIG.tripTitle);
+setTripDocumentTitle(CONFIG.tripTitle, (title) => `行程編集 | ${title}`);
 
 // ---- DOM ヘルパー -------------------------------------------------------
 
@@ -102,10 +96,7 @@ const postItineraryUpdate = (params: AppsScriptParams): Promise<AppsScriptRespon
       failMessage: "保存に失敗しました",
     },
   );
-const hasAuthSession = (): boolean => hasAuthSessionShared(CONFIG.auth);
 const getAuthToken = (): string => getAuthTokenShared(CONFIG.auth.storageKey);
-const saveAuthSession = (token?: string, expiresAt?: number): void =>
-  saveAuthSessionShared(CONFIG.auth, token, expiresAt);
 const clearAuthSession = (): void => clearAuthSessionShared(CONFIG.auth.storageKey);
 
 const state: AppState = { data: null, rows: [], filter: "", day: "" };
@@ -113,47 +104,12 @@ const state: AppState = { data: null, rows: [], filter: "", day: "" };
 // ---- 認証 ---------------------------------------------------------------
 
 function requestPassword(): Promise<boolean> {
-  return new Promise((resolve) => {
-    if (!CONFIG.auth.enabled || hasAuthSession()) {
-      resolve(true);
-      return;
-    }
-
-    const gate = document.createElement("div");
-    gate.className = "ed-auth";
-    gate.innerHTML = `
-          <form class="ed-auth-box">
-            <h2>行程編集を開く</h2>
-            <div class="ed-auth-body">
-              <input type="password" autocomplete="current-password" autofocus aria-label="パスワード">
-              <button type="submit">開く</button>
-              <div class="ed-auth-error" aria-live="polite"></div>
-            </div>
-          </form>`;
-    document.body.appendChild(gate);
-
-    const form = gate.querySelector("form");
-    const input = gate.querySelector("input");
-    const error = gate.querySelector<HTMLElement>(".ed-auth-error");
-    if (!form || !input || !error) {
-      gate.remove();
-      resolve(true);
-      return;
-    }
-    form.addEventListener("submit", async (event) => {
-      event.preventDefault();
-      try {
-        const passwordHash = await sha256Hex(input.value || "");
-        const response = await callAppsScript({ action: "auth", passwordHash });
-        saveAuthSession(response.token, response.expiresAt);
-        gate.remove();
-        resolve(true);
-      } catch (apiError) {
-        input.value = "";
-        input.focus();
-        error.textContent = errorMessage(apiError) || "認証に失敗しました。";
-      }
-    });
+  return requestPasswordGate({
+    auth: CONFIG.auth,
+    appsScriptUrl: CONFIG.appsScriptUrl,
+    classPrefix: "ed-auth",
+    title: "行程編集を開く",
+    showDescription: false,
   });
 }
 
@@ -328,14 +284,6 @@ function renderRow(row: ItineraryItem): string {
             <button class="ed-save" type="submit">${icon("check")}保存</button>
           </div>
         </form>`;
-}
-
-function inputControl(form: HTMLFormElement, name: string): HTMLInputElement {
-  return form.elements.namedItem(name) as HTMLInputElement;
-}
-
-function textAreaControl(form: HTMLFormElement, name: string): HTMLTextAreaElement {
-  return form.elements.namedItem(name) as HTMLTextAreaElement;
 }
 
 async function saveRow(event: Event): Promise<void> {

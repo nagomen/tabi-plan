@@ -19,7 +19,8 @@ window.TRIP_CONFIG = {
   },
   geocoding: {
     // Mapbox 公開トークン（pk.…）。設定すると計画エディタの場所検索が
-    // Mapbox（多言語POI）になる。空なら OpenStreetMap(Nominatim) を使う。
+    // Mapbox（多言語POI）になる。空なら検索ボタン操作時だけ
+    // OpenStreetMap(Nominatim) を使い、入力中の自動候補には利用しない。
     mapboxToken: ""
   },
   sharedBackend: {

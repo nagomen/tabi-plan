@@ -49,7 +49,7 @@ function provisionPlanSpreadsheet_(ss: Spreadsheet, plan: any): void {
   writePlanItinerarySheet_(ss, itinerary);
 
   const dateParts = String(trip.dates || '').split(/\s*-\s*/);
-  writePlanSheet_(ss, '基本情報', ['key', 'value', '説明', '公開ページに表示'], [
+  writePlanSheet_(ss, DEFAULT_CONFIG.sheets.basicInfo, BASIC_INFO_HEADERS, [
     ['tripTitle', trip.title || '旅行', '旅行名', 'TRUE'],
     ['dateStart', normalizeDate_(dateParts[0] || ''), '開始日', 'TRUE'],
     ['dateEnd', normalizeDate_(dateParts[1] || dateParts[0] || ''), '終了日', 'TRUE'],
@@ -60,15 +60,15 @@ function provisionPlanSpreadsheet_(ss: Spreadsheet, plan: any): void {
   ]);
 
   // ダッシュボードが googleSheets モードで必ず読むシート（無いと読み込みが失敗する）
-  writePlanSheet_(ss, '予約管理', ['種別', '日付', '名称', '場所', '予約状況', '金額', '通貨', '公開ページに表示', 'メモ'], []);
-  writePlanSheet_(ss, '予算', ['カテゴリ', '項目', '予定額', '実績額', '通貨', 'メモ'], []);
+  writePlanSheet_(ss, DEFAULT_CONFIG.sheets.reservations, RESERVATION_HEADERS, []);
+  writePlanSheet_(ss, DEFAULT_CONFIG.sheets.budget, BUDGET_HEADERS, []);
 
   const checklist: any[] = Array.isArray(plan.checklist) ? plan.checklist : [];
   const checkRows = checklist.map(function (c) {
     const done = c.done === true || String(c.done).toUpperCase() === 'TRUE';
     return ['', c.label || '', '', '', done ? 'TRUE' : 'FALSE', ''];
   });
-  writePlanSheet_(ss, 'チェックリスト', ['カテゴリ', '項目', '期限', '担当', '完了', 'メモ'], checkRows);
+  writePlanSheet_(ss, DEFAULT_CONFIG.sheets.checklist, CHECKLIST_HEADERS, checkRows);
 
   removeDefaultSheet_(ss);
 }

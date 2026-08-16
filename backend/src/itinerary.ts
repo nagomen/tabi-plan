@@ -21,9 +21,7 @@ function updateItineraryRow_(ss: Spreadsheet, params: Params): void {
 
   // 列整備・行範囲の検証・ヘッダー読取・書込までを一括でロックする。
   // 検証（getLastRow など）と書込の間に他の更新が割り込むと TOCTOU になるため。
-  const lock = LockService.getScriptLock();
-  lock.waitLock(10000);
-  try {
+  withScriptLock_(() => {
     ensureItineraryDisplayColumns_(ss);
     if (!Number.isInteger(rowNumber) || rowNumber < 3 || rowNumber > sheet.getLastRow()) {
       throw new Error('更新対象の行が不正です');
@@ -44,41 +42,12 @@ function updateItineraryRow_(ss: Spreadsheet, params: Params): void {
     updates.forEach(update => {
       sheet.getRange(rowNumber, update.column).setValue(update.value);
     });
-  } finally {
-    lock.releaseLock();
-  }
+  });
 }
 
 function ensureItinerarySheet_(ss: Spreadsheet): Sheet {
   const sheet = getOrCreateSheet_(ss, DEFAULT_CONFIG.sheets.itinerary);
-  const headers = [
-    '日付',
-    'Day',
-    '表示時刻',
-    '表示タイトル',
-    '表示場所',
-    '表示メモ',
-    '必要情報',
-    '種別',
-    '表示ラベル',
-    '国',
-    '都市',
-    '移動元',
-    '移動先',
-    '移動手段',
-    '所要時間',
-    '主目的',
-    '予約状況',
-    '確定度',
-    '優先度',
-    'メモ',
-    '宿泊地',
-    '地図検索',
-    '緯度',
-    '経度',
-    '天気',
-    '公開ページに表示'
-  ];
+  const headers = ITINERARY_HEADERS;
   if (sheet.getMaxColumns() < headers.length) {
     sheet.insertColumnsAfter(sheet.getMaxColumns(), headers.length - sheet.getMaxColumns());
   }
@@ -98,27 +67,11 @@ function ensureItineraryDisplayColumns_(ss: Spreadsheet): void {
   if (!sheet || sheet.getMaxRows() < 2) return;
 
   const headerRow = 2;
-  const primaryHeaders = [
-    '表示時刻',
-    '表示タイトル',
-    '表示場所',
-    '表示メモ',
-    '必要情報',
-    '種別',
-    '表示ラベル'
-  ];
-  const auxiliaryHeaders = [
-    '地図検索',
-    '緯度',
-    '経度',
-    '天気',
-    '公開ページに表示'
-  ];
   const lastColumn = Math.max(sheet.getLastColumn(), 1);
   const headers = sheet.getRange(headerRow, 1, 1, lastColumn).getDisplayValues()[0];
   let insertAfter = Math.max(headers.indexOf('Day') + 1, 2);
 
-  primaryHeaders.forEach(header => {
+  ITINERARY_PRIMARY_HEADERS.forEach(header => {
     if (headers.indexOf(header) !== -1) return;
     sheet.insertColumnAfter(insertAfter);
     insertAfter += 1;
@@ -126,7 +79,7 @@ function ensureItineraryDisplayColumns_(ss: Spreadsheet): void {
     headers.splice(insertAfter - 1, 0, header);
   });
 
-  auxiliaryHeaders.forEach(header => {
+  ITINERARY_AUXILIARY_HEADERS.forEach(header => {
     if (headers.indexOf(header) !== -1) return;
     sheet.insertColumnAfter(sheet.getLastColumn());
     const column = sheet.getLastColumn();

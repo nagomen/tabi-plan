@@ -14,17 +14,14 @@ import {
   type TripConfig,
 } from "../shared/config";
 import type { TripData } from "../shared/types";
-import { escapeHtml, errorMessage, makeScopedQuery } from "../shared/dom";
+import { escapeHtml, errorMessage, inputControl, makeScopedQuery, selectControl, textAreaControl } from "../shared/dom";
 import {
-  hasAuthSession as hasAuthSessionShared,
   getAuthToken as getAuthTokenShared,
-  saveAuthSession as saveAuthSessionShared,
   clearAuthSession as clearAuthSessionShared,
+  requestPasswordGate,
 } from "../shared/auth";
 import {
-  callAppsScript as callAppsScriptShared,
   postAppsScript as postAppsScriptShared,
-  sha256Hex,
   isAuthError,
   type AppsScriptParams,
   type AppsScriptResponse,
@@ -33,6 +30,9 @@ import { uploadReceiptPhoto as uploadReceiptPhotoShared } from "../shared/receip
 import { icon } from "../shared/icons";
 import { mountAppHeader } from "../shared/app-header";
 import { currentAccount } from "../shared/account-store";
+import { bindExpenseSplitForm, expenseCurrencyCodes, expenseParticipantNames } from "../shared/expense-form";
+import { setTripDocumentTitle } from "../shared/page-meta";
+import { localDateISO } from "../shared/date";
 
 initPageTransitions();
 
@@ -63,20 +63,13 @@ interface AppState {
 
 // ---- 設定 ---------------------------------------------------------------
 
-function applyDocumentTripTitle(title: string | undefined): void {
-  const tripTitle = title || "旅行";
-  document.title = `費用入力 | ${tripTitle}`;
-  const appleTitle = document.querySelector('meta[name="apple-mobile-web-app-title"]');
-  if (appleTitle) appleTitle.setAttribute("content", "費用入力");
-}
-
 const CONFIG: TripConfig = normalizeTripConfig(
   mergeConfig(
     DEFAULT_CONFIG as unknown as Record<string, unknown>,
     readGlobalTripConfig() as Record<string, unknown>,
   ) as unknown as TripConfig,
 );
-applyDocumentTripTitle(CONFIG.tripTitle);
+setTripDocumentTitle(CONFIG.tripTitle, (title) => `費用入力 | ${title}`, "費用入力");
 
 const FALLBACK_PARTICIPANTS: string[] = CONFIG.defaultParticipants.length
   ? CONFIG.defaultParticipants
@@ -103,9 +96,6 @@ mountAppHeader({
 
 const { qs } = makeScopedQuery(root);
 
-const callAppsScript = (params: AppsScriptParams): Promise<AppsScriptResponse> =>
-  callAppsScriptShared(CONFIG.appsScriptUrl, params);
-
 /** 費用登録用の iframe POST。トークンや金額をクエリ文字列に残す GET/JSONP を避ける。
  *  source は backend/src/main.ts の POST_ACTIONS と対応させること。 */
 const postExpenseAppsScript = (params: AppsScriptParams): Promise<AppsScriptResponse> =>
@@ -120,12 +110,7 @@ const postExpenseAppsScript = (params: AppsScriptParams): Promise<AppsScriptResp
     },
   );
 
-const hasAuthSession = (): boolean => hasAuthSessionShared(CONFIG.auth);
-
 const getAuthToken = (): string => getAuthTokenShared(CONFIG.auth.storageKey);
-
-const saveAuthSession = (token?: string, expiresAt?: number): void =>
-  saveAuthSessionShared(CONFIG.auth, token, expiresAt);
 
 const clearAuthSession = (): void => clearAuthSessionShared(CONFIG.auth.storageKey);
 
@@ -322,113 +307,26 @@ function saveExpenseCache(data: ExpenseSourceData): void {
 // ---- パスワードゲート ---------------------------------------------------
 
 function requestPassword(): Promise<boolean> {
-  return new Promise((resolve) => {
-    if (!CONFIG.auth.enabled || hasAuthSession()) {
-      resolve(true);
-      return;
-    }
-
-    const gate = document.createElement("div");
-    gate.className = "auth";
-    gate.innerHTML = `
-          <form class="auth-box">
-            <h2>費用入力を開く</h2>
-            <div class="auth-body">
-              <p>共有されたパスワードを入力してください。</p>
-              <label>
-                パスワード
-                <input type="password" autocomplete="current-password" autofocus aria-label="パスワード" placeholder="パスワードを入力">
-              </label>
-              <button type="submit">開く</button>
-              <div class="auth-error" aria-live="polite"></div>
-            </div>
-          </form>`;
-    document.body.appendChild(gate);
-
-    const form = gate.querySelector("form");
-    const input = gate.querySelector("input");
-    const error = gate.querySelector<HTMLElement>(".auth-error");
-    if (!form || !input || !error) {
-      gate.remove();
-      resolve(true);
-      return;
-    }
-    form.addEventListener("submit", async (event) => {
-      event.preventDefault();
-      try {
-        const passwordHash = await sha256Hex(input.value || "");
-        const response = await callAppsScript({ action: "auth", passwordHash });
-        saveAuthSession(response.token, response.expiresAt);
-        gate.remove();
-        resolve(true);
-      } catch (apiError) {
-        input.value = "";
-        input.focus();
-        error.textContent = errorMessage(apiError) || "認証に失敗しました。";
-      }
-    });
+  return requestPasswordGate({
+    auth: CONFIG.auth,
+    appsScriptUrl: CONFIG.appsScriptUrl,
+    classPrefix: "auth",
+    title: "費用入力を開く",
   });
 }
 
 // ---- 値ユーティリティ ---------------------------------------------------
 
 function todayISO(): string {
-  if (CONFIG.todayOverride) return CONFIG.todayOverride;
-  const now = new Date();
-  const y = now.getFullYear();
-  const m = String(now.getMonth() + 1).padStart(2, "0");
-  const d = String(now.getDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
-}
-
-function formatYen(value: number): string {
-  const n = Number(value || 0);
-  return "¥" + Math.round(n).toLocaleString("ja-JP");
-}
-
-function numberValue(value: unknown): number {
-  const n = Number(String(value || "").replace(/[^\d.-]/g, ""));
-  return Number.isFinite(n) ? n : 0;
+  return localDateISO(CONFIG.todayOverride);
 }
 
 function expenseParticipants(data: ExpenseSourceData): string[] {
-  const rawParticipants = Array.isArray(data && data.participants)
-    ? (data.participants as unknown[])
-    : [];
-  const fromData = rawParticipants
-    .map((member): string => {
-      if (typeof member === "string") return member;
-      if (member && typeof member === "object") {
-        const record = member as Record<string, unknown>;
-        const candidate = record.name || record.displayName || record["表示名"];
-        return candidate ? String(candidate) : "";
-      }
-      return "";
-    })
-    .filter(Boolean);
-  if (fromData.length) return fromData;
-  const fromMembers = String((data && data.trip && data.trip.members) || "")
-    .split(/\s*\/\s*|、|,|\n/)
-    .map((name) => name.trim())
-    .filter((name) => name && !/\d+人|共有メンバー/.test(name));
-  return fromMembers.length ? fromMembers : FALLBACK_PARTICIPANTS;
+  return expenseParticipantNames(data, FALLBACK_PARTICIPANTS);
 }
 
 function expenseCurrencies(data: ExpenseSourceData): string[] {
-  const localInfo: unknown[] = Array.isArray(data && data.localInfo)
-    ? (data.localInfo as unknown[])
-    : [];
-  const fromLocalInfo = localInfo
-    .map((row) => {
-      if (!row || typeof row !== "object") return "";
-      const record = row as Record<string, unknown>;
-      const candidate = record.currencyCode || record.currency || record["通貨コード"];
-      return candidate ? String(candidate) : "";
-    })
-    .filter(Boolean);
-  return Array.from(new Set(["JPY"].concat(CONFIG.currencies || [], fromLocalInfo)))
-    .map((code) => String(code || "").trim().toUpperCase())
-    .filter(Boolean);
+  return expenseCurrencyCodes(data, CONFIG.currencies);
 }
 
 function setStatus(message: string, type: "error" | "ok" | ""): void {
@@ -445,26 +343,6 @@ function setStatus(message: string, type: "error" | "ok" | ""): void {
   }
   status.classList.toggle("is-error", type === "error");
   status.classList.toggle("is-ok", type === "ok");
-}
-
-// ---- フォーム要素アクセス ----------------------------------------------
-
-function selectControl(form: HTMLFormElement, name: string): HTMLSelectElement {
-  return form.elements.namedItem(name) as HTMLSelectElement;
-}
-
-function inputControl(form: HTMLFormElement, name: string): HTMLInputElement {
-  return form.elements.namedItem(name) as HTMLInputElement;
-}
-
-function textAreaControl(form: HTMLFormElement, name: string): HTMLTextAreaElement {
-  return form.elements.namedItem(name) as HTMLTextAreaElement;
-}
-
-/** ラジオグループ splitMode の選択値を返す */
-function radioValue(form: HTMLFormElement, name: string): string {
-  const checked = form.querySelector<HTMLInputElement>(`input[name='${name}']:checked`);
-  return checked ? checked.value : "";
 }
 
 // ---- 描画 ---------------------------------------------------------------
@@ -594,85 +472,22 @@ function renderExpenseEntry(data: ExpenseSourceData): void {
 }
 
 function setupExpenseEntryHandlers(form: HTMLFormElement, participants: string[]): void {
-  const selectedDetail = form.querySelector<HTMLElement>("[data-selected-detail]");
-  const individualDetail = form.querySelector<HTMLElement>("[data-individual-detail]");
-  const totalNode = form.querySelector<HTMLElement>("[data-share-total]");
   const button = form.querySelector<HTMLButtonElement>("button[type='submit']");
-  if (!selectedDetail || !individualDetail || !totalNode || !button) return;
-  const amountInput = inputControl(form, "amount");
-
-  const activeMode = (): string => radioValue(form, "splitMode");
-  const formatInputAmount = (value: number): string => {
-    const currency = selectControl(form, "currency").value || "JPY";
-    if (currency === "JPY") return formatYen(value);
-    return `${currency} ${Math.round(value * 100) / 100}`;
-  };
-  const shareInputFor = (name: string): HTMLInputElement | undefined =>
-    Array.from(form.querySelectorAll<HTMLInputElement>("[data-share-name]")).find(
-      (input) => input.dataset.shareName === name,
-    );
-  const individualTotal = (): number =>
-    participants.reduce((sum, name) => {
-      const input = shareInputFor(name);
-      return sum + numberValue(input && input.value);
-    }, 0);
-  const updateShareTotal = (): void => {
-    const total = individualTotal();
-    const amount = numberValue(amountInput.value);
-    const message = amount
-      ? `合計 ${formatInputAmount(total)} / 支払額 ${formatInputAmount(amount)}`
-      : `合計 ${formatInputAmount(total)}`;
-    totalNode.textContent = message;
-    totalNode.style.color =
-      /個別金額/.test(activeMode()) && amount && Math.abs(total - amount) > 1
-        ? "var(--red)"
-        : "var(--muted)";
-  };
-  const updateMode = (): void => {
-    const mode = activeMode();
-    selectedDetail.classList.toggle("is-visible", /選んだ人だけ/.test(mode));
-    individualDetail.classList.toggle("is-visible", /個別金額/.test(mode));
-    updateShareTotal();
-  };
-
-  form.addEventListener("change", (event) => {
-    const target = event.target as HTMLInputElement | HTMLSelectElement | null;
-    if (target && target.name === "payer") saveProfile(target.value);
-    if (target && target.name === "splitMode") updateMode();
-    updateShareTotal();
+  if (!button) return;
+  const split = bindExpenseSplitForm(form, participants, {
+    onChange(event) {
+      const target = event.target as HTMLInputElement | HTMLSelectElement | null;
+      if (target?.name === "payer") saveProfile(target.value);
+    },
   });
-  form.addEventListener("input", updateShareTotal);
-  updateMode();
 
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const mode = activeMode();
-    const targets = Array.from(
-      form.querySelectorAll<HTMLInputElement>("input[name='targets']:checked"),
-    ).map((input) => input.value);
-    const individual: Record<string, number> = {};
-    participants.forEach((name) => {
-      const input = shareInputFor(name);
-      const amount = numberValue(input && input.value);
-      if (amount) individual[name] = amount;
-    });
-    const amount = numberValue(inputControl(form, "amount").value);
-
-    if (/選んだ人だけ/.test(mode) && !targets.length) {
-      setStatus("割り勘する人を1人以上選んでください。", "error");
-      return;
-    }
-    if (/個別金額/.test(mode)) {
-      const total = individualTotal();
-      if (!total) {
-        setStatus("個別金額を入力してください。", "error");
-        return;
-      }
-      if (Math.abs(total - amount) > 1) {
-        setStatus("個別金額の合計が支払額と一致していません。", "error");
-        return;
-      }
-    }
+    const validation = split.validationMessage();
+    if (validation) { setStatus(validation, "error"); return; }
+    const mode = split.mode();
+    const targets = split.selectedNames();
+    const individual = split.individualAmounts();
 
     button.disabled = true;
     setStatus("保存中...", "");
@@ -725,7 +540,7 @@ function setupExpenseEntryHandlers(form: HTMLFormElement, participants: string[]
         .forEach((input) => {
           input.checked = true;
         });
-      updateMode();
+      split.refresh();
       setStatus("保存しました。続けて入力できます。", "ok");
       inputControl(form, "title").focus();
     } catch (error) {

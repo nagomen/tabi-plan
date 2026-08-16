@@ -1,12 +1,15 @@
 // 汎用的なシート読み取りと各シートのヘッダー整備。
 
 
-function readObjects_(sheet: Sheet | null, headerRow: number, startColumn: number, columnCount: number): SheetRow[] {
+function readObjects_(sheet: Sheet | null, headerRow: number, startColumn: number, columnCount?: number): SheetRow[] {
   if (!sheet) return [];
   const lastRow = sheet.getLastRow();
   if (lastRow < headerRow) return [];
 
-  const values = sheet.getRange(headerRow, startColumn, lastRow - headerRow + 1, columnCount).getDisplayValues();
+  const availableColumns = Math.max(0, sheet.getLastColumn() - startColumn + 1);
+  const width = columnCount === undefined ? availableColumns : Math.min(columnCount, availableColumns);
+  if (!width) return [];
+  const values = sheet.getRange(headerRow, startColumn, lastRow - headerRow + 1, width).getDisplayValues();
   const headers = values.shift() as string[];
   return values
     .map((row, index) => ({ row, rowNumber: headerRow + 1 + index }))

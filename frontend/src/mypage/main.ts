@@ -19,6 +19,7 @@ import { currentAccount, logOut, updateName, isLoggedIn, searchAccounts, searchA
 import * as Friendships from "../shared/friendship-store";
 import { isHistoryPublic, setHistoryPublic } from "../shared/history-privacy";
 import { mountAppHeader } from "../shared/app-header";
+import { monthCalendarHtml } from "../shared/calendar";
 
 initPageTransitions();
 
@@ -74,10 +75,6 @@ function toDate(value: string | undefined): Date | null {
 
 function dayKey(d: Date): string {
   return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
-}
-
-function sameDay(a: Date, b: Date): boolean {
-  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
 
 function fmtMD(d: Date): string {
@@ -254,8 +251,6 @@ tabs.forEach((t) => t.addEventListener("click", () => showTab(t.dataset.tab || "
 const calMount = qs<HTMLElement>("[data-cal]");
 const calTitle = qs<HTMLElement>("[data-cal-title]");
 const calLegend = qs<HTMLElement>("[data-cal-legend]");
-const DOW = ["日", "月", "火", "水", "木", "金", "土"];
-
 const today = new Date();
 const view = { year: today.getFullYear(), month: today.getMonth() };
 
@@ -275,45 +270,19 @@ function renderCalendar(): void {
 
   calTitle.textContent = `${view.year}年${view.month + 1}月`;
 
-  const first = new Date(view.year, view.month, 1);
-  const gridStart = new Date(view.year, view.month, 1 - first.getDay());
-
-  const covers = (band: PlanBand, d: Date): boolean => {
-    const t = d.getTime();
-    const s = new Date(band.range.start.getFullYear(), band.range.start.getMonth(), band.range.start.getDate()).getTime();
-    const e = new Date(band.range.end.getFullYear(), band.range.end.getMonth(), band.range.end.getDate()).getTime();
-    return t >= s && t <= e;
-  };
-
-  let html = DOW.map((d, i) => `<div class="mp-cal-dow${i === 0 ? " sun" : i === 6 ? " sat" : ""}">${d}</div>`).join("");
-
-  for (let i = 0; i < 42; i += 1) {
-    const d = new Date(gridStart.getFullYear(), gridStart.getMonth(), gridStart.getDate() + i);
-    const out = d.getMonth() !== view.month;
-    const isToday = sameDay(d, today);
-    const dayBands = bands.filter((b) => covers(b, d));
-    const shown = dayBands.slice(0, 3);
-    const prevD = new Date(d.getFullYear(), d.getMonth(), d.getDate() - 1);
-    const nextD = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1);
-
-    const bars = shown
-      .map((b) => {
-        const contL = covers(b, prevD) && d.getDay() !== 0;
-        const contR = covers(b, nextD) && d.getDay() !== 6;
-        const label = !contL ? escapeHtml(b.plan.title || "旅行") : "";
-        const cls = `mp-bar${contL ? " cont-l" : ""}${contR ? " cont-r" : ""}`;
-        return `<a class="${cls}" href="index.html?plan=${encodeURIComponent(b.plan.slug)}" style="background:${b.color}" title="${escapeHtml(b.plan.title || "")}">${label}</a>`;
-      })
-      .join("");
-    const more = dayBands.length > shown.length ? `<span class="mp-bar-more">+${dayBands.length - shown.length}</span>` : "";
-
-    html +=
-      `<div class="mp-cell${out ? " is-out" : ""}${isToday ? " is-today" : ""}">` +
-      `<span class="mp-cell-n">${d.getDate()}</span>` +
-      `<span class="mp-cell-bars">${bars}${more}</span>` +
-      `</div>`;
-  }
-  calMount.innerHTML = html;
+  calMount.innerHTML = monthCalendarHtml({
+    year: view.year,
+    month: view.month,
+    today,
+    classPrefix: "mp",
+    bands: bands.map((band) => ({
+      slug: band.plan.slug,
+      title: band.plan.title || "旅行",
+      start: band.range.start,
+      end: band.range.end,
+      color: band.color,
+    })),
+  });
 
   // 凡例: 表示中の月に重なる計画
   const monthStart = new Date(view.year, view.month, 1).getTime();

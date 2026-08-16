@@ -1,12 +1,12 @@
 # Tabi Plan
 
-旅行の計画・共有ダッシュボードアプリです。行程・地図・チェックリスト・費用精算を仲間と共有できます。ローカル（この端末だけ）でも、共有ストア API / Google Sheets / Apps Script 連携でも動作します。旅行ごとに `frontend/public/trip-config.js` を差し替えるだけで、コードを書き換えずに使い回せます。
+旅行の計画・共有ダッシュボードアプリです。行程・地図・チェックリスト・費用精算を仲間と共有できます。ローカル（この端末だけ）でも、MySQL API / Google Sheets / Apps Script 連携でも動作します。旅行ごとに `frontend/public/trip-config.js` を差し替えるだけで、コードを書き換えずに使い回せます。
 
 静的ファイルに含めた情報は公開情報として扱ってください。予約番号、宿泊先住所、電話番号、保険証券番号などの機密は置かず、非公開データは API 側の認可で制御します。GitHub Pages はプレビュー、本番は GitHub Actions から nginx 配信先へデプロイする運用を推奨します。
 
 ## ディレクトリ構成
 
-`frontend`（Vite + TypeScript の公開サイト）と `backend`（clasp + TypeScript の Apps Script）に分けています。
+`frontend`（Vite + TypeScript の公開サイト）、`api`（Node.js + MySQL）、`backend`（clasp + TypeScript の Apps Script互換層）に分けています。
 
 ```
 frontend/                 公開サイト（Vite + TypeScript, マルチページ）
@@ -17,6 +17,17 @@ frontend/                 公開サイト（Vite + TypeScript, マルチペー�
     shared/               全画面共有の TS（types.ts / config.ts / plans-store.ts）
     dashboard/ plans/ plan-editor/ expense-entry/ itinerary-editor/  各ページの main.ts
   vite.config.ts / tsconfig.json / package.json
+api/                      本番の認証・認可・共有データAPI（Node.js + MySQL）
+  src/server.ts           HTTP、CORS、レート制限、セッション解決
+  src/routes.ts           認可付きルーティング
+  src/db.ts               共有MySQLプールとDB共通処理
+  src/auth-repo.ts        認証情報とセッション
+  src/user-repo.ts        ユーザー・設定・友達関係
+  src/plan-repo.ts        計画・参加者・招待・本文
+  src/expense-repo.ts     費用・精算・監査ログ
+  ../contracts/           frontend と API が共有する通信DTO
+  schema/                 初期スキーマ
+  scripts/migrate.mjs     本番差分マイグレーション
 backend/                  Apps Script（clasp + TypeScript）
   src/Code.ts             バックエンド本体（global scope。import/export は使わない）
   src/appsscript.json
@@ -28,17 +39,36 @@ sheet-template/           Google Sheets の初期データ CSV
 
 ### 開発コマンド
 
-npm workspaces 構成です。**ルートで `npm install` 1回**で frontend / backend 両方の依存が入ります（lockfile はルートの `package-lock.json` 1枚）。以降はすべてリポジトリのルートで実行します。
+npm workspaces 構成です。**ルートで `npm install` 1回**で frontend / api / backend の依存が入ります（lockfile はルートの `package-lock.json` 1枚）。以降はすべてリポジトリのルートで実行します。
 
 | コマンド | 用途 |
 | --- | --- |
 | `npm install` | frontend + backend をまとめて導入 |
 | `npm run dev` | フロントのローカル開発サーバ（Vite） |
 | `npm run build` | フロントを型検査してビルド（`tsc --noEmit` + `vite build`、出力 `frontend/dist`） |
-| `npm run typecheck` | frontend と backend の両方を型検査 |
+| `npm run typecheck` | frontend / api / backend をすべて型検査 |
+| `npm test` | APIの権限ポリシーテスト |
+| `npm run ci` | 全ワークスペース型検査 + APIテスト + 本番フロントビルド |
+| `npm run build:api` | APIを `api/dist` へコンパイル |
 | `npm run push` | clasp で Apps Script へ反映（要 `backend/.clasp.json`） |
 
-個別に動かしたい場合は `npm run <script> -w frontend` / `-w backend`、または各ディレクトリに入って従来どおり実行もできます。
+個別に動かしたい場合は `npm run <script> -w frontend` / `-w api` / `-w backend`、または各ディレクトリに入って実行できます。
+
+### ローカルでフロント・API・MySQLを一括起動
+
+`.env.sample` を元に `.env` を作り、DB/APIの値を設定したうえで次を実行します。
+
+```bash
+npm run dev:full
+```
+
+このコマンドはMySQLへのSSHトンネル、後方互換なDBマイグレーション、ローカルAPI、APIのTypeScript監視、Viteを順番に起動し、
+`http://localhost:5173/plans.html` を入口として表示します。フロントの `/api` はVite経由でローカルAPIへ
+転送されるため、本番APIのCORS設定やViteのポート自動変更には依存しません。終了は `Ctrl+C` です。
+5173が使用中の場合は、空いている次のポートを選び、実際のURLをターミナルに表示します。
+
+既にDBへ直接接続できる環境では `.env` の `LOCAL_DB_TUNNEL=0` を指定してください。
+マイグレーションを別途管理する場合は `LOCAL_DB_AUTO_MIGRATE=0` で起動時の適用を無効化できます。
 
 ## 構成
 
@@ -85,7 +115,7 @@ window.TRIP_CONFIG = {
 
 `.github/workflows/deploy-pages.yml` は preview 用です。`restructure-frontend-backend-ts` に push された `frontend/` を Vite でビルドし、出力 `frontend/dist` を GitHub Pages にデプロイします。
 
-`.github/workflows/deploy-production.yml` は本番用です。手動実行で GitHub Actions が `frontend/dist` をビルドし、SSH で VPS に転送して nginx の配信先へ atomic に反映します。
+`.github/workflows/deploy-production.yml` は本番用です。手動実行で、まずAPIをビルドしてDBマイグレーションとサービス再起動を行い、成功後に `frontend/dist` をnginxの配信先へatomicに反映します。`install_nginx` を有効にする場合は Repository variable `PRODUCTION_API_DOMAIN` も設定してください。
 
 | workflow | 用途 | トリガー | 反映先 |
 | --- | --- | --- | --- |
@@ -115,83 +145,50 @@ window.TRIP_CONFIG = {
 
 ## 旅行計画の作成と選択
 
-`frontend/plans.html` が複数の旅行計画を束ねる入口です。`src/shared/plans-store.ts` がレジストリ（プラン一覧と各ローカルプランのデータ）を localStorage に保存します。
+`frontend/plans.html` が複数の旅行計画を束ねる入口です。`src/shared/plans-store.ts` は MySQL API の関係テーブルを画面用のモデルへ変換します。
 
 | 操作 | 画面 | 保存先 |
 | --- | --- | --- |
-| 計画を作る・編集する | `plan-editor.html` | この端末（ブラウザ）の localStorage |
+| 計画を作る・編集する | `plan-editor.html` | MySQL API |
 | 計画を選んで開く | `plans.html` → `index.html?plan=<slug>` | 選択中 slug を localStorage に記録 |
 | 公開済み旅行を見る | `index.html` | Google Sheets / Apps Script |
 
 - 既存の `window.TRIP_CONFIG`（Sheets 連携の旅行）は、初回に「組み込みプラン」として一覧へ自動登録されます。従来どおりの表示は維持されます。
-- `mode: "local"` のプランは行程・地図・チェックリスト・リンクをこの端末だけで表示します。費用入力と精算は Google Sheets / Apps Script 連携の旅行で使えます。
-- `sharedBackend.enabled: true` かつ `mode: "appsScript"` にすると、ローカル計画・候補・投票・費用なども Apps Script の共有ストアへ同期します。計画一覧で共有パスワードを入力すると、別端末や別ブラウザでも同じ計画を読み込めます。
-- レジストリのキー: `trip-dashboard-plans`（一覧）、`trip-dashboard-plan-<slug>`（各データ）、`trip-dashboard-active-plan`（選択中）。
-- **開発時のファイル保存**：`npm run dev` の Vite サーバが、ローカルプランを `data/plans/<slug>.json` に読み書きします（保存時に自動で書き出し、ページ読込時に `window.__DEV_PLANS__` として注入して localStorage を再構築）。**ファイルが真実**なので別ブラウザでも同じ内容になり、Git で差分も見られます。本番ビルドには含まれません（将来は DB へ移行）。`data/plans/*.json` は既定で gitignore。
+- `mode: "local"` はアプリ内で作成した共同計画を表し、計画・行程・チェックリスト・費用を MySQL API に保存します。
+- Apps Script は Google Sheets 由来の公開旅行データと、そのシートに対する行程・費用更新だけを担当します。ユーザー、権限、共同計画の正本は MySQL API です。
+- 選択中の slug だけを端末固有の `trip-dashboard-active-plan` に保存します。計画本体は端末に保存しません。
 
 ### 共同計画・共有の本番運用
 
-旅行を計画してシェアする用途では、`appsScriptUrl` と `sharedBackend` を設定した Apps Script 運用を推奨します。
+旅行を計画してシェアする本番用途では、`sharedBackend.mode: "api"` の MySQL API を正とします。Google Sheets は公開してよい読み取りデータ、Apps Script は既存シート連携の互換機能として扱います。
 
 | 目的 | 仕組み | 使い方 |
 | --- | --- | --- |
-| 別端末で同じ計画を見る | Apps Script 共有ストア | `sharedBackend.enabled: true` にし、計画一覧で共有パスワードを入力 |
-| 招待リンクで参加する | `plans.html#join=...` | 招待リンクを開くと計画を取り込み、既存計画なら候補の投票をマージ |
-| 候補・投票を残す | ローカル保存 + 共有ストア同期 | 候補ボードで追加・投票後、保存すると共有ストアにも反映 |
+| 別端末で同じ計画を見る | MySQL API | ログイン後、公開計画または自分が参加する計画を取得 |
+| 招待リンクで参加する | `plans.html#join=...` | owner が発行した期限付きトークンをログイン済みユーザーが受諾 |
+| 候補・投票・費用を残す | 関係テーブル | `user_id` と `plan_id` を正にしてAPIへ保存 |
 | 公開用 Sheets に書き出す | `createTrip` | 計画一覧の「公開」で新しい Google スプレッドシートを作成 |
-| 権限を守る | 共有パスワード + Apps Script トークン | `TRIP_PASSWORD_HASH` / `TRIP_TOKEN_SECRET` を Apps Script に設定 |
-
-Apps Script は共有ストア用に `_AppStore` シートを自動作成します。専用の保存先を分けたい場合は Script Properties に `TRIP_STORE_SPREADSHEET_ID` を設定してください。未設定なら `TRIP_SPREADSHEET_ID` のスプレッドシートを使い、どちらも無い場合は「Tabi Plan 共有ストア」という新規スプレッドシートを作ります。
+| 権限を守る | APIセッション + `plan_members` | ブラウザの任意のuserIdではなく、サーバーセッションから利用者を確定 |
 
 ### 権限モデル
 
-ユーザー権限は `trip-dashboard-permissions` というJSONに、DBテーブルへ移行しやすい形で保存します。開発時は `data/store/trip-dashboard-permissions.json`、共有バックエンド有効時は Apps Script 共有ストアへ同期されます。
+権限の正本は `plan_members` です。`role` は `owner` / `editor` / `viewer`、`status` は `active` / `left` / `revoked` です。
 
-```json
-{
-  "version": 1,
-  "planPermissions": [
-    {
-      "id": "perm_xxx",
-      "planSlug": "2703-taiwan",
-      "subjectType": "account",
-      "subjectId": "usr_xxx",
-      "displayName": "参加者A",
-      "role": "owner",
-      "status": "active",
-      "source": "owner",
-      "inviteId": "inv_xxx",
-      "createdAt": "2026-07-08T00:00:00.000Z",
-      "updatedAt": "2026-07-08T00:00:00.000Z"
-    }
-  ],
-  "planInvites": [
-    {
-      "id": "inv_xxx",
-      "planSlug": "2703-taiwan",
-      "invitedName": "参加者B",
-      "role": "editor",
-      "status": "accepted",
-      "createdBySubjectType": "account",
-      "createdBySubjectId": "usr_owner",
-      "createdByName": "参加者A",
-      "acceptedBySubjectType": "account",
-      "acceptedBySubjectId": "usr_guest",
-      "acceptedByName": "参加者B",
-      "createdAt": "2026-07-08T00:00:00.000Z",
-      "acceptedAt": "2026-07-08T00:00:00.000Z"
-    }
-  ]
-}
-```
+| ロール | 閲覧 | 計画本文 | 費用・精算 | メンバー・公開設定・招待 |
+| --- | --- | --- | --- | --- |
+| viewer | 可 | 不可 | 不可 | 不可 |
+| editor | 可 | 可 | 可 | 不可 |
+| owner | 可 | 可 | 可 | 可 |
 
-`subjectType` はログイン済みなら `account`、未ログイン運用なら `name` です。`role` は `owner` / `editor` / `viewer`、`status` は有効・失効を表します。招待リンクを作ると `planInvites` に `pending` 行が作られ、リンクを開くと `accepted` になり、同時に `planPermissions` へ参加権限が追加されます。
+`public` かつ `published` の計画は未ログインでも公開部分を閲覧できます。限定公開・下書き・費用・精算・タスクは正式メンバーだけに返します。`open_editing` は既定で無効で、有効化した場合もログイン済み非メンバーが変更できるのは公開本文だけです。
+
+計画メタ・本文の保存には `plans.version` を使った楽観ロックがあり、別端末で先に更新されていた場合は409を返します。費用の作成・更新・削除・復元は `expense_audit_logs` に変更前後と実行者を保存します。
 
 ### 計画エディタの場所検索
 
-エディタの「地図を検索」は、既定では無料の **OpenStreetMap（Nominatim）** を使います。これは OSM に現地語で登録された地名・施設に強い一方、海外のホテル等を**日本語名**で引くのは苦手です（例:「プラザホテル ニューヨーク」はヒットしない）。
+エディタの「検索」は、既定では無料の **OpenStreetMap（Nominatim）** を使います。公開APIの利用規約に従い、Nominatimは検索ボタンを押した明示操作に限り、入力中の自動候補には使いません。検索結果はセッション内でキャッシュし、旅行の国・都市座標を検索範囲へ反映します。
 
-多言語の施設検索を使いたい場合は、`frontend/public/trip-config.js` に **Mapbox の公開トークン**を設定します。設定すると検索が Mapbox Search Box（多言語POI）に切り替わり、空なら自動で Nominatim にフォールバックします。
+多言語の施設検索と入力中の候補表示を使いたい場合は、`frontend/public/trip-config.js` に **Mapbox の公開トークン**を設定します。設定するとMapbox Search Boxへ切り替わり、国・都市座標・検索対象種別を使って候補を絞ります。Mapbox障害時に施設名をNominatimへ自動送信することはありません。
 
 ```js
 window.TRIP_CONFIG = {
@@ -200,7 +197,7 @@ window.TRIP_CONFIG = {
 };
 ```
 
-トークンはクライアントに露出する公開トークンです。Mapbox 側で URL 制限をかけて利用してください。座標が分かっている場合は、予定を開いて「地図で指定」→ 地図クリックでも登録できます。
+トークンはクライアントに露出する公開トークンです。Mapbox 側で URL 制限をかけて利用してください。都市・場所とも検索結果は自動確定せず、候補を選んで登録します。座標が分かっている場合は、予定を開いて「地図で指定」→ 地図クリックでも登録できます。
 
 ### ローカルプランを公開する（Google Sheets へ書き出し）
 

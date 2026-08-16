@@ -71,7 +71,6 @@ Enable the `/api/` proxy block in `infra/nginx/travel-dashboard.conf.template` w
 
 For the API process, set a strong `SESSION_SECRET` in addition to `API_TOKEN`.
 `API_TOKEN` is still exposed to the static frontend as a basic API gate; per-user permissions rely on the server-signed `X-Travel-Session` token issued by `/api/auth/login` and `/api/auth/signup`.
-Leave `LEGACY_STORE_TOKEN` empty in normal operation. Set it only while running old `/api/store` migration or maintenance scripts.
 
 ## App Config
 

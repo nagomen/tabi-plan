@@ -5,8 +5,6 @@ import type { ChecklistItem } from "./types";
 
 export type TaskStatus = "todo" | "doing" | "done";
 
-export const TASK_STATUS_ORDER: TaskStatus[] = ["todo", "doing", "done"];
-
 export const TASK_STATUS_LABEL: Record<TaskStatus, string> = {
   todo: "未着手",
   doing: "進行中",

@@ -7,6 +7,7 @@
 // 将来アカウント連携が入ったら、ユーザーIDに紐づくサーバー側の設定へ差し替える。
 
 import * as Backend from "./backend";
+import * as db from "./db";
 
 const KEY = "trip-dashboard-history-privacy";
 
@@ -14,6 +15,14 @@ const KEY = "trip-dashboard-history-privacy";
 type PrivacyMap = Record<string, boolean>;
 
 function readAll(): PrivacyMap {
+  if (db.isEnabled() && db.isLoaded()) {
+    const users = new Map(db.users().map((user) => [user.id, user.display_name]));
+    return Object.fromEntries(
+      db.userSettings()
+        .filter((row) => users.has(row.user_id))
+        .map((row) => [users.get(row.user_id) as string, Boolean(row.history_public)]),
+    );
+  }
   const parsed = Backend.getJSON<PrivacyMap>(KEY, {});
   return parsed && typeof parsed === "object" ? parsed : {};
 }
@@ -34,6 +43,11 @@ export function isHistoryPublic(name: string): boolean {
 export function setHistoryPublic(name: string, isPublic: boolean): void {
   const key = String(name || "").trim();
   if (!key) return;
+  if (db.isEnabled() && db.isLoaded()) {
+    const user = db.findUserByName(key);
+    if (user) db.setHistoryPublic(user.id, isPublic);
+    return;
+  }
   const map = readAll();
   map[key] = Boolean(isPublic);
   writeAll(map);

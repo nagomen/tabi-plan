@@ -7,18 +7,9 @@
 // ログイン前後で別 principal になるなどの不具合の温床だった。
 // いまは plan_members 1枚が正で、判定はここに集約する。
 
-import { splitNames } from "./friend-store";
 import { isPublished, planVisibility, type PlanMeta } from "./plans-store";
 import * as db from "./db";
 import { currentUserId } from "./identity";
-
-/** 計画のメンバー名一覧（表示用）。 */
-export function membersOf(plan: PlanMeta): string[] {
-  if (plan.memberIds && plan.memberIds.length) {
-    return plan.memberIds.map((id) => db.nameOf(id)).filter(Boolean);
-  }
-  return splitNames(plan.members);
-}
 
 function memberRow(plan: PlanMeta): db.PlanMemberRow | undefined {
   const me = currentUserId();
@@ -30,6 +21,13 @@ function memberRow(plan: PlanMeta): db.PlanMemberRow | undefined {
 
 export function roleOf(plan: PlanMeta): db.PlanMemberRow["role"] | null {
   return memberRow(plan)?.role || null;
+}
+
+export function roleLabel(role: db.PlanMemberRow["role"] | null): string {
+  if (role === "owner") return "Owner";
+  if (role === "editor") return "Editor";
+  if (role === "viewer") return "Viewer";
+  return "Guest";
 }
 
 export function ownerNameOf(plan: PlanMeta): string {
@@ -44,14 +42,6 @@ export function ownerNameOf(plan: PlanMeta): string {
 /** 自分がこの計画の参加者か。利用者が未確定なら false。 */
 export function isMemberOf(plan: PlanMeta): boolean {
   return Boolean(memberRow(plan));
-}
-
-/**
- * この計画を「自分の計画」として扱うか。
- * 利用者が未確定な訪問者は「自分」を持たないので false。
- */
-export function isMine(plan: PlanMeta): boolean {
-  return isMemberOf(plan);
 }
 
 /**

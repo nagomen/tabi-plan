@@ -5,19 +5,16 @@
 // GET は読み取り専用アクションのみを扱う。シートを変更するアクションは
 // クエリ文字列にトークンや金額が残らないよう doPost 側（POST_ACTIONS）に置く。
 const GET_ACTIONS: Record<string, (params: Params) => any> = {
-  auth: handleAuth_,
   data: handleData_,
-  storeDump: handleStoreDump_,
   ping: () => ({ ok: true, now: Date.now() })
 };
 
 // POST は状態を変更するアクションを扱う。source は doPost 内の postMessage で
 // フロントエンドが応答を紐付けるために使う識別子。
 const POST_ACTIONS: Record<string, { handle: (params: Params) => any; source: string }> = {
+  auth: { handle: handleAuth_, source: 'trip-auth' },
   receiptUpload: { handle: handleReceiptUpload_, source: 'trip-expense-receipt-upload' },
   createTrip: { handle: handleCreateTrip_, source: 'trip-plan-publish' },
-  storeSet: { handle: handleStoreSet_, source: 'trip-shared-store' },
-  storeRemove: { handle: handleStoreRemove_, source: 'trip-shared-store' },
   expense: { handle: handleExpense_, source: 'trip-expense-save' },
   settlementComplete: { handle: handleSettlementComplete_, source: 'trip-settlement-complete' },
   itineraryUpdate: { handle: handleItineraryUpdate_, source: 'trip-itinerary-update' }
@@ -80,6 +77,7 @@ function mutateAndRespond_(params: Params, mutate: (ss: Spreadsheet) => void, op
 }
 
 function handleAuth_(params: Params) {
+  enforceAuthRateLimit_();
   const props = PropertiesService.getScriptProperties();
   const expectedHash = props.getProperty('TRIP_PASSWORD_HASH');
   const tokenSecret = props.getProperty('TRIP_TOKEN_SECRET');

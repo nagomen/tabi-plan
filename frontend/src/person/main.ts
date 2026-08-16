@@ -25,6 +25,7 @@ import { planCoverThumbnail } from "../shared/cover";
 import { getViews } from "../shared/views-store";
 import { canEditPlan, canViewPlan, ownerNameOf } from "../shared/membership";
 import { addBaseLayer } from "../shared/map-tiles";
+import { monthCalendarHtml } from "../shared/calendar";
 
 // ---- 対象の名前 ---------------------------------------------------------
 
@@ -494,51 +495,25 @@ function renderCalendar(trips: PersonTrip[], allSlugs: string[]): void {
   drawCalendar();
 }
 
-function covers(band: Band, d: Date): boolean {
-  const t = d.getTime();
-  const s = new Date(band.start.getFullYear(), band.start.getMonth(), band.start.getDate()).getTime();
-  const e = new Date(band.end.getFullYear(), band.end.getMonth(), band.end.getDate()).getTime();
-  return t >= s && t <= e;
-}
-
 function drawCalendar(): void {
   const calEl = $("[data-cal]");
   const titleEl = $("[data-cal-title]");
   if (titleEl) titleEl.textContent = `${view.year}年${view.month + 1}月`;
   if (!calEl) return;
 
-  const first = new Date(view.year, view.month, 1);
-  const gridStart = new Date(view.year, view.month, 1 - first.getDay());
-
-  let html = DOW.map((d, i) => `<div class="pv-cal-dow${i === 0 ? " sun" : i === 6 ? " sat" : ""}">${d}</div>`).join("");
-
-  for (let i = 0; i < 42; i += 1) {
-    const d = new Date(gridStart.getFullYear(), gridStart.getMonth(), gridStart.getDate() + i);
-    const out = d.getMonth() !== view.month;
-    const isToday = sameDay(d, today);
-    const dayBands = bands.filter((b) => covers(b, d));
-    const shown = dayBands.slice(0, 3);
-    const prevD = new Date(d.getFullYear(), d.getMonth(), d.getDate() - 1);
-    const nextD = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1);
-
-    const bars = shown
-      .map((b) => {
-        const contL = covers(b, prevD) && d.getDay() !== 0;
-        const contR = covers(b, nextD) && d.getDay() !== 6;
-        const label = !contL ? escapeHtml(b.plan.title || "旅行") : "";
-        const cls = `pv-bar${contL ? " cont-l" : ""}${contR ? " cont-r" : ""}`;
-        return `<a class="${cls}" href="index.html?plan=${encodeURIComponent(b.plan.slug)}" style="background:${b.color}" title="${escapeHtml(b.plan.title || "")}">${label}</a>`;
-      })
-      .join("");
-    const more = dayBands.length > shown.length ? `<span class="pv-bar-more">+${dayBands.length - shown.length}</span>` : "";
-
-    html +=
-      `<div class="pv-cell${out ? " is-out" : ""}${isToday ? " is-today" : ""}">` +
-      `<span class="pv-cell-n">${d.getDate()}</span>` +
-      `<span class="pv-cell-bars">${bars}${more}</span>` +
-      `</div>`;
-  }
-  calEl.innerHTML = html;
+  calEl.innerHTML = monthCalendarHtml({
+    year: view.year,
+    month: view.month,
+    today,
+    classPrefix: "pv",
+    bands: bands.map((band) => ({
+      slug: band.plan.slug,
+      title: band.plan.title || "旅行",
+      start: band.start,
+      end: band.end,
+      color: band.color,
+    })),
+  });
 }
 
 $("[data-cal-prev]")?.addEventListener("click", () => {

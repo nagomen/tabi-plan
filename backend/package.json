@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "typecheck": "tsc --noEmit",
+    "test": "node --test test/*.test.mjs",
     "push": "clasp push",
     "pull": "clasp pull",
     "deploy": "clasp deploy",

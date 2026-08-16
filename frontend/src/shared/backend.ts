@@ -1,9 +1,8 @@
 // 永続化バックエンドの唯一の差し替え口。
 //
 // 現在の実装:
-//   - sharedBackend.enabled=true かつ mode="api" のとき、MySQL の共有ストアが正。
-//     localStorage は同期読み取り用のキャッシュとして使う。
-//   - それ以外（mode="local"）は localStorage だけで完結する。
+//   - MySQL API 運用時のドメインデータは shared/db.ts が関係別 API を担当する。
+//   - このモジュールは localStorage と開発用ファイルストアだけを担当する。
 //
 // ルール:
 //   - ドメインデータの読み書きは、各ストアが必ずこの backend 経由で行う
@@ -17,13 +16,7 @@
 //   - キャッシュ未満のキーは localStorage を直読みするフォールバックがあり、
 //     preload を呼ばなくても現状どおり動く（前方互換の保険）。
 //
-import {
-  DEFAULT_CONFIG,
-  mergeConfig,
-  normalizeTripConfig,
-  readGlobalTripConfig,
-  type TripConfig,
-} from "./config";
+import { resolvedTripConfig } from "./config";
 
 const cache = new Map<string, unknown>();
 let preloaded = false;
@@ -31,157 +24,23 @@ let preloaded = false;
 // これが無いと共有ストアの取得がページ表示ごとに何度も走る。
 let preloading: Promise<void> | null = null;
 
-function config(): TripConfig {
-  return normalizeTripConfig(
-    mergeConfig(
-      DEFAULT_CONFIG as unknown as Record<string, unknown>,
-      readGlobalTripConfig() as Record<string, unknown>,
-    ) as unknown as TripConfig,
-  );
-}
-
-// ---- 共有ストア API（MySQL）--------------------------------------------
-// Apps Script と同じ役割の、自前バックエンド版。
-// 読みは preload でまとめて取り、書きは write-through で非同期に投げる
-// （getJSON を同期のまま保つため。この設計は冒頭のコメント参照）。
-
-function apiConfig(): { base: string; token: string } | null {
-  const shared = config().sharedBackend;
-  if (!shared?.enabled || shared.mode !== "api") return null;
-  return { base: (shared.apiBaseUrl || "").replace(/\/+$/, ""), token: shared.apiToken || "" };
-}
-
-function apiHeaders(token: string): Record<string, string> {
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (token) headers.Authorization = `Bearer ${token}`;
-  return headers;
-}
-
-/** 共有ストア API を使う構成かどうか（プラン種の抑止判定にも使う）。 */
+/** 関係別 API を使う構成かどうか（ローカル永続化の抑止判定に使う）。 */
 export function sharedApiEnabled(): boolean {
-  return apiConfig() !== null;
-}
-
-/** キーごとのサーバー側バージョン。楽観ロックの再送判断に使う。 */
-const versions = new Map<string, number>();
-
-/** 直近サーバーへ送った（またはサーバーから受け取った）内容。無駄な PUT を避ける。 */
-const lastSynced = new Map<string, string>();
-
-/** preload 前に書き込もうとしたキー。読み込み後に現在値で送り直す。 */
-const deferredKeys = new Set<string>();
-
-function apiPersist(key: string, value: unknown): void {
-  const api = apiConfig();
-  if (!api) return;
-  if (sharedApiEnabled()) return;
-  // サーバーを読み終える前に書くと、まだ手元に無いデータを空で上書きしてしまう。
-  // 起動時のマイグレーション（ensureSeed / migrateExistingToPublic）が
-  // preload 完了前に走るため、実際に共有中の計画一覧が消える事故が起きた。
-  // 読み込み後に現在値で送り直す。
-  if (!preloaded) {
-    deferredKeys.add(key);
-    return;
-  }
-  const serialized = JSON.stringify(value);
-  // 中身が変わっていないなら送らない。
-  // 起動時のハイドレートで同じ値が何十件も書き直されるため、これが無いと
-  // ページを開くたびに大量の PUT が飛んでレート制限に当たる。
-  if (lastSynced.get(key) === serialized) return;
-  lastSynced.set(key, serialized);
-  const url = `${api.base}/api/store/${encodeURIComponent(key)}`;
-  const body = JSON.stringify({ value, version: versions.get(key) });
-  void fetch(url, { method: "PUT", headers: apiHeaders(api.token), body })
-    .then(async (res) => {
-      if (res.ok) {
-        const data = (await res.json()) as { version?: number };
-        if (typeof data.version === "number") versions.set(key, data.version);
-        emitSyncEvent({ ok: true, source: "api", key });
-        return;
-      }
-      if (res.status === 409) {
-        // 別端末が先に書いた。手元の版を進めて次回に備える。
-        // 費用のように配列を持つキーは、呼び出し側（ExpenseStore.merge など）が
-        // id で和集合マージしてから書き直すことで取りこぼしを防ぐ。
-        const data = (await res.json()) as { version?: number };
-        if (typeof data.version === "number") versions.set(key, data.version);
-        lastSynced.delete(key); // 次回は必ず送り直す
-        emitSyncEvent({ ok: false, source: "api", key, conflict: true });
-        return;
-      }
-      lastSynced.delete(key); // 失敗したので次回また送る
-      emitSyncEvent({ ok: false, source: "api", key, error: `HTTP ${res.status}` });
-    })
-    .catch((error: unknown) => {
-      lastSynced.delete(key);
-      emitSyncEvent({ ok: false, source: "api", key, error: String(error) });
-    });
-}
-
-function apiDelete(key: string): void {
-  const api = apiConfig();
-  if (!api) return;
-  if (sharedApiEnabled()) return;
-  void fetch(`${api.base}/api/store/${encodeURIComponent(key)}`, {
-    method: "DELETE",
-    headers: apiHeaders(api.token),
-  })
-    .then(() => {
-      versions.delete(key);
-      lastSynced.delete(key);
-      emitSyncEvent({ ok: true, source: "api", key });
-    })
-    .catch((error: unknown) => emitSyncEvent({ ok: false, source: "api", key, error: String(error) }));
-}
-
-/** 共有ストアを丸ごと取得してキャッシュと localStorage を満たす。 */
-async function apiLoadAll(): Promise<void> {
-  const api = apiConfig();
-  if (!api) return;
-  if (sharedApiEnabled()) return;
-  const res = await fetch(`${api.base}/api/store`, { headers: apiHeaders(api.token) });
-  if (!res.ok) throw new Error(`共有ストアの取得に失敗しました (HTTP ${res.status})`);
-  const data = (await res.json()) as {
-    store?: Record<string, unknown>;
-    versions?: Record<string, number>;
-  };
-  for (const [key, value] of Object.entries(data.store || {})) {
-    cache.set(key, value);
-    lastSynced.set(key, JSON.stringify(value));
-    try {
-      localStorage.setItem(key, JSON.stringify(value));
-    } catch {
-      /* ignore */
-    }
-  }
-  for (const [key, version] of Object.entries(data.versions || {})) versions.set(key, version);
-}
-
-function emitSyncEvent(detail: Record<string, unknown>): void {
-  try {
-    window.dispatchEvent(new CustomEvent("trip-backend-sync", { detail }));
-  } catch {
-    /* ignore */
-  }
+  const shared = resolvedTripConfig().sharedBackend;
+  return Boolean(shared?.enabled && shared.mode === "api");
 }
 
 // 開発時のファイル保存（data/store/<key>.json）。
 // Vite の dev プラグインが window.__DEV_STORE__ を注入し、/api/store で読み書きする。
-// プランは別経路（data/plans/*.json）が担当するため、ここでは除外する。
 function devStore(): Record<string, unknown> | null {
   const value = (window as unknown as { __DEV_STORE__?: unknown }).__DEV_STORE__;
   return value && typeof value === "object" ? (value as Record<string, unknown>) : null;
 }
 
-function isPlanKey(key: string): boolean {
-  // "trip-dashboard-plans"（一覧）と "trip-dashboard-plan-<slug>"（データ）
-  return key.startsWith("trip-dashboard-plan");
-}
-
 function devPersist(key: string, value: unknown): void {
   // 共有ストア API が正なら、ファイルへは書かない（二重の真実を作らない）。
   if (sharedApiEnabled()) return;
-  if (!devStore() || isPlanKey(key)) return; // 本番 or プランは対象外
+  if (!devStore()) return;
   try {
     void fetch("/api/store/" + encodeURIComponent(key), {
       method: "PUT",
@@ -189,18 +48,6 @@ function devPersist(key: string, value: unknown): void {
       body: JSON.stringify(value),
     }).catch(() => {
       /* dev only, best-effort */
-    });
-  } catch {
-    /* ignore */
-  }
-}
-
-function devDelete(key: string): void {
-  if (sharedApiEnabled()) return;
-  if (!devStore() || isPlanKey(key)) return;
-  try {
-    void fetch("/api/store/" + encodeURIComponent(key), { method: "DELETE" }).catch(() => {
-      /* ignore */
     });
   } catch {
     /* ignore */
@@ -251,29 +98,7 @@ async function runPreload(): Promise<void> {
       }
     }
   }
-  // 共有ストア API（MySQL）。サーバーが正なので、種やローカルより後に当てて上書きする。
-  if (apiConfig()) {
-    try {
-      await apiLoadAll();
-      emitSyncEvent({ ok: true, source: "api" });
-    } catch (error) {
-      // 落ちても localStorage の内容で動き続ける（オフライン時と同じ扱い）
-      emitSyncEvent({
-        ok: false,
-        source: "api",
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
-  }
   preloaded = true;
-  // preload 前に保留した書き込みを、読み込み後の値で送り直す。
-  // 大半はサーバーの値と一致して dedupe で消えるが、
-  // 本当に手元だけの変更があればここで反映される。
-  const deferred = [...deferredKeys];
-  deferredKeys.clear();
-  for (const key of deferred) {
-    if (cache.has(key)) apiPersist(key, cache.get(key));
-  }
 }
 
 /** 認証後などに共有ストアを明示的に再取得する。 */
@@ -309,18 +134,5 @@ export function setJSON(key: string, value: unknown): boolean {
     ok = false; // 容量超過など
   }
   devPersist(key, value); // 開発時は data/store/<key>.json にも保存
-  apiPersist(key, value);
   return ok;
-}
-
-/** 削除。 */
-export function removeJSON(key: string): void {
-  cache.delete(key);
-  try {
-    localStorage.removeItem(key);
-  } catch {
-    /* ignore */
-  }
-  devDelete(key);
-  apiDelete(key);
 }

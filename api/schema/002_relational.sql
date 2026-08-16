@@ -50,12 +50,28 @@ CREATE TABLE user_credentials (
   password_salt  VARBINARY(64) NOT NULL,
   password_hash  VARBINARY(64) NOT NULL,
   algorithm      VARCHAR(32)  NOT NULL DEFAULT 'pbkdf2-sha256',
-  iterations     INT UNSIGNED NOT NULL DEFAULT 100000,
+  iterations     INT UNSIGNED NOT NULL DEFAULT 600000,
   created_at     TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at     TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (user_id),
   UNIQUE KEY uq_user_credentials_email (email),
   CONSTRAINT fk_user_credentials_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+-- ログインセッション。ブラウザにはランダムな生トークン、DBにはHMACだけを置く。
+-- ログアウト・端末紛失・パスワード変更時にサーバー側で失効できる。
+CREATE TABLE user_sessions (
+  id          VARCHAR(32) NOT NULL,
+  user_id     VARCHAR(32) NOT NULL,
+  token_hash  VARBINARY(32) NOT NULL,
+  expires_at  TIMESTAMP NOT NULL,
+  revoked_at  TIMESTAMP NULL DEFAULT NULL,
+  created_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_user_sessions_token (token_hash),
+  KEY idx_user_sessions_user (user_id, revoked_at, expires_at),
+  KEY idx_user_sessions_expiry (expires_at, revoked_at),
+  CONSTRAINT fk_user_sessions_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
 -- 送金の受取先。旧 payment-links は「名前」がキーだったので改名で壊れていた。
@@ -112,11 +128,14 @@ CREATE TABLE plans (
   start_date      DATE        NULL,
   end_date        DATE        NULL,
   dates_label     VARCHAR(64) NULL,
-  cover_url       VARCHAR(512) NULL,             -- 画像本体は入れない（現データも全てパス）
+  -- 通常はURL。エディタで圧縮した小容量 WebP data URL も保存するため MEDIUMTEXT。
+  -- アプリ/API側で300KBに制限し、無制限な画像格納には使わない。
+  cover_url       MEDIUMTEXT NULL,
   base_currency   CHAR(3)     NOT NULL DEFAULT 'JPY',
   source          ENUM('local','google_sheets','apps_script','sample') NOT NULL DEFAULT 'local',
   visibility      ENUM('public','invite') NOT NULL DEFAULT 'public',
   status          ENUM('draft','published') NOT NULL DEFAULT 'draft',
+  version         BIGINT UNSIGNED NOT NULL DEFAULT 1, -- 本文・メタ保存の楽観ロック
   -- 公開済み計画の本文を、ログイン済み利用者が共同編集できる設定。
   -- メンバー・費用・精算・公開設定の権限は付与しない。
   open_editing    TINYINT(1)  NOT NULL DEFAULT 0,
@@ -170,8 +189,10 @@ CREATE TABLE plan_invites (
   PRIMARY KEY (id),
   UNIQUE KEY uq_plan_invites_token (token_hash),
   KEY idx_plan_invites_plan (plan_id, status),
+  KEY idx_plan_invites_user (invited_user_id, status),
   CONSTRAINT fk_plan_invites_plan FOREIGN KEY (plan_id) REFERENCES plans (id) ON DELETE CASCADE,
-  CONSTRAINT fk_plan_invites_creator FOREIGN KEY (created_by_id) REFERENCES users (id) ON DELETE CASCADE
+  CONSTRAINT fk_plan_invites_creator FOREIGN KEY (created_by_id) REFERENCES users (id) ON DELETE CASCADE,
+  CONSTRAINT fk_plan_invites_user FOREIGN KEY (invited_user_id) REFERENCES users (id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
 -- 行程。現データ242件は id を持たないので、移行時に採番する。
@@ -329,6 +350,25 @@ CREATE TABLE expense_shares (
   CONSTRAINT fk_shares_expense FOREIGN KEY (expense_id) REFERENCES expenses (id) ON DELETE CASCADE,
   CONSTRAINT fk_shares_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
   CONSTRAINT chk_shares_amount CHECK (amount_base_minor >= 0)
+) ENGINE=InnoDB;
+
+-- 金銭データの変更履歴。editor が他メンバーの費用も訂正できるため、
+-- 誰がいつ何を変更したかを必ず残す。
+CREATE TABLE expense_audit_logs (
+  id            VARCHAR(32) NOT NULL,
+  plan_id       VARCHAR(32) NOT NULL,
+  expense_id    VARCHAR(32) NOT NULL,
+  actor_user_id VARCHAR(32) NULL,
+  action        ENUM('create','update','delete','restore') NOT NULL,
+  before_json   JSON NULL,
+  after_json    JSON NULL,
+  created_at    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY idx_expense_audit_plan (plan_id, created_at),
+  KEY idx_expense_audit_expense (expense_id, created_at),
+  CONSTRAINT fk_expense_audit_plan FOREIGN KEY (plan_id) REFERENCES plans (id) ON DELETE CASCADE,
+  CONSTRAINT fk_expense_audit_expense FOREIGN KEY (expense_id) REFERENCES expenses (id) ON DELETE CASCADE,
+  CONSTRAINT fk_expense_audit_actor FOREIGN KEY (actor_user_id) REFERENCES users (id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
 -- 精算（誰が誰にいくら払ったか）。

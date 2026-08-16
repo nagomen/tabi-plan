@@ -4,6 +4,7 @@
 // 将来 DB 化する際は backend.ts を差し替えるだけでよい。
 
 import * as Backend from "./backend";
+import * as db from "./db";
 
 const KEY = "trip-dashboard-views";
 
@@ -11,6 +12,12 @@ export type ViewMap = Record<string, number>;
 
 /** 全計画の閲覧数マップ。 */
 export function allViews(): ViewMap {
+  if (db.isEnabled() && db.isLoaded()) {
+    const byPlanId = new Map(db.views().map((row) => [row.plan_id, row.view_count]));
+    return Object.fromEntries(
+      db.plans().map((plan) => [plan.slug, byPlanId.get(plan.id) || 0]),
+    );
+  }
   const value = Backend.getJSON<ViewMap>(KEY, {});
   return value && typeof value === "object" ? value : {};
 }
@@ -48,6 +55,13 @@ function alreadyCounted(slug: string): boolean {
 export function incrementView(slug: string): number {
   if (!slug) return 0;
   if (alreadyCounted(slug)) return getViews(slug);
+  if (db.isEnabled() && db.isLoaded()) {
+    const plan = db.planBySlug(slug);
+    if (!plan) return 0;
+    const next = getViews(slug) + 1;
+    db.countView(plan.id);
+    return next;
+  }
   const map: ViewMap = { ...allViews() };
   const next = (typeof map[slug] === "number" && map[slug] > 0 ? Math.floor(map[slug]) : 0) + 1;
   map[slug] = next;

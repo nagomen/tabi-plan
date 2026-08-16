@@ -46,15 +46,6 @@ export function currentUserId(): string {
   return db.userById(stored.userId) ? stored.userId : "";
 }
 
-export function currentUser(): db.UserRow | undefined {
-  return db.userById(currentUserId());
-}
-
-/** 表示名。未設定なら空文字。 */
-export function currentDisplayName(): string {
-  return currentUser()?.display_name || "";
-}
-
 export function isIdentified(): boolean {
   return currentUserId() !== "";
 }
@@ -92,14 +83,6 @@ export async function identifyByName(displayName: string): Promise<db.UserRow | 
   }
   write(user.id);
   return user;
-}
-
-/** 表示名を変更する（users の1列を更新するだけ）。 */
-export function renameCurrentUser(displayName: string): void {
-  const id = currentUserId();
-  const name = String(displayName || "").trim();
-  if (!id || !name) return;
-  db.renameUser(id, name);
 }
 
 // ---- 旧データからの引き継ぎ ---------------------------------------------

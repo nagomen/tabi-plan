@@ -5,6 +5,17 @@ function errorMessage_(error: unknown): string {
   return (error instanceof Error && error.message) || String(error);
 }
 
+/** シートのread-modify-writeを直列化する共通境界。 */
+function withScriptLock_<T>(work: () => T, timeoutMs = 10000): T {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(timeoutMs);
+  try {
+    return work();
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 function valueByKeys_(row: SheetRow, keys: string[]): any {
   for (const key of keys) {
     if (row[key] !== undefined && row[key] !== '') return row[key];

@@ -71,6 +71,11 @@ build_api() {
   fi
   npm ci
   npm run build -w api
+  set -a
+  # shellcheck disable=SC1090
+  . "$ENV_FILE"
+  set +a
+  npm run migrate -w api
 }
 
 install_service() {

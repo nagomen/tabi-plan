@@ -36,36 +36,38 @@ server {
         application/manifest+json
         image/svg+xml;
 
-    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
-    add_header X-Content-Type-Options "nosniff" always;
-    add_header X-Frame-Options "SAMEORIGIN" always;
-    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    include /etc/nginx/snippets/travel-dashboard-security-headers.conf;
 
     location = /trip-config.js {
+        include /etc/nginx/snippets/travel-dashboard-security-headers.conf;
         try_files $uri =404;
         expires -1;
         add_header Cache-Control "no-store";
     }
 
     location = /sw.js {
+        include /etc/nginx/snippets/travel-dashboard-security-headers.conf;
         try_files $uri =404;
         expires -1;
         add_header Cache-Control "no-cache";
     }
 
     location /assets/ {
+        include /etc/nginx/snippets/travel-dashboard-security-headers.conf;
         try_files $uri =404;
         expires 1y;
         add_header Cache-Control "public, immutable";
     }
 
     location /images/ {
+        include /etc/nginx/snippets/travel-dashboard-security-headers.conf;
         try_files $uri =404;
         expires 30d;
         add_header Cache-Control "public";
     }
 
     location = /healthz {
+        include /etc/nginx/snippets/travel-dashboard-security-headers.conf;
         access_log off;
         add_header Content-Type text/plain;
         return 200 "ok\n";
@@ -84,6 +86,7 @@ server {
     # }
 
     location / {
+        include /etc/nginx/snippets/travel-dashboard-security-headers.conf;
         try_files $uri $uri/ /plans.html;
         add_header Cache-Control "no-cache";
     }

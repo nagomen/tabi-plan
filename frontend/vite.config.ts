@@ -4,97 +4,26 @@ import { fileURLToPath } from "node:url";
 import fs from "node:fs";
 
 const rootDir = dirname(fileURLToPath(import.meta.url));
-// 開発中のローカルプラン保存先（リポジトリ直下 data/plans/*.json）。将来は DB へ。
-const plansDir = resolve(rootDir, "../data/plans");
+const localApiProxyTarget = process.env.LOCAL_API_PROXY_TARGET?.trim() || "";
 // プラン以外のドメインデータ（ユーザー・費用・送金リンク）の保存先。
 // backend.ts が write-through する。1キー=1ファイル（data/store/<key>.json）。
 const storeDir = resolve(rootDir, "../data/store");
 
-function safeSlug(value: string): string {
-  return (
-    String(value || "")
-      .trim()
-      .toLowerCase()
-      .replace(/[^a-z0-9-]+/g, "-")
-      .replace(/^-+|-+$/g, "") || "trip"
-  );
-}
-
-function readAllPlans(): unknown[] {
-  try {
-    fs.mkdirSync(plansDir, { recursive: true });
-    return fs
-      .readdirSync(plansDir)
-      .filter((f) => f.endsWith(".json"))
-      .map((f) => {
-        try {
-          return JSON.parse(fs.readFileSync(resolve(plansDir, f), "utf8"));
-        } catch {
-          return null;
-        }
-      })
-      .filter((p) => p !== null);
-  } catch {
-    return [];
-  }
-}
-
 /**
- * ローカルプランを data/plans/<slug>.json から読み込む。
- *  - transformIndexHtml で window.__DEV_PLANS__ に全ファイルを注入（同期読み取り用）
- *  - /api/plans への PUT/DELETE でファイルを書き込み/削除
- * `apply: "serve"` なので本番ビルドには含まれない（本番は共有ストア API が正）。
+ * フルスタック開発時はブラウザから同一Originの /api を呼ばせる。
+ * trip-config.js 本体は本番API設定のまま保ち、serve時のHTMLだけ上書きする。
  */
-function devPlansFiles(): Plugin {
+function devApiProxyConfig(): Plugin {
   return {
-    name: "dev-plans-files",
+    name: "dev-api-proxy-config",
     apply: "serve",
-    configureServer(server) {
-      server.middlewares.use("/api/plans", (req, res) => {
-        const rest = decodeURIComponent((req.url || "/").split("?")[0].replace(/^\//, ""));
-        if (req.method === "GET") {
-          res.setHeader("Content-Type", "application/json");
-          res.end(JSON.stringify(readAllPlans()));
-          return;
-        }
-        if (req.method === "PUT" && rest) {
-          let body = "";
-          req.on("data", (chunk) => (body += chunk));
-          req.on("end", () => {
-            try {
-              fs.mkdirSync(plansDir, { recursive: true });
-              fs.writeFileSync(resolve(plansDir, safeSlug(rest) + ".json"), body || "{}");
-              res.statusCode = 204;
-              res.end();
-            } catch (e) {
-              res.statusCode = 500;
-              res.end(String(e));
-            }
-          });
-          return;
-        }
-        if (req.method === "DELETE" && rest) {
-          try {
-            fs.rmSync(resolve(plansDir, safeSlug(rest) + ".json"), { force: true });
-          } catch {
-            /* ignore */
-          }
-          res.statusCode = 204;
-          res.end();
-          return;
-        }
-        res.statusCode = 404;
-        res.end();
-      });
-    },
     transformIndexHtml() {
-      return [
-        {
-          tag: "script",
-          injectTo: "head-prepend",
-          children: `window.__DEV_PLANS__=${JSON.stringify(readAllPlans())};`,
-        },
-      ];
+      if (!localApiProxyTarget) return [];
+      return [{
+        tag: "script",
+        injectTo: "body",
+        children: `if(window.TRIP_CONFIG?.sharedBackend){window.TRIP_CONFIG.sharedBackend.apiBaseUrl="";}`,
+      }];
     },
   };
 }
@@ -226,9 +155,24 @@ export default defineConfig({
   base: "./",
   root: ".",
   publicDir: "public",
-  plugins: [pageTransitionHead(), devPlansFiles(), devStoreFiles()],
+  plugins: [
+    pageTransitionHead(),
+    ...(!localApiProxyTarget ? [devStoreFiles()] : []),
+    devApiProxyConfig(),
+  ],
   server: {
     open: true,
+    proxy: localApiProxyTarget
+      ? {
+          "/api": {
+            target: localApiProxyTarget,
+            // ブラウザには同一Origin。APIへはサーバー間通信として転送する。
+            configure(proxy) {
+              proxy.on("proxyReq", (proxyReq) => proxyReq.removeHeader("origin"));
+            },
+          },
+        }
+      : undefined,
   },
   build: {
     outDir: "dist",

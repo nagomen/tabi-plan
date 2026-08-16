@@ -5,7 +5,7 @@ import type { ItemType, LatLng } from "./types";
 
 // ---- 地名→緯度経度（エディタの自動補完用。空でも地図は名前検索でフォールバック） ----
 const COORDS: Record<string, [number, number]> = {
-  東京: [35.6812, 139.7671], 東京駅: [35.6812, 139.7671],
+  東京: [35.6762, 139.6503], 東京駅: [35.6812, 139.7671],
   品川: [35.6285, 139.7387], 新宿: [35.6896, 139.7006],
   羽田: [35.5494, 139.7798], 羽田空港: [35.5494, 139.7798], HND: [35.5494, 139.7798],
   成田: [35.772, 140.3929], 成田空港: [35.772, 140.3929], NRT: [35.772, 140.3929],
@@ -41,17 +41,21 @@ function normalizeName(name: string): string {
     .normalize("NFD")
     .replace(/[̀-ͯ]/g, "")
     .replace(/\s+/g, "")
-    .replace(/・/g, "")
-    .replace(/駅$/, "");
+    .replace(/・/g, "");
 }
 
 export function coordsFor(name: string | undefined): LatLng | null {
   const raw = String(name || "").trim();
   if (COORDS[raw]) return { lat: COORDS[raw][0], lng: COORDS[raw][1] };
   const norm = normalizeName(raw);
-  for (const key of Object.keys(COORDS)) {
-    if (normalizeName(key) === norm) {
-      return { lat: COORDS[key][0], lng: COORDS[key][1] };
+  // 「東京」と「東京駅」を同一視しない。空白を除いた完全一致を先に探し、
+  // 「新大阪駅」のように辞書が駅名の「駅」なしで持つ場合だけ最後に補完する。
+  const candidates = [norm, norm.endsWith("駅") ? norm.slice(0, -1) : ""].filter(Boolean);
+  for (const candidate of candidates) {
+    for (const key of Object.keys(COORDS)) {
+      if (normalizeName(key) === candidate) {
+        return { lat: COORDS[key][0], lng: COORDS[key][1] };
+      }
     }
   }
   return null;
@@ -66,4 +70,3 @@ export const TYPES: { value: ItemType; label: string }[] = [
   { value: "todo", label: "予定" },
   { value: "form", label: "手続き" },
 ];
-

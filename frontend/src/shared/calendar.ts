@@ -64,3 +64,69 @@ export function buildIcs(calName: string, events: CalEvent[], now: Date): string
   lines.push("END:VCALENDAR");
   return lines.join("\r\n");
 }
+
+export interface MonthCalendarBand {
+  slug: string;
+  title: string;
+  start: Date;
+  end: Date;
+  color: string;
+}
+
+const DOW = ["日", "月", "火", "水", "木", "金", "土"];
+
+function sameDay(a: Date, b: Date): boolean {
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+}
+
+function dayValue(date: Date): number {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+}
+
+function html(value: string): string {
+  return value.replace(/[&<>"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[char] || char);
+}
+
+/** マイページと旅行履歴で共通の、6週分の旅行帯カレンダーを描画する。 */
+export function monthCalendarHtml(input: {
+  year: number;
+  month: number;
+  today: Date;
+  bands: MonthCalendarBand[];
+  classPrefix: string;
+}): string {
+  const { year, month, today, bands, classPrefix } = input;
+  const first = new Date(year, month, 1);
+  const gridStart = new Date(year, month, 1 - first.getDay());
+  const covers = (band: MonthCalendarBand, date: Date): boolean => {
+    const value = dayValue(date);
+    return value >= dayValue(band.start) && value <= dayValue(band.end);
+  };
+
+  let output = DOW.map(
+    (day, index) => `<div class="${classPrefix}-cal-dow${index === 0 ? " sun" : index === 6 ? " sat" : ""}">${day}</div>`,
+  ).join("");
+
+  for (let index = 0; index < 42; index += 1) {
+    const date = new Date(gridStart.getFullYear(), gridStart.getMonth(), gridStart.getDate() + index);
+    const dayBands = bands.filter((band) => covers(band, date));
+    const shown = dayBands.slice(0, 3);
+    const previous = new Date(date.getFullYear(), date.getMonth(), date.getDate() - 1);
+    const next = new Date(date.getFullYear(), date.getMonth(), date.getDate() + 1);
+    const bars = shown.map((band) => {
+      const continuesLeft = covers(band, previous) && date.getDay() !== 0;
+      const continuesRight = covers(band, next) && date.getDay() !== 6;
+      const classes = `${classPrefix}-bar${continuesLeft ? " cont-l" : ""}${continuesRight ? " cont-r" : ""}`;
+      return `<a class="${classes}" href="index.html?plan=${encodeURIComponent(band.slug)}" style="background:${html(band.color)}" title="${html(band.title)}">${continuesLeft ? "" : html(band.title || "旅行")}</a>`;
+    }).join("");
+    const more = dayBands.length > shown.length
+      ? `<span class="${classPrefix}-bar-more">+${dayBands.length - shown.length}</span>`
+      : "";
+    output +=
+      `<div class="${classPrefix}-cell${date.getMonth() !== month ? " is-out" : ""}${sameDay(date, today) ? " is-today" : ""}">` +
+      `<span class="${classPrefix}-cell-n">${date.getDate()}</span>` +
+      `<span class="${classPrefix}-cell-bars">${bars}${more}</span>` +
+      `</div>`;
+  }
+  return output;
+}

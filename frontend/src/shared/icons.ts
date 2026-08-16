@@ -142,10 +142,3 @@ export function icon(name: IconName, opts: IconOptions = {}): string {
     ` aria-hidden="true" focusable="false">${PATHS[name]}</svg>`
   );
 }
-
-/** Heroicon を SVGElement で返す（appendChild 用） */
-export function iconEl(name: IconName, opts?: IconOptions): SVGElement {
-  const wrap = document.createElement("div");
-  wrap.innerHTML = icon(name, opts);
-  return wrap.firstElementChild as SVGElement;
-}

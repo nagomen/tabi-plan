@@ -431,43 +431,6 @@ export function duplicate(slug: string): PlanMeta | null {
   return saveLocalPlan(newSlug, copy);
 }
 
-/** 招待リンクから受け取った計画を取り込む。DB が正なので上書き競合は起きない。 */
-export function mergeLocalPlan(
-  slug: string,
-  incoming: LocalPlanData,
-): { meta: PlanMeta | null; existed: boolean; outcome: "created" | "updated" } {
-  const target = safeSlug(slug);
-  const existed = Boolean(db.planBySlug(target));
-  const meta = saveLocalPlan(target, incoming);
-  return { meta, existed, outcome: existed ? "updated" : "created" };
-}
-
-/** 候補を id でマージし votes は和集合（招待リンクの取り込み用）。 */
-export function mergeCandidates(
-  existing: Candidate[] | undefined,
-  incoming: Candidate[] | undefined,
-): Candidate[] | undefined {
-  if (!existing && !incoming) return undefined;
-  const byId = new Map<string, Candidate>();
-  (existing || []).forEach((c) => {
-    if (c && c.id) byId.set(c.id, { ...c, votes: [...(c.votes || [])] });
-  });
-  (incoming || []).forEach((c) => {
-    if (!c || !c.id) return;
-    const prev = byId.get(c.id);
-    if (!prev) {
-      byId.set(c.id, { ...c, votes: [...(c.votes || [])] });
-      return;
-    }
-    byId.set(c.id, {
-      ...prev, ...c,
-      votes: Array.from(new Set([...(prev.votes || []), ...(c.votes || [])])),
-      adopted: Boolean(prev.adopted || c.adopted),
-    });
-  });
-  return Array.from(byId.values());
-}
-
 // ---- 選択中プラン（端末固有なので localStorage 直） ---------------------
 
 function urlSlug(): string {

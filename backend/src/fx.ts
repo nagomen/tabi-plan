@@ -68,6 +68,7 @@ function fetchHistoricalExchangeRate_(currency: string, paidDate: string): Excha
     const date = offsetDate_(start, -offset);
     const cacheKey = `fx_${code}_${date}`;
     const cached = cache.get(cacheKey);
+    if (cached === 'MISS') return null;
     if (cached) {
       const value = parseRate_(cached);
       if (value) return { date, value, source: 'currency-api' };

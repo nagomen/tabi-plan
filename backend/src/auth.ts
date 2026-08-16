@@ -1,5 +1,25 @@
 // パスワード認証トークンの署名・検証と暗号ユーティリティ。
 
+const AUTH_ATTEMPT_LIMIT_PER_MINUTE = 30;
+
+/** Apps Scriptでは接続元IPを取得できないため、スクリプト全体の試行数を制限する。 */
+function enforceAuthRateLimit_(): void {
+  const minute = Math.floor(Date.now() / 60000);
+  const key = `auth_attempts_${minute}`;
+  const lock = LockService.getScriptLock();
+  lock.waitLock(3000);
+  try {
+    const cache = CacheService.getScriptCache();
+    const attempts = Number(cache.get(key) || 0) + 1;
+    cache.put(key, String(attempts), 90);
+    if (attempts > AUTH_ATTEMPT_LIMIT_PER_MINUTE) {
+      throw new Error('認証の試行回数が多すぎます。しばらく待ってから再試行してください');
+    }
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 
 function signToken_(payload: any, secret: string): string {
   const body = base64UrlEncode_(JSON.stringify(payload));

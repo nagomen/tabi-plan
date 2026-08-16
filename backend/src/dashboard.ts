@@ -49,7 +49,9 @@ function buildDashboardData_(options?: DataOptions): TripDashboardData {
     ensureExchangeRatesSheet_(ss);
     ensureLocalInfoSheet_(ss);
   }
-  const itineraryRows = readObjects_(ss.getSheetByName(DEFAULT_CONFIG.sheets.itinerary), 2, 1, 24);
+  // 行程表は末尾に公開可否を持つ。固定列数にすると列追加時に公開可否を読み落とすため、
+  // 実際の最終列まで読む。
+  const itineraryRows = readObjects_(ss.getSheetByName(DEFAULT_CONFIG.sheets.itinerary), 2, 1);
   const budgetRows = readObjects_(ss.getSheetByName(DEFAULT_CONFIG.sheets.budget), 1, 1, 6);
   const basicInfo = readKeyValue_(ss.getSheetByName(DEFAULT_CONFIG.sheets.basicInfo));
   const linkRows = readObjects_(ss.getSheetByName(DEFAULT_CONFIG.sheets.links), 1, 1, 7);

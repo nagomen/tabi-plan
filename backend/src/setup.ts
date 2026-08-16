@@ -69,13 +69,13 @@ function setupPlanningSheets() {
   const participantNames = defaultParticipantNames_(props);
 
   ensureItinerarySheet_(ss);
-  ensureHeaderSheet_(ss, DEFAULT_CONFIG.sheets.reservations, ['種別', '日付', '名称', '場所', '予約状況', '金額', '通貨', '公開ページに表示', 'メモ']);
-  ensureHeaderSheet_(ss, DEFAULT_CONFIG.sheets.budget, ['カテゴリ', '項目', '予定額', '実績額', '通貨', 'メモ']);
+  ensureHeaderSheet_(ss, DEFAULT_CONFIG.sheets.reservations, RESERVATION_HEADERS);
+  ensureHeaderSheet_(ss, DEFAULT_CONFIG.sheets.budget, BUDGET_HEADERS);
   ensureItineraryDisplayColumns_(ss);
   applyItinerarySheetLayout_(ss);
 
   ensureSheetData_(ss, DEFAULT_CONFIG.sheets.basicInfo, [
-    ['key', 'value', '説明', '公開ページに表示'],
+    BASIC_INFO_HEADERS,
     ['tripTitle', tripTitle, '旅行名。ダッシュボードのタイトルに表示', 'TRUE'],
     ['dateStart', dateStart, '旅行開始日。未定なら空欄', 'TRUE'],
     ['dateEnd', dateEnd, '旅行終了日。未定なら空欄', 'TRUE'],
@@ -95,7 +95,7 @@ function setupPlanningSheets() {
   ensureExpenseLogSheet_(ss, participantNames);
 
   ensureSheetData_(ss, DEFAULT_CONFIG.sheets.settlementLog, [
-    ['タイムスタンプ', '支払者', '受取者', '精算額', '通貨', '対象ペア', '入力元', 'メモ'],
+    SETTLEMENT_LOG_HEADERS,
     ['', '', '', '', 'JPY', '', 'Dashboard', '']
   ]);
 
@@ -113,7 +113,7 @@ function setupPlanningSheets() {
   ]);
 
   ensureSheetData_(ss, DEFAULT_CONFIG.sheets.checklist, [
-    ['カテゴリ', '項目', '期限', '担当', '完了', 'メモ'],
+    CHECKLIST_HEADERS,
     ['予約', '航空券・宿の予約状況確認', '', '', 'FALSE', ''],
     ['安全', '保険と緊急連絡先の確認', '', '', 'FALSE', ''],
     ['入国', 'パスポート・ビザ・入国条件の確認（海外のみ）', '', '', 'FALSE', ''],
@@ -146,7 +146,15 @@ function setupPlanningSheets() {
   Logger.log('Planning sheets are ready.');
 }
 
-function syncExpenseFormParticipants() {
+interface ExpenseFormContext {
+  props: ScriptProps;
+  basicInfo: Record<string, string>;
+  participants: string[];
+  currencyChoices: string[];
+  form: GoogleAppsScript.Forms.Form;
+}
+
+function expenseFormContext_(): ExpenseFormContext {
   const props = PropertiesService.getScriptProperties();
   const spreadsheetId = getSpreadsheetId_(props);
   const ss = SpreadsheetApp.openById(spreadsheetId);
@@ -157,8 +165,11 @@ function syncExpenseFormParticipants() {
   const participants = readParticipants_(ss).map(member => member.name);
   if (!participants.length) throw new Error('No active participants found');
   const currencyChoices = defaultCurrencyChoices_(ss);
+  return { props, basicInfo, participants, currencyChoices, form: FormApp.openById(formId) };
+}
 
-  const form = FormApp.openById(formId);
+function syncExpenseFormParticipants() {
+  const { participants, currencyChoices, form } = expenseFormContext_();
   form.getItems().forEach(item => {
     const title = item.getTitle();
     if (title === '支払者') {
@@ -175,18 +186,7 @@ function syncExpenseFormParticipants() {
 }
 
 function setupExpenseForm() {
-  const props = PropertiesService.getScriptProperties();
-  const spreadsheetId = getSpreadsheetId_(props);
-  const ss = SpreadsheetApp.openById(spreadsheetId);
-  const basicInfo = readKeyValue_(ss.getSheetByName(DEFAULT_CONFIG.sheets.basicInfo));
-  const formId = basicInfo.expenseFormId || props.getProperty('TRIP_EXPENSE_FORM_ID');
-  if (!formId) throw new Error('expenseFormId is not configured in 基本情報 or Script Properties');
-
-  const participants = readParticipants_(ss).map(member => member.name);
-  if (!participants.length) throw new Error('No active participants found');
-  const currencyChoices = defaultCurrencyChoices_(ss);
-
-  const form = FormApp.openById(formId);
+  const { props, basicInfo, participants, currencyChoices, form } = expenseFormContext_();
   form.setTitle(`${basicInfo.tripTitle || props.getProperty('TRIP_TITLE') || '旅行'} 立替入力フォーム`);
   form.setDescription('旅行中の立替を記録するフォームです。通常は「全員で等分」を選ぶだけで済みます。個別金額を選ぶと、参加者ごとの負担額を入力できます。');
   form.setCollectEmail(false);
@@ -273,11 +273,12 @@ function setupExpenseForm() {
   return form.getPublishedUrl();
 }
 
-function setTripLinks(myMapsUrl: string, expenseFormUrl: string, photosUrl: string): void {
+function setTripLinks(myMapsUrl: string, photosUrlOrLegacyExpenseUrl: string, legacyPhotosUrl?: string): void {
   const props = PropertiesService.getScriptProperties();
+  // 旧3引数呼び出し setTripLinks(maps, expenseForm, photos) も当面受け付ける。
+  const photosUrl = legacyPhotosUrl === undefined ? photosUrlOrLegacyExpenseUrl : legacyPhotosUrl;
   props.setProperties({
     TRIP_MY_MAPS_URL: myMapsUrl || '',
-    TRIP_EXPENSE_FORM_URL: expenseFormUrl || '',
     TRIP_PHOTOS_URL: photosUrl || ''
   }, false);
 }

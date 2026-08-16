@@ -8,7 +8,7 @@ GitHub Pages から呼ぶデータ API です。Google Sheets を非公開のま
 2. `src/` 配下の `.ts`（`clasp push` で `.gs` に変換）と `appsscript.json` を反映する
 3. `initialSetup()` の `CHANGE_ME_*` を編集するか、別の一時関数から `setupTripDashboard({ ... })` を呼ぶ
 4. `setupPlanningSheets()` を実行して必要なシートを作る
-5. 必要なら `setTripLinks(myMapsUrl, "", photosUrl)` を実行する
+5. 必要なら `setTripLinks(myMapsUrl, photosUrl)` を実行する
 6. レシート写真アップロードを使うなら `authorizeDriveAccess()` を実行する
 7. Web App としてデプロイする
 8. 発行された Web App URL を `docs/trip-config.js` の `appsScriptUrl` に入れる
@@ -80,3 +80,12 @@ Web App のデプロイ設定を変える必要がある変更では、push 後�
 ## レシート写真
 
 `authorizeDriveAccess()` を実行すると、`TRIP_RECEIPT_FOLDER_NAME` または `tripSlug-receipts` の Google Drive フォルダを使います。既存フォルダを使う場合は Script Properties の `TRIP_RECEIPT_FOLDER_ID` にフォルダ ID を設定してください。アップロードしたファイルをリンク共有にする場合は `TRIP_RECEIPT_PUBLIC_LINKS=true` を設定します。
+
+## 手動メンテナンス関数
+
+Apps Script エディタから必要に応じて次を実行できます。
+
+- `authorizeSpreadsheetAccess()` — スプレッドシート権限と読み取りを確認
+- `authorizeDriveAccess()` — レシート保存先のDrive権限を確認
+- `setupExpenseForm()` — `expenseFormId`で指定したバックアップ用フォームを再構築
+- `syncExpenseFormParticipants()` — 既存フォームの参加者と通貨候補だけを同期

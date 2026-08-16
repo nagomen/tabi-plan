@@ -27,9 +27,8 @@ import {
   isAuthError,
   type AppsScriptResponse,
 } from "../shared/apps-script";
-import * as Permissions from "../shared/permissions-store";
 import { isIdentified } from "../shared/identity";
-import { canEditPlan, ownerNameOf, roleOf } from "../shared/membership";
+import { canEditPlan, ownerNameOf, roleLabel, roleOf } from "../shared/membership";
 import { addBaseLayer } from "../shared/map-tiles";
 
 // ---- 補助型 -------------------------------------------------------------
@@ -717,13 +716,19 @@ function renderLocationExplorer(plans: PlanMeta[]): void {
 }
 
 function renderStart(): void {
-  const invites = Permissions.pendingInvitesForCurrentUser();
+  const invites = db.pendingInvites();
   createMainEl.innerHTML = icon("plusCircle") + "<span>新しい旅行計画を作る</span>";
+  createMainEl.href = newPlanHref();
   inviteStripEl.classList.toggle("is-visible", invites.length > 0);
   if (invites.length) {
     inviteTitleEl.textContent = "未参加の招待があります";
-    inviteNoteEl.textContent = invites.map((invite) => invite.invitedName || invite.planSlug).slice(0, 3).join("、");
+    inviteNoteEl.textContent = invites.map((invite) => invite.plan_title).slice(0, 3).join("、");
   }
+}
+
+function newPlanHref(): string {
+  if (!db.isEnabled() || isIdentified()) return "plan-editor.html";
+  return "login.html?returnTo=" + encodeURIComponent("plan-editor.html");
 }
 
 function renderDiscover(publicPlans: PlanMeta[]): void {
@@ -753,7 +758,7 @@ function rowHtml(
   const openHref = planHref(meta, variant === "public" || !canEditPlan(meta));
   const role = roleOf(meta);
   const roleBadge = role
-    ? '<span class="role-badge ' + role + '">' + escapeHtml(Permissions.roleLabel(role)) + "</span>"
+    ? '<span class="role-badge ' + role + '">' + escapeHtml(roleLabel(role)) + "</span>"
     : "";
   const highlightBadge =
     highlight === "current"
@@ -926,7 +931,7 @@ function render(): void {
           '<span>' + icon("calendarDays") + '<i>02</i>日程</span>' +
           '<span>' + icon("listBullet") + '<i>03</i>行程</span>' +
           '</div>' +
-          '<a class="hub-empty-cta" href="plan-editor.html">' + icon("plusCircle") + '<span>新規計画を作る</span></a>' +
+          '<a class="hub-empty-cta" href="' + newPlanHref() + '">' + icon("plusCircle") + '<span>新規計画を作る</span></a>' +
           '</div>') +
       "</div>";
   }
@@ -980,7 +985,6 @@ function duplicateToMine(slug: string, fromPublic: boolean): void {
       }
     }
   }
-  Permissions.ensureOwner(copy.slug, copy.members);
   render();
   showToast(fromPublic ? "自分の計画に複製しました" : "計画を複製しました");
 }
@@ -1348,47 +1352,7 @@ async function handleJoinLink(): Promise<boolean> {
     }
     return true;
   }
-  const accepted = Permissions.acceptInvite(slug, payload.inviteId, payload.invitedName, payload.role);
-  if (!accepted.granted) {
-    showToast(
-      accepted.reason === "revoked"
-        ? "この招待リンクは取り消されています。"
-        : "参加するにはマイページで名前を設定してください。",
-      true,
-    );
-    return true;
-  }
-
-  // 計画は DB が正なので、リンクの内容で手元を潰す心配が無くなった
-  // （旧構造では localStorage を丸ごと上書きして編集が消える事故があった）。
-  const merge = payload.data ? TripPlans.mergeLocalPlan(slug, payload.data) : { existed: Boolean(TripPlans.get(slug)), outcome: "unchanged" };
-  const existed = merge.existed;
-
-  // 費用は共有ストア（MySQL）側で共有されるので、リンクからは取り込まない。
-  const addedExpenses = 0;
-
-  const data = TripPlans.getData(slug);
-  const joinName = (Permissions.currentPrincipal(payload.invitedName)?.displayName || payload.invitedName || "").trim();
-  if (data && joinName) {
-    const names = splitNames(data.trip?.members || "");
-    if (!names.includes(joinName)) {
-      data.trip = { ...(data.trip || { title: "", dates: "", members: "", note: "" }), members: [...names, joinName].join("、") };
-      TripPlans.saveLocalPlan(slug, data);
-    }
-  }
-  TripPlans.setActiveSlug(slug);
-  // 既存を更新したときは、すぐ遷移せず一覧で結果を見せる
-  if (existed) {
-    render();
-    if (merge.outcome === "updated") {
-      const suffix = addedExpenses ? `（費用 ${addedExpenses}件を取り込み）` : "";
-      showToast(`「${payload.meta.title || "旅行"}」を最新に更新しました。${suffix}`);
-    } else if (addedExpenses) {
-      showToast(`費用 ${addedExpenses}件を取り込みました。`);
-    }
-    return true;
-  }
-  navigateWithPageTransition("index.html?plan=" + encodeURIComponent(slug), { replace: true });
+  showToast("この招待リンクは旧形式です。計画の所有者に新しいリンクの発行を依頼してください。", true);
   return true;
 }
 

@@ -32,15 +32,12 @@ import { buildInviteLink } from "../shared/invite";
 import * as ExpenseStore from "../shared/expense-store";
 import { escapeHtml, errorMessage, makeScopedQuery, safeHref } from "../shared/dom";
 import {
-  hasAuthSession as hasAuthSessionShared,
   getAuthToken as getAuthTokenShared,
-  saveAuthSession as saveAuthSessionShared,
   clearAuthSession as clearAuthSessionShared,
+  requestPasswordGate,
 } from "../shared/auth";
 import {
-  callAppsScript as callAppsScriptShared,
   postAppsScript as postAppsScriptShared,
-  sha256Hex,
   isAuthError,
   type AppsScriptParams,
   type AppsScriptResponse,
@@ -56,6 +53,9 @@ import { fetchDayWeather, weatherLabel } from "../shared/weather";
 import { buildItineraryShareText } from "../shared/itinerary-text";
 import { taskStatus, nextTaskStatus, setTaskStatus, checklistSummary, TASK_STATUS_LABEL } from "../shared/checklist";
 import * as Backend from "../shared/backend";
+import { bindExpenseSplitForm, expenseCurrencyCodes, expenseParticipantNames } from "../shared/expense-form";
+import { setTripDocumentTitle } from "../shared/page-meta";
+import { localDateISO } from "../shared/date";
 import type {
   TripData,
   TripLink,
@@ -96,13 +96,6 @@ interface AppState {
 
 // ---- 設定 ---------------------------------------------------------------
 
-function applyDocumentTripTitle(title: string | undefined): void {
-  const tripTitle = title || "旅行";
-  document.title = `${tripTitle}ダッシュボード`;
-  const appleTitle = document.querySelector('meta[name="apple-mobile-web-app-title"]');
-  if (appleTitle) appleTitle.setAttribute("content", tripTitle);
-}
-
 const BASE_TRIP_CONFIG = readGlobalTripConfig();
 const PLAN_OVERRIDE = TripPlans.resolveConfigOverride(BASE_TRIP_CONFIG) || {};
 const CONFIG: TripConfig = normalizeTripConfig(
@@ -114,7 +107,7 @@ const CONFIG: TripConfig = normalizeTripConfig(
     ) as Record<string, unknown>,
   ) as unknown as TripConfig,
 );
-applyDocumentTripTitle(CONFIG.tripTitle);
+setTripDocumentTitle(CONFIG.tripTitle, (title) => `${title}ダッシュボード`, "");
 
 /** 共有ストアを読み終えたあと、開いている計画の実体で CONFIG を補正する。 */
 function applyPlanConfig(): void {
@@ -129,7 +122,7 @@ function applyPlanConfig(): void {
   if (meta.spreadsheetId) CONFIG.spreadsheetId = meta.spreadsheetId;
   if (meta.appsScriptUrl) CONFIG.appsScriptUrl = meta.appsScriptUrl;
   if (meta.schema) CONFIG.schema = meta.schema as TripConfig["schema"];
-  applyDocumentTripTitle(CONFIG.tripTitle);
+  setTripDocumentTitle(CONFIG.tripTitle, (title) => `${title}ダッシュボード`, "");
 }
 
 /** 正式メンバーではない、ログイン済みの公開共同編集者か。 */
@@ -365,10 +358,6 @@ function localSettlement(): Settlement {
   return ExpenseStore.computeSettlement(planId(), memberIds(), currentUserId());
 }
 
-/** shared/apps-script を CONFIG.appsScriptUrl にバインドした JSONP 取得 */
-const callAppsScript = (params: AppsScriptParams): Promise<AppsScriptResponse> =>
-  callAppsScriptShared(CONFIG.appsScriptUrl, params);
-
 /** 費用登録・精算完了など、状態を変更するアクション用の iframe POST。
  *  トークンや金額をクエリ文字列に残す GET/JSONP を避けるため POST で送る。
  *  source は backend/src/main.ts の POST_ACTIONS と対応させること。 */
@@ -424,10 +413,7 @@ function setLoading(isLoading: boolean, label?: string): void {
 // ---- 認証 / プロフィール ------------------------------------------------
 
 // 認証セッション系は shared/auth を CONFIG.auth にバインドして使う。
-const hasAuthSession = (): boolean => hasAuthSessionShared(CONFIG.auth);
 const getAuthToken = (): string => getAuthTokenShared(CONFIG.auth.storageKey);
-const saveAuthSession = (token?: string, expiresAt?: number): void =>
-  saveAuthSessionShared(CONFIG.auth, token, expiresAt);
 const clearAuthSession = (): void => clearAuthSessionShared(CONFIG.auth.storageKey);
 
 function readProfile(): ProfileRecord | null {
@@ -578,76 +564,19 @@ async function requestIdentityIfNeeded(): Promise<void> {
 }
 
 function requestPassword(): Promise<boolean> {
-  return new Promise((resolve) => {
-    if (!CONFIG.auth.enabled || hasAuthSession()) {
-      resolve(true);
-      return;
-    }
-
-    const gate = document.createElement("div");
-    gate.className = "tl-auth";
-    gate.innerHTML = `
-      <form class="tl-auth-box">
-        <h2>旅行ページを開く</h2>
-        <div class="tl-auth-body">
-          <p>共有されたパスワードを入力してください。</p>
-          <label>
-            パスワード
-            <input type="password" autocomplete="current-password" autofocus aria-label="パスワード" placeholder="パスワードを入力">
-          </label>
-          <button type="submit">送信</button>
-          <div class="tl-auth-error" aria-live="polite"></div>
-        </div>
-      </form>`;
-    document.body.appendChild(gate);
-
-    const form = qs<HTMLFormElement>("form", gate);
-    const input = qs<HTMLInputElement>("input", gate);
-    const error = qs<HTMLElement>(".tl-auth-error", gate);
-    form.addEventListener("submit", async (event) => {
-      event.preventDefault();
-      const value = input.value || "";
-      if (CONFIG.auth.mode === "appsScript") {
-        try {
-          const passwordHash = await sha256Hex(value);
-          const response = await callAppsScript({ action: "auth", passwordHash });
-          saveAuthSession(response.token, response.expiresAt);
-          gate.remove();
-          resolve(true);
-        } catch (apiError) {
-          input.value = "";
-          input.focus();
-          error.textContent = (apiError as Error).message || "認証に失敗しました。";
-        }
-        return;
-      }
-      if (!CONFIG.auth.passwordHash) {
-        error.textContent = "passwordHash が未設定です。";
-        return;
-      }
-      const hash = await sha256Hex(value);
-      if (hash === CONFIG.auth.passwordHash) {
-        saveAuthSession();
-        gate.remove();
-        resolve(true);
-      } else {
-        input.value = "";
-        input.focus();
-        error.textContent = "パスワードが違います。";
-      }
-    });
+  return requestPasswordGate({
+    auth: CONFIG.auth,
+    appsScriptUrl: CONFIG.appsScriptUrl,
+    classPrefix: "tl-auth",
+    title: "旅行ページを開く",
+    submitLabel: "送信",
   });
 }
 
 // ---- 日付ユーティリティ -------------------------------------------------
 
 function todayISO(): string {
-  if (CONFIG.todayOverride) return CONFIG.todayOverride;
-  const now = new Date();
-  const y = now.getFullYear();
-  const m = String(now.getMonth() + 1).padStart(2, "0");
-  const d = String(now.getDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
+  return localDateISO(CONFIG.todayOverride);
 }
 
 /** 現在時刻を分（0-1439）で返す。 */
@@ -1358,11 +1287,6 @@ function showExpenseUndo(record: ExpenseStore.ExpenseRow, shares: ExpenseStore.E
   });
 }
 
-interface ParticipantSource {
-  participants?: { name?: string; displayName?: string; [key: string]: unknown }[];
-  trip?: { members?: string };
-}
-
 /** 本人の名前（ログイン中のアカウント名 → 端末のユーザー名 → 保存済みプロフィール）。 */
 function selfName(): string {
   const account = currentAccount();
@@ -1392,29 +1316,15 @@ function withSelf(names: string[]): string[] {
 }
 
 function expenseParticipants(data: TripData): string[] {
-  const source = data as TripData & ParticipantSource;
-  const fromData = (source.participants || [])
-    .map((member) => member && (member.name || member.displayName || (member["表示名"] as string | undefined)))
-    .filter((name): name is string => Boolean(name));
-  if (fromData.length) return withSelf(fromData);
-  const fromMembers = String((data.trip && data.trip.members) || "")
-    .split(/\s*\/\s*|、|,|\n/)
-    .map((name) => name.trim())
-    .filter((name) => name && !/\d+人|共有メンバー/.test(name));
-  if (fromMembers.length) return withSelf(fromMembers);
+  const discovered = expenseParticipantNames(data);
+  if (discovered.length) return withSelf(discovered);
   // メンバーも本人も分からないときだけダミー名にフォールバックする。
   const onlySelf = withSelf([]);
   return onlySelf.length ? onlySelf : CONFIG.defaultParticipants || ["参加者A", "参加者B"];
 }
 
 function expenseCurrencies(data: TripData): string[] {
-  const localInfoRows = (data.localInfo || []) as (LocalInfoItem & Record<string, unknown>)[];
-  const fromLocalInfo = localInfoRows
-    .map((row) => row && (row.currencyCode || (row["currency"] as string | undefined) || (row["通貨コード"] as string | undefined)))
-    .filter((code): code is string => Boolean(code));
-  return Array.from(new Set(["JPY"].concat(CONFIG.currencies || [], fromLocalInfo)))
-    .map((code) => String(code || "").trim().toUpperCase())
-    .filter(Boolean);
+  return expenseCurrencyCodes(data, CONFIG.currencies);
 }
 
 function renderExpenseEntry(data: TripData, options: { force?: boolean } = {}): void {
@@ -1603,12 +1513,8 @@ function fillExpenseForm(form: HTMLFormElement, entry: ExpenseStore.ExpenseEntry
 }
 
 function setupExpenseEntryHandlers(form: HTMLFormElement, participants: string[]): void {
-  const selectedDetail = qs<HTMLElement>("[data-selected-detail]", form);
-  const individualDetail = qs<HTMLElement>("[data-individual-detail]", form);
   const status = qs<HTMLElement>("[data-expense-status]", form);
-  const totalNode = qs<HTMLElement>("[data-share-total]", form);
   const button = qs<HTMLButtonElement>("button[type='submit']", form);
-  const amountInput = form.elements.namedItem("amount") as HTMLInputElement;
 
   const field = (name: string): HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement =>
     form.elements.namedItem(name) as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
@@ -1631,50 +1537,14 @@ function setupExpenseEntryHandlers(form: HTMLFormElement, participants: string[]
     setSummary("[data-expense-summary-note]", note ? "入力済み" : "任意");
   };
 
-  const activeMode = (): string => (field("splitMode") as HTMLInputElement).value;
-  const numberValue = (value: unknown): number => {
-    const n = Number(String(value || "").replace(/[^\d.-]/g, ""));
-    return Number.isFinite(n) ? n : 0;
-  };
-  const formatInputAmount = (value: number): string => {
-    const currency = (field("currency") as HTMLSelectElement).value || "JPY";
-    if (currency === "JPY") return formatYen(value);
-    return `${currency} ${Math.round(value * 100) / 100}`;
-  };
-  const shareInputFor = (name: string): HTMLInputElement | undefined =>
-    qsa<HTMLInputElement>("[data-share-name]", form).find((input) => input.dataset.shareName === name);
-  const individualTotal = (): number => participants.reduce((sum, name) => {
-    const input = shareInputFor(name);
-    return sum + numberValue(input && input.value);
-  }, 0);
-
-  const updateShareTotal = (): void => {
-    const total = individualTotal();
-    const amount = numberValue(amountInput.value);
-    const message = amount ? `合計 ${formatInputAmount(total)} / 支払額 ${formatInputAmount(amount)}` : `合計 ${formatInputAmount(total)}`;
-    totalNode.textContent = message;
-    totalNode.style.color = /個別金額/.test(activeMode()) && amount && Math.abs(total - amount) > 1 ? "var(--red)" : "var(--muted)";
-  };
-
-  const updateMode = (): void => {
-    const mode = activeMode();
-    selectedDetail.classList.toggle("is-visible", /選んだ人だけ/.test(mode));
-    individualDetail.classList.toggle("is-visible", /個別金額/.test(mode));
-    updateShareTotal();
-  };
-
-  form.addEventListener("change", (event) => {
+  const markChanged = (): void => {
     form.dataset.dirty = "true";
-    if ((event.target as HTMLInputElement).name === "splitMode") updateMode();
-    updateShareTotal();
     updateEditorSummaries();
+  };
+  const split = bindExpenseSplitForm(form, participants, {
+    onChange: markChanged,
+    onInput: markChanged,
   });
-  form.addEventListener("input", () => {
-    form.dataset.dirty = "true";
-    updateShareTotal();
-    updateEditorSummaries();
-  });
-  updateMode();
   updateEditorSummaries();
 
   form.addEventListener("submit", async (event) => {
@@ -1683,31 +1553,12 @@ function setupExpenseEntryHandlers(form: HTMLFormElement, participants: string[]
       setStatus("閲覧のみの計画では費用を追加できません。", "error");
       return;
     }
-    const mode = activeMode();
-    const targets = qsa<HTMLInputElement>("input[name='targets']:checked", form).map((input) => input.value);
-    const individual: Record<string, number> = {};
-    participants.forEach((name) => {
-      const input = shareInputFor(name);
-      const amount = numberValue(input && input.value);
-      if (amount) individual[name] = amount;
-    });
-    const amount = numberValue((field("amount") as HTMLInputElement).value);
-
-    if (/選んだ人だけ/.test(mode) && !targets.length) {
-      setStatus("割り勘する人を1人以上選んでください。", "error");
-      return;
-    }
-    if (/個別金額/.test(mode)) {
-      const total = individualTotal();
-      if (!total) {
-        setStatus("個別金額を入力してください。", "error");
-        return;
-      }
-      if (Math.abs(total - amount) > 1) {
-        setStatus("個別金額の合計が支払額と一致していません。", "error");
-        return;
-      }
-    }
+    const validation = split.validationMessage();
+    if (validation) { setStatus(validation, "error"); return; }
+    const mode = split.mode();
+    const targets = split.selectedNames();
+    const individual = split.individualAmounts();
+    const amount = split.amount();
 
     button.disabled = true;
     setStatus("保存中...", "");
@@ -1772,7 +1623,7 @@ function setupExpenseEntryHandlers(form: HTMLFormElement, participants: string[]
       (field("paidDate") as HTMLInputElement).value = todayISO();
       applyProfileDefaults(form, participants);
       qsa<HTMLInputElement>("input[name='targets']", form).forEach((input) => { input.checked = true; });
-      updateMode();
+      split.refresh();
       renderBase();
       renderActive();
       setExpenseSheet(false);

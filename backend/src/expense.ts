@@ -110,15 +110,11 @@ function appendExpense_(ss: Spreadsheet, params: Params): void {
 
   // ヘッダー整備（列追加）から行追加までを一括でロックする。
   // ロック外でヘッダーを書き換えると、同時実行で同じ参加者列を二重追加し得る。
-  const lock = LockService.getScriptLock();
-  lock.waitLock(10000);
-  try {
+  withScriptLock_(() => {
     const ensured = ensureExpenseLogSheet_(ss, participantNames);
     const row = ensured.headers.map(header => valuesByHeader[header] !== undefined ? valuesByHeader[header] : '');
     ensured.sheet.appendRow(row);
-  } finally {
-    lock.releaseLock();
-  }
+  });
 }
 
 function ensureExpenseLogSheet_(ss: Spreadsheet, participantNames: string[]): { sheet: Sheet; headers: string[] } {

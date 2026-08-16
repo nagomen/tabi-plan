@@ -11,6 +11,7 @@ WEB_BASE="${WEB_BASE:-/var/www/travel-dashboard}"
 RELEASES_DIR="${RELEASES_DIR:-$WEB_BASE/releases}"
 WEB_ROOT="${WEB_ROOT:-$WEB_BASE/current}"
 NGINX_CONF="${NGINX_CONF:-/etc/nginx/conf.d/travel-dashboard.conf}"
+NGINX_SECURITY_SNIPPET="${NGINX_SECURITY_SNIPPET:-/etc/nginx/snippets/travel-dashboard-security-headers.conf}"
 KEEP_RELEASES="${KEEP_RELEASES:-5}"
 SKIP_GIT="${SKIP_GIT:-0}"
 SKIP_BUILD="${SKIP_BUILD:-0}"
@@ -46,6 +47,8 @@ render_nginx() {
     -e "s|__WEB_ROOT__|$WEB_ROOT|g" \
     "$APP_DIR/infra/nginx/travel-dashboard.conf.template" > "$tmp"
   sudo install -m 0644 "$tmp" "$NGINX_CONF"
+  sudo install -d -m 0755 "$(dirname "$NGINX_SECURITY_SNIPPET")"
+  sudo install -m 0644 "$APP_DIR/infra/nginx/travel-dashboard-security-headers.conf" "$NGINX_SECURITY_SNIPPET"
   rm -f "$tmp"
   sudo nginx -t
   sudo systemctl reload nginx

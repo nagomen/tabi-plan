@@ -183,10 +183,10 @@ try {
   if (RESET) {
     await conn.query("SET FOREIGN_KEY_CHECKS = 0");
     for (const t of [
-      "expense_shares", "expenses", "settlements", "plan_candidate_votes", "plan_candidates",
+      "expense_audit_logs", "expense_shares", "expenses", "settlements", "plan_candidate_votes", "plan_candidates",
       "plan_checklist_items", "plan_links", "plan_cities", "itinerary_items", "plan_view_daily",
       "plan_invites", "plan_members", "plans", "user_settings", "user_payment_links",
-      "friendships", "user_credentials", "users",
+      "friendships", "user_sessions", "user_credentials", "users",
     ]) await conn.query(`DELETE FROM ${t}`);
     await conn.query("SET FOREIGN_KEY_CHECKS = 1");
   }
@@ -255,7 +255,7 @@ try {
       SOURCE[p.source] || "local",
       p.visibility === "invite" ? "invite" : "public",
       p.published === false ? "draft" : "published",
-      p.slug === "2608-tohoku" ? 1 : 0,
+      0,
       ownerBySlug.get(p.slug) || null,
       p.spreadsheetId || null, p.appsScriptUrl || null, p.schema || null,
       ts(p.createdAt) || new Date(), ts(p.updatedAt) || new Date(),

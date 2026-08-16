@@ -5,6 +5,7 @@
 // 全計画で共有できるよう、計画ではなく端末（localStorage）に名前キーで保存する。
 
 import * as Backend from "./backend";
+import * as db from "./db";
 
 const KEY = "trip-dashboard-pay-links";
 
@@ -16,16 +17,20 @@ export interface PayLink {
 export type PayLinkMap = Record<string, PayLink>;
 
 function readAll(): PayLinkMap {
+  if (db.isEnabled() && db.isLoaded()) {
+    const users = new Map(db.users().map((user) => [user.id, user.display_name]));
+    return Object.fromEntries(
+      db.paymentLinks()
+        .filter((row) => row.provider === "paypay" && users.has(row.user_id))
+        .map((row) => [users.get(row.user_id) as string, { paypay: row.handle }]),
+    );
+  }
   const parsed = Backend.getJSON<PayLinkMap>(KEY, {});
   return parsed && typeof parsed === "object" ? parsed : {};
 }
 
 function writeAll(map: PayLinkMap): void {
   Backend.setJSON(KEY, map);
-}
-
-export function getPayLinks(): PayLinkMap {
-  return readAll();
 }
 
 export function getPayLink(name: string): PayLink | null {
@@ -38,6 +43,11 @@ export function getPayLink(name: string): PayLink | null {
 export function setPayLink(name: string, paypay: string): void {
   const key = String(name || "").trim();
   if (!key) return;
+  if (db.isEnabled() && db.isLoaded()) {
+    const user = db.findUserByName(key);
+    if (user) db.setPaymentLink(user.id, String(paypay || "").trim());
+    return;
+  }
   const map = readAll();
   const value = String(paypay || "").trim();
   if (value) map[key] = { paypay: value };

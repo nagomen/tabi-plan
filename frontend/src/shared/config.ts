@@ -240,3 +240,13 @@ export function normalizeTripConfig(config: TripConfig): TripConfig {
 export function readGlobalTripConfig(): Partial<TripConfig> {
   return (window as Window & { TRIP_CONFIG?: Partial<TripConfig> }).TRIP_CONFIG || {};
 }
+
+/** 既定値と実行時設定をマージした、ページ共通の確定設定。 */
+export function resolvedTripConfig(): TripConfig {
+  return normalizeTripConfig(
+    mergeConfig(
+      DEFAULT_CONFIG as unknown as Record<string, unknown>,
+      readGlobalTripConfig() as Record<string, unknown>,
+    ) as unknown as TripConfig,
+  );
+}

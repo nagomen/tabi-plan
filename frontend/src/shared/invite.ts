@@ -7,8 +7,6 @@
 // （先頭に "." を付けて圧縮版を示す）。CompressionStream 非対応の環境や、
 // 旧来の無圧縮リンク（プレフィックス無し）もそのまま読める。
 
-import type { LocalPlanData } from "./plans-store";
-
 export interface InviteMeta {
   slug: string;
   title: string;
@@ -22,9 +20,7 @@ export interface InviteMeta {
 export interface InvitePayload {
   v: 1;
   meta: InviteMeta;
-  data?: LocalPlanData;
   invitedName?: string;
-  inviteId?: string;
   token?: string;
   role?: "editor" | "viewer";
 }
@@ -81,7 +77,7 @@ export async function decodeInvite(token: string): Promise<InvitePayload | null>
       json = new TextDecoder().decode(b64urlToBytes(token));
     }
     const obj = JSON.parse(json) as InvitePayload;
-    return obj && obj.meta && (obj.token || obj.data) ? obj : null;
+    return obj && obj.meta && obj.token ? obj : null;
   } catch {
     return null;
   }

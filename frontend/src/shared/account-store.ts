@@ -225,6 +225,7 @@ function startSession(record: AccountRecord | Account, token = ""): void {
 }
 
 export function logOut(): void {
+  if (db.isEnabled() && readSession()?.token) void db.authLogOut().catch(() => undefined);
   writeSession(null);
   clearCurrentUser();
   // セッションだけ消すと、旧来の名前ベース判定が前ユーザーのまま残る。
@@ -242,7 +243,9 @@ function clearDeviceProfiles(): void {
     const keys: string[] = [];
     for (let i = 0; i < localStorage.length; i += 1) {
       const key = localStorage.key(i);
-      if (key && key.startsWith("trip-dashboard-profile-")) keys.push(key);
+      if (key && (key.startsWith("trip-dashboard-profile-") || key.startsWith("trip-db-bootstrap:"))) {
+        keys.push(key);
+      }
     }
     keys.forEach((key) => localStorage.removeItem(key));
   } catch {

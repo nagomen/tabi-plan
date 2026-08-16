@@ -13,9 +13,8 @@ window.TRIP_CONFIG = {
   auth: {
     enabled: false
   },
-  // ログイン・新規登録なしで、開いた人は誰でもこの計画の参加者として扱う。
-  // 名前を入れるだけで費用の追加・精算が使える（行程はスプレッドシートが正なので読み取り専用）。
-  openEditing: true,
+  // 公開ページは閲覧のみ。編集は plan_members で許可された参加者に限定する。
+  openEditing: false,
   mapDefaults: {
     center: [39.6, 140.6],
     zoom: 6,
@@ -34,7 +33,8 @@ window.TRIP_CONFIG = {
   geocoding: {
     // 計画エディタの場所検索。Mapbox 公開トークン（pk.…）を入れると
     // 多言語POI検索になり「プラザホテル ニューヨーク」等も引ける。
-    // 空なら無料の OpenStreetMap(Nominatim) に自動フォールバック。
+    // 空なら明示的に検索ボタンを押した時だけ OpenStreetMap(Nominatim) を使う。
+    // 公開Nominatimの規約に従い、入力中の自動候補には利用しない。
     // 取得: https://account.mapbox.com/ → Access tokens（無料枠あり）
     mapboxToken: ""
   }

@@ -5,7 +5,7 @@
 // 分岐をここ一箇所に集約する。amount と individualShares は円換算後の値で渡す。
 //   shares        … 精算（paid/owed）に使う負担割。精算不要は空。
 //   expenseShares … 費用按分（expenseByPerson）。精算不要は支払者が全額を持つ。
-function allocateExpense_(mode: string, payer: string, names: string[], selected: string[], individualShares: PersonShare[], amount: number): { kind: 'free' | 'individual' | 'split'; settlementAmount: number; shares: PersonShare[]; expenseShares: PersonShare[] } {
+function allocateExpense_(mode: string, payer: string, names: string[], selected: string[], individualShares: PersonShare[], amount: number, weights: Record<string, number> = {}): { kind: 'free' | 'individual' | 'split'; settlementAmount: number; shares: PersonShare[]; expenseShares: PersonShare[] } {
   if (/精算不要/.test(mode)) {
     const expenseShares = payer ? [{ name: payer, amount }] : [];
     return { kind: 'free', settlementAmount: 0, shares: [], expenseShares };
@@ -14,10 +14,22 @@ function allocateExpense_(mode: string, payer: string, names: string[], selected
     const settlementAmount = individualShares.reduce((sum, share) => sum + share.amount, 0);
     return { kind: 'individual', settlementAmount, shares: individualShares, expenseShares: individualShares };
   }
-  const targets = (/選んだ人だけ/.test(mode) && selected.length) ? selected : names;
-  const perPerson = targets.length ? amount / targets.length : 0;
-  const shares = targets.map(name => ({ name, amount: perPerson }));
+  const targets = uniqueNames_((/選んだ人だけ/.test(mode) && selected.length) ? selected : names);
+  const totalWeight = targets.reduce((sum, name) => sum + positiveWeight_(weights[name]), 0);
+  let allocated = 0;
+  const shares = targets.map((name, index) => {
+    const shareAmount = index === targets.length - 1
+      ? amount - allocated
+      : amount * positiveWeight_(weights[name]) / totalWeight;
+    allocated += shareAmount;
+    return { name, amount: shareAmount };
+  });
   return { kind: 'split', settlementAmount: amount, shares, expenseShares: shares };
+}
+
+function positiveWeight_(value: any): number {
+  const weight = Number(value);
+  return Number.isFinite(weight) && weight > 0 ? weight : 1;
 }
 
 // 表示用の対象者名。精算不要は支払者、それ以外は負担割の対象者。
@@ -28,6 +40,10 @@ function allocationTargetNames_(allocation: { kind: string; shares: PersonShare[
 function buildSettlement_(expenseRows: SheetRow[], participants: Participant[], planned: number, exchangeRateRows: SheetRow[], settlementCompletionRows: SheetRow[], runtimeOptions: RuntimeOptions): Record<string, any> {
   const participantNames = participants.map(member => member.name);
   const names = participantNames.length ? participantNames : inferParticipantNames_(expenseRows);
+  const weights = participants.reduce((out: Record<string, number>, member) => {
+    out[member.name] = positiveWeight_(member.settlementWeight);
+    return out;
+  }, {});
   const rateIndex = buildExchangeRateIndex_(exchangeRateRows);
   const resolveRate = makeRateResolver_(rateIndex, runtimeOptions || {});
   const paidBy: Record<string, number> = {};
@@ -62,7 +78,7 @@ function buildSettlement_(expenseRows: SheetRow[], participants: Participant[], 
 
     const rate = resolveRate(currency, paidDate);
     if (!rate) {
-      const targetNames = allocationTargetNames_(allocateExpense_(mode, payer, names, selected, individualOriginalShares, amountOriginal));
+      const targetNames = allocationTargetNames_(allocateExpense_(mode, payer, names, selected, individualOriginalShares, amountOriginal, weights));
       rateWarnings.push(`${paidDate || '日付未入力'} ${currency} ${title}: 為替レート未設定`);
       rateDetails.push({
         date: paidDate,
@@ -112,7 +128,7 @@ function buildSettlement_(expenseRows: SheetRow[], participants: Participant[], 
     const individualShares = individualOriginalShares
       .map(share => ({ name: share.name, amount: share.amount * rate.value }))
       .filter(share => share.amount > 0);
-    const allocation = allocateExpense_(mode, payer, names, selected, individualShares, amount);
+    const allocation = allocateExpense_(mode, payer, names, selected, individualShares, amount, weights);
 
     const detailShares = (allocation.kind === 'free' ? allocation.expenseShares : allocation.shares).map(share => ({
       name: share.name,
@@ -302,19 +318,14 @@ function appendSettlementCompletion_(ss: Spreadsheet, params: Params): void {
   ];
 
   // ヘッダー整備から行追加までを一括でロックする。
-  const lock = LockService.getScriptLock();
-  lock.waitLock(10000);
-  try {
+  withScriptLock_(() => {
     const sheet = ensureSettlementCompletionsSheet_(ss);
     sheet.appendRow(row);
-  } finally {
-    lock.releaseLock();
-  }
+  });
 }
 
 function ensureSettlementCompletionsSheet_(ss: Spreadsheet): Sheet {
-  const headers = ['タイムスタンプ', '支払者', '受取者', '精算額', '通貨', '対象ペア', '入力元', 'メモ'];
   const sheet = getOrCreateSheet_(ss, DEFAULT_CONFIG.sheets.settlementLog);
-  ensureHeaderRow_(sheet, 1, headers);
+  ensureHeaderRow_(sheet, 1, SETTLEMENT_LOG_HEADERS);
   return sheet;
 }

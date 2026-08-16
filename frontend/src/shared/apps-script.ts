@@ -25,7 +25,7 @@ export interface AppsScriptResponse {
   [key: string]: unknown;
 }
 
-/** JSONP で GET する（action=data/auth/... など） */
+/** JSONP で読み取り専用のGETを行う（action=dataなど）。認証・更新には使わない。 */
 export function callAppsScript(url: string, params: AppsScriptParams): Promise<AppsScriptResponse> {
   return new Promise((resolve, reject) => {
     if (!url) {
@@ -99,6 +99,8 @@ export function postAppsScript(
       reject(new Error(timeoutMessage));
     }, timeoutMs);
     const onMessage = (event: MessageEvent): void => {
+      // 同じページ上の別スクリプトが応答を偽装できないよう、POST先iframe自身だけを受ける。
+      if (event.source !== iframe.contentWindow) return;
       const data = (event.data || {}) as {
         source?: string;
         uploadId?: string;
@@ -144,6 +146,21 @@ export async function sha256Hex(text: string): Promise<string> {
   return Array.from(new Uint8Array(digest))
     .map((byte) => byte.toString(16).padStart(2, "0"))
     .join("");
+}
+
+/** 認証情報をURLへ残さないよう、Apps Script認証はiframe POSTに限定する。 */
+export async function authenticateAppsScript(url: string, password: string): Promise<AppsScriptResponse> {
+  const passwordHash = await sha256Hex(password);
+  return postAppsScript(
+    url,
+    { action: "auth", passwordHash },
+    {
+      source: "trip-auth",
+      idPrefix: "auth",
+      timeoutMessage: "認証がタイムアウトしました",
+      failMessage: "認証に失敗しました",
+    },
+  );
 }
 
 const AUTH_ERROR_RE = /auth|token|password|Authentication|Invalid token|Token expired|認証|権限|Password/i;

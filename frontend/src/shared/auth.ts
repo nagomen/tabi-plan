@@ -2,6 +2,8 @@
 // Apps Script モードのページが共有する。storageKey とポリシーは auth 設定から取る。
 
 import type { AuthConfig } from "./config";
+import { authenticateAppsScript, sha256Hex } from "./apps-script";
+import { errorMessage } from "./dom";
 
 export interface AuthSession {
   ok?: boolean;
@@ -55,4 +57,73 @@ export function saveAuthSession(
 
 export function clearAuthSession(storageKey: string): void {
   localStorage.removeItem(storageKey);
+}
+
+export interface PasswordGateOptions {
+  auth: AuthConfig;
+  appsScriptUrl: string;
+  classPrefix: string;
+  title: string;
+  submitLabel?: string;
+  showDescription?: boolean;
+}
+
+/** Apps Script / ローカルハッシュ認証で共通のパスワードゲートを表示する。 */
+export function requestPasswordGate(options: PasswordGateOptions): Promise<boolean> {
+  return new Promise((resolve) => {
+    if (!options.auth.enabled || hasAuthSession(options.auth)) {
+      resolve(true);
+      return;
+    }
+
+    const prefix = options.classPrefix;
+    const gate = document.createElement("div");
+    gate.className = prefix;
+    gate.innerHTML = `
+      <form class="${prefix}-box">
+        <h2>${options.title}</h2>
+        <div class="${prefix}-body">
+          ${options.showDescription === false ? "" : "<p>共有されたパスワードを入力してください。</p>"}
+          <label>
+            パスワード
+            <input type="password" autocomplete="current-password" autofocus aria-label="パスワード" placeholder="パスワードを入力">
+          </label>
+          <button type="submit">${options.submitLabel || "開く"}</button>
+          <div class="${prefix}-error" aria-live="polite"></div>
+        </div>
+      </form>`;
+    document.body.appendChild(gate);
+
+    const form = gate.querySelector<HTMLFormElement>("form");
+    const input = gate.querySelector<HTMLInputElement>("input");
+    const error = gate.querySelector<HTMLElement>(`.${prefix}-error`);
+    if (!form || !input || !error) {
+      gate.remove();
+      resolve(false);
+      return;
+    }
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const password = input.value || "";
+      try {
+        if (options.auth.mode === "appsScript") {
+          const response = await authenticateAppsScript(options.appsScriptUrl, password);
+          saveAuthSession(options.auth, response.token, response.expiresAt);
+        } else {
+          if (!options.auth.passwordHash) throw new Error("passwordHash が未設定です。");
+          if (await sha256Hex(password) !== options.auth.passwordHash) {
+            throw new Error("パスワードが違います。");
+          }
+          saveAuthSession(options.auth, undefined, undefined);
+        }
+        gate.remove();
+        resolve(true);
+      } catch (authError) {
+        input.value = "";
+        input.focus();
+        error.textContent = errorMessage(authError) || "認証に失敗しました。";
+      }
+    });
+  });
 }

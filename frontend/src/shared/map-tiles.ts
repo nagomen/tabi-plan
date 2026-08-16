@@ -9,7 +9,7 @@
 // API キー不要・無料・利用量の制限なし。
 //   https://openfreemap.org/
 //
-// ベクターの描画には MapLibre GL が要る（gzip で約 206KB）。
+// ベクターの描画には MapLibre GL が要る。
 // 全ページの初期読み込みに乗せたくないので、地図を実際に作るときだけ
 // 動的 import で読む。WebGL が使えない端末や読み込みに失敗した場合は、
 // ラスターの CARTO Voyager に落とす（キー不要・非商用は無料）。
@@ -53,9 +53,8 @@ export function addBaseLayer(L: typeof LType, map: LType.Map): void {
   }
   void (async () => {
     try {
-      const maplibregl = await import("maplibre-gl");
-      // プラグインは global の maplibregl を見るので、読み込む前に置く
-      (window as unknown as { maplibregl: unknown }).maplibregl = maplibregl;
+      // 連携プラグインが MapLibre を依存として読み込む。ここで別途 import すると
+      // UMD 変換されたプラグイン内の分と二重にバンドルされる。
       await import("@maplibre/maplibre-gl-leaflet");
       const factory = (L as unknown as {
         maplibreGL?: (options: Record<string, unknown>) => LType.Layer;

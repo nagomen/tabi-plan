@@ -29,6 +29,10 @@ server {
     ssl_protocols TLSv1.2 TLSv1.3;
     ssl_prefer_server_ciphers on;
 
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "no-referrer" always;
+
     # 共有ストアの JSON は最大 2MB を想定（API 側の MAX_BODY_BYTES と合わせる）
     client_max_body_size 4m;
 
