@@ -83,9 +83,13 @@
               <div class="pe-ai-form">
                 <input data-ai-area type="text" autocomplete="off" maxlength="120" placeholder="行き先（任意・空なら上の訪問地から）" aria-label="行き先">
                 <input data-ai-note type="text" autocomplete="off" maxlength="200" placeholder="希望（任意・例: 温泉と海鮮、歩きすぎない）" aria-label="希望">
-                <button class="pe-mini" type="button" data-ai-run>下書きを作る</button>
+                <button class="pe-ai-run" type="button" data-ai-run>
+                  <span class="pe-ai-run-ic" data-ai-run-ic aria-hidden="true"></span>
+                  <span data-ai-run-label>下書きを作る</span>
+                </button>
               </div>
-              <p class="pe-ai-status" data-ai-status></p>
+              <div class="pe-ai-bar" data-ai-bar hidden aria-hidden="true"><i></i></div>
+              <p class="pe-ai-status" data-ai-status role="status"></p>
             </div>
           </div>
         </div>

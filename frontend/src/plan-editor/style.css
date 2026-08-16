@@ -2182,11 +2182,15 @@
   line-height: 1.6;
 }
 .pe-ai-form {
-  display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) auto;
-  gap: 12px;
-  align-items: end;
+  /* 入力欄は伸ばし、幅が足りなくなったらボタンだけ次の行へ送る。
+     3列固定だと、ボタンが場所を取ったぶん入力欄の文字が切れていた。 */
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px 16px;
+  align-items: flex-end;
 }
+.pe-ai-form input { flex: 1 1 220px; min-width: 0; }
+.pe-ai-run { flex: none; }
 .pe-ai-form input {
   min-height: 38px;
   padding: 6px 2px;
@@ -2213,9 +2217,102 @@
 }
 .pe-ai-status.is-warn { color: var(--red); }
 .pe-ai-status.is-ok { color: var(--green); }
+.pe-ai-status a { color: inherit; font-weight: 700; text-underline-offset: 3px; }
 
 @media (max-width: 680px) {
-  .pe-ai-form { grid-template-columns: 1fr; gap: 10px; }
+  .pe-ai-form { gap: 12px; }
+  .pe-ai-form input { flex: 1 1 100%; }
   .pe-ai-form input { font-size: 16px; }
   .pe-ai-note { font-size: 11px; }
+}
+
+/* ---- AI のボタンと「考えています」の見せ方 ------------------------------
+   文字＋下線の小ボタンだと押せる感じが弱かったので、この欄の主役として
+   塗りのボタンにする。影はカードと同じくぼかさない。
+   押している間は影のぶんだけ沈ませて、触った手応えを出す。 */
+.pe-ai-run {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 20px;
+  border: 1px solid var(--green-deep);
+  border-radius: 0;
+  background: var(--green);
+  color: #fff;
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  cursor: pointer;
+  box-shadow: 4px 4px 0 var(--green-deep);
+  transition: transform .12s ease, box-shadow .12s ease, background-color .12s ease;
+}
+.pe-ai-run:hover { background: var(--green-deep); }
+.pe-ai-run:active {
+  transform: translate(4px, 4px);
+  box-shadow: 0 0 0 var(--green-deep);
+}
+.pe-ai-run .hi { width: 17px; height: 17px; }
+.pe-ai-run:disabled { cursor: progress; }
+
+/* 考えている間: 影を消して沈めたまま、星をゆっくり瞬かせる */
+.pe-ai-run.is-busy {
+  transform: translate(2px, 2px);
+  box-shadow: 2px 2px 0 var(--green-deep);
+  background: var(--green-deep);
+}
+.pe-ai-run.is-busy .pe-ai-run-ic {
+  display: inline-flex;
+  animation: peAiTwinkle 1.4s ease-in-out infinite;
+}
+.pe-ai-run.is-busy [data-ai-run-label]::after {
+  content: "…";
+  display: inline-block;
+  width: 1.1em;
+  text-align: left;
+  animation: peAiDots 1.2s steps(4, end) infinite;
+}
+
+/* 進み具合は分からないので、往復する細い線で「動いている」ことだけ伝える */
+.pe-ai-bar {
+  position: relative;
+  overflow: hidden;
+  height: 2px;
+  margin-top: 14px;
+  background: var(--line);
+}
+.pe-ai-bar i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 38%;
+  background: var(--green);
+  animation: peAiSlide 1.5s cubic-bezier(.55, 0, .45, 1) infinite;
+}
+
+@keyframes peAiTwinkle {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: .5; transform: scale(.86); }
+}
+@keyframes peAiDots {
+  0% { content: ""; }
+  25% { content: "・"; }
+  50% { content: "・・"; }
+  75% { content: "・・・"; }
+}
+@keyframes peAiSlide {
+  0% { left: -38%; }
+  100% { left: 100%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pe-ai-run.is-busy .pe-ai-run-ic,
+  .pe-ai-run.is-busy [data-ai-run-label]::after,
+  .pe-ai-bar i { animation: none; }
+  .pe-ai-bar i { width: 100%; opacity: .5; }
+}
+
+@media (max-width: 680px) {
+  .pe-ai-run { width: 100%; justify-content: center; min-height: 46px; }
 }

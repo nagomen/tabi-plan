@@ -34,6 +34,7 @@ import { listFriends } from "../shared/friendship-store";
 import { canEditPlan, canManagePlan, planHasOwner } from "../shared/membership";
 import { addBaseLayer } from "../shared/map-tiles";
 import { validatePublishPlan } from "./validation";
+import { formatDurationMinutes } from "../shared/travel-duration";
 import {
   automaticGeocodingAvailable,
   cityAliasesFor,
@@ -998,11 +999,34 @@ function isComposingKey(event: KeyboardEvent): boolean {
 const aiArea = qs<HTMLInputElement>(root, "[data-ai-area]");
 const aiNote = qs<HTMLInputElement>(root, "[data-ai-note]");
 const aiRun = qs<HTMLButtonElement>(root, "[data-ai-run]");
+const aiRunLabel = qs<HTMLElement>(root, "[data-ai-run-label]");
+const aiRunIcon = qs<HTMLElement>(root, "[data-ai-run-ic]");
+const aiBar = qs<HTMLElement>(root, "[data-ai-bar]");
 const aiStatus = qs<HTMLElement>(root, "[data-ai-status]");
+
+aiRunIcon.innerHTML = icon("sparkles");
+
+/** 考えている間の見た目。ボタンごと状態を持たせる。 */
+function setAiBusy(busy: boolean): void {
+  aiRun.disabled = busy;
+  aiRun.classList.toggle("is-busy", busy);
+  aiRunLabel.textContent = busy ? "考えています" : "下書きを作る";
+  aiBar.hidden = !busy;
+}
 
 function setAiStatus(text: string, kind?: "warn" | "ok"): void {
   aiStatus.textContent = text;
   aiStatus.className = "pe-ai-status" + (kind ? " is-" + kind : "");
+}
+
+function setAiSessionExpiredStatus(): void {
+  setAiStatus("ログインセッションの期限が切れました。入力内容を残したまま、", "warn");
+  const link = document.createElement("a");
+  link.href = "login.html?returnTo=" + encodeURIComponent("plan-editor.html" + location.search);
+  link.target = "_blank";
+  link.rel = "noopener";
+  link.textContent = "別タブで再ログイン";
+  aiStatus.append(link, "してから、もう一度作成してください。");
 }
 
 /** 生成結果を編集中のモデルへ流し込む。 */
@@ -1036,7 +1060,13 @@ function applyItineraryDraft(draft: db.ItineraryDraft): void {
         title: item.title || "",
         place: item.place || "",
         note: item.note || "",
-        ...(item.kind === "move" ? splitMoveTitle(item.title) : {}),
+        ...(item.kind === "move" ? {
+          ...splitMoveTitle(item.title),
+          from: item.from_place || splitMoveTitle(item.title).from || "",
+          to: item.to_place || splitMoveTitle(item.title).to || "",
+          transport: item.transport || "",
+          duration: formatDurationMinutes(item.duration_minutes),
+        } : {}),
       }));
     day.stay = stay
       ? newItem("stay", { title: stay.title || "", place: stay.place || "", note: stay.note || "", nights: 1 })
@@ -1062,8 +1092,8 @@ async function runAiDraft(): Promise<void> {
   const filled = model.days.some((day) => day.items.length || day.stay) || model.cities.length;
   if (filled && !window.confirm("いまの訪問地と行程を、作り直した下書きで置き換えます。よろしいですか。")) return;
 
-  aiRun.disabled = true;
-  setAiStatus("作っています。20秒ほどかかります…");
+  setAiBusy(true);
+  setAiStatus("行き先と日程から組み立てています。20秒ほどかかります。");
   try {
     const draft = await db.generateItinerary({
       area,
@@ -1081,9 +1111,13 @@ async function runAiDraft(): Promise<void> {
     setAiStatus(`下書きを作りました（訪問地 ${model.cities.length} 件・予定 ${count} 件）。中身は自由に直せます。`, "ok");
   } catch (error) {
     const message = errorMessage(error);
-    setAiStatus(/429/.test(message) ? "続けて作りすぎです。少し待ってからもう一度。" : message || "作れませんでした", "warn");
+    if (/ログインセッションの期限が切れました/.test(message)) {
+      setAiSessionExpiredStatus();
+    } else {
+      setAiStatus(/429/.test(message) ? "続けて作りすぎです。少し待ってからもう一度。" : message || "作れませんでした", "warn");
+    }
   } finally {
-    aiRun.disabled = false;
+    setAiBusy(false);
   }
 }
 
@@ -2624,7 +2658,7 @@ function buildData(): LocalPlanData {
         time: it.time || "", type: it.kind as ItemType, typeLabel: KINDS[it.kind].label,
         title: it.title || (it.kind === "move" ? `${it.from} → ${it.to}` : ""),
         place: it.place || (it.kind === "move" ? it.to : ""),
-        note: [it.note, it.kind === "move" ? [it.transport, it.duration].filter(Boolean).join(" ") : ""].filter(Boolean).join(" / "),
+        note: it.note,
         lat: it.kind === "move" ? "" : coordOut(it.lat),
         lng: it.kind === "move" ? "" : coordOut(it.lng),
         mapQuery: it.mapQuery || it.place || "",
@@ -2632,6 +2666,8 @@ function buildData(): LocalPlanData {
       };
       if (it.kind === "move") {
         base.origin = it.from; base.destination = it.to;
+        base.transport = it.transport;
+        base.duration = it.duration;
         const fl = coordOut(it.fromLat), fn = coordOut(it.fromLng);
         const tl = coordOut(it.toLat), tn = coordOut(it.toLng);
         if (typeof fl === "number") base.originLat = fl;
@@ -2703,6 +2739,7 @@ function loadExisting(): boolean {
       from: String(row.origin || ""), to: String(row.destination || ""),
       fromLat: row.originLat != null ? String(row.originLat) : "", fromLng: row.originLng != null ? String(row.originLng) : "",
       toLat: row.destinationLat != null ? String(row.destinationLat) : "", toLng: row.destinationLng != null ? String(row.destinationLng) : "",
+      transport: String(row.transport || ""), duration: String(row.duration || ""),
     });
     if (kind === "stay") day.stay = it;
     else day.items.push(it);
