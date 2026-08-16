@@ -758,25 +758,6 @@
     border-radius: 0;
   }
   .pe-map-toggle:hover { color: var(--ink); }
-  .pe-map-show {
-    position: fixed;
-    right: 16px;
-    bottom: 74px;
-    z-index: 36;
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 9px 14px;
-    border: 1px solid var(--green);
-    border-radius: 0;
-    background: var(--green);
-    color: #fff;
-    font: inherit;
-    font-size: 13px;
-    font-weight: 600;
-    cursor: pointer;
-  }
-  .pe-map-show[hidden] { display: none; }
   .pe.map-collapsed .pe-stage { grid-template-columns: 1fr; }
   .pe.map-collapsed .pe-mapwrap { display: none; }
 
@@ -1567,8 +1548,7 @@
       background: transparent;
       color: var(--green);
     }
-    .pe[data-step="1"] .pe-mapwrap,
-    .pe[data-step="1"] .pe-map-show {
+    .pe[data-step="1"] .pe-mapwrap {
       display: none !important;
     }
     .pe.map-collapsed .pe-mapwrap { display: none; }
@@ -1637,13 +1617,6 @@
     .pe.is-map-resizing .pe-map { pointer-events: none; }
     /* スマホは自動保存のみ。保存バー（フッター）は非表示にする */
     .pe-savebar { display: none; }
-    .pe-map-show {
-      display: inline-flex;
-      right: 14px;
-      bottom: calc(72px + env(safe-area-inset-bottom));
-      z-index: 92;
-    }
-    .pe-map-show[hidden] { display: none; }
 
     /* 入力欄も他の文字に合わせて 14px にする。
        16px 未満だと iOS Safari がフォーカス時にページを自動拡大するので、
@@ -2744,4 +2717,20 @@
   .pe-ai-compose .pe-ai-selects { grid-template-columns: 1fr; }
   .pe-ai-compose .pe-ai-selects select,
   .pe-ai-compose .pe-ai-extra textarea { font-size: 16px; }
+}
+
+/* 地図の開閉はヘッダー右上のボタンで行う（スマホは画面下に浮かせていた）。
+   開いている間は塗って、いまの状態が分かるようにする。 */
+/* ヘッダーのアイコンボタンは :hover で薄緑になるので、
+   開いている状態はそれより強い指定で塗る。 */
+.ah-act--icon[data-map-header].is-on,
+.ah-act--icon[data-map-header].is-on:hover,
+.ah-act--icon[data-map-header].is-on:focus-visible {
+  background: var(--green);
+  color: #fff;
+}
+
+@media (min-width: 861px) {
+  /* PC は地図が右の列に常設で、畳むボタンも地図の中にあるので出さない */
+  [data-map-header] { display: none; }
 }

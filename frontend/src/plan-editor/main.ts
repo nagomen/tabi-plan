@@ -36,6 +36,7 @@ import { addBaseLayer } from "../shared/map-tiles";
 import { validatePublishPlan } from "./validation";
 import { formatDurationMinutes } from "../shared/travel-duration";
 import { AiConsultationState, type AiStage } from "./ai-consultation-state";
+import { resolveAiMapGeocodeJobs, type AiMapGeocodeSummary } from "./ai-map-geocoding";
 import {
   automaticGeocodingAvailable,
   cityAliasesFor,
@@ -300,14 +301,14 @@ mountAppHeader({
   back: { href: "plans.html", label: "計画一覧へ戻る", attr: "data-back" },
   meta: [{ attr: "data-status" }],
   actions: [
+    // スマホでは画面下に浮いていた「地図を表示」をここへ移す。
+    // 本文の上に被らず、いつでも同じ場所から開けるようにするため。
     {
-      kind: "link",
+      kind: "button",
       display: "icon",
-      icon: "arrowTopRightOnSquare",
-      label: "ダッシュボードで表示",
-      href: "index.html",
-      attr: "data-open",
-      hidden: true,
+      icon: "map",
+      label: "地図を表示",
+      attr: "data-map-header",
     },
   ],
 });
@@ -315,7 +316,7 @@ mountAppHeader({
 const daysEl = qs<HTMLElement>(root, "[data-days]");
 const statusEl = qs<HTMLElement>(root, "[data-status]");
 const titleEcho = qs<HTMLElement>(root, "[data-title-echo]");
-const openLink = qs<HTMLAnchorElement>(root, "[data-open]");
+const mapHeaderBtn = qs<HTMLButtonElement>(root, "[data-map-header]");
 const warnEl = qs<HTMLElement>(root, "[data-daterange-warn]");
 const dayCountEl = qs<HTMLElement>(root, "[data-day-count]");
 const savebarNoteEl = qs<HTMLElement>(root, "[data-savebar-note]");
@@ -702,7 +703,7 @@ function contentFingerprint(data: LocalPlanData): string {
  * 1回分の保存処理。旅行名・メモなどメタ情報だけの変更では本文を全置換しない。
  * 行程等が変わった時だけ content API を使う。
  */
-async function performPersist(explicit = false): Promise<boolean> {
+async function performPersist(explicit = false, slugRetry = 0): Promise<boolean> {
   if (editorLocked) return false;
   if (!worthSaving()) {
     if (explicit) {
@@ -716,8 +717,6 @@ async function performPersist(explicit = false): Promise<boolean> {
   if (!slug) {
     slug = TripPlans.uniqueSlug(model.title.trim() || UNTITLED);
     model.slug = slug;
-    openLink.href = "index.html?plan=" + encodeURIComponent(slug);
-    openLink.hidden = false;
     try { history.replaceState(null, "", "plan-editor.html?plan=" + encodeURIComponent(slug)); } catch { /* ignore */ }
   }
   const data = buildData();
@@ -757,6 +756,14 @@ async function performPersist(explicit = false): Promise<boolean> {
     savebarNoteEl.textContent = "";
     return true;
   } catch (error) {
+    // bootstrapには他人の非公開slugが含まれない。旧方式で採番済みのタブや
+    // 極めて稀な乱数衝突は、入力内容を保ったまま別slugで作り直す。
+    if (slugRetry < 2 && error instanceof db.ApiRequestError && error.code === "ER_DUP_ENTRY" && !TripPlans.get(slug)) {
+      slug = TripPlans.uniqueSlug(model.title.trim() || UNTITLED);
+      model.slug = slug;
+      try { history.replaceState(null, "", "plan-editor.html?plan=" + encodeURIComponent(slug)); } catch { /* ignore */ }
+      return performPersist(explicit, slugRetry + 1);
+    }
     dirty = true;
     statusEl.textContent = "保存できませんでした";
     statusEl.className = "is-dirty";
@@ -831,13 +838,16 @@ function updateSteps(): void {
   }
   const pe = document.getElementById("editor");
   if (pe) pe.dataset.step = String(viewStep);
-  if (viewStep === 1 && root) {
-    root.classList.add("map-collapsed");
-    const showBtn = root.querySelector<HTMLButtonElement>("[data-map-show]");
-    if (showBtn) showBtn.hidden = true;
-  } else if (root) {
-    const showBtn = root.querySelector<HTMLButtonElement>("[data-map-show]");
-    if (showBtn) showBtn.hidden = !root.classList.contains("map-collapsed");
+  if (root) {
+    // 期間だけの段では地図に出すものが無いので畳んでおく。
+    // 地図のボタンはヘッダーに常設なので、出し入れの制御はしない。
+    if (viewStep === 1) root.classList.add("map-collapsed");
+    const collapsed = root.classList.contains("map-collapsed");
+    const headerBtn = root.querySelector<HTMLButtonElement>("[data-map-header]");
+    if (headerBtn) {
+      headerBtn.classList.toggle("is-on", !collapsed);
+      headerBtn.setAttribute("aria-label", collapsed ? "地図を表示" : "地図を隠す");
+    }
   }
   document.querySelectorAll<HTMLElement>(".pe-step").forEach((el, i) => {
     const isDone = done[i] && i + 1 !== viewStep;
@@ -1199,15 +1209,38 @@ function resetAiConsultation(): void {
   setAiStage("idle");
 }
 
+function contextualMapQuery(place: string, area: string): string {
+  const query = place.trim();
+  const city = area.trim();
+  if (!query || !city || query.normalize("NFKC").toLowerCase().includes(city.normalize("NFKC").toLowerCase())) {
+    return query;
+  }
+  return `${query}, ${city}`;
+}
+
+function aiCoordinate(value: number | null | undefined, minimum: number, maximum: number): string {
+  const number = Number(value);
+  return value !== null && value !== undefined && Number.isFinite(number) && number >= minimum && number <= maximum
+    ? String(number)
+    : "";
+}
+
 /** 生成結果を編集中のモデルへ流し込む。 */
 function applyItineraryDraft(draft: db.ItineraryDraft): void {
-  model.cities = draft.cities.map((city) => ({
-    id: seq++,
-    name: city.name.trim(),
-    lat: "", lng: "",
-    fromDate: city.from_date || "",
-    toDate: city.to_date || city.from_date || "",
-  }));
+  model.cities = draft.cities.map((city) => {
+    const name = city.name.trim();
+    const coords = TripPlans.coordsFor(name);
+    const latitude = aiCoordinate(city.latitude, -90, 90);
+    const longitude = aiCoordinate(city.longitude, -180, 180);
+    return {
+      id: seq++,
+      name,
+      lat: latitude || (coords ? String(coords.lat) : ""),
+      lng: longitude || (coords ? String(coords.lng) : ""),
+      fromDate: city.from_date || "",
+      toDate: city.to_date || city.from_date || "",
+    };
+  });
   const byDate = new Map(draft.days.map((day) => [day.date, day]));
   for (const day of model.days) {
     const source = byDate.get(day.date);
@@ -1225,23 +1258,114 @@ function applyItineraryDraft(draft: db.ItineraryDraft): void {
     const stay = items.find((item) => item.kind === "stay");
     day.items = items
       .filter((item) => item.kind !== "stay")
-      .map((item) => newItem(item.kind as ItemKind, {
-        time: item.time || "",
-        title: item.title || "",
-        place: item.place || "",
-        note: item.note || "",
-        ...(item.kind === "move" ? {
-          ...splitMoveTitle(item.title),
-          from: item.from_place || splitMoveTitle(item.title).from || "",
-          to: item.to_place || splitMoveTitle(item.title).to || "",
-          transport: item.transport || "",
-          duration: formatDurationMinutes(item.duration_minutes),
-        } : {}),
-      }));
+      .map((item) => {
+        const created = newItem(item.kind as ItemKind, {
+          time: item.time || "",
+          title: item.title || "",
+          place: item.place || "",
+          mapQuery: item.kind === "move"
+            ? item.address || ""
+            : item.address || contextualMapQuery(item.place || item.title, source.area),
+          lat: aiCoordinate(item.latitude, -90, 90),
+          lng: aiCoordinate(item.longitude, -180, 180),
+          note: item.note || "",
+          ...(item.kind === "move" ? {
+            ...splitMoveTitle(item.title),
+            from: item.from_place || splitMoveTitle(item.title).from || "",
+            fromLat: aiCoordinate(item.from_latitude, -90, 90),
+            fromLng: aiCoordinate(item.from_longitude, -180, 180),
+            to: item.to_place || splitMoveTitle(item.title).to || "",
+            toLat: aiCoordinate(item.to_latitude ?? item.latitude, -90, 90),
+            toLng: aiCoordinate(item.to_longitude ?? item.longitude, -180, 180),
+            transport: item.transport || "",
+            duration: formatDurationMinutes(item.duration_minutes),
+          } : {}),
+        });
+        if (created.kind === "move") {
+          autoCoords(created, "from");
+          autoCoords(created, "to");
+        } else {
+          autoCoords(created, "place");
+        }
+        return created;
+      });
     day.stay = stay
-      ? newItem("stay", { title: stay.title || "", place: stay.place || "", note: stay.note || "", nights: 1 })
+      ? newItem("stay", {
+          title: stay.title || "",
+          place: stay.place || "",
+          mapQuery: stay.address || contextualMapQuery(stay.place || stay.title, source.area),
+          lat: aiCoordinate(stay.latitude, -90, 90),
+          lng: aiCoordinate(stay.longitude, -180, 180),
+          note: stay.note || "",
+          nights: 1,
+        })
       : null;
+    if (day.stay) autoCoords(day.stay, "place");
   }
+}
+
+interface AiMapRegistrationSummary extends AiMapGeocodeSummary {
+  available: boolean;
+}
+
+/** AIが登録した施設名を住所へ正規化し、地図用座標と完全な住所文字列をモデルへ付与する。 */
+async function registerAiDraftPlacesOnMap(): Promise<AiMapRegistrationSummary> {
+  const placeItems = model.days.flatMap((day) => [
+    ...day.items.map((item) => ({ day, item })),
+    ...(day.stay ? [{ day, item: day.stay }] : []),
+  ]);
+  const targetCount = model.cities.filter((city) => city.name.trim()).length + placeItems.reduce((count, { item }) => {
+    if (item.kind === "move") return count + Number(Boolean(item.from.trim())) + Number(Boolean(item.to.trim()));
+    return count + Number(["sight", "food", "stay"].includes(item.kind) && Boolean(geoQueryForItem(item, "place")));
+  }, 0);
+  if (!automaticGeocodingAvailable(MAPBOX_TOKEN)) {
+    return { available: false, attempted: targetCount, resolved: 0, unresolved: targetCount };
+  }
+
+  const citySummary = await resolveAiMapGeocodeJobs(
+    model.cities.map((city) => ({
+      query: city.name,
+      context: { countryCode: countryFromText(city.name) || undefined, purpose: "city" as const },
+      apply: (result: GeoResult) => {
+        city.lat = String(result.lat);
+        city.lng = String(result.lng);
+      },
+    })),
+    (query, context) => geocodeSearch(query, context, true),
+  );
+
+  const jobs = placeItems.flatMap(({ day, item }) => {
+    const targets: GeoTarget[] = item.kind === "move" ? ["from", "to"] : ["place"];
+    if (item.kind !== "move" && !["sight", "food", "stay"].includes(item.kind)) return [];
+    return targets.flatMap((target) => {
+      const query = geoQueryForItem(item, target);
+      if (!query) return [];
+      return [{
+        query,
+        context: geocodeContextForDay(day, item, target),
+        apply: (result: GeoResult) => {
+          const [latKey, lngKey] = latLngKeys(target);
+          item[latKey] = String(result.lat);
+          item[lngKey] = String(result.lng);
+          if (target === "place") {
+            // providerの完全な住所を、Google Mapsリンクと再保存にも使う。
+            item.mapQuery = result.label;
+            if (!item.place.trim()) item.place = conciseGeoLabel(result.label);
+          }
+        },
+      }];
+    });
+  });
+  const itemSummary = await resolveAiMapGeocodeJobs(
+    jobs,
+    (query, context) => geocodeSearch(query, context, true),
+  );
+  return {
+    available: true,
+    attempted: citySummary.attempted + itemSummary.attempted,
+    resolved: citySummary.resolved + itemSummary.resolved,
+    unresolved: citySummary.unresolved + itemSummary.unresolved,
+  };
 }
 
 /** 「A → B」の移動タイトルから出発地・到着地を拾う。 */
@@ -1325,17 +1449,16 @@ async function runAiDraft(): Promise<void> {
     renderCities();
     renderDays();
     refreshMap(true);
+    setAiStatus("行程を作成しました。施設の住所を確認して地図へ登録しています。");
+    await registerAiDraftPlacesOnMap();
+    renderCities();
+    renderDays();
+    refreshMap(true);
     // 先行する自動保存があっても、AI適用後のrevisionがDBへ届くまで待つ。
     const saved = await persist(true);
-    const count = model.days.reduce((sum, day) => sum + day.items.length + (day.stay ? 1 : 0), 0);
     setAiStage("done");
-    const omitted = draft.omitted_selected_places || [];
-    const saveText = saved ? "自動保存しました" : "作成しましたが保存できませんでした";
-    const omittedText = omitted.length ? ` 未採用: ${omitted.join("、")}。` : "";
-    setAiStatus(
-      `行程を${saveText}（訪問地 ${model.cities.length}件・予定 ${count}件）。${omittedText}`,
-      saved && !omitted.length ? "ok" : "warn",
-    );
+    // 完了カードだけで十分なので、成功ログは残さない。保存失敗だけは操作が必要なため表示する。
+    setAiStatus(saved ? "" : "行程を作成しましたが保存できませんでした。", saved ? undefined : "warn");
   } catch (error) {
     const message = errorMessage(error);
     if (/ログインセッションの期限が切れました/.test(message)) {
@@ -3115,8 +3238,6 @@ async function doPublish(visibility: PlanVisibility): Promise<void> {
   const visLabel = visibility === "invite" ? "招待制" : "公開";
   statusEl.textContent = `保存しました（${visLabel}）`;
   statusEl.className = "is-ok";
-  openLink.href = "index.html?plan=" + encodeURIComponent(slug);
-  openLink.hidden = false;
   savebarNoteEl.textContent = `保存しました（${visLabel}）。右上の「表示」でダッシュボードを確認できます。`;
   try { history.replaceState(null, "", "plan-editor.html?plan=" + encodeURIComponent(slug)); } catch { /* ignore */ }
   setSaveActionsBusy(false);
@@ -3198,7 +3319,6 @@ function openVisibilityChooser(onConfirm: (v: PlanVisibility) => void): void {
 // ---- ヘッダーアイコン・初期化 -------------------------------------------
 
 // 戻る（<）は共通ヘッダー側で描画済み。開くボタンだけ eye アイコンに差し替える。
-openLink.innerHTML = icon("eye");
 const saveBtn = qs<HTMLButtonElement>(root, "[data-save]");
 const publishBtn = qs<HTMLButtonElement>(root, "[data-publish-plan]");
 const stepNextBtn = qs<HTMLButtonElement>(root, "[data-step-next]");
@@ -3237,19 +3357,20 @@ exportBtn.addEventListener("click", exportJson);
 
 // 地図の表示/非表示
 const mapToggle = qs<HTMLButtonElement>(root, "[data-map-toggle]");
-const mapShow = qs<HTMLButtonElement>(root, "[data-map-show]");
+
 const mapClose = qs<HTMLButtonElement>(root, "[data-map-close]");
-mapShow.innerHTML = icon("map") + "<span>地図を表示</span>";
 mapClose.innerHTML = icon("xMark");
 function setMapCollapsed(collapsed: boolean): void {
   root!.classList.toggle("map-collapsed", collapsed);
-  mapShow.hidden = !collapsed;
+  mapHeaderBtn.classList.toggle("is-on", !collapsed);
+  mapHeaderBtn.setAttribute("aria-label", collapsed ? "地図を表示" : "地図を隠す");
+  mapHeaderBtn.setAttribute("title", collapsed ? "地図を表示" : "地図を隠す");
   mapToggle.textContent = collapsed ? "地図を表示" : "地図を隠す";
   try { localStorage.setItem("pe-map-collapsed", collapsed ? "1" : "0"); } catch { /* ignore */ }
   if (!collapsed) window.setTimeout(() => { if (map) { map.invalidateSize(); refreshMap(true); } }, 60);
 }
 mapToggle.addEventListener("click", () => setMapCollapsed(!root!.classList.contains("map-collapsed")));
-mapShow.addEventListener("click", () => setMapCollapsed(false));
+mapHeaderBtn.addEventListener("click", () => setMapCollapsed(!root!.classList.contains("map-collapsed")));
 mapClose.addEventListener("pointerdown", (event) => event.stopPropagation());
 mapClose.addEventListener("click", (event) => { event.stopPropagation(); setMapCollapsed(true); });
 
@@ -3349,7 +3470,6 @@ function bootstrapEditor(): void {
     return;
   }
   const editable = loadExisting();
-  if (slug) { openLink.href = "index.html?plan=" + encodeURIComponent(slug); openLink.hidden = false; }
   syncBasicInputs();
   rebuildDays();
   lastSavedContentFingerprint = contentFingerprint(buildData());
