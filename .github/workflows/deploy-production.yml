@@ -154,8 +154,8 @@ jobs:
     steps:
       # AI 機能のキーはリポジトリには置かない。Secrets からサーバーの
       # 環境ファイルへ書き込む。未設定なら何もしない（機能だけ無効になる）。
+      # secrets は if: では参照できないので、空かどうかは script 側で見る。
       - name: Sync OpenAI key to VPS
-        if: ${{ secrets.OPENAI_KEY != '' }}
         uses: appleboy/ssh-action@v1.2.0
         env:
           ENV_FILE: ${{ vars.PRODUCTION_API_ENV_FILE || '~/secure_env/travel-api.env' }}
@@ -169,6 +169,10 @@ jobs:
           envs: ENV_FILE,OPENAI_KEY,OPENAI_MODEL
           script_stop: true
           script: |
+            if [ -z "$OPENAI_KEY" ]; then
+              echo "OPENAI_KEY が未設定なので何もしません。"
+              exit 0
+            fi
             file="${ENV_FILE/#\~/$HOME}"
             if [ ! -f "$file" ]; then
               echo "$file がありません。" >&2
