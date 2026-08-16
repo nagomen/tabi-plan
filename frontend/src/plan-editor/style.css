@@ -2219,11 +2219,276 @@
 .pe-ai-status.is-ok { color: var(--green); }
 .pe-ai-status a { color: inherit; font-weight: 700; text-underline-offset: 3px; }
 
+.pe-ai-dialog {
+  margin-top: 14px;
+  border-top: 1px solid var(--line);
+  padding-top: 14px;
+}
+.pe-ai-flow {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0;
+  margin: 0 0 16px;
+  padding: 0;
+  list-style: none;
+}
+.pe-ai-flow li {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+.pe-ai-flow li:not(:last-child)::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  margin-right: 8px;
+  background: var(--line-strong);
+}
+.pe-ai-flow b {
+  display: inline-grid;
+  place-items: center;
+  width: 23px;
+  height: 23px;
+  flex: none;
+  border: 1px solid var(--line-strong);
+  border-radius: 50%;
+  background: #fff;
+  font-size: 11px;
+}
+.pe-ai-flow li.is-current { color: var(--green-deep); }
+.pe-ai-flow li.is-current b,
+.pe-ai-flow li.is-done b {
+  border-color: var(--green);
+  background: var(--green);
+  color: #fff;
+}
+.pe-ai-flow li.is-done::after { background: var(--green); }
+
+/* 会話の見た目。ここだけは吹き出し（角丸）を使う。
+   話し手の向きと形で誰の発言か分かるのが、チャットの読みやすさの要なので、
+   罫線ベースの他の部品とは別の作りにしている。 */
+.pe-ai-thread {
+  display: grid;
+  gap: 10px;
+  max-height: 320px;
+  overflow-y: auto;
+  margin-bottom: 14px;
+  padding: 2px;
+}
+.pe-ai-line {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+.pe-ai-line.is-user { justify-content: flex-end; }
+
+.pe-ai-avatar {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--green-soft);
+  color: var(--green);
+}
+.pe-ai-avatar .hi { width: 15px; height: 15px; }
+
+.pe-ai-bubble {
+  max-width: min(76%, 560px);
+  padding: 9px 13px;
+  border: 0;
+  border-radius: 14px;
+  background: var(--wash-2);
+  /* 話し手側の角だけ落として、どちらの発言か形でも分かるようにする */
+  border-bottom-left-radius: 4px;
+}
+.pe-ai-bubble.is-user {
+  border-radius: 14px;
+  border-bottom-right-radius: 4px;
+  background: var(--green);
+  color: #fff;
+}
+.pe-ai-who {
+  display: block;
+  margin-bottom: 2px;
+  color: var(--green);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: .05em;
+}
+.pe-ai-bubble.is-user .pe-ai-who { color: rgba(255, 255, 255, .78); }
+/* 同じ話し手が続くときは名前を出さない（チャットらしい間引き） */
+.pe-ai-line.is-assistant + .pe-ai-line.is-assistant .pe-ai-who,
+.pe-ai-line.is-user + .pe-ai-line.is-user .pe-ai-who { display: none; }
+.pe-ai-line.is-assistant + .pe-ai-line.is-assistant .pe-ai-avatar { visibility: hidden; }
+
+.pe-ai-bubble p {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+.pe-ai-bubble.is-assistant p { color: var(--ink); }
+
+/* 考えている間の「打っています」表示 */
+.pe-ai-bubble.is-typing {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 12px 14px;
+}
+.pe-ai-bubble.is-typing i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--green);
+  opacity: .35;
+  animation: peAiTyping 1.2s ease-in-out infinite;
+}
+.pe-ai-bubble.is-typing i:nth-child(2) { animation-delay: .18s; }
+.pe-ai-bubble.is-typing i:nth-child(3) { animation-delay: .36s; }
+
+@keyframes peAiTyping {
+  0%, 60%, 100% { opacity: .28; transform: translateY(0); }
+  30% { opacity: 1; transform: translateY(-3px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pe-ai-bubble.is-typing i { animation: none; opacity: .6; }
+}
+
+.pe-ai-stage { display: grid; gap: 12px; }
+.pe-ai-candidates {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.pe-ai-candidate {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 9px;
+  min-width: 0;
+  padding: 11px;
+  border: 1px solid var(--line);
+  background: #fff;
+  cursor: pointer;
+}
+.pe-ai-candidate:has(input:checked) {
+  border-color: var(--green);
+  background: #f2f9f6;
+}
+.pe-ai-candidate:has(input:disabled) { opacity: .48; cursor: default; }
+.pe-ai-candidate input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+.pe-ai-candidate-check {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--line-strong);
+  color: transparent;
+}
+.pe-ai-candidate input:focus-visible + .pe-ai-candidate-check { outline: 2px solid var(--green); outline-offset: 2px; }
+.pe-ai-candidate input:checked + .pe-ai-candidate-check {
+  border-color: var(--green);
+  background: var(--green);
+  color: #fff;
+}
+.pe-ai-candidate-check .hi { width: 13px; height: 13px; }
+.pe-ai-candidate-body { min-width: 0; }
+.pe-ai-candidate-body > span {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 8px;
+}
+.pe-ai-candidate-body b { color: var(--ink); font-size: 12.5px; }
+.pe-ai-candidate-body em {
+  flex: none;
+  color: var(--green);
+  font-size: 9px;
+  font-style: normal;
+  font-weight: 700;
+}
+.pe-ai-candidate-body small { display: block; margin-top: 2px; color: var(--muted); font-size: 10px; }
+.pe-ai-candidate-body p { margin: 5px 0 0; color: var(--muted); font-size: 10.5px; line-height: 1.45; }
+.pe-ai-selection { margin: 0; color: var(--muted); font-size: 11px; }
+
+.pe-ai-choice { margin: 0; padding: 0; border: 0; }
+.pe-ai-choice legend,
+.pe-ai-extra > span,
+.pe-ai-selects label > span {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 700;
+}
+.pe-ai-choice label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 32px;
+  margin: 0 6px 6px 0;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 11px;
+  cursor: pointer;
+}
+.pe-ai-choice label:has(input:checked) { border-color: var(--green); color: var(--green-deep); background: #f2f9f6; }
+.pe-ai-choice input { accent-color: var(--green); }
+.pe-ai-selects { display: grid; grid-template-columns: repeat(2, minmax(0, 220px)); gap: 12px; }
+.pe-ai-selects select,
+.pe-ai-extra textarea {
+  width: 100%;
+  min-height: 38px;
+  border: 1px solid var(--line);
+  border-radius: 0;
+  background: #fff;
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+}
+.pe-ai-extra textarea { resize: vertical; padding: 9px; line-height: 1.5; }
+.pe-ai-actions { display: flex; justify-content: flex-end; gap: 9px; padding-top: 2px; }
+.pe-ai-primary,
+.pe-ai-secondary {
+  min-height: 40px;
+  padding: 0 14px;
+  border-radius: 0;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+}
+.pe-ai-primary { border: 1px solid var(--green); background: var(--green); color: #fff; }
+.pe-ai-primary:disabled { opacity: .42; cursor: default; }
+.pe-ai-secondary { border: 1px solid var(--line-strong); background: #fff; color: var(--ink); }
+.pe-ai-done { justify-items: start; padding: 13px; border-left: 3px solid var(--green); background: #f2f9f6; }
+.pe-ai-done p { margin: 0; color: var(--ink); font-size: 12px; line-height: 1.5; }
+
 @media (max-width: 680px) {
   .pe-ai-form { gap: 12px; }
   .pe-ai-form input { flex: 1 1 100%; }
   .pe-ai-form input { font-size: 16px; }
   .pe-ai-note { font-size: 11px; }
+  .pe-ai-flow li { display: grid; grid-template-columns: 23px 1fr; gap: 4px 6px; }
+  .pe-ai-flow li:not(:last-child)::after { position: absolute; top: 11px; left: 27px; right: 4px; margin: 0; }
+  .pe-ai-flow li span { grid-column: 1 / 3; font-size: 9px; }
+  .pe-ai-candidates { grid-template-columns: 1fr; }
+  .pe-ai-bubble { max-width: 82%; }
+  .pe-ai-selects { grid-template-columns: 1fr 1fr; }
+  .pe-ai-actions { display: grid; grid-template-columns: 1fr; }
+  .pe-ai-primary, .pe-ai-secondary { width: 100%; }
 }
 
 /* ---- AI のボタンと「考えています」の見せ方 ------------------------------

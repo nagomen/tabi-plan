@@ -1003,14 +1003,34 @@ const aiRunLabel = qs<HTMLElement>(root, "[data-ai-run-label]");
 const aiRunIcon = qs<HTMLElement>(root, "[data-ai-run-ic]");
 const aiBar = qs<HTMLElement>(root, "[data-ai-bar]");
 const aiStatus = qs<HTMLElement>(root, "[data-ai-status]");
+const aiIntro = qs<HTMLElement>(root, "[data-ai-intro]");
+const aiDialog = qs<HTMLElement>(root, "[data-ai-dialog]");
+const aiThread = qs<HTMLElement>(root, "[data-ai-thread]");
+const aiCandidatesStage = qs<HTMLElement>(root, "[data-ai-candidates]");
+const aiPreferencesStage = qs<HTMLElement>(root, "[data-ai-preferences]");
+const aiDoneStage = qs<HTMLElement>(root, "[data-ai-done]");
+const aiCandidateList = qs<HTMLElement>(root, "[data-ai-candidate-list]");
+const aiSelection = qs<HTMLElement>(root, "[data-ai-selection]");
+const aiToPreferences = qs<HTMLButtonElement>(root, "[data-ai-to-preferences]");
+const aiBuild = qs<HTMLButtonElement>(root, "[data-ai-build]");
+const aiWalking = qs<HTMLSelectElement>(root, "[data-ai-walking]");
+const aiTransport = qs<HTMLSelectElement>(root, "[data-ai-transport]");
+const aiExtra = qs<HTMLTextAreaElement>(root, "[data-ai-extra]");
+
+type AiStage = "idle" | "candidates" | "preferences" | "building" | "done";
+type AiPreferences = NonNullable<db.ItineraryAiInput["preferences"]>;
+let aiStage: AiStage = "idle";
+let aiOptions: db.ItineraryOptions | null = null;
+const aiSelectedIds = new Set<string>();
 
 aiRunIcon.innerHTML = icon("sparkles");
 
 /** 考えている間の見た目。ボタンごと状態を持たせる。 */
-function setAiBusy(busy: boolean): void {
+function setAiBusy(busy: boolean, label = "考えています"): void {
   aiRun.disabled = busy;
+  aiBuild.disabled = busy;
   aiRun.classList.toggle("is-busy", busy);
-  aiRunLabel.textContent = busy ? "考えています" : "下書きを作る";
+  aiRunLabel.textContent = busy ? label : "候補を見せてもらう";
   aiBar.hidden = !busy;
 }
 
@@ -1027,6 +1047,129 @@ function setAiSessionExpiredStatus(): void {
   link.rel = "noopener";
   link.textContent = "別タブで再ログイン";
   aiStatus.append(link, "してから、もう一度作成してください。");
+}
+
+function aiCandidateLimit(): number {
+  return Math.max(1, Math.min(6, model.days.length * 2));
+}
+
+function selectedAiCandidates(): db.ItineraryOptions["candidates"] {
+  return (aiOptions?.candidates || []).filter((candidate) => aiSelectedIds.has(candidate.id));
+}
+
+function aiPreferences(): AiPreferences {
+  const pace = root!.querySelector<HTMLInputElement>('input[name="ai-pace"]:checked')?.value || "標準";
+  return {
+    pace: pace as AiPreferences["pace"],
+    interests: Array.from(root!.querySelectorAll<HTMLInputElement>('input[name="ai-interest"]:checked'))
+      .map((input) => input.value),
+    walking: aiWalking.value as AiPreferences["walking"],
+    transport: aiTransport.value as AiPreferences["transport"],
+    extra: aiExtra.value.trim() || undefined,
+  };
+}
+
+function aiBubble(role: "assistant" | "user", text: string): string {
+  // チャットの見た目に寄せる: AI は左にアイコン＋吹き出し、利用者は右寄せ。
+  // 名前は毎回出さず、話し手はアイコンと左右で示す。
+  const avatar = role === "assistant"
+    ? `<span class="pe-ai-avatar" aria-hidden="true">${icon("sparkles")}</span>`
+    : "";
+  return `<div class="pe-ai-line is-${role}">` +
+    avatar +
+    `<div class="pe-ai-bubble is-${role}">` +
+    `<b class="pe-ai-who">${role === "assistant" ? "AIプランナー" : "あなた"}</b>` +
+    `<p>${escapeHtml(text)}</p>` +
+    "</div></div>";
+}
+
+/** AI が考えている間に出す、点が動く吹き出し。 */
+function aiTypingBubble(): string {
+  return `<div class="pe-ai-line is-assistant">` +
+    `<span class="pe-ai-avatar" aria-hidden="true">${icon("sparkles")}</span>` +
+    `<div class="pe-ai-bubble is-assistant is-typing" role="status" aria-label="AI が考えています">` +
+    "<i></i><i></i><i></i>" +
+    "</div></div>";
+}
+
+function renderAiThread(): void {
+  if (aiStage === "idle") {
+    aiThread.innerHTML = "";
+    return;
+  }
+  const selectedNames = selectedAiCandidates().map((candidate) => candidate.name);
+  const messages = [aiBubble("assistant", aiOptions?.message || "候補から行きたい場所を選んでください。")];
+  if (["preferences", "building", "done"].includes(aiStage)) {
+    messages.push(aiBubble("user", `行きたい場所: ${selectedNames.join("、")}`));
+    messages.push(aiBubble("assistant", "選択を受け取りました。最後に旅のペースと移動条件を決めてください。"));
+  }
+  if (["building", "done"].includes(aiStage)) {
+    const preferences = aiPreferences();
+    const condition = [
+      `ペースは${preferences.pace}`,
+      `徒歩は${preferences.walking}`,
+      `移動は${preferences.transport}`,
+      preferences.interests.length ? `興味は${preferences.interests.join("・")}` : "",
+      preferences.extra || "",
+    ].filter(Boolean).join("、");
+    messages.push(aiBubble("user", condition));
+    messages.push(aiBubble("assistant", aiStage === "done"
+      ? "行程を作成しました。相談はここで完了です。"
+      : "条件を反映して、都市間移動を含む行程を組み立てています。"));
+  }
+  if (aiStage === "building") messages.push(aiTypingBubble());
+  aiThread.innerHTML = messages.join("");
+  // 会話が伸びたら最後の発言が見えるようにする
+  aiThread.scrollTop = aiThread.scrollHeight;
+}
+
+function setAiStage(stage: AiStage): void {
+  aiStage = stage;
+  aiIntro.hidden = stage !== "idle";
+  aiDialog.hidden = stage === "idle";
+  aiCandidatesStage.hidden = stage !== "candidates";
+  aiPreferencesStage.hidden = stage !== "preferences";
+  aiDoneStage.hidden = stage !== "done";
+  const index = stage === "idle" || stage === "candidates" ? 0 : stage === "preferences" ? 1 : 2;
+  root!.querySelectorAll<HTMLElement>("[data-ai-flow]").forEach((item, itemIndex) => {
+    item.classList.toggle("is-current", itemIndex === index);
+    item.classList.toggle("is-done", itemIndex < index || stage === "done");
+  });
+  renderAiThread();
+}
+
+function updateAiSelection(): void {
+  const count = aiSelectedIds.size;
+  const limit = aiCandidateLimit();
+  aiSelection.textContent = count
+    ? `${count}件選択中（最大${limit}件）。次にペースや移動条件を指定します。`
+    : `行きたい場所を1〜${limit}件選んでください。`;
+  aiToPreferences.disabled = count === 0;
+  aiCandidateList.querySelectorAll<HTMLInputElement>("[data-ai-candidate]").forEach((input) => {
+    input.disabled = count >= limit && !input.checked;
+  });
+}
+
+function renderAiCandidates(): void {
+  aiCandidateList.innerHTML = (aiOptions?.candidates || []).map((candidate) =>
+    `<label class="pe-ai-candidate">` +
+      `<input type="checkbox" data-ai-candidate value="${escapeHtml(candidate.id)}">` +
+      `<span class="pe-ai-candidate-check">${icon("check")}</span>` +
+      `<span class="pe-ai-candidate-body"><span><b>${escapeHtml(candidate.name)}</b>` +
+      `<em>${escapeHtml(candidate.category)}</em></span>` +
+      `<small>${escapeHtml(candidate.area)}・目安 ${escapeHtml(formatDurationMinutes(candidate.duration_minutes))}</small>` +
+      `<p>${escapeHtml(candidate.reason)}</p></span>` +
+    `</label>`
+  ).join("");
+  updateAiSelection();
+}
+
+function resetAiConsultation(): void {
+  if (aiStage === "building") return;
+  aiOptions = null;
+  aiSelectedIds.clear();
+  setAiStatus("");
+  setAiStage("idle");
 }
 
 /** 生成結果を編集中のモデルへ流し込む。 */
@@ -1080,27 +1223,72 @@ function splitMoveTitle(title: string): Partial<Item> {
   return parts.length >= 2 ? { from: parts[0], to: parts[1] } : {};
 }
 
-async function runAiDraft(): Promise<void> {
-  if (editorLocked) return;
+function aiBaseInput(): Omit<db.ItineraryAiInput, "preferences" | "selected_places"> | null {
   const cities = model.cities
     .filter((city) => city.name.trim())
     .map((city) => ({ name: city.name.trim(), from_date: city.fromDate, to_date: city.toDate }));
-  // 行き先の入力は任意。空なら登録済みの訪問地、それも無ければ旅行名から拾う。
   const area = aiArea.value.trim() || cities.map((city) => city.name).join("、") || model.title.trim();
-  if (!area) { setAiStatus("行き先を入れるか、訪問地を登録してください", "warn"); aiArea.focus(); return; }
-  if (!model.startDate || !model.endDate) { setAiStatus("先に期間を決めてください", "warn"); return; }
-  const filled = model.days.some((day) => day.items.length || day.stay) || model.cities.length;
-  if (filled && !window.confirm("いまの訪問地と行程を、作り直した下書きで置き換えます。よろしいですか。")) return;
+  if (!area) {
+    setAiStatus("行き先を入れるか、訪問地を登録してください", "warn");
+    aiArea.focus();
+    return null;
+  }
+  if (!model.startDate || !model.endDate) {
+    setAiStatus("先に期間を決めてください", "warn");
+    return null;
+  }
+  return {
+    area,
+    start_date: model.startDate,
+    end_date: model.endDate,
+    note: aiNote.value.trim() || undefined,
+    cities,
+  };
+}
 
+async function startAiConsultation(): Promise<void> {
+  if (editorLocked || aiStage !== "idle") return;
+  const input = aiBaseInput();
+  if (!input) return;
+
+  setAiBusy(true, "候補を探しています");
+  setAiStatus("旅程を作る前に、行きたい場所の候補を絞っています。");
+  try {
+    aiOptions = await db.suggestItineraryOptions(input);
+    aiSelectedIds.clear();
+    renderAiCandidates();
+    setAiStage("candidates");
+    setAiStatus("候補を選ぶと、次にペースや移動条件を指定できます。", "ok");
+  } catch (error) {
+    const message = errorMessage(error);
+    if (/ログインセッションの期限が切れました/.test(message)) setAiSessionExpiredStatus();
+    else setAiStatus(/429/.test(message) ? "候補を作り直すには少し待ってください。" : message || "候補を作れませんでした", "warn");
+  } finally {
+    setAiBusy(false);
+  }
+}
+
+async function runAiDraft(): Promise<void> {
+  if (editorLocked || aiStage !== "preferences") return;
+  const input = aiBaseInput();
+  if (!input) return;
+  const selected = selectedAiCandidates();
+  if (!selected.length) {
+    setAiStage("candidates");
+    setAiStatus("行きたい場所を1件以上選んでください。", "warn");
+    return;
+  }
+  const filled = model.days.some((day) => day.items.length || day.stay);
+  if (filled && !window.confirm("現在の行程を、AIが作る新しい行程に置き換えます。よろしいですか。")) return;
+
+  setAiStage("building");
   setAiBusy(true);
-  setAiStatus("行き先と日程から組み立てています。20秒ほどかかります。");
+  setAiStatus("選んだ場所と条件から、都市間移動を含む行程を作っています。");
   try {
     const draft = await db.generateItinerary({
-      area,
-      start_date: model.startDate,
-      end_date: model.endDate,
-      note: aiNote.value.trim() || undefined,
-      cities,
+      ...input,
+      selected_places: selected.map((candidate) => `${candidate.name}（${candidate.area}）`),
+      preferences: aiPreferences(),
     });
     applyItineraryDraft(draft);
     markDirty();
@@ -1108,9 +1296,11 @@ async function runAiDraft(): Promise<void> {
     renderDays();
     refreshMap(true);
     const count = model.days.reduce((sum, day) => sum + day.items.length + (day.stay ? 1 : 0), 0);
-    setAiStatus(`下書きを作りました（訪問地 ${model.cities.length} 件・予定 ${count} 件）。中身は自由に直せます。`, "ok");
+    setAiStage("done");
+    setAiStatus(`行程を作成し、自動保存しました（訪問地 ${model.cities.length}件・予定 ${count}件）。`, "ok");
   } catch (error) {
     const message = errorMessage(error);
+    setAiStage("preferences");
     if (/ログインセッションの期限が切れました/.test(message)) {
       setAiSessionExpiredStatus();
     } else {
@@ -1121,12 +1311,40 @@ async function runAiDraft(): Promise<void> {
   }
 }
 
-aiRun.addEventListener("click", () => { void runAiDraft(); });
+aiRun.addEventListener("click", () => { void startAiConsultation(); });
 watchComposition(aiArea);
 aiArea.addEventListener("keydown", (e) => {
   if (isComposingKey(e)) return;
-  if (e.key === "Enter") { e.preventDefault(); void runAiDraft(); }
+  if (e.key === "Enter") { e.preventDefault(); void startAiConsultation(); }
 });
+aiCandidateList.addEventListener("change", (event) => {
+  const input = event.target;
+  if (!(input instanceof HTMLInputElement) || !input.matches("[data-ai-candidate]")) return;
+  if (input.checked) {
+    if (aiSelectedIds.size >= aiCandidateLimit()) {
+      input.checked = false;
+      setAiStatus(`日数に合わせて最大${aiCandidateLimit()}件まで選べます。`, "warn");
+    } else {
+      aiSelectedIds.add(input.value);
+      setAiStatus("");
+    }
+  } else {
+    aiSelectedIds.delete(input.value);
+  }
+  updateAiSelection();
+});
+aiToPreferences.addEventListener("click", () => {
+  if (!aiSelectedIds.size) return;
+  setAiStatus("");
+  setAiStage("preferences");
+});
+qs<HTMLButtonElement>(root, "[data-ai-back-candidates]").addEventListener("click", () => {
+  setAiStatus("");
+  setAiStage("candidates");
+});
+qs<HTMLButtonElement>(root, "[data-ai-reset]").addEventListener("click", resetAiConsultation);
+aiBuild.addEventListener("click", () => { void runAiDraft(); });
+qs<HTMLButtonElement>(root, "[data-ai-show-itinerary]").addEventListener("click", () => setViewStep(3));
 
 async function addCity(name: string): Promise<void> {
   const trimmed = name.trim();
