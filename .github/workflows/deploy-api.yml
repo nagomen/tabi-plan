@@ -65,18 +65,43 @@ jobs:
             rm -f "$tmp"
             echo "OPENAI_KEY を書き込みました（値は出力しません）"
 
+      # サーバー側の配置先は git のクローンではないので、ここから中身を送る。
+      # サーバーにリポジトリの認証情報を置かずに済むぶん、こちらの方が安全。
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Send source to VPS
+        env:
+          SSH_KEY: ${{ secrets.PRODUCTION_SSH_KEY }}
+          SSH_HOST: ${{ secrets.PRODUCTION_SSH_HOST }}
+          SSH_USER: ${{ secrets.PRODUCTION_SSH_USER }}
+          SSH_PORT: ${{ secrets.PRODUCTION_SSH_PORT || 22 }}
+          APP_DIR: ${{ vars.PRODUCTION_APP_DIR }}
+        run: |
+          set -euo pipefail
+          umask 077
+          key="$(mktemp)"
+          printf '%s\n' "$SSH_KEY" > "$key"
+          rsync -az --delete \
+            --exclude '.git/' --exclude 'node_modules/' --exclude 'dist/' \
+            --exclude 'data/store/' \
+            -e "ssh -i $key -p $SSH_PORT -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/tmp/known_hosts" \
+            ./ "$SSH_USER@$SSH_HOST:$APP_DIR/"
+          rm -f "$key"
+
       - name: Deploy API on VPS
         uses: appleboy/ssh-action@v1.2.0
         env:
           APP_DIR: ${{ vars.PRODUCTION_APP_DIR }}
           API_DOMAIN: ${{ vars.PRODUCTION_API_DOMAIN }}
-          REPO_BRANCH: ${{ inputs.ref }}
         with:
           host: ${{ secrets.PRODUCTION_SSH_HOST }}
           username: ${{ secrets.PRODUCTION_SSH_USER }}
           key: ${{ secrets.PRODUCTION_SSH_KEY }}
           port: ${{ secrets.PRODUCTION_SSH_PORT || 22 }}
-          envs: APP_DIR,API_DOMAIN,REPO_BRANCH
+          envs: APP_DIR,API_DOMAIN
           script_stop: true
           script: |
             if [ -z "$APP_DIR" ]; then
@@ -84,10 +109,7 @@ jobs:
               exit 1
             fi
             cd "$APP_DIR"
-            git fetch origin "$REPO_BRANCH"
-            git checkout "$REPO_BRANCH"
-            git pull --ff-only origin "$REPO_BRANCH"
-            APP_DIR="$APP_DIR" API_DOMAIN="$API_DOMAIN" REPO_BRANCH="$REPO_BRANCH" \
+            APP_DIR="$APP_DIR" API_DOMAIN="$API_DOMAIN" \
               bash infra/deploy-api.sh --skip-git
 
       - name: Check the API answers
