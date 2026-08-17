@@ -1,0 +1,105 @@
+name: Deploy API
+
+# API だけを VPS へ配る。フロントは GitHub Pages 配信なので触らない
+# （deploy-production.yml は nginx への静的配信も含むが、そちらの
+#  設定はサーバーに無いため、API の入れ替えにはこちらを使う）。
+#
+# 接続には CI 専用の鍵を使う。個人の鍵は登録しない。
+# 鍵を無効にしたいときは、サーバーの ~/.ssh/authorized_keys から
+# github-actions-deploy-api の行を消すだけでよい。
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "配るブランチ"
+        required: true
+        default: "restructure-frontend-backend-ts"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-api
+  cancel-in-progress: false
+
+jobs:
+  deploy-api:
+    name: Deploy API and migrate database
+    runs-on: ubuntu-latest
+
+    steps:
+      # 秘密情報はリポジトリに置かない。Secrets からサーバーの環境ファイルへ
+      # 書き込む。未設定なら何もしない（AI 機能だけ無効のまま動く）。
+      - name: Sync OpenAI key to VPS
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          ENV_FILE: ${{ vars.PRODUCTION_API_ENV_FILE || '~/secure_env/travel-api.env' }}
+          OPENAI_KEY: ${{ secrets.OPENAI_KEY }}
+          OPENAI_MODEL: ${{ vars.PRODUCTION_OPENAI_MODEL }}
+        with:
+          host: ${{ secrets.PRODUCTION_SSH_HOST }}
+          username: ${{ secrets.PRODUCTION_SSH_USER }}
+          key: ${{ secrets.PRODUCTION_SSH_KEY }}
+          port: ${{ secrets.PRODUCTION_SSH_PORT || 22 }}
+          envs: ENV_FILE,OPENAI_KEY,OPENAI_MODEL
+          script_stop: true
+          script: |
+            if [ -z "$OPENAI_KEY" ]; then
+              echo "OPENAI_KEY が未設定なので何もしません。"
+              exit 0
+            fi
+            file="${ENV_FILE/#\~/$HOME}"
+            if [ ! -f "$file" ]; then
+              echo "$file がありません。" >&2
+              exit 1
+            fi
+            umask 077
+            tmp="$(mktemp)"
+            grep -v -E '^(OPENAI_KEY|OPENAI_MODEL)=' "$file" > "$tmp" || true
+            printf 'OPENAI_KEY=%s\n' "$OPENAI_KEY" >> "$tmp"
+            if [ -n "$OPENAI_MODEL" ]; then
+              printf 'OPENAI_MODEL=%s\n' "$OPENAI_MODEL" >> "$tmp"
+            fi
+            install -m 600 "$tmp" "$file"
+            rm -f "$tmp"
+            echo "OPENAI_KEY を書き込みました（値は出力しません）"
+
+      - name: Deploy API on VPS
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          APP_DIR: ${{ vars.PRODUCTION_APP_DIR }}
+          API_DOMAIN: ${{ vars.PRODUCTION_API_DOMAIN }}
+          REPO_BRANCH: ${{ inputs.ref }}
+        with:
+          host: ${{ secrets.PRODUCTION_SSH_HOST }}
+          username: ${{ secrets.PRODUCTION_SSH_USER }}
+          key: ${{ secrets.PRODUCTION_SSH_KEY }}
+          port: ${{ secrets.PRODUCTION_SSH_PORT || 22 }}
+          envs: APP_DIR,API_DOMAIN,REPO_BRANCH
+          script_stop: true
+          script: |
+            if [ -z "$APP_DIR" ]; then
+              echo "PRODUCTION_APP_DIR が必要です。" >&2
+              exit 1
+            fi
+            cd "$APP_DIR"
+            git fetch origin "$REPO_BRANCH"
+            git checkout "$REPO_BRANCH"
+            git pull --ff-only origin "$REPO_BRANCH"
+            APP_DIR="$APP_DIR" API_DOMAIN="$API_DOMAIN" REPO_BRANCH="$REPO_BRANCH" \
+              bash infra/deploy-api.sh --skip-git
+
+      - name: Check the API answers
+        run: |
+          for path in /api/ai/itinerary /api/ai/itinerary-options; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+              -H 'Content-Type: application/json' -d '{}' \
+              "https://${{ vars.PRODUCTION_API_DOMAIN }}$path")
+            echo "$path → HTTP $code"
+            # 401（セッション必須）まで届けば、経路は生きている
+            if [ "$code" = "404" ] || [ "$code" = "000" ]; then
+              echo "経路が見つかりません。" >&2
+              exit 1
+            fi
+          done
