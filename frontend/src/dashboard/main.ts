@@ -224,6 +224,15 @@ const appHeaderEl = mountAppHeader({
       attr: "data-edit-head",
       hidden: true,
     },
+    // 人の公開計画を見ているときだけ出す。自分用の下書きに持ち帰る導線。
+    {
+      kind: "button",
+      display: "icon",
+      icon: "documentDuplicate",
+      label: "コピーして自分用に作る",
+      attr: "data-copy-head",
+      hidden: true,
+    },
     { kind: "button", display: "icon", icon: "user", label: "マイページ", attr: "data-mypage" },
   ],
 });
@@ -2477,6 +2486,38 @@ function computeReadOnly(): boolean {
   return planHasOwner(meta);
 }
 
+/**
+ * 見ている計画を自分の下書きとして複製し、そのまま編集画面へ移る。
+ * 元の計画には触らない（参加者も引き継がない）。
+ */
+async function copyPlanToMine(button: HTMLButtonElement): Promise<void> {
+  const meta = TripPlans.get(CONFIG.tripSlug);
+  if (!meta) return;
+  if (!currentUserId()) {
+    const back = "index.html?plan=" + encodeURIComponent(CONFIG.tripSlug);
+    location.href = "login.html?returnTo=" + encodeURIComponent(back);
+    return;
+  }
+  button.disabled = true;
+  try {
+    const checkpoint = db.mutationCheckpoint();
+    const copy = TripPlans.duplicate(CONFIG.tripSlug);
+    if (!copy) {
+      window.alert("コピーできませんでした。読み込みが終わってからもう一度お試しください。");
+      return;
+    }
+    // 編集画面はサーバーから読み直すので、保存が届く前に移ると空の計画になる。
+    // 送信が終わるまで待ってから移動する。
+    await db.flushMutations(checkpoint);
+    TripPlans.setActiveSlug(copy.slug);
+    location.href = "plan-editor.html?plan=" + encodeURIComponent(copy.slug);
+  } catch (error) {
+    window.alert("コピーを保存できませんでした。" + (error instanceof Error ? error.message : ""));
+  } finally {
+    button.disabled = false;
+  }
+}
+
 function computeAccessDenied(): boolean {
   const meta = TripPlans.get(CONFIG.tripSlug);
   return Boolean(meta) && !canViewPlan(meta!);
@@ -2644,6 +2685,12 @@ async function init(): Promise<void> {
     } else {
       editHead.hidden = true;
     }
+  }
+  // 編集できない（＝人の計画を見ている）ときは、コピーして持ち帰れるようにする
+  const copyHead = root.querySelector<HTMLButtonElement>("[data-copy-head]");
+  if (copyHead) {
+    copyHead.hidden = Boolean(editTarget) || CONFIG.mode !== "local";
+    copyHead.addEventListener("click", () => void copyPlanToMine(copyHead));
   }
   applyMobileView(mobileView);
   await requestPassword();

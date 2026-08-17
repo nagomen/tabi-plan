@@ -16,7 +16,6 @@ import { escapeHtml, errorMessage, makeScopedQuery } from "../shared/dom";
 import { registerServiceWorker } from "../shared/pwa";
 import { icon, type IconName } from "../shared/icons";
 import { mountAppHeader } from "../shared/app-header";
-import { getUser } from "../shared/user-store";
 import { getViews } from "../shared/views-store";
 import { planCoverThumbnail } from "../shared/cover";
 import { splitNames } from "../shared/friend-store";
@@ -27,7 +26,7 @@ import {
   isAuthError,
   type AppsScriptResponse,
 } from "../shared/apps-script";
-import { isIdentified } from "../shared/identity";
+import { isIdentified, currentUserId } from "../shared/identity";
 import { canEditPlan, ownerNameOf, roleLabel, roleOf } from "../shared/membership";
 import { addBaseLayer } from "../shared/map-tiles";
 
@@ -965,29 +964,29 @@ function closeMenus(except?: Element | null): void {
  * 公開計画からの複製時は、所有＝メンバーのため自分の名前をメンバーに加え、
  * 「自分の計画」セクションに出るようにする。
  */
-function duplicateToMine(slug: string, fromPublic: boolean): void {
+async function duplicateToMine(slug: string, fromPublic: boolean): Promise<void> {
+  if (!currentUserId()) {
+    navigateWithPageTransition("login.html?returnTo=" + encodeURIComponent("plans.html"));
+    return;
+  }
+  const checkpoint = db.mutationCheckpoint();
   const copy = TripPlans.duplicate(slug);
   if (!copy) {
     render();
     return;
   }
-  const me = getUser().name.trim();
-  if (fromPublic && me) {
-    const data = TripPlans.getData(copy.slug);
-    const current = (data && data.trip && data.trip.members) || copy.members;
-    const names = splitNames(current);
-    if (!names.includes(me)) {
-      const merged = [...names, me].join("、");
-      if (data) {
-        data.trip = { ...(data.trip || {}), members: merged };
-        TripPlans.saveLocalPlan(copy.slug, data);
-      } else {
-        TripPlans.upsert({ slug: copy.slug, members: merged });
-      }
-    }
-  }
+  // 参加者は duplicate() が複製者ひとりに揃えるので、ここでは触らない。
   render();
-  showToast(fromPublic ? "自分の計画に複製しました" : "計画を複製しました");
+  showToast(fromPublic ? "自分の計画に複製しました。編集画面を開きます" : "計画を複製しました。編集画面を開きます");
+  try {
+    // 編集画面はサーバーから読み直すので、送信が終わる前に移ると空になる。
+    await db.flushMutations(checkpoint);
+  } catch (error) {
+    showToast("コピーを保存できませんでした");
+    console.error("[plans] duplicate", error);
+    return;
+  }
+  navigateWithPageTransition("plan-editor.html?plan=" + encodeURIComponent(copy.slug));
 }
 
 document.addEventListener("click", (event) => {
@@ -1044,7 +1043,7 @@ hub.addEventListener("click", (event) => {
   }
   if (target.closest("[data-dup]")) {
     event.preventDefault();
-    duplicateToMine(slug, variant === "public");
+    void duplicateToMine(slug, variant === "public");
     return;
   }
   if (target.closest("[data-del]")) {

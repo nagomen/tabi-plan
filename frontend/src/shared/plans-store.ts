@@ -426,16 +426,35 @@ export function saveData(slug: string, data: LocalPlanData): PlanMeta | null {
   return saveLocalPlan(slug, data);
 }
 
+/**
+ * 計画を複製する。人の公開計画を自分用の下書きとして持ち帰るのに使う。
+ *
+ * 元の参加者は引き継がない。人の計画をコピーしたときに、その人の
+ * メンバー一覧まで自分の計画に入ってしまうのを避けるため。
+ * 作成者は複製した本人になり、非公開の下書きとして始まる
+ * （公開状態は saveLocalPlan / upsert が新規作成時に false にする）。
+ */
 export function duplicate(slug: string): PlanMeta | null {
   const meta = get(slug);
   if (!meta) return null;
   const newSlug = uniqueSlug(`${meta.slug}-copy`);
+  const me = currentUserId();
   const data = getData(slug);
-  if (!data) return upsert({ ...meta, slug: newSlug, title: `${meta.title} のコピー`, published: false });
+  if (!data) {
+    return upsert({
+      ...meta,
+      slug: newSlug,
+      title: `${meta.title} のコピー`,
+      published: false,
+      members: "",
+      memberIds: me ? [me] : [],
+    });
+  }
   const copy = JSON.parse(JSON.stringify(data)) as LocalPlanData;
   copy.trip = copy.trip || ({} as TripInfo);
   copy.trip.title = `${copy.trip.title || meta.title || "旅行"} のコピー`;
-  return saveLocalPlan(newSlug, copy);
+  copy.trip.members = "";
+  return saveLocalPlan(newSlug, copy, me ? [me] : []);
 }
 
 // ---- 選択中プラン（端末固有なので localStorage 直） ---------------------
