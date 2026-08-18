@@ -442,8 +442,12 @@ function renderLocationPlans(plans: PlanMeta[]): PlanMeta[] {
     '<span class="location-side-note">この都市の旅行計画 ' + rows.length + '件</span></span></div>' +
     '<button class="location-back" type="button" data-location-back>' + icon("arrowLeft") + '<span>一覧へ戻る</span></button>';
   destinationsEl.hidden = true;
-  locationPlansEl.hidden = false;
-  locationPlansEl.innerHTML = rows.length
+  // 計画が1件だけのときは、この一覧は下の詳細と同じことを繰り返すだけなので出さない
+  // （件数は見出しの「この都市の旅行計画 ◯件」で分かる）。
+  // 複数あるときは切り替えの役目があるので残す。
+  // 0件のときは案内を出したいので、隠すのは「ちょうど1件」のときだけ。
+  locationPlansEl.hidden = rows.length === 1;
+  locationPlansEl.innerHTML = rows.length > 1
     ? rows.map((meta) =>
         '<a class="location-plan-row' + (meta.slug === state.selectedPlanSlug ? " is-active" : "") +
         '" href="#" data-no-transition="true" data-location-plan="' + escapeHtml(meta.slug) + '">' +
@@ -451,7 +455,7 @@ function renderLocationPlans(plans: PlanMeta[]): PlanMeta[] {
         escapeHtml([meta.dates, locationLabel(meta) || selected].filter(Boolean).join(" ・ ")) +
         '</span></span><em>' + (meta.slug === state.selectedPlanSlug ? "表示中" : "日程") + '</em></a>',
       ).join("")
-    : emptyList("この場所の旅行計画はまだありません。");
+    : rows.length ? "" : emptyList("この場所の旅行計画はまだありません。");
   return rows;
 }
 
