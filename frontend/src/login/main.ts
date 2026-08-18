@@ -8,6 +8,7 @@ import { icon } from "../shared/icons";
 import { makeScopedQuery, errorMessage, escapeHtml } from "../shared/dom";
 import { registerServiceWorker } from "../shared/pwa";
 import * as Backend from "../shared/backend";
+import * as db from "../shared/db";
 import {
   signUp,
   logIn,
@@ -131,6 +132,9 @@ form.addEventListener("submit", async (event) => {
 
 async function init(): Promise<void> {
   await Backend.preload();
+  // 期限切れのトークンが手元に残っていると「ログイン中」と表示してしまう。
+  // サーバーに一度確かめさせ、無効なら db 側がセッションを片付ける。
+  if (db.isEnabled()) await db.load({ fresh: true }).catch(() => undefined);
   registerServiceWorker();
   applyMode("login");
   submitBtn.disabled = false;
