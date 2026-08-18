@@ -151,6 +151,7 @@ export async function bootstrapForUser(userId = ""): Promise<Bootstrap> {
     : [];
 
   return {
+    viewer: userId ? { id: userId } : null,
     users, credentials, plans, members, itinerary, cities, links, checklist,
     candidates, candidateVotes, expenses, expenseShares, settlements, views,
     paymentLinks, userSettings, friendships, pendingInvites,

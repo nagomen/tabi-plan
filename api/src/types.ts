@@ -12,6 +12,12 @@ export type {
 
 /** 起動時に1往復で受け取る全データ。 */
 export interface Bootstrap {
+  /**
+   * サーバーがこの要求を誰として扱ったか。セッションが無い・切れている
+   * ときは null。ブラウザ側は手元のログイン状態と突き合わせて、
+   * 期限切れに開いた時点で気づくために使う。
+   */
+  viewer: { id: string } | null;
   users: UserRow[];
   credentials: CredentialRow[];
   plans: PlanRow[];

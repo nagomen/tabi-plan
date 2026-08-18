@@ -44,6 +44,8 @@ export interface FriendshipRow {
 }
 
 interface Snapshot {
+  /** サーバーがこの要求を誰として扱ったか。セッション切れなら null。 */
+  viewer?: { id: string } | null;
   users: UserRow[];
   credentials: CredentialRow[];
   plans: PlanRow[];
@@ -69,6 +71,7 @@ function emptySnapshot(): Snapshot {
     users: [], credentials: [], plans: [], members: [], itinerary: [], cities: [], links: [],
     checklist: [], candidates: [], candidateVotes: [], expenses: [], expenseShares: [],
     settlements: [], views: [], paymentLinks: [], userSettings: [], pendingInvites: [], friendships: [],
+    viewer: null,
   };
 }
 
@@ -330,9 +333,27 @@ function scheduleCacheWrite(): void {
   cacheTimer = window.setTimeout(() => writeCache(snap), 400);
 }
 
+/**
+ * サーバーが認識した利用者と、手元のログイン状態を突き合わせる。
+ *
+ * bootstrap はセッションが無くても公開ぶんを 200 で返すので、
+ * トークンだけ切れている状態は「保存しようとするまで気づけない」
+ * 状態だった。読み込んだ時点で気づけるよう、ここで判定する。
+ */
+function checkViewer(fresh: Snapshot): void {
+  // viewer を返さない古い API では判定できない。ここで期限切れ扱いにすると、
+  // API を入れ替える前にフロントだけ配ったときに全員がログアウトされてしまう。
+  if (!("viewer" in fresh)) return;
+  if (!sessionTokenForRequest()) return; // そもそも未ログインなら何もしない
+  if (fresh.viewer && fresh.viewer.id) return; // 受け付けられている
+  // 手元にはトークンがあるのにサーバーは誰とも認識していない＝期限切れ
+  expireBrowserSession();
+}
+
 async function revalidate(): Promise<void> {
   try {
     const fresh = await request<Snapshot>("GET", "/api/bootstrap");
+    checkViewer(fresh);
     const changed = JSON.stringify(fresh) !== JSON.stringify(snap);
     snap = fresh;
     writeCache(fresh);
@@ -366,6 +387,7 @@ export async function load(options: { fresh?: boolean; strict?: boolean } = {}):
   loading = (async () => {
     try {
       snap = await request<Snapshot>("GET", "/api/bootstrap");
+      checkViewer(snap);
       loaded = true;
       writeCache(snap);
       emit({ ok: true, path: "/api/bootstrap" });
