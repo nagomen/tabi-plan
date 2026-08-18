@@ -10,8 +10,14 @@ function reducedMotion(): boolean {
 // 対応時は CSS の @view-transition がネイティブに遷移を処理するため、
 // JS による退場アニメ・ブートクロークは一切不要（そちらの方がなめらか）。
 function supportsCrossDocViewTransitions(): boolean {
+  // view-transition-name への対応は「同一ドキュメントの」対応判定にすぎない。
+  // クロスドキュメント遷移が動くかは pagereveal イベントの有無で見る
+  // （このイベントはクロスドキュメント対応と一緒に入った）。
+  // ここを CSS.supports で見ていたため、Safari のように前者だけ対応する
+  // ブラウザではネイティブ遷移もフォールバックも効かず、組み立て途中の
+  // 画面がそのまま見えていた。
   try {
-    return typeof CSS !== "undefined" && CSS.supports("view-transition-name: none");
+    return typeof window !== "undefined" && "onpagereveal" in window;
   } catch {
     return false;
   }
