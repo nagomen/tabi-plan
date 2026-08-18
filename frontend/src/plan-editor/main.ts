@@ -1873,6 +1873,19 @@ let pinLayer: L.LayerGroup | null = null;
 let routeLayer: L.LayerGroup | null = null;
 let candidateLayer: L.LayerGroup | null = null;
 
+/**
+ * 地図は開いたときに作る。
+ *
+ * これまでは起動時に必ず作っていたため、スマホで地図を畳んでいても
+ * 地図エンジン（gzip 約 206KB）とベクタタイル（数百KB）を毎回読んでいた。
+ * 見せないものを読まないようにする。
+ */
+function ensureMap(): void {
+  if (map) return;
+  initMap();
+  refreshMap(true);
+}
+
 function initMap(): void {
   map = L.map(mapEl, { zoomControl: true, attributionControl: true }).setView([39.6, 140.6], 6);
   addBaseLayer(L, map);
@@ -3361,6 +3374,7 @@ const mapToggle = qs<HTMLButtonElement>(root, "[data-map-toggle]");
 const mapClose = qs<HTMLButtonElement>(root, "[data-map-close]");
 mapClose.innerHTML = icon("xMark");
 function setMapCollapsed(collapsed: boolean): void {
+  if (!collapsed) ensureMap();
   root!.classList.toggle("map-collapsed", collapsed);
   mapHeaderBtn.classList.toggle("is-on", !collapsed);
   mapHeaderBtn.setAttribute("aria-label", collapsed ? "地図を表示" : "地図を隠す");
@@ -3476,8 +3490,6 @@ function bootstrapEditor(): void {
   renderCities();
   renderDays();
   renderCandidates();
-  initMap();
-  refreshMap(true);
   // 地図の初期表示：スマホは入力を優先し、地図は必要な時だけ開く。
   const savedMapPref = localStorage.getItem("pe-map-collapsed");
   if (window.matchMedia("(max-width: 680px)").matches) {
@@ -3485,6 +3497,8 @@ function bootstrapEditor(): void {
   } else if (savedMapPref === "1" || (savedMapPref == null && window.matchMedia("(max-width: 760px)").matches)) {
     setMapCollapsed(true);
   }
+  // 畳まない構成（PC など）はこの時点で見えているので、ここで作る。
+  if (!root!.classList.contains("map-collapsed")) ensureMap();
   statusEl.textContent = isNew ? "下書き（自動保存・未保存）" : editable ? "読み込み完了" : statusEl.textContent;
   const meta = slug ? TripPlans.get(slug) : null;
   publishBtn.hidden = Boolean(meta && !canManagePlan(meta));
