@@ -176,3 +176,46 @@ body.ui-page-leave {
   border: 1px solid var(--line, #dfe4e0);
   background: #fff;
 }
+
+/* ログイン期限切れの帯（shared/session-notice.ts が差し込む）。
+   保存できない状態に気づけないままになるのを防ぐため、画面上部に出す。 */
+.trip-session-notice {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 16px;
+  background: #7d2c20;
+  color: #fff;
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: 1.5;
+}
+.trip-session-notice-text { margin: 0; flex: 1; min-width: 0; }
+.trip-session-notice-go {
+  flex: none;
+  padding: 6px 14px;
+  background: #fff;
+  color: #7d2c20;
+  font-size: 12px;
+  font-weight: 700;
+  text-decoration: none;
+}
+.trip-session-notice-close {
+  flex: none;
+  border: 0;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+@media (max-width: 600px) {
+  .trip-session-notice { flex-wrap: wrap; gap: 8px 12px; padding: 9px 12px; font-size: 12px; }
+  .trip-session-notice-text { flex: 1 1 100%; }
+}

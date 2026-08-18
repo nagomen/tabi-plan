@@ -9,6 +9,7 @@ import { initMypageDrawer } from "./mypage-drawer";
 import * as Backend from "./backend";
 import * as Friendships from "./friendship-store";
 import "./app-header.css";
+import { mountSessionNotice } from "./session-notice";
 
 /** ヘッダー下部の補足行に並べる文言。attr を付けるとページ側が動的更新できる。 */
 export interface HeaderMetaSpec {
@@ -139,6 +140,8 @@ export function renderAppHeaderHtml(config: AppHeaderConfig): string {
  * 返り値の <header> は必要ならページ側がさらに参照できる。
  */
 export function mountAppHeader(config: AppHeaderConfig): HTMLElement {
+  // ログイン期限切れの帯は全画面で欲しいので、ヘッダーの設置に合わせて仕掛ける
+  mountSessionNotice();
   const selector = config.mount ?? "[data-app-header]";
   const mount = document.querySelector(selector);
   if (!mount) throw new Error(`app-header のマウント点が見つかりません: ${selector}`);
