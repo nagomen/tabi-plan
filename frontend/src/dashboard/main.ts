@@ -20,6 +20,7 @@ import {
   type TripConfig,
 } from "../shared/config";
 import * as TripPlans from "../shared/plans-store";
+import { isPublished } from "../shared/plans-store";
 import { getUser } from "../shared/user-store";
 import { canEditPlan, canManagePlan, canViewPlan, isMemberOf, planHasOwner } from "../shared/membership";
 import { currentAccount } from "../shared/account-store";
@@ -2481,8 +2482,17 @@ function computeReadOnly(): boolean {
   const meta = TripPlans.get(CONFIG.tripSlug);
   if (!meta) return false;
   if (canEditPlan(meta)) return false;
-  // 権限行もメンバー名も無い計画は持ち主が居ない＝ロックしない。
-  // （ログアウト状態で作った計画を、本人が二度と編集できなくなるのを防ぐ）
+  // 公開されている計画は、参加者でなければ閲覧のみ。
+  //
+  // ここは planHasOwner だけで判断していたが、bootstrap は自分が
+  // 関わらない計画の参加者行を返さない。そのため人の公開計画は
+  // 「持ち主が居ない」と見えてしまい、編集できる扱いになっていた
+  // （保存はサーバーが 403 で止めるが、編集ボタンが出て、
+  //   代わりに出すべき「コピーして自分用に作る」が出なかった）。
+  if (isPublished(meta)) return true;
+  // 未公開の計画で参加者も権限行も無いものは、持ち主が居ないと見なして
+  // ロックしない（ログアウト状態で作った下書きを、本人が二度と
+  // 編集できなくなるのを防ぐ）。
   return planHasOwner(meta);
 }
 
