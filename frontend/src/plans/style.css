@@ -448,42 +448,6 @@
   }
   .location-schedule[hidden],
   .map-board[hidden] { display: none; }
-  .location-plan-row {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: 10px;
-    align-items: center;
-    min-height: 72px;
-    padding: 12px 18px;
-    border-bottom: 1px solid var(--line);
-    text-decoration: none;
-  }
-  .location-plan-row:hover,
-  .location-plan-row:focus-visible,
-  .location-plan-row.is-active {
-    background: var(--green-soft);
-    outline: none;
-  }
-  .location-plan-row b {
-    display: block;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    font-size: 15px;
-    font-weight: 650;
-  }
-  .location-plan-row span {
-    color: var(--muted);
-    font-size: 12px;
-    font-weight: 520;
-  }
-  .location-plan-row em {
-    color: var(--green);
-    font-style: normal;
-    font-size: 11px;
-    font-weight: 620;
-    white-space: nowrap;
-  }
   .schedule-head {
     display: grid;
     grid-template-columns: 34px minmax(0, 1fr) auto;
@@ -2828,4 +2792,50 @@
     padding-left: 24px;
     padding-right: 24px;
   }
+}
+
+/* 場所を選んだあとの計画切り替え。カードだと下の詳細と同じ内容が
+   二重に並ぶので、横に流れるタブにする（見出しの続きとして読ませる）。 */
+.location-plan-tabs {
+  display: flex;
+  gap: 2px;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  scroll-snap-type: inline proximity;
+  scroll-padding-inline-start: 22px;
+  padding: 0 22px;
+  border-bottom: 1px solid var(--line);
+  background: #fff;
+}
+.location-plan-tab {
+  flex: none;
+  scroll-snap-align: start;
+  display: grid;
+  gap: 1px;
+  padding: 11px 14px 9px;
+  border-bottom: 2px solid transparent;
+  text-decoration: none;
+  color: var(--muted);
+}
+.location-plan-tab b {
+  font-size: 13px;
+  font-weight: 620;
+  white-space: nowrap;
+}
+.location-plan-tab small {
+  font-size: 10.5px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.location-plan-tab:hover { color: var(--ink); }
+.location-plan-tab.is-active {
+  color: var(--green);
+  border-bottom-color: var(--green);
+}
+.location-plan-tab:focus-visible { outline: 2px solid var(--green); outline-offset: -2px; }
+
+@media (max-width: 860px) {
+  .location-plan-tabs { padding: 0 12px; scroll-padding-inline-start: 12px; }
+  .location-plan-tab { padding: 10px 12px 8px; }
+  .location-plan-tab b { font-size: 12.5px; }
 }

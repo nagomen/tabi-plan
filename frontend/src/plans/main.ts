@@ -447,14 +447,18 @@ function renderLocationPlans(plans: PlanMeta[]): PlanMeta[] {
   // 複数あるときは切り替えの役目があるので残す。
   // 0件のときは案内を出したいので、隠すのは「ちょうど1件」のときだけ。
   locationPlansEl.hidden = rows.length === 1;
+  // 複数あるときは横に流れるタブで切り替える（カードにすると下の詳細と
+  // 同じ内容が二重に並ぶため）。選んでいるものは下線で示す。
   locationPlansEl.innerHTML = rows.length > 1
-    ? rows.map((meta) =>
-        '<a class="location-plan-row' + (meta.slug === state.selectedPlanSlug ? " is-active" : "") +
-        '" href="#" data-no-transition="true" data-location-plan="' + escapeHtml(meta.slug) + '">' +
-        '<span><b>' + escapeHtml(meta.title || "無題の旅行") + '</b><span>' +
-        escapeHtml([meta.dates, locationLabel(meta) || selected].filter(Boolean).join(" ・ ")) +
-        '</span></span><em>' + (meta.slug === state.selectedPlanSlug ? "表示中" : "日程") + '</em></a>',
-      ).join("")
+    ? '<div class="location-plan-tabs" role="tablist">' +
+      rows.map((meta) =>
+        '<a class="location-plan-tab' + (meta.slug === state.selectedPlanSlug ? " is-active" : "") +
+        '" href="#" role="tab" aria-selected="' + (meta.slug === state.selectedPlanSlug ? "true" : "false") +
+        '" data-no-transition="true" data-location-plan="' + escapeHtml(meta.slug) + '">' +
+        '<b>' + escapeHtml(meta.title || "無題の旅行") + '</b>' +
+        '<small>' + escapeHtml(meta.dates || "") + '</small></a>',
+      ).join("") +
+      "</div>"
     : rows.length ? "" : emptyList("この場所の旅行計画はまだありません。");
   return rows;
 }
