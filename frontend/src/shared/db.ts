@@ -350,17 +350,49 @@ function checkViewer(fresh: Snapshot): void {
   expireBrowserSession();
 }
 
+/**
+ * 画面を描き直すべき変化があったかだけを見る指紋。
+ *
+ * 全体を JSON.stringify して比べていたが、閲覧数のように「誰かが見た」
+ * だけで動く値まで差分になり、そのたびに画面を作り直していた。
+ * 表示に関わる行の数と、最後の更新時刻だけを見る。
+ */
+function renderFingerprint(value: Snapshot): string {
+  const counts = [
+    value.plans, value.members, value.itinerary, value.cities, value.links,
+    value.checklist, value.candidates, value.candidateVotes, value.expenses,
+    value.expenseShares, value.settlements, value.users, value.paymentLinks,
+    value.userSettings, value.friendships, value.pendingInvites,
+  ].map((rows) => (Array.isArray(rows) ? rows.length : 0)).join(",");
+  let latest = "";
+  for (const plan of value.plans || []) {
+    const at = plan.updated_at || "";
+    if (at > latest) latest = at;
+  }
+  return counts + "|" + latest;
+}
+
 async function revalidate(): Promise<void> {
   try {
     const fresh = await request<Snapshot>("GET", "/api/bootstrap");
     checkViewer(fresh);
-    const changed = JSON.stringify(fresh) !== JSON.stringify(snap);
+    const changed = renderFingerprint(fresh) !== renderFingerprint(snap);
     snap = fresh;
     writeCache(fresh);
     emit({ ok: true, path: "/api/bootstrap", refreshed: true, changed });
   } catch (error) {
     emit({ ok: false, path: "/api/bootstrap", error: String(error) });
   }
+}
+
+/** 取り直しは初回描画の邪魔をしないよう、手が空いてから始める。 */
+function revalidateWhenIdle(): void {
+  const start = (): void => { void revalidate(); };
+  const idle = (window as unknown as {
+    requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
+  }).requestIdleCallback;
+  if (idle) idle(start, { timeout: 2000 });
+  else window.setTimeout(start, 300);
 }
 
 /**
@@ -380,7 +412,7 @@ export async function load(options: { fresh?: boolean; strict?: boolean } = {}):
     if (cached) {
       snap = cached;
       loaded = true;
-      void revalidate();
+      revalidateWhenIdle();
       return;
     }
   }

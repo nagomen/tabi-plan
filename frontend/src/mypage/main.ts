@@ -237,6 +237,22 @@ function renderPlans(): void {
 const tabs = Array.from(document.querySelectorAll<HTMLButtonElement>(".mp-tab"));
 const views = Array.from(document.querySelectorAll<HTMLElement>(".mp-view"));
 const initialTab = new URLSearchParams(location.search).get("tab") || "";
+/** PC で常時表示になる部分（スマホではタブを開いたときに描く）。 */
+const wideLayout = window.matchMedia("(min-width: 860px)");
+let hiddenViewsDrawn = false;
+
+function renderHiddenViews(): void {
+  hiddenViewsDrawn = true;
+  renderCalendar();
+  renderPayLinks();
+  renderFriends();
+}
+
+// 横幅が広がって全部並ぶようになったら、そのとき描く
+wideLayout.addEventListener("change", (event) => {
+  if (event.matches && !hiddenViewsDrawn) renderHiddenViews();
+});
+
 function showTab(name: string): void {
   tabs.forEach((t) => t.classList.toggle("is-active", t.dataset.tab === name));
   views.forEach((v) => { v.hidden = v.dataset.view !== name; });
@@ -561,9 +577,10 @@ async function init(): Promise<void> {
   registerServiceWorker();
   renderProfile();
   renderPlans();
-  renderCalendar(); // PC は左右2カラムで日程も常時表示するため初期描画する
-  renderPayLinks(); // PC ではタブが無く常時表示されるため初期描画する
-  renderFriends(); // PC ではタブが無く常時表示されるため初期描画する
+  // PC はタブが無く全部並ぶので最初から描く。スマホはタブなので、
+  // 開いたときに showTab が描く。最初から全部描くと、見えていない
+  // カレンダー・支払い・友達のぶんまで初回の処理時間に乗ってしまう。
+  if (wideLayout.matches) renderHiddenViews();
   if (initialTab && tabs.some((tab) => tab.dataset.tab === initialTab)) showTab(initialTab);
 }
 
