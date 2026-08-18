@@ -340,12 +340,47 @@ function scheduleCacheWrite(): void {
  * トークンだけ切れている状態は「保存しようとするまで気づけない」
  * 状態だった。読み込んだ時点で気づけるよう、ここで判定する。
  */
+const IDENTITY_STORAGE_KEY = "trip-dashboard-identity";
+
+/**
+ * サーバーが認めた利用者に、手元の「自分」を合わせる。
+ *
+ * この2つがずれていると、作成者を別人にした行を作ってしまい、
+ * 保存が 403（この計画を保存する権限がありません）になる。
+ * 公開計画のコピーで実際にこれが起きていた。
+ * identity.ts は db.ts を読むので、ここでは保存先へ直接書く。
+ */
+function syncIdentity(userId: string): void {
+  try {
+    const raw = localStorage.getItem(IDENTITY_STORAGE_KEY);
+    const current = raw ? (JSON.parse(raw) as { userId?: string }).userId || "" : "";
+    if (current === userId) return;
+    localStorage.setItem(IDENTITY_STORAGE_KEY, JSON.stringify({ userId }));
+  } catch {
+    /* localStorage が使えない環境 */
+  }
+  // セッションが持つ利用者もそろえる（画面の「ログイン中」表示がずれないように）
+  try {
+    const raw = localStorage.getItem(SESSION_STORAGE_KEY);
+    if (!raw) return;
+    const session = JSON.parse(raw) as { userId?: string };
+    if (session.userId === userId) return;
+    localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({ ...session, userId }));
+  } catch {
+    /* ignore */
+  }
+}
+
 function checkViewer(fresh: Snapshot): void {
   // viewer を返さない古い API では判定できない。ここで期限切れ扱いにすると、
   // API を入れ替える前にフロントだけ配ったときに全員がログアウトされてしまう。
   if (!("viewer" in fresh)) return;
   if (!sessionTokenForRequest()) return; // そもそも未ログインなら何もしない
-  if (fresh.viewer && fresh.viewer.id) return; // 受け付けられている
+  const viewerId = fresh.viewer && fresh.viewer.id ? fresh.viewer.id : "";
+  if (viewerId) {
+    syncIdentity(viewerId);
+    return;
+  }
   // 手元にはトークンがあるのにサーバーは誰とも認識していない＝期限切れ
   expireBrowserSession();
 }

@@ -11,6 +11,7 @@ interface PlanAccessRow {
   visibility: "public" | "invite";
   status: "draft" | "published";
   open_editing: 0 | 1;
+  owner_user_id: string | null;
   role: Exclude<PlanRole, null> | null;
 }
 
@@ -26,7 +27,7 @@ export interface PlanAccess {
 /** 計画情報と参加者ロールを一度だけ読み、同一リクエスト内の認可判定へ再利用する。 */
 export async function getPlanAccess(planId: string, userId: string): Promise<PlanAccess> {
   const rows = await all<PlanAccessRow>(
-    `SELECT p.visibility, p.status, p.open_editing, pm.role
+    `SELECT p.visibility, p.status, p.open_editing, p.owner_user_id, pm.role
        FROM plans p
        LEFT JOIN plan_members pm
          ON pm.plan_id = p.id AND pm.user_id = ? AND pm.status = 'active'
@@ -46,7 +47,10 @@ export async function getPlanAccess(planId: string, userId: string): Promise<Pla
     };
   }
 
-  const role = plan.role || null;
+  // 参加者行が無くても、作成者本人なら所有者として扱う。
+  // 行が作られなかった計画を本人が保存できず 403 になるのを防ぐ
+  // （公開計画のコピーで実際に起きた）。
+  const role = plan.role || (userId && plan.owner_user_id === userId ? "owner" : null);
   const context = {
     role,
     loggedIn: Boolean(userId),
