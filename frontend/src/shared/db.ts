@@ -95,6 +95,47 @@ export function isEnabled(): boolean {
   return api() !== null;
 }
 
+// ---- LINE の手続きをこの端末に結び付ける印 -------------------------------
+//
+// 印が無いと、攻撃者が自分で完走した戻り先 URL（#line_session=…）を他人に
+// 踏ませるだけで、その人を攻撃者のアカウントにログインさせられる。
+// 開始時にこの端末へ印を置き、戻ってきた印と一致しなければ受け取らない。
+
+const LINE_NONCE_KEY = "trip-line-nonce";
+const LINE_NONCE_TTL_MS = 10 * 60 * 1000;
+
+function issueLineNonce(): string {
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  let value = "";
+  for (const byte of bytes) value += byte.toString(16).padStart(2, "0");
+  try {
+    localStorage.setItem(LINE_NONCE_KEY, JSON.stringify({ value, expiresAt: Date.now() + LINE_NONCE_TTL_MS }));
+  } catch {
+    /* 保存できない端末では照合できないが、開始自体は妨げない */
+  }
+  return value;
+}
+
+/** 印を取り出して消す（一度しか使えないようにする）。 */
+function takeLineNonce(): string {
+  try {
+    const raw = localStorage.getItem(LINE_NONCE_KEY);
+    localStorage.removeItem(LINE_NONCE_KEY);
+    if (!raw) return "";
+    const parsed = JSON.parse(raw) as { value?: string; expiresAt?: number };
+    if (!parsed.value || !parsed.expiresAt || parsed.expiresAt < Date.now()) return "";
+    return parsed.value;
+  } catch {
+    return "";
+  }
+}
+
+/** LINE ログインの導線を作るための API のベース URL（未設定なら空）。 */
+export function apiBaseUrl(): string {
+  return api()?.base || "";
+}
+
 /** bootstrap を読み終えたか。読む前に書くと実在しない行を作ってしまうので判定に使う。 */
 /**
  * LINE から戻った直後の取り込み結果。
@@ -111,17 +152,19 @@ export function adoptSessionFromUrl(): { ok: boolean; error: string } {
   return urlSession;
 }
 
-/** LINE の紐付け開始 URL を作る（ログイン中の紐付けに使う）。 */
-export function lineLinkUrl(returnTo: string): string {
-  const base = api()?.base || "";
-  if (!base) return "";
-  const params = new URLSearchParams({ return_to: returnTo, link: sessionTokenForRequest() });
-  return base + "/api/auth/line/start?" + params.toString();
-}
-
-/** LINE ログインの導線を作るための API のベース URL（未設定なら空）。 */
-export function apiBaseUrl(): string {
-  return api()?.base || "";
+/**
+ * LINE の認可 URL をサーバーに作らせる。ログイン中に呼べば紐付けになる。
+ *
+ * URL を GET で組ませるとセッショントークンがクエリに乗り、nginx の
+ * アクセスログに平文で残ってしまう。ここは POST でヘッダに載せて渡す。
+ */
+export async function lineAuthorizeUrl(returnTo: string): Promise<string> {
+  if (!api()) return "";
+  const result = await request<{ url?: string }>("POST", "/api/auth/line/authorize-url", {
+    return_to: returnTo,
+    nonce: issueLineNonce(),
+  });
+  return result.url || "";
 }
 
 /**
@@ -141,9 +184,11 @@ function readSessionFromUrl(): { ok: boolean; error: string } {
   if (!hash) return { ok: false, error: "" };
   const params = new URLSearchParams(hash);
   const token = params.get("line_session") || "";
+  const nonce = params.get("line_nonce") || "";
   const error = params.get("line_error") || "";
   if (!token && !error) return { ok: false, error: "" };
   params.delete("line_session");
+  params.delete("line_nonce");
   params.delete("line_error");
   try {
     const rest = params.toString();
@@ -152,6 +197,14 @@ function readSessionFromUrl(): { ok: boolean; error: string } {
     /* ignore */
   }
   if (!token) return { ok: false, error };
+  // この端末が始めた手続きでなければ受け取らない（セッション固定を防ぐ）
+  const expected = takeLineNonce();
+  if (!nonce || !expected || nonce !== expected) {
+    return {
+      ok: false,
+      error: "この端末で開始したログインではないため、受け取りませんでした。もう一度ログインしてください。",
+    };
+  }
   try {
     localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({ userId: "", email: "", name: "", token }));
   } catch {

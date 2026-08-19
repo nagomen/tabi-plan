@@ -30,19 +30,33 @@ function sign(value: string): string {
   return crypto.createHmac("sha256", config.sessionSecret).update(value).digest("base64url");
 }
 
-function makeState(returnTo: string, linkTo: string): string {
+/**
+ * ブラウザが始めた手続きであることを示す印。
+ *
+ * これを state に載せてコールバックの fragment で返し、ブラウザ側は
+ * 自分が保存した値と一致しなければセッションを受け取らない。無いと、
+ * 攻撃者が自分で完走した戻り先 URL を他人に踏ませることで、そのまま
+ * 攻撃者のアカウントにログインさせられてしまう（セッション固定）。
+ */
+function safeNonce(raw: string): string {
+  const value = String(raw || "");
+  return /^[A-Za-z0-9_-]{16,64}$/.test(value) ? value : "";
+}
+
+function makeState(returnTo: string, linkTo: string, nonce: string): string {
   const payload = Buffer.from(JSON.stringify({
     r: returnTo,
     // 紐付け先は利用者 id で持つ。セッショントークンを LINE へ渡さないため、
     // start の時点でサーバーが解決しておく。
     l: linkTo || "",
+    c: safeNonce(nonce),
     n: crypto.randomBytes(8).toString("base64url"),
     e: Date.now() + STATE_TTL_MS,
   })).toString("base64url");
   return `${payload}.${sign(payload)}`;
 }
 
-function readState(state: string): { returnTo: string; linkTo: string } | null {
+function readState(state: string): { returnTo: string; linkTo: string; nonce: string } | null {
   const [payload, mac] = String(state || "").split(".");
   if (!payload || !mac) return null;
   const expected = sign(payload);
@@ -50,10 +64,14 @@ function readState(state: string): { returnTo: string; linkTo: string } | null {
   if (!crypto.timingSafeEqual(Buffer.from(mac), Buffer.from(expected))) return null;
   try {
     const parsed = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as {
-      r?: string; l?: string; e?: number;
+      r?: string; l?: string; c?: string; e?: number;
     };
     if (!parsed.e || parsed.e < Date.now()) return null;
-    return { returnTo: String(parsed.r || ""), linkTo: String(parsed.l || "") };
+    return {
+      returnTo: String(parsed.r || ""),
+      linkTo: String(parsed.l || ""),
+      nonce: safeNonce(String(parsed.c || "")),
+    };
   } catch {
     return null;
   }
@@ -77,12 +95,12 @@ export function safeReturnTo(raw: string): string {
   return fallback;
 }
 
-export function authorizeUrl(returnTo: string, linkTo = ""): string {
+export function authorizeUrl(returnTo: string, linkTo = "", nonce = ""): string {
   const params = new URLSearchParams({
     response_type: "code",
     client_id: config.line.channelId,
     redirect_uri: config.line.callbackUrl,
-    state: makeState(safeReturnTo(returnTo), linkTo),
+    state: makeState(safeReturnTo(returnTo), linkTo, nonce),
     // profile: 表示名とアイコン / openid: 本人確認用の id_token
     scope: "profile openid",
   });
@@ -181,13 +199,16 @@ export async function resolveLineUser(profile: LineProfile, linkTo = ""): Promis
 export async function handleLineCallback(input: {
   code: string;
   state: string;
-}): Promise<{ userId: string; returnTo: string; linked: boolean }> {
+}): Promise<{ userId: string; returnTo: string; linked: boolean; nonce: string }> {
   const state = readState(input.state);
   if (!state) throw new Error("ログインの手続きが期限切れです。もう一度お試しください");
   if (!input.code) throw new Error("LINE から認可コードが返りませんでした");
   const profile = await exchangeCode(input.code);
   const userId = await resolveLineUser(profile, state.linkTo);
-  return { userId, returnTo: safeReturnTo(state.returnTo), linked: Boolean(state.linkTo) };
+  return {
+    userId, returnTo: safeReturnTo(state.returnTo),
+    linked: Boolean(state.linkTo), nonce: state.nonce,
+  };
 }
 
 /** この利用者に紐付いている外部ログイン。マイページの表示に使う。 */

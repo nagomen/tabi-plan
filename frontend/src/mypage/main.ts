@@ -394,8 +394,12 @@ loginMethodsEl?.addEventListener("click", (event) => {
   const target = event.target;
   if (!(target instanceof Element)) return;
   if (target.closest("[data-line-link]")) {
-    const url = db.lineLinkUrl(new URL("mypage.html", location.href).toString());
-    if (url) location.href = url;
+    void db.lineAuthorizeUrl(new URL("mypage.html", location.href).toString())
+      .then((url) => {
+        if (url) location.href = url;
+        else window.alert("LINEとの連携を開始できませんでした");
+      })
+      .catch((error) => window.alert(errorMessage(error)));
     return;
   }
   if (target.closest("[data-line-unlink]")) {

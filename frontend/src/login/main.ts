@@ -144,7 +144,17 @@ function setupLineLogin(): void {
   lineBtn.addEventListener("click", () => {
     // 戻り先は「ログイン後に行きたい画面」。許可オリジンの外はサーバーが弾く。
     const back = new URL(returnTo || "plans.html", location.href).toString();
-    location.href = base + "/api/auth/line/start?return_to=" + encodeURIComponent(back);
+    lineBtn.disabled = true;
+    // URL はサーバーに作らせる（この端末の印を state に入れてもらうため）。
+    void db.lineAuthorizeUrl(back)
+      .then((url) => {
+        if (url) location.href = url;
+        else throw new Error("LINEログインを開始できませんでした");
+      })
+      .catch((error) => {
+        lineBtn.disabled = false;
+        showError(errorMessage(error) || "LINEログインを開始できませんでした");
+      });
   });
 }
 

@@ -194,10 +194,20 @@ const server = http.createServer(async (req, res) => {
     }
     const query = new URL(req.url || "/", "http://localhost").searchParams;
     if (path === "/api/auth/line/start") {
-      // ログイン中に呼ばれたら（link=セッション）その利用者へ紐付ける。
-      // 解決はここで済ませ、トークン自体は LINE へ渡さない。
-      const linkTo = await resolveSession(query.get("link") || "");
-      redirect(res, authorizeUrl(query.get("return_to") || "", linkTo));
+      // ここは画面遷移で来るため、クエリはアクセスログに残る。
+      // よってセッショントークンは受け取らない（紐付けは
+      // POST /api/auth/line/authorize-url 側で扱う）。nonce は秘密ではない。
+      //
+      // link= を付けてくるのは、紐付けを URL で渡していた古い画面。
+      // そのまま進めると紐付けではなく新規ログインになり、別アカウントが
+      // できてしまうので、読み込み直しを促して止める。
+      if (query.get("link")) {
+        const back = config.allowedOrigins[0] || "";
+        const message = "画面を読み込み直してから、もう一度お試しください";
+        redirect(res, `${back}/login.html#line_error=${encodeURIComponent(message)}`);
+        return;
+      }
+      redirect(res, authorizeUrl(query.get("return_to") || "", "", query.get("nonce") || ""));
       return;
     }
     try {
@@ -207,7 +217,10 @@ const server = http.createServer(async (req, res) => {
       });
       const session = await sessionForUser(result.userId);
       // セッションは #fragment で渡す。サーバーへ送られないのでログに残らない。
-      redirect(res, `${result.returnTo}#line_session=${encodeURIComponent(session)}`);
+      // nonce も返し、手続きを始めた本人のブラウザだけが受け取れるようにする。
+      const fragment = `line_session=${encodeURIComponent(session)}`
+        + (result.nonce ? `&line_nonce=${encodeURIComponent(result.nonce)}` : "");
+      redirect(res, `${result.returnTo}#${fragment}`);
     } catch (error) {
       const message = error instanceof Error ? error.message : "LINE ログインに失敗しました";
       const back = config.allowedOrigins[0] || "";
@@ -254,7 +267,29 @@ const server = http.createServer(async (req, res) => {
       send(res, 200, { ok: true }, cors);
       return;
     }
+    // LINE の認可 URL を作って返すだけ。セッションはヘッダで受け取るので、
+    // 紐付けのときもトークンが URL（＝アクセスログ）へ出ない。
+    if (path === "/api/auth/line/authorize-url" && req.method === "POST") {
+      if (!lineLoginEnabled()) {
+        send(res, 503, { error: "LINE ログインは設定されていません" }, cors);
+        return;
+      }
+      const linkTo = await resolveSession(sessionToken);
+      const url = authorizeUrl(
+        typeof body.return_to === "string" ? body.return_to : "",
+        linkTo,
+        typeof body.nonce === "string" ? body.nonce : "",
+      );
+      send(res, 200, { url }, cors);
+      return;
+    }
     const actorUserId = await resolveSession(sessionToken);
+    // 手元のトークンが無効なのに書き込みへ来たら、権限不足ではなく期限切れ。
+    // 403 だと画面に「権限がありません」と出て、ログインし直す導線が出ない。
+    if (sessionToken && !actorUserId && req.method !== "GET") {
+      send(res, 401, { error: "session_required" }, cors);
+      return;
+    }
     const handled = await route(req.method || "GET", path, body, actorUserId);
     if (handled) {
       send(res, handled.status, handled.body, cors);
