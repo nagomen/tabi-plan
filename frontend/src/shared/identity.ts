@@ -30,6 +30,21 @@ function read(): Stored | null {
   }
 }
 
+/**
+ * ログイン中の利用者 id。account-store は identity を読むので、循環を避けて
+ * 保存先を直接見る（キーは account-store の SESSION_KEY と同じ）。
+ */
+function loggedInUserId(): string {
+  try {
+    const raw = localStorage.getItem("trip-dashboard-session");
+    if (!raw) return "";
+    const parsed = JSON.parse(raw) as { userId?: string };
+    return parsed.userId || "";
+  } catch {
+    return "";
+  }
+}
+
 function write(userId: string): void {
   try {
     localStorage.setItem(KEY, JSON.stringify({ userId }));
@@ -70,6 +85,15 @@ export function clearCurrentUser(): void {
 export async function identifyByName(displayName: string): Promise<db.UserRow | null> {
   const name = String(displayName || "").trim();
   if (!name) return null;
+  // ログイン済みなら、名前の入力で別人になれてしまわないようにする。
+  // 名前は一意ではないので、同名の他人の id を掴めてしまい、「自分の立替」や
+  // 支払者の初期値が他人のものになる（サーバーの権限はセッション基準なので
+  // 情報は漏れないが、表示と既定値が狂う）。
+  const account = loggedInUserId();
+  if (account) {
+    write(account);
+    return db.userById(account) || null;
+  }
   const existing = db.findUserByName(name);
   if (existing) {
     write(existing.id);

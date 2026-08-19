@@ -87,6 +87,10 @@ function constantTimeEqual(a: string, b: string): boolean {
 // ---- アカウント永続化 ---------------------------------------------------
 
 function readAccounts(): AccountRecord[] {
+  // API 構成では users / user_credentials が正。端末に残った旧ローカル記録を
+  // 混ぜると、表示名やメールがサーバーとずれる（currentAccount がローカルを
+  // 先に見ていたため、実際にずれていた）。読まないことで真実を1つにする。
+  if (db.isEnabled()) return [];
   const arr = Backend.getJSON<AccountRecord[]>(ACCOUNTS_KEY, []);
   return Array.isArray(arr) ? arr : [];
 }

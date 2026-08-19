@@ -481,6 +481,7 @@
 }
 .mp-login-form input {
   flex: 1 1 180px;
+  max-width: 260px;
   min-width: 0;
   min-height: 38px;
   padding: 8px 10px;
@@ -517,3 +518,8 @@
 }
 .mp-login-msg.is-error { color: #b3261e; }
 .mp-login-msg.is-done { color: var(--green, #2f7d5d); }
+
+/* 狭い画面では2つ並べると読めなくなるので縦に積む */
+@media (max-width: 560px) {
+  .mp-login-form input { flex: 1 1 100%; max-width: none; }
+}

@@ -48,7 +48,7 @@ const ICONS: [string, IconName][] = [
   ["[data-ic-back]", "chevronLeft"],
   ["[data-ic-plans]", "listBullet"],
   ["[data-ic-schedule]", "calendarDays"],
-  ["[data-ic-pay]", "banknotes"],
+  ["[data-ic-settings]", "cog"],
   ["[data-ic-friends]", "users"],
   ["[data-ic-prev]", "chevronLeft"],
   ["[data-ic-next]", "chevronRight"],
