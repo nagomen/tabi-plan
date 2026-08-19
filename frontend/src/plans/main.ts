@@ -977,6 +977,13 @@ async function duplicateToMine(slug: string, fromPublic: boolean): Promise<void>
     navigateWithPageTransition("login.html?returnTo=" + encodeURIComponent("plans.html"));
     return;
   }
+  // 既にコピーを持っているなら、作り直さずそれを開く。
+  const already = TripPlans.existingCopyOf(slug);
+  if (already) {
+    showToast("すでにコピーがあります。そのコピーを開きます");
+    navigateWithPageTransition("plan-editor.html?plan=" + encodeURIComponent(already.slug));
+    return;
+  }
   let copy: PlanMeta | null = null;
   try {
     copy = await TripPlans.duplicateAndSave(slug);

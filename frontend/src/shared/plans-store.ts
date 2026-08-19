@@ -458,6 +458,19 @@ export function duplicate(slug: string): PlanMeta | null {
 }
 
 /**
+ * この計画から作った自分のコピーが既にあれば返す。
+ * slug は「元のslug-copy-乱数」で作るので、その形と参加者で見分ける。
+ */
+export function existingCopyOf(slug: string): PlanMeta | null {
+  const me = currentUserId();
+  if (!me) return null;
+  const prefix = safeSlug(slug) + "-copy-";
+  return list().find((meta) =>
+    meta.slug.startsWith(prefix) && (meta.memberIds || []).includes(me)
+  ) || null;
+}
+
+/**
  * 複製して、保存が届くまで待つ。
  *
  * 編集画面はサーバーから読み直すので、送信が終わる前に移ると空の計画に

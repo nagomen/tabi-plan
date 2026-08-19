@@ -2508,6 +2508,13 @@ async function copyPlanToMine(button: HTMLButtonElement): Promise<void> {
     location.href = "login.html?returnTo=" + encodeURIComponent(back);
     return;
   }
+  // 既にこの計画のコピーを持っているなら、作り直さずそれを開く。
+  const already = TripPlans.existingCopyOf(CONFIG.tripSlug);
+  if (already) {
+    TripPlans.setActiveSlug(already.slug);
+    location.href = "plan-editor.html?plan=" + encodeURIComponent(already.slug);
+    return;
+  }
   button.disabled = true;
   try {
     const copy = await TripPlans.duplicateAndSave(CONFIG.tripSlug);
