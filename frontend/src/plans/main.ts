@@ -977,8 +977,15 @@ async function duplicateToMine(slug: string, fromPublic: boolean): Promise<void>
     navigateWithPageTransition("login.html?returnTo=" + encodeURIComponent("plans.html"));
     return;
   }
-  const checkpoint = db.mutationCheckpoint();
-  const copy = TripPlans.duplicate(slug);
+  let copy: PlanMeta | null = null;
+  try {
+    copy = await TripPlans.duplicateAndSave(slug);
+  } catch (error) {
+    render();
+    showToast("コピーを保存できませんでした");
+    console.error("[plans] duplicate", error);
+    return;
+  }
   if (!copy) {
     render();
     return;
@@ -986,14 +993,6 @@ async function duplicateToMine(slug: string, fromPublic: boolean): Promise<void>
   // 参加者は duplicate() が複製者ひとりに揃えるので、ここでは触らない。
   render();
   showToast(fromPublic ? "自分の計画に複製しました。編集画面を開きます" : "計画を複製しました。編集画面を開きます");
-  try {
-    // 編集画面はサーバーから読み直すので、送信が終わる前に移ると空になる。
-    await db.flushMutations(checkpoint);
-  } catch (error) {
-    showToast("コピーを保存できませんでした");
-    console.error("[plans] duplicate", error);
-    return;
-  }
   navigateWithPageTransition("plan-editor.html?plan=" + encodeURIComponent(copy.slug));
 }
 

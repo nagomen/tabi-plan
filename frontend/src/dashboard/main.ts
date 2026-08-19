@@ -2510,15 +2510,11 @@ async function copyPlanToMine(button: HTMLButtonElement): Promise<void> {
   }
   button.disabled = true;
   try {
-    const checkpoint = db.mutationCheckpoint();
-    const copy = TripPlans.duplicate(CONFIG.tripSlug);
+    const copy = await TripPlans.duplicateAndSave(CONFIG.tripSlug);
     if (!copy) {
       window.alert("コピーできませんでした。読み込みが終わってからもう一度お試しください。");
       return;
     }
-    // 編集画面はサーバーから読み直すので、保存が届く前に移ると空の計画になる。
-    // 送信が終わるまで待ってから移動する。
-    await db.flushMutations(checkpoint);
     TripPlans.setActiveSlug(copy.slug);
     location.href = "plan-editor.html?plan=" + encodeURIComponent(copy.slug);
   } catch (error) {

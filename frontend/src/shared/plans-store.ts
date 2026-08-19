@@ -457,6 +457,30 @@ export function duplicate(slug: string): PlanMeta | null {
   return saveLocalPlan(newSlug, copy, me ? [me] : []);
 }
 
+/**
+ * 複製して、保存が届くまで待つ。
+ *
+ * 編集画面はサーバーから読み直すので、送信が終わる前に移ると空の計画に
+ * なる。また、以前の失敗で同じ URL の計画が残っていると slug が重なって
+ * 弾かれることがあるので、その場合だけ引き直して一度やり直す。
+ */
+export async function duplicateAndSave(slug: string): Promise<PlanMeta | null> {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const checkpoint = db.mutationCheckpoint();
+    const copy = duplicate(slug);
+    if (!copy) return null;
+    try {
+      await db.flushMutations(checkpoint);
+      return copy;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (attempt === 0 && /同じURL|ER_DUP_ENTRY/.test(message)) continue;
+      throw error;
+    }
+  }
+  return null;
+}
+
 // ---- 選択中プラン（端末固有なので localStorage 直） ---------------------
 
 function urlSlug(): string {
