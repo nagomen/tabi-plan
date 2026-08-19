@@ -12,6 +12,7 @@ import * as Backend from "../shared/backend";
 import * as TripPlans from "../shared/plans-store";
 import type { PlanMeta } from "../shared/plans-store";
 import { getUser, setUserName } from "../shared/user-store";
+import { currentUserId } from "../shared/identity";
 import { isMemberOf } from "../shared/membership";
 import { friendCandidates } from "../shared/friend-store";
 import { getPayLink, setPayLink } from "../shared/payment-links";
@@ -112,6 +113,15 @@ function avatarText(name: string): string {
 
 function renderProfile(): void {
   const user = getUser();
+  // LINE で登録した場合、この端末には名前が無い。サーバー側の表示名を引き継ぐ
+  // （以降はここで変えた名前が正。LINE 名で上書きはしない）。
+  if (!user.name.trim()) {
+    const serverName = db.nameOf(currentUserId());
+    if (serverName) {
+      setUserName(serverName);
+      user.name = serverName;
+    }
+  }
   nameInput.value = user.name;
   avatarEl.textContent = avatarText(user.name);
   renderAccount();
@@ -138,8 +148,10 @@ historyToggle.addEventListener("change", () => {
 function renderAccount(): void {
   const account = currentAccount();
   if (account) {
+    // LINE で登録した場合はメールを持たない。その場合は表示名で伝える。
+    const who = account.email || account.name || "この端末";
     accountEl.innerHTML =
-      `${icon("user")}<span>${escapeHtml(account.email)} でログイン中</span>` +
+      `${icon("user")}<span>${escapeHtml(who)} でログイン中</span>` +
       `<a href="plans.html" class="danger" data-logout data-no-transition="true">ログアウト</a>`;
     const logout = accountEl.querySelector<HTMLAnchorElement>("[data-logout]");
     logout?.addEventListener("click", (e) => {

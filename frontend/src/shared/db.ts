@@ -96,6 +96,21 @@ export function isEnabled(): boolean {
 }
 
 /** bootstrap を読み終えたか。読む前に書くと実在しない行を作ってしまうので判定に使う。 */
+/**
+ * LINE から戻った直後の取り込み結果。
+ *
+ * 取り込みはどの画面に戻ってきても効くよう、このモジュールの読み込み時に
+ * 一度だけ行う。ログイン画面だけで拾っていたため、戻り先が plans.html や
+ * mypage.html だとトークンを保存できず、ログイン状態にならなかった。
+ * 利用者 id は bootstrap の viewer から埋まる（syncIdentity）。
+ */
+const urlSession = readSessionFromUrl();
+
+/** 直前の取り込み結果（画面側の遷移判断に使う）。 */
+export function adoptSessionFromUrl(): { ok: boolean; error: string } {
+  return urlSession;
+}
+
 /** LINE の紐付け開始 URL を作る（ログイン中の紐付けに使う）。 */
 export function lineLinkUrl(returnTo: string): string {
   const base = api()?.base || "";
@@ -116,7 +131,7 @@ export function apiBaseUrl(): string {
  * アクセスログに残らない）。取り込んだら URL から消す。
  * 表示名などは bootstrap の viewer から後で埋まる。
  */
-export function adoptSessionFromUrl(): { ok: boolean; error: string } {
+function readSessionFromUrl(): { ok: boolean; error: string } {
   let hash = "";
   try {
     hash = location.hash.startsWith("#") ? location.hash.slice(1) : location.hash;
