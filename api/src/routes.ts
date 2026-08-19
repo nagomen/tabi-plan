@@ -23,6 +23,7 @@
 //   POST   /api/expenses/<id>/restore        元に戻す
 //   POST   /api/plans/<id>/settlements       精算を記録
 //   POST   /api/friendships                  友達申請/承諾
+//   DELETE /api/auth/line/link               LINE の紐付けを外す
 //   POST   /api/ai/itinerary-options         行き先から選択用の観光候補を作る
 //   POST   /api/ai/itinerary                 選択候補と条件から旅程の下書きを作る
 
@@ -37,6 +38,7 @@ import { PLAN_MANAGE_FIELDS, PLAN_PATCH_FIELDS } from "./plan-contract.js";
 import { generateItinerary, MAX_AI_CITIES, suggestItineraryOptions, type ItineraryInput } from "./ai-itinerary.js";
 import { AiInputError, AiOutputError, AiUnavailableError, AiUpstreamError } from "./ai-errors.js";
 import { reserveAiRequest, type AiScope } from "./ai-usage-repo.js";
+import { unlinkLine } from "./line-auth.js";
 
 export interface Handled {
   status: number;
@@ -354,6 +356,17 @@ export async function route(method: string, path: string, body: Body, actorUserI
     if (denied) return denied;
     await expenseRepo.restoreExpense(m[1], actorUserId);
     return { status: 200, body: { ok: true } };
+  }
+
+  // ---- 外部ログインの紐付け ----
+  if (method === "DELETE" && path === "/api/auth/line/link") {
+    if (!actorUserId) return { status: 401, body: { error: "session_required" } };
+    try {
+      await unlinkLine(actorUserId);
+      return { status: 200, body: { ok: true } };
+    } catch (error) {
+      return { status: 400, body: { error: error instanceof Error ? error.message : "解除できません" } };
+    }
   }
 
   // ---- AI（候補選択 → 旅程確定の2回で終了） ----
