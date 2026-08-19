@@ -132,13 +132,13 @@ function pageTransitionHead(): Plugin {
     "::view-transition-new(root){animation:vtIn .24s cubic-bezier(.2,.8,.2,1) both}",
     "@keyframes vtOut{to{opacity:0;transform:translateX(-16px)}}",
     "@keyframes vtIn{from{opacity:0;transform:translateX(18px)}}",
-    // ブートクロークの当て先は @supports ではなく html.no-vt。
-    // view-transition-name への対応は「同一ドキュメントの」対応判定で、
-    // クロスドキュメント遷移ができるかは別。Safari のように前者だけ
-    // 対応するブラウザでは、ネイティブ遷移もクロークも効かず、
-    // JS で組み立てる途中の骨組みがそのまま見えていた。
+    // ブートクロークは全ブラウザで当てる。組み立て前の素の HTML
+    // （原寸のアイコン・素の見出し）が一瞬見えるのを防ぐ。
+    // ネイティブ遷移があるブラウザでは page-transition.ts が
+    // pagereveal で先に ui-ready を付けるので、遷移が空のページを
+    // 写すことはない。JS が動かない場合も 0.8 秒で必ず表示へ戻す。
     "@keyframes uiBootFailsafe{to{opacity:1}}",
-    "html.no-vt:not(.ui-ready){opacity:0;animation:uiBootFailsafe .001s linear .8s both}",
+    "html:not(.ui-ready){opacity:0;animation:uiBootFailsafe .001s linear .8s both}",
     "@media (prefers-reduced-motion:reduce){",
     "::view-transition-old(root),::view-transition-new(root){animation:none}",
     "}",
@@ -147,13 +147,6 @@ function pageTransitionHead(): Plugin {
     name: "page-transition-head",
     transformIndexHtml() {
       return [
-        // クロスドキュメント View Transitions の対応は pagereveal の有無で見る。
-        // CSS からは判定できないので、描画前にここで印を付ける。
-        {
-          tag: "script",
-          injectTo: "head-prepend",
-          children: 'if(!("onpagereveal" in window))document.documentElement.classList.add("no-vt");',
-        },
         { tag: "style", injectTo: "head-prepend", children: css },
       ];
     },

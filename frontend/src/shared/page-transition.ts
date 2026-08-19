@@ -49,10 +49,20 @@ function shouldSkip(event: MouseEvent, link: HTMLAnchorElement, url: URL): boole
 
 export function initPageTransitions(): void {
   if (typeof window === "undefined" || typeof document === "undefined") return;
+  const native = supportsCrossDocViewTransitions();
 
-  // 対応ブラウザはネイティブのクロスドキュメント View Transitions に任せる。
-  // @supports により、これらのブラウザではブートクロークも無効なので何もしない。
-  if (supportsCrossDocViewTransitions()) return;
+  // ブートクロークはどのブラウザでも使う。組み立て前の素の HTML
+  // （原寸のアイコンや素の見出し）が一瞬見えるのを防ぐため。
+  // ネイティブ遷移がある場合は pagereveal で先に表示へ戻す。
+  // ここで戻しておかないと、遷移が「空のページ」を写してしまう。
+  if (native) {
+    const revealForNative = (): void => document.documentElement.classList.add("ui-ready");
+    window.addEventListener("pagereveal", revealForNative, { once: true });
+    window.requestAnimationFrame(revealForNative);
+    window.setTimeout(revealForNative, 800);
+    window.addEventListener("pageshow", revealForNative);
+    return;
+  }
 
   // 以下は View Transitions 非対応ブラウザ向けフォールバック（退場フェード＋ブートクローク）。
   document.body.classList.remove("ui-page-leave");
