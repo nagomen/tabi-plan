@@ -13,8 +13,11 @@
 
 import http from "node:http";
 import { config } from "./config.js";
-import { authorizeUrl, handleLineCallback, lineLoginEnabled } from "./line-auth.js";
-import { signUp, logIn, createSession, resolveSession, revokeSession } from "./auth-repo.js";
+import { authorizeUrl, handleLineCallback, lineLoginEnabled, loginErrorUrl, peekReturnTo } from "./line-auth.js";
+import {
+  signUp, logIn, createSession, resolveSession, revokeSession,
+  revokeOtherSessions, changePassword, addCredentials,
+} from "./auth-repo.js";
 import { BadRequest, VersionConflict as PlanVersionConflict } from "./errors.js";
 import { route } from "./routes.js";
 import { closeDatabase, pingDatabase } from "./db.js";
@@ -202,9 +205,10 @@ const server = http.createServer(async (req, res) => {
       // そのまま進めると紐付けではなく新規ログインになり、別アカウントが
       // できてしまうので、読み込み直しを促して止める。
       if (query.get("link")) {
-        const back = config.allowedOrigins[0] || "";
-        const message = "画面を読み込み直してから、もう一度お試しください";
-        redirect(res, `${back}/login.html#line_error=${encodeURIComponent(message)}`);
+        redirect(res, loginErrorUrl(
+          query.get("return_to") || "",
+          "画面を読み込み直してから、もう一度お試しください",
+        ));
         return;
       }
       redirect(res, authorizeUrl(query.get("return_to") || "", "", query.get("nonce") || ""));
@@ -223,8 +227,7 @@ const server = http.createServer(async (req, res) => {
       redirect(res, `${result.returnTo}#${fragment}`);
     } catch (error) {
       const message = error instanceof Error ? error.message : "LINE ログインに失敗しました";
-      const back = config.allowedOrigins[0] || "";
-      redirect(res, `${back}/login.html#line_error=${encodeURIComponent(message)}`);
+      redirect(res, loginErrorUrl(peekReturnTo(query.get("state") || ""), message));
     }
     return;
   }
@@ -234,8 +237,11 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if ((path === "/api/auth/signup" || path === "/api/auth/login") &&
-      rateLimited(authHits, ip, config.authRateLimitPerMinute)) {
+  const authPaths = [
+    "/api/auth/signup", "/api/auth/login",
+    "/api/auth/password", "/api/auth/credentials",
+  ];
+  if (authPaths.includes(path) && rateLimited(authHits, ip, config.authRateLimitPerMinute)) {
     send(res, 429, { error: "too many authentication attempts" }, cors);
     return;
   }
@@ -284,6 +290,44 @@ const server = http.createServer(async (req, res) => {
       return;
     }
     const actorUserId = await resolveSession(sessionToken);
+    // パスワードの変更・追加は、本人のセッションが要る。
+    // 401 を返すのは「ログインし直せば直る」と画面に伝えるため。
+    if (path === "/api/auth/password" && req.method === "POST") {
+      if (!actorUserId) {
+        send(res, 401, { error: "session_required" }, cors);
+        return;
+      }
+      await changePassword({
+        userId: actorUserId,
+        currentPassword: typeof body.current_password === "string" ? body.current_password : "",
+        newPassword: typeof body.new_password === "string" ? body.new_password : "",
+      });
+      // 変えた意味を持たせるため、他の端末のセッションは切る。
+      const revoked = await revokeOtherSessions(actorUserId, sessionToken);
+      send(res, 200, { ok: true, revoked }, cors);
+      return;
+    }
+    if (path === "/api/auth/credentials" && req.method === "POST") {
+      if (!actorUserId) {
+        send(res, 401, { error: "session_required" }, cors);
+        return;
+      }
+      const added = await addCredentials({
+        userId: actorUserId,
+        email: typeof body.email === "string" ? body.email : "",
+        password: typeof body.password === "string" ? body.password : "",
+      });
+      send(res, 200, { ok: true, ...added }, cors);
+      return;
+    }
+    if (path === "/api/auth/sessions/revoke-others" && req.method === "POST") {
+      if (!actorUserId) {
+        send(res, 401, { error: "session_required" }, cors);
+        return;
+      }
+      send(res, 200, { ok: true, revoked: await revokeOtherSessions(actorUserId, sessionToken) }, cors);
+      return;
+    }
     // 手元のトークンが無効なのに書き込みへ来たら、権限不足ではなく期限切れ。
     // 403 だと画面に「権限がありません」と出て、ログインし直す導線が出ない。
     if (sessionToken && !actorUserId && req.method !== "GET") {

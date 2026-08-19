@@ -339,6 +339,30 @@ export async function authLogOut(): Promise<void> {
   await request("POST", "/api/auth/logout", {});
 }
 
+/** パスワードを変える。成功すると他の端末のセッションは切れる。 */
+export async function changePassword(input: {
+  current_password: string;
+  new_password: string;
+}): Promise<{ revoked: number }> {
+  const result = await request<{ revoked?: number }>("POST", "/api/auth/password", input);
+  return { revoked: Number(result.revoked) || 0 };
+}
+
+/**
+ * LINE だけで作ったアカウントに、メールアドレスとパスワードを足す。
+ * LINE を使えなくなったときの入り口になる。
+ */
+export async function addCredentials(input: { email: string; password: string }): Promise<void> {
+  const result = await request<{ email?: string }>("POST", "/api/auth/credentials", input);
+  if (result.email) snap.credentials = [...snap.credentials, { user_id: snap.viewer?.id || "", email: result.email }];
+}
+
+/** 他の端末のログインを切る（端末を失くしたとき用）。 */
+export async function revokeOtherSessions(): Promise<number> {
+  const result = await request<{ revoked?: number }>("POST", "/api/auth/sessions/revoke-others", {});
+  return Number(result.revoked) || 0;
+}
+
 // 計画作成直後のメンバー・本文保存など、前の書き込みに依存する操作を順番に送る。
 // 失敗時は bootstrap を読み直して、楽観更新した表示をサーバーの正しい状態へ戻す。
 let mutationQueue: Promise<void> = Promise.resolve();

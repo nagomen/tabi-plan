@@ -95,6 +95,43 @@ export function safeReturnTo(raw: string): string {
   return fallback;
 }
 
+/**
+ * 失敗を知らせるためにログイン画面へ戻す URL。
+ *
+ * 許可オリジンの直下にログイン画面がある前提で組むと、GitHub Pages の
+ * サブパス配信では 404 になる（実際になっていた）。分かっている戻り先の
+ * 同じ階層に置き換えるのを第一にし、駄目なら設定値を使う。
+ */
+export function loginErrorUrl(candidateReturnTo: string, message: string): string {
+  const fragment = "#line_error=" + encodeURIComponent(message);
+  const candidate = safeReturnTo(candidateReturnTo);
+  try {
+    const url = new URL(candidate);
+    url.search = "";
+    url.hash = "";
+    url.pathname = url.pathname.replace(/[^/]*$/, "login.html");
+    return url.toString() + fragment;
+  } catch {
+    /* 戻り先が分からないときは設定値へ */
+  }
+  if (config.loginUrl) return config.loginUrl + fragment;
+  return (config.allowedOrigins[0] || "") + "/login.html" + fragment;
+}
+
+/**
+ * 署名検証をせずに戻り先だけ覗く（state が壊れているときの案内用）。
+ * 値は必ず safeReturnTo で許可オリジンに絞ってから使う。
+ */
+export function peekReturnTo(state: string): string {
+  try {
+    const payload = String(state || "").split(".")[0] || "";
+    const parsed = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as { r?: string };
+    return String(parsed.r || "");
+  } catch {
+    return "";
+  }
+}
+
 export function authorizeUrl(returnTo: string, linkTo = "", nonce = ""): string {
   const params = new URLSearchParams({
     response_type: "code",

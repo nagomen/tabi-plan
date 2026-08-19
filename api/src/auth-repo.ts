@@ -48,6 +48,22 @@ export async function resolveSession(token: string): Promise<string> {
   return rows[0]?.user_id || "";
 }
 
+/**
+ * この人の他の端末のセッションを全部切る。
+ *
+ * 端末を失くしたときや、パスワードを変えたときの後始末に使う。
+ * いま使っているトークンだけ残すので、操作した端末は開いたままになる。
+ */
+export async function revokeOtherSessions(userId: string, keepToken: string): Promise<number> {
+  if (!userId) return 0;
+  const [result] = await pool.query<import("mysql2/promise").ResultSetHeader>(
+    `UPDATE user_sessions SET revoked_at = CURRENT_TIMESTAMP
+      WHERE user_id = ? AND revoked_at IS NULL AND token_hash <> ?`,
+    [userId, keepToken ? sessionTokenHash(keepToken) : Buffer.alloc(32)],
+  );
+  return result.affectedRows || 0;
+}
+
 export async function revokeSession(token: string): Promise<void> {
   if (!token) return;
   await pool.query(
@@ -121,4 +137,80 @@ export async function logIn(input: {
     );
   }
   return { user: { id: found.user_id, display_name: found.display_name, email: found.email } };
+}
+
+/** この人がメールアドレスとパスワードを登録しているか。 */
+export async function hasCredentials(userId: string): Promise<boolean> {
+  if (!userId) return false;
+  const rows = await all<{ user_id: string }>(
+    "SELECT user_id FROM user_credentials WHERE user_id = ? LIMIT 1", [userId],
+  );
+  return Boolean(rows[0]);
+}
+
+function validatePassword(password: string): string {
+  const value = String(password || "");
+  if (value.length < 8) throw new BadRequest("パスワードは8文字以上にしてください");
+  if (value.length > 256) throw new BadRequest("パスワードは256文字以下にしてください");
+  return value;
+}
+
+/**
+ * パスワードを変える。いまのパスワードを確かめてから差し替える。
+ *
+ * 失くした端末に残ったセッションを無効にできないと変更の意味が薄いので、
+ * 呼び出し側で他端末のセッションを切る（server.ts）。
+ */
+export async function changePassword(input: {
+  userId: string; currentPassword: string; newPassword: string;
+}): Promise<void> {
+  const rows = await all<{ salt: Buffer; hash: Buffer; iterations: number }>(
+    "SELECT password_salt AS salt, password_hash AS hash, iterations FROM user_credentials WHERE user_id = ? LIMIT 1",
+    [input.userId],
+  );
+  const found = rows[0];
+  if (!found) throw new BadRequest("メールアドレスとパスワードが登録されていません");
+  const next = validatePassword(input.newPassword);
+  const candidate = await passwordHash(input.currentPassword, found.salt, found.iterations || PASSWORD_ITERATIONS);
+  if (!timingSafeEqual(candidate, found.hash)) {
+    throw new BadRequest("いまのパスワードが違います");
+  }
+  const salt = crypto.randomBytes(16);
+  const hash = await passwordHash(next, salt, PASSWORD_ITERATIONS);
+  await pool.query(
+    "UPDATE user_credentials SET password_salt = ?, password_hash = ?, iterations = ? WHERE user_id = ?",
+    [salt, hash, PASSWORD_ITERATIONS, input.userId],
+  );
+}
+
+/**
+ * LINE だけで作ったアカウントに、メールアドレスとパスワードを足す。
+ *
+ * これが無いと、LINE を使えなくなった時点でアカウントへ入れなくなる
+ * （メール送信の口がまだ無いので、再設定メールも送れない）。
+ */
+export async function addCredentials(input: {
+  userId: string; email: string; password: string;
+}): Promise<{ email: string }> {
+  const email = identityKey(input.email);
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new BadRequest("メールアドレスの形式が正しくありません");
+  const password = validatePassword(input.password);
+  const salt = crypto.randomBytes(16);
+  const hash = await passwordHash(password, salt, PASSWORD_ITERATIONS);
+  await withTransaction(async (conn) => {
+    const [mine] = await conn.query<import("mysql2/promise").RowDataPacket[]>(
+      "SELECT user_id FROM user_credentials WHERE user_id = ? LIMIT 1", [input.userId],
+    );
+    if (mine.length) throw new BadRequest("すでにメールアドレスが登録されています");
+    const [taken] = await conn.query<import("mysql2/promise").RowDataPacket[]>(
+      "SELECT user_id FROM user_credentials WHERE email = ? LIMIT 1", [email],
+    );
+    if (taken.length) throw new BadRequest("このメールアドレスは既に登録されています");
+    await conn.query(
+      `INSERT INTO user_credentials (user_id, email, password_salt, password_hash, iterations)
+       VALUES (?, ?, ?, ?, ?)`,
+      [input.userId, email, salt, hash, PASSWORD_ITERATIONS],
+    );
+  });
+  return { email };
 }
