@@ -150,8 +150,13 @@ export async function bootstrapForUser(userId = ""): Promise<Bootstrap> {
     )
     : [];
 
+  const identities = userId
+    ? await all<{ provider: string; display_name: string | null }>(
+        "SELECT provider, display_name FROM user_identities WHERE user_id = ?", [userId])
+    : [];
   return {
     viewer: userId ? { id: userId } : null,
+    identities,
     users, credentials, plans, members, itinerary, cities, links, checklist,
     candidates, candidateVotes, expenses, expenseShares, settlements, views,
     paymentLinks, userSettings, friendships, pendingInvites,

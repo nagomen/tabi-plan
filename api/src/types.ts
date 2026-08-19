@@ -18,6 +18,8 @@ export interface Bootstrap {
    * 期限切れに開いた時点で気づくために使う。
    */
   viewer: { id: string } | null;
+  /** 自分に紐付いている外部ログイン（いまは LINE）。他人のぶんは返さない。 */
+  identities: { provider: string; display_name: string | null }[];
   users: UserRow[];
   credentials: CredentialRow[];
   plans: PlanRow[];

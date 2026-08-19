@@ -194,15 +194,16 @@ const server = http.createServer(async (req, res) => {
     }
     const query = new URL(req.url || "/", "http://localhost").searchParams;
     if (path === "/api/auth/line/start") {
-      redirect(res, authorizeUrl(query.get("return_to") || ""));
+      // ログイン中に呼ばれたら（link=セッション）その利用者へ紐付ける。
+      // 解決はここで済ませ、トークン自体は LINE へ渡さない。
+      const linkTo = await resolveSession(query.get("link") || "");
+      redirect(res, authorizeUrl(query.get("return_to") || "", linkTo));
       return;
     }
     try {
-      const linkTo = await resolveSession(query.get("link") || "");
       const result = await handleLineCallback({
         code: query.get("code") || "",
         state: query.get("state") || "",
-        linkTo,
       });
       const session = await sessionForUser(result.userId);
       // セッションは #fragment で渡す。サーバーへ送られないのでログに残らない。

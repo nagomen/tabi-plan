@@ -245,6 +245,7 @@ function renderHiddenViews(): void {
   hiddenViewsDrawn = true;
   renderCalendar();
   renderPayLinks();
+  renderLoginMethods();
   renderFriends();
 }
 
@@ -257,7 +258,7 @@ function showTab(name: string): void {
   tabs.forEach((t) => t.classList.toggle("is-active", t.dataset.tab === name));
   views.forEach((v) => { v.hidden = v.dataset.view !== name; });
   if (name === "schedule") renderCalendar();
-  if (name === "pay") renderPayLinks();
+  if (name === "pay") { renderPayLinks(); renderLoginMethods(); }
   if (name === "friends") renderFriends();
 }
 tabs.forEach((t) => t.addEventListener("click", () => showTab(t.dataset.tab || "plans")));
@@ -345,6 +346,53 @@ function payNames(): string[] {
   const names = me ? [me, ...all] : all;
   return Array.from(new Set(names.filter(Boolean)));
 }
+
+// ---- ログイン方法（メール / LINE） --------------------------------------
+
+const loginMethodsEl = document.querySelector<HTMLElement>("[data-login-methods]");
+const loginNoteEl = document.querySelector<HTMLElement>("[data-login-note]");
+
+function renderLoginMethods(): void {
+  if (!loginMethodsEl || !loginNoteEl) return;
+  if (!db.isEnabled()) {
+    loginNoteEl.textContent = "この構成ではアカウント連携を使いません。";
+    loginMethodsEl.innerHTML = "";
+    return;
+  }
+  const line = db.identities().find((entry) => entry.provider === "line");
+  // bootstrap は自分の認証情報だけ返すので、行があればメール登録済み。
+  const hasMail = db.credentials().length > 0;
+  loginNoteEl.textContent = line
+    ? "LINEアカウントでログインできます。表示名はここで変えても LINE 名に戻りません。"
+    : "LINEと連携すると、次回からメールアドレスの入力なしでログインできます。";
+  const name = line?.display_name ? `（${escapeHtml(line.display_name)}）` : "";
+  loginMethodsEl.innerHTML = line
+    ? '<div class="mp-login-row"><span class="mp-login-mark">LINE</span>' +
+      `<span class="mp-login-state">連携済み${name}</span>` +
+      (hasMail
+        ? '<button class="mp-login-act" type="button" data-line-unlink>解除する</button>'
+        : '<span class="mp-login-hint">解除するには、先にメールアドレスとパスワードを登録してください</span>') +
+      "</div>"
+    : '<div class="mp-login-row"><span class="mp-login-mark">LINE</span>' +
+      '<span class="mp-login-state">未連携</span>' +
+      '<button class="mp-login-act is-primary" type="button" data-line-link>LINEと連携する</button></div>';
+}
+
+loginMethodsEl?.addEventListener("click", (event) => {
+  const target = event.target;
+  if (!(target instanceof Element)) return;
+  if (target.closest("[data-line-link]")) {
+    const url = db.lineLinkUrl(new URL("mypage.html", location.href).toString());
+    if (url) location.href = url;
+    return;
+  }
+  if (target.closest("[data-line-unlink]")) {
+    if (!window.confirm("LINEでのログインを解除します。よろしいですか。")) return;
+    void db.unlinkLine()
+      .then(() => renderLoginMethods())
+      .catch((error) => window.alert(errorMessage(error)));
+  }
+});
 
 function renderPayLinks(): void {
   const me = getUser().name.trim();

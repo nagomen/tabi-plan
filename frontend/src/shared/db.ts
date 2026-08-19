@@ -46,6 +46,8 @@ export interface FriendshipRow {
 interface Snapshot {
   /** サーバーがこの要求を誰として扱ったか。セッション切れなら null。 */
   viewer?: { id: string } | null;
+  /** 自分に紐付いている外部ログイン（いまは LINE）。 */
+  identities?: { provider: string; display_name: string | null }[];
   users: UserRow[];
   credentials: CredentialRow[];
   plans: PlanRow[];
@@ -71,7 +73,7 @@ function emptySnapshot(): Snapshot {
     users: [], credentials: [], plans: [], members: [], itinerary: [], cities: [], links: [],
     checklist: [], candidates: [], candidateVotes: [], expenses: [], expenseShares: [],
     settlements: [], views: [], paymentLinks: [], userSettings: [], pendingInvites: [], friendships: [],
-    viewer: null,
+    viewer: null, identities: [],
   };
 }
 
@@ -94,6 +96,14 @@ export function isEnabled(): boolean {
 }
 
 /** bootstrap を読み終えたか。読む前に書くと実在しない行を作ってしまうので判定に使う。 */
+/** LINE の紐付け開始 URL を作る（ログイン中の紐付けに使う）。 */
+export function lineLinkUrl(returnTo: string): string {
+  const base = api()?.base || "";
+  if (!base) return "";
+  const params = new URLSearchParams({ return_to: returnTo, link: sessionTokenForRequest() });
+  return base + "/api/auth/line/start?" + params.toString();
+}
+
 /** LINE ログインの導線を作るための API のベース URL（未設定なら空）。 */
 export function apiBaseUrl(): string {
   return api()?.base || "";
@@ -559,6 +569,17 @@ export async function suggestItineraryOptions(input: ItineraryAiBaseInput): Prom
 
 export async function generateItinerary(input: ItineraryAiGenerateInput): Promise<ItineraryDraft> {
   return request<ItineraryDraft>("POST", "/api/ai/itinerary", input);
+}
+
+/** 自分に紐付いている外部ログイン。 */
+export function identities(): { provider: string; display_name: string | null }[] {
+  return snap.identities || [];
+}
+
+/** LINE の紐付けを外す。ログイン手段が無くなる場合はサーバーが断る。 */
+export async function unlinkLine(): Promise<void> {
+  await request("DELETE", "/api/auth/line/link");
+  snap.identities = (snap.identities || []).filter((entry) => entry.provider !== "line");
 }
 
 export function userById(id: string | null | undefined): UserRow | undefined {
