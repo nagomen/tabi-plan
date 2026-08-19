@@ -13,6 +13,7 @@
 
 import http from "node:http";
 import { config } from "./config.js";
+import { authorizeUrl, handleLineCallback, lineLoginEnabled } from "./line-auth.js";
 import { signUp, logIn, createSession, resolveSession, revokeSession } from "./auth-repo.js";
 import { BadRequest, VersionConflict as PlanVersionConflict } from "./errors.js";
 import { route } from "./routes.js";
@@ -74,6 +75,11 @@ function corsHeaders(origin: string | undefined): Record<string, string> {
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * Math.max(1, config.sessionTtlDays);
 
 const sessionForUser = (userId: string): Promise<string> => createSession(userId, SESSION_TTL_MS);
+
+function redirect(res: http.ServerResponse, location: string): void {
+  res.writeHead(302, { Location: location, "Cache-Control": "no-store" });
+  res.end();
+}
 
 function send(
   res: http.ServerResponse,
@@ -171,6 +177,40 @@ const server = http.createServer(async (req, res) => {
       send(res, 200, { ok: true }, cors);
     } catch (error) {
       send(res, 503, { ok: false, error: String(error) }, cors);
+    }
+    return;
+  }
+
+  // LINE ログインはブラウザの画面遷移で来るので、API トークンを付けられない。
+  // ここだけトークン判定の前に置き、代わりに認証用の厳しい回数制限を当てる。
+  if (path === "/api/auth/line/start" || path === "/api/auth/line/callback") {
+    if (!lineLoginEnabled()) {
+      send(res, 503, { error: "LINE ログインは設定されていません" }, cors);
+      return;
+    }
+    if (rateLimited(authHits, ip, config.authRateLimitPerMinute)) {
+      send(res, 429, { error: "too many authentication attempts" }, cors);
+      return;
+    }
+    const query = new URL(req.url || "/", "http://localhost").searchParams;
+    if (path === "/api/auth/line/start") {
+      redirect(res, authorizeUrl(query.get("return_to") || ""));
+      return;
+    }
+    try {
+      const linkTo = await resolveSession(query.get("link") || "");
+      const result = await handleLineCallback({
+        code: query.get("code") || "",
+        state: query.get("state") || "",
+        linkTo,
+      });
+      const session = await sessionForUser(result.userId);
+      // セッションは #fragment で渡す。サーバーへ送られないのでログに残らない。
+      redirect(res, `${result.returnTo}#line_session=${encodeURIComponent(session)}`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "LINE ログインに失敗しました";
+      const back = config.allowedOrigins[0] || "";
+      redirect(res, `${back}/login.html#line_error=${encodeURIComponent(message)}`);
     }
     return;
   }

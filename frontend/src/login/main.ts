@@ -130,8 +130,34 @@ form.addEventListener("submit", async (event) => {
   }
 });
 
+// ---- LINE ログイン -------------------------------------------------------
+
+const lineBtn = document.querySelector<HTMLButtonElement>("[data-line]");
+const lineBlocks = Array.from(document.querySelectorAll<HTMLElement>("[data-line-block]"));
+
+function setupLineLogin(): void {
+  const base = db.apiBaseUrl();
+  // API を使わない構成では LINE ログインもできないので、導線を出さない。
+  if (!base || !lineBtn) return;
+  for (const el of lineBlocks) el.hidden = false;
+  lineBtn.hidden = false;
+  lineBtn.addEventListener("click", () => {
+    // 戻り先は「ログイン後に行きたい画面」。許可オリジンの外はサーバーが弾く。
+    const back = new URL(returnTo || "plans.html", location.href).toString();
+    location.href = base + "/api/auth/line/start?return_to=" + encodeURIComponent(back);
+  });
+}
+
 async function init(): Promise<void> {
   await Backend.preload();
+  // LINE から戻ってきた場合は、まずセッションを取り込む。
+  const adopted = db.adoptSessionFromUrl();
+  if (adopted.error) showError(adopted.error);
+  if (adopted.ok) {
+    navigateWithPageTransition(returnTo || "plans.html", { replace: true });
+    return;
+  }
+  setupLineLogin();
   // 期限切れのトークンが手元に残っていると「ログイン中」と表示してしまう。
   // サーバーに一度確かめさせ、無効なら db 側がセッションを片付ける。
   if (db.isEnabled()) await db.load({ fresh: true }).catch(() => undefined);

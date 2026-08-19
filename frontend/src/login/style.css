@@ -95,3 +95,62 @@
     .lg-tabs { margin-bottom: 16px; }
     .lg-logged [data-logout] { width: 100%; margin-left: 0; }
   }
+
+/* ---- LINE ログイン ------------------------------------------------------ */
+.lg-or {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 18px 0 14px;
+  color: var(--muted, #66736e);
+  font-size: 11px;
+  font-weight: 600;
+}
+.lg-or::before,
+.lg-or::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--line, #e3e8e4);
+}
+.lg-or[hidden] { display: none; }
+
+.lg-line {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 46px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 0;
+  /* LINE のブランド色。ボタンの見た目は LINE の指定に寄せる */
+  background: #06c755;
+  color: #fff;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 650;
+  cursor: pointer;
+  box-shadow: 4px 4px 0 #b9e8cb;
+  transition: transform .12s ease, box-shadow .12s ease, background-color .12s ease;
+}
+.lg-line:hover { background: #05b64d; }
+.lg-line:active { transform: translate(4px, 4px); box-shadow: 0 0 0 #b9e8cb; }
+.lg-line[hidden] { display: none; }
+.lg-line-mark {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .06em;
+  padding: 2px 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, .22);
+}
+
+.lg-line-note {
+  margin: 10px 0 0;
+  color: var(--muted, #66736e);
+  font-size: 11px;
+  line-height: 1.6;
+}
+.lg-line-note[hidden] { display: none; }

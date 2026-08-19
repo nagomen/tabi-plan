@@ -94,6 +94,47 @@ export function isEnabled(): boolean {
 }
 
 /** bootstrap を読み終えたか。読む前に書くと実在しない行を作ってしまうので判定に使う。 */
+/** LINE ログインの導線を作るための API のベース URL（未設定なら空）。 */
+export function apiBaseUrl(): string {
+  return api()?.base || "";
+}
+
+/**
+ * LINE ログインから戻ってきたときのセッションを取り込む。
+ *
+ * サーバーは #line_session=... で返す（fragment はサーバーへ送られないので
+ * アクセスログに残らない）。取り込んだら URL から消す。
+ * 表示名などは bootstrap の viewer から後で埋まる。
+ */
+export function adoptSessionFromUrl(): { ok: boolean; error: string } {
+  let hash = "";
+  try {
+    hash = location.hash.startsWith("#") ? location.hash.slice(1) : location.hash;
+  } catch {
+    return { ok: false, error: "" };
+  }
+  if (!hash) return { ok: false, error: "" };
+  const params = new URLSearchParams(hash);
+  const token = params.get("line_session") || "";
+  const error = params.get("line_error") || "";
+  if (!token && !error) return { ok: false, error: "" };
+  params.delete("line_session");
+  params.delete("line_error");
+  try {
+    const rest = params.toString();
+    history.replaceState(null, "", location.pathname + location.search + (rest ? "#" + rest : ""));
+  } catch {
+    /* ignore */
+  }
+  if (!token) return { ok: false, error };
+  try {
+    localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({ userId: "", email: "", name: "", token }));
+  } catch {
+    return { ok: false, error: "この端末にログイン情報を保存できませんでした" };
+  }
+  return { ok: true, error: "" };
+}
+
 export function isLoaded(): boolean {
   return loaded;
 }

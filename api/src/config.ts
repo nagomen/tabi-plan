@@ -80,6 +80,20 @@ export const config = {
   trustCloudflareConnectingIp: optional("TRUST_CLOUDFLARE_CONNECTING_IP", "false") === "true",
 
   /**
+   * LINE ログイン。チャンネルシークレットはサーバーにだけ置く。
+   * 未設定なら LINE ログインの導線ごと無効になる。
+   */
+  line: {
+    channelId: optional("LINE_CHANNEL_ID", ""),
+    channelSecret: optional("LINE_CHANNEL_SECRET", ""),
+    /** LINE Developers に登録したコールバック URL と完全一致させる。 */
+    callbackUrl: optional(
+      "LINE_CALLBACK_URL",
+      "https://travel-api.vote-jt.com/api/auth/line/callback",
+    ),
+  },
+
+  /**
    * 旅程の下書きを作る AI。キーはサーバーにだけ置く
    * （静的サイトに出すと誰でも使えてしまう）。未設定なら機能ごと無効。
    */

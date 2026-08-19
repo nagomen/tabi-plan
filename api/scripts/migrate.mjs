@@ -124,6 +124,23 @@ async function applyMigration(id, migrate) {
   console.log(`[migrate] ${id}: applied`);
 }
 
+async function migrate006() {
+  // 外部サービスのログイン（いまは LINE）を users に紐付ける。
+  // メール＋パスワードと共存し、後から紐付けもできるよう別テーブルにする。
+  await conn.query(`CREATE TABLE IF NOT EXISTS user_identities (
+    user_id      VARCHAR(32)  NOT NULL,
+    provider     VARCHAR(16)  NOT NULL,
+    subject      VARCHAR(191) NOT NULL,
+    display_name VARCHAR(64)  NULL,
+    picture_url  VARCHAR(512) NULL,
+    created_at   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (provider, subject),
+    KEY idx_user_identities_user (user_id, provider),
+    CONSTRAINT fk_user_identities_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+  ) ENGINE=InnoDB`);
+}
+
 async function main() {
   await conn.query(`CREATE TABLE IF NOT EXISTS schema_migrations (
     id VARCHAR(64) NOT NULL PRIMARY KEY,
@@ -133,6 +150,7 @@ async function main() {
   await applyMigration("003_security_hardening", migrate003);
   await applyMigration("004_cover_storage_contract", migrate004);
   await applyMigration("005_ai_usage_limits", migrate005);
+  await applyMigration("006_line_login", migrate006);
 }
 
 try {
