@@ -68,7 +68,7 @@ jobs:
       # サーバー側の配置先は git のクローンではないので、ここから中身を送る。
       # サーバーにリポジトリの認証情報を置かずに済むぶん、こちらの方が安全。
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ inputs.ref }}
 
