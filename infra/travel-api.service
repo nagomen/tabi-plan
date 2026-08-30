@@ -1,6 +1,6 @@
 [Unit]
 Description=Tabi Plan shared-store API (travel dashboard)
-Documentation=https://github.com/rjajoo0414/2608-tohoku-travel-dashboard
+Documentation=https://github.com/nagomen/tabi-plan
 After=network.target mysql.service
 Wants=mysql.service
 
