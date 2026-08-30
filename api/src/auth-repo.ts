@@ -1,14 +1,11 @@
 import crypto from "node:crypto";
-import { promisify } from "node:util";
 import { config } from "./config.js";
 import { all, pool, withTransaction } from "./db.js";
 import { BadRequest } from "./errors.js";
 import { newId } from "./ids.js";
 import { identityKey, isValidEmail } from "./identity.js";
 import { hmac } from "./signing.js";
-
-const pbkdf2 = promisify(crypto.pbkdf2);
-const PASSWORD_ITERATIONS = 600_000;
+import { hashNewPassword, needsRehash, PASSWORD_ITERATIONS, validatePassword, verifyPassword } from "./password.js";
 
 export async function createSession(userId: string, ttlMs: number): Promise<string> {
   const token = crypto.randomBytes(32).toString("base64url");
@@ -69,30 +66,20 @@ export async function revokeSession(token: string): Promise<void> {
   );
 }
 
-async function passwordHash(password: string, salt: Buffer, iterations = PASSWORD_ITERATIONS): Promise<Buffer> {
-  return pbkdf2(String(password || ""), salt, iterations, 32, "sha256");
-}
-
-function timingSafeEqual(a: Buffer, b: Buffer): boolean {
-  return a.length === b.length && crypto.timingSafeEqual(a, b);
-}
-
 export async function signUp(input: {
   email: string; password: string; displayName: string;
 }): Promise<{ user: { id: string; display_name: string; email: string } }> {
   const email = identityKey(input.email);
   const displayName = String(input.displayName || "").trim().slice(0, 64) || email.split("@")[0] || "ユーザー";
   if (!isValidEmail(email)) throw new BadRequest("メールアドレスの形式が正しくありません");
-  if (String(input.password || "").length < 8) throw new BadRequest("パスワードは8文字以上にしてください");
-  if (String(input.password || "").length > 256) throw new BadRequest("パスワードは256文字以下にしてください");
+  validatePassword(input.password);
   const userId = newId("usr");
   await withTransaction(async (conn) => {
     const [existing] = await conn.query<import("mysql2/promise").RowDataPacket[]>(
       "SELECT user_id FROM user_credentials WHERE email = ? LIMIT 1", [email],
     );
     if (existing.length) throw new BadRequest("このメールアドレスは既に登録されています");
-    const salt = crypto.randomBytes(16);
-    const hash = await passwordHash(input.password, salt);
+    const { salt, hash, iterations } = await hashNewPassword(input.password);
     await conn.query(
       "INSERT INTO users (id, display_name, name_key) VALUES (?, ?, ?)",
       [userId, displayName, identityKey(displayName)],
@@ -100,7 +87,7 @@ export async function signUp(input: {
     await conn.query(
       `INSERT INTO user_credentials (user_id, email, password_salt, password_hash, iterations)
        VALUES (?, ?, ?, ?, ?)`,
-      [userId, email, salt, hash, PASSWORD_ITERATIONS],
+      [userId, email, salt, hash, iterations],
     );
   });
   return { user: { id: userId, display_name: displayName, email } };
@@ -119,28 +106,22 @@ export async function logIn(input: {
     [email],
   );
   const found = rows[0];
-  const salt = found?.salt || crypto.randomBytes(16);
-  const expected = found?.hash || crypto.randomBytes(32);
-  const candidate = await passwordHash(input.password, salt, found?.iterations || PASSWORD_ITERATIONS);
-  if (!found || !timingSafeEqual(candidate, expected)) {
+  // 該当なしでもダミーのハッシュ照合を行い、応答時間で存在有無を漏らさない。
+  const stored = found
+    ? { salt: found.salt, hash: found.hash, iterations: found.iterations }
+    : { salt: crypto.randomBytes(16), hash: crypto.randomBytes(32), iterations: PASSWORD_ITERATIONS };
+  const ok = await verifyPassword(input.password, stored);
+  if (!found || !ok) {
     throw new BadRequest("メールアドレスまたはパスワードが違います");
   }
-  if (found.iterations < PASSWORD_ITERATIONS) {
-    const nextSalt = crypto.randomBytes(16);
-    const hash = await passwordHash(input.password, nextSalt, PASSWORD_ITERATIONS);
+  if (needsRehash(found.iterations)) {
+    const next = await hashNewPassword(input.password);
     await pool.query(
       "UPDATE user_credentials SET password_salt = ?, password_hash = ?, iterations = ? WHERE user_id = ?",
-      [nextSalt, hash, PASSWORD_ITERATIONS, found.user_id],
+      [next.salt, next.hash, next.iterations, found.user_id],
     );
   }
   return { user: { id: found.user_id, display_name: found.display_name, email: found.email } };
-}
-
-function validatePassword(password: string): string {
-  const value = String(password || "");
-  if (value.length < 8) throw new BadRequest("パスワードは8文字以上にしてください");
-  if (value.length > 256) throw new BadRequest("パスワードは256文字以下にしてください");
-  return value;
 }
 
 /**
@@ -159,15 +140,13 @@ export async function changePassword(input: {
   const found = rows[0];
   if (!found) throw new BadRequest("メールアドレスとパスワードが登録されていません");
   const next = validatePassword(input.newPassword);
-  const candidate = await passwordHash(input.currentPassword, found.salt, found.iterations || PASSWORD_ITERATIONS);
-  if (!timingSafeEqual(candidate, found.hash)) {
+  if (!(await verifyPassword(input.currentPassword, found))) {
     throw new BadRequest("いまのパスワードが違います");
   }
-  const salt = crypto.randomBytes(16);
-  const hash = await passwordHash(next, salt, PASSWORD_ITERATIONS);
+  const { salt, hash, iterations } = await hashNewPassword(next);
   await pool.query(
     "UPDATE user_credentials SET password_salt = ?, password_hash = ?, iterations = ? WHERE user_id = ?",
-    [salt, hash, PASSWORD_ITERATIONS, input.userId],
+    [salt, hash, iterations, input.userId],
   );
 }
 
@@ -183,8 +162,7 @@ export async function addCredentials(input: {
   const email = identityKey(input.email);
   if (!isValidEmail(email)) throw new BadRequest("メールアドレスの形式が正しくありません");
   const password = validatePassword(input.password);
-  const salt = crypto.randomBytes(16);
-  const hash = await passwordHash(password, salt, PASSWORD_ITERATIONS);
+  const { salt, hash, iterations } = await hashNewPassword(password);
   await withTransaction(async (conn) => {
     const [mine] = await conn.query<import("mysql2/promise").RowDataPacket[]>(
       "SELECT user_id FROM user_credentials WHERE user_id = ? LIMIT 1", [input.userId],
@@ -197,7 +175,7 @@ export async function addCredentials(input: {
     await conn.query(
       `INSERT INTO user_credentials (user_id, email, password_salt, password_hash, iterations)
        VALUES (?, ?, ?, ?, ?)`,
-      [input.userId, email, salt, hash, PASSWORD_ITERATIONS],
+      [input.userId, email, salt, hash, iterations],
     );
   });
   return { email };

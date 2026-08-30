@@ -34,14 +34,14 @@ const SPLIT = new Set(["equal_all", "equal_selected", "custom", "none"]);
 const PAY = new Set(["card", "cash", "transfer", "other"]);
 
 /** 支払額・レート・base_currency 換算額を検証つきで求める。create/update で共有する。 */
-function computeAmounts(input: ExpenseInput): { amount: number; rate: number; base: number } {
+export function computeAmounts(input: ExpenseInput): { amount: number; rate: number; base: number } {
   const amount = Math.round(Number(input.amount_minor) || 0);
   if (!Number.isSafeInteger(amount) || amount <= 0) throw new BadRequest("支払額は1以上の整数で指定してください");
   const rate = Number(input.fx_rate) > 0 ? Number(input.fx_rate) : 1;
   return { amount, rate, base: Math.round(amount * rate) };
 }
 
-function normalizeShares(shares: unknown): { user_id: string; amount_base_minor: number }[] {
+export function normalizeShares(shares: unknown): { user_id: string; amount_base_minor: number }[] {
   const byUser = new Map<string, number>();
   for (const share of Array.isArray(shares) ? shares : []) {
     if (!share || typeof share !== "object" || Array.isArray(share)) continue;
@@ -54,14 +54,17 @@ function normalizeShares(shares: unknown): { user_id: string; amount_base_minor:
   return [...byUser.entries()].map(([user_id, amount_base_minor]) => ({ user_id, amount_base_minor }));
 }
 
-async function validateExpenseInput(
-  planId: string,
+/**
+ * 割り勘・精算の金額整合を検証する純粋関数（DB非依存）。
+ * 参加者集合は呼び出し側が渡す。負担額合計＝支払額、精算不要は負担0、
+ * 支払者・負担者は参加者であること。
+ */
+export function validateShares(
   input: ExpenseInput,
   base: number,
-  conn: mysql.PoolConnection,
-): Promise<{ splitMethod: string; shares: { user_id: string; amount_base_minor: number }[] }> {
+  memberIds: Set<string>,
+): { splitMethod: string; shares: { user_id: string; amount_base_minor: number }[] } {
   const splitMethod = SPLIT.has(String(input.split_method)) ? String(input.split_method) : "equal_all";
-  const memberIds = await activeMemberSet(planId, conn);
   assertMember(memberIds, String(input.payer_user_id || ""), "支払者");
   const shares = normalizeShares(input.shares);
   for (const share of shares) assertMember(memberIds, share.user_id, "負担者");
@@ -79,7 +82,7 @@ export async function createExpense(planId: string, input: ExpenseInput, actorUs
   const id = input.id && /^[\w-]{1,32}$/.test(input.id) ? input.id : newId("exp");
   const { amount, rate, base } = computeAmounts(input);
   await withTransaction(async (conn) => {
-    const { splitMethod, shares } = await validateExpenseInput(planId, input, base, conn);
+    const { splitMethod, shares } = validateShares(input, base, await activeMemberSet(planId, conn));
     await conn.query(
       `INSERT INTO expenses (id, plan_id, paid_on, payer_user_id, category, title, amount_minor,
          currency, fx_rate, amount_base_minor, split_method, payment_method, note, receipt_url, created_by_id)
@@ -176,7 +179,7 @@ export async function updateExpense(id: string, input: ExpenseInput, actorUserId
     ))?.plan_id;
     if (!planId) throw new BadRequest("費用が見つかりません");
     const before = await expenseSnapshot(conn, id);
-    const { splitMethod, shares } = await validateExpenseInput(planId, input, base, conn);
+    const { splitMethod, shares } = validateShares(input, base, await activeMemberSet(planId, conn));
     await conn.query(
       `UPDATE expenses SET paid_on = ?, payer_user_id = ?, category = ?, title = ?, amount_minor = ?,
          currency = ?, fx_rate = ?, amount_base_minor = ?, split_method = ?, payment_method = ?,

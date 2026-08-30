@@ -28,6 +28,8 @@ jobs:
         run: npm run typecheck
       - name: Test frontend and API
         run: npm test
+      - name: API coverage (enforced thresholds)
+        run: npm run test:coverage
       - name: Build production frontend
         run: npm run build
       - name: Audit runtime dependencies

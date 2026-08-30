@@ -26,3 +26,7 @@ api/dist/
 # api/scripts/seed-from-data.mjs で行う。
 data/plans/*.json
 data/store/*.json
+
+# Test coverage output
+api/coverage/
+coverage/

@@ -21,47 +21,21 @@ import {
 import { BadRequest, VersionConflict as PlanVersionConflict } from "./errors.js";
 import { route } from "./routes.js";
 import { closeDatabase, pingDatabase } from "./db.js";
+import { rateLimited, sweepExpired, type RateBucket } from "./rate-limit.js";
+import { clientIp } from "./client-ip.js";
 
 // ---- レート制限（プロセス内・1分窓） -----------------------------------
 
-const hits = new Map<string, { count: number; resetAt: number }>();
-const authHits = new Map<string, { count: number; resetAt: number }>();
-
-function rateLimited(
-  buckets: Map<string, { count: number; resetAt: number }>,
-  key: string,
-  limit: number,
-): boolean {
-  const now = Date.now();
-  const slot = buckets.get(key);
-  if (!slot || now >= slot.resetAt) {
-    buckets.set(key, { count: 1, resetAt: now + 60_000 });
-    return false;
-  }
-  slot.count += 1;
-  return slot.count > limit;
-}
+const hits = new Map<string, RateBucket>();
+const authHits = new Map<string, RateBucket>();
 
 // 溜まりっぱなしを防ぐ
 setInterval(() => {
-  const now = Date.now();
-  for (const [ip, slot] of hits) if (now >= slot.resetAt) hits.delete(ip);
-  for (const [ip, slot] of authHits) if (now >= slot.resetAt) authHits.delete(ip);
+  sweepExpired(hits);
+  sweepExpired(authHits);
 }, 60_000).unref();
 
 // ---- 補助 ---------------------------------------------------------------
-
-function clientIp(req: http.IncomingMessage): string {
-  const cloudflare = req.headers["cf-connecting-ip"];
-  if (config.trustCloudflareConnectingIp && typeof cloudflare === "string" && cloudflare) {
-    return cloudflare.trim();
-  }
-  const forwarded = req.headers["x-forwarded-for"];
-  // API は loopback bind + nginx proxy 前提。末尾が nginx が観測した接続元で、
-  // クライアントが先頭へ注入した偽 X-Forwarded-For を信用しない。
-  if (typeof forwarded === "string" && forwarded) return forwarded.split(",").at(-1)?.trim() || "unknown";
-  return req.socket.remoteAddress || "unknown";
-}
 
 function corsHeaders(origin: string | undefined): Record<string, string> {
   const allowed = origin && config.allowedOrigins.includes(origin);
@@ -168,7 +142,7 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  const ip = clientIp(req);
+  const ip = clientIp(req, config.trustCloudflareConnectingIp);
   if (rateLimited(hits, ip, config.rateLimitPerMinute)) {
     send(res, 429, { error: "too many requests" }, cors);
     return;
