@@ -51,22 +51,3 @@ export function makeScopedQuery(root: ParentNode): ScopedQuery {
   }
   return { qs, qsa };
 }
-
-function namedControl<E extends Element>(form: HTMLFormElement, name: string): E {
-  const control = form.elements.namedItem(name);
-  if (!(control instanceof Element)) throw new Error(`フォーム要素が見つかりません: ${name}`);
-  return control as E;
-}
-
-export const inputControl = (form: HTMLFormElement, name: string): HTMLInputElement =>
-  namedControl<HTMLInputElement>(form, name);
-
-export const selectControl = (form: HTMLFormElement, name: string): HTMLSelectElement =>
-  namedControl<HTMLSelectElement>(form, name);
-
-export const textAreaControl = (form: HTMLFormElement, name: string): HTMLTextAreaElement =>
-  namedControl<HTMLTextAreaElement>(form, name);
-
-export function radioValue(form: HTMLFormElement, name: string): string {
-  return form.querySelector<HTMLInputElement>(`input[name='${name}']:checked`)?.value || "";
-}

@@ -32,7 +32,7 @@ jobs:
       # 秘密情報はリポジトリに置かない。Secrets からサーバーの環境ファイルへ
       # 書き込む。未設定なら何もしない（AI 機能だけ無効のまま動く）。
       - name: Sync OpenAI key to VPS
-        uses: appleboy/ssh-action@v1.2.0
+        uses: appleboy/ssh-action@7eaf76671a0d7eec5d98ee897acda4f968735a17 # v1.2.0
         env:
           ENV_FILE: ${{ vars.PRODUCTION_API_ENV_FILE || '~/secure_env/travel-api.env' }}
           OPENAI_KEY: ${{ secrets.OPENAI_KEY }}
@@ -42,6 +42,7 @@ jobs:
           username: ${{ secrets.PRODUCTION_SSH_USER }}
           key: ${{ secrets.PRODUCTION_SSH_KEY }}
           port: ${{ secrets.PRODUCTION_SSH_PORT || 22 }}
+          fingerprint: ${{ secrets.PRODUCTION_SSH_FINGERPRINT }}
           envs: ENV_FILE,OPENAI_KEY,OPENAI_MODEL
           script_stop: true
           script: |
@@ -78,21 +79,33 @@ jobs:
           SSH_HOST: ${{ secrets.PRODUCTION_SSH_HOST }}
           SSH_USER: ${{ secrets.PRODUCTION_SSH_USER }}
           SSH_PORT: ${{ secrets.PRODUCTION_SSH_PORT || 22 }}
+          # VPS のホスト鍵を固定する。値は `ssh-keyscan -p <port> <host>` の出力を
+          # PRODUCTION_SSH_KNOWN_HOSTS シークレットへ入れる。未設定なら
+          # 初回接続時受理（TOFU）へフォールバックし、警告を出す。
+          SSH_KNOWN_HOSTS: ${{ secrets.PRODUCTION_SSH_KNOWN_HOSTS }}
           APP_DIR: ${{ vars.PRODUCTION_APP_DIR }}
         run: |
           set -euo pipefail
           umask 077
           key="$(mktemp)"
           printf '%s\n' "$SSH_KEY" > "$key"
+          known="$(mktemp)"
+          if [ -n "${SSH_KNOWN_HOSTS:-}" ]; then
+            printf '%s\n' "$SSH_KNOWN_HOSTS" > "$known"
+            strict="-o StrictHostKeyChecking=yes"
+          else
+            echo "::warning::PRODUCTION_SSH_KNOWN_HOSTS が未設定です。ホスト鍵を検証せず初回接続を受理します（MITM 耐性なし）。ssh-keyscan の出力をシークレットに設定してください。"
+            strict="-o StrictHostKeyChecking=accept-new"
+          fi
           rsync -az --delete \
             --exclude '.git/' --exclude 'node_modules/' --exclude 'dist/' \
             --exclude 'data/store/' \
-            -e "ssh -i $key -p $SSH_PORT -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/tmp/known_hosts" \
+            -e "ssh -i $key -p $SSH_PORT $strict -o UserKnownHostsFile=$known" \
             ./ "$SSH_USER@$SSH_HOST:$APP_DIR/"
-          rm -f "$key"
+          rm -f "$key" "$known"
 
       - name: Deploy API on VPS
-        uses: appleboy/ssh-action@v1.2.0
+        uses: appleboy/ssh-action@7eaf76671a0d7eec5d98ee897acda4f968735a17 # v1.2.0
         env:
           APP_DIR: ${{ vars.PRODUCTION_APP_DIR }}
           API_DOMAIN: ${{ vars.PRODUCTION_API_DOMAIN }}
@@ -101,6 +114,7 @@ jobs:
           username: ${{ secrets.PRODUCTION_SSH_USER }}
           key: ${{ secrets.PRODUCTION_SSH_KEY }}
           port: ${{ secrets.PRODUCTION_SSH_PORT || 22 }}
+          fingerprint: ${{ secrets.PRODUCTION_SSH_FINGERPRINT }}
           envs: APP_DIR,API_DOMAIN
           script_stop: true
           script: |

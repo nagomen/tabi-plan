@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import mysql from "mysql2/promise";
-import { all, pool, type Row, withTransaction } from "./db.js";
+import { all, firstRow, pool, withTransaction } from "./db.js";
 import { BadRequest } from "./errors.js";
 import { newId } from "./ids.js";
 import { ensurePlanMembersAreFriends } from "./plan-member-repo.js";
@@ -64,17 +64,7 @@ export async function revokeInvite(planId: string, inviteId: string): Promise<vo
 export async function acceptInvite(token: string, userId: string): Promise<{ planSlug: string }> {
   if (!userId) throw new BadRequest("ログインが必要です");
   return withTransaction(async (conn) => {
-    const [rows] = await conn.query<Row[]>(
-      `SELECT i.id, i.plan_id, i.role, i.status, i.created_by_id, i.invited_user_id,
-              i.accepted_by_id, i.expires_at, p.slug
-         FROM plan_invites i
-         JOIN plans p ON p.id = i.plan_id AND p.deleted_at IS NULL
-        WHERE i.token_hash = ?
-        LIMIT 1
-        FOR UPDATE`,
-      [tokenHash(token)],
-    );
-    const invite = (rows as unknown as {
+    const invite = await firstRow<{
       id: string;
       plan_id: string;
       role: "editor" | "viewer";
@@ -84,7 +74,17 @@ export async function acceptInvite(token: string, userId: string): Promise<{ pla
       accepted_by_id: string | null;
       expires_at: string | null;
       slug: string;
-    }[])[0];
+    }>(
+      conn,
+      `SELECT i.id, i.plan_id, i.role, i.status, i.created_by_id, i.invited_user_id,
+              i.accepted_by_id, i.expires_at, p.slug
+         FROM plan_invites i
+         JOIN plans p ON p.id = i.plan_id AND p.deleted_at IS NULL
+        WHERE i.token_hash = ?
+        LIMIT 1
+        FOR UPDATE`,
+      [tokenHash(token)],
+    );
     if (!invite) throw new BadRequest("招待リンクが無効です");
     if (invite.invited_user_id && invite.invited_user_id !== userId) {
       throw new BadRequest("この招待リンクは別のユーザー宛てです");

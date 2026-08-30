@@ -14,7 +14,6 @@ export interface AuthConfig {
 export interface MapDefaults {
   center: [number, number];
   zoom: number;
-  activeRadiusKm: number;
   overviewRadiusKm: number;
 }
 
@@ -106,7 +105,6 @@ export const DEFAULT_CONFIG: TripConfig = {
   mapDefaults: {
     center: [35.6812, 139.7671],
     zoom: 5,
-    activeRadiusKm: 300,
     overviewRadiusKm: 800,
   },
   geocoding: {
@@ -168,12 +166,19 @@ export function readGlobalTripConfig(): Partial<TripConfig> {
   return (window as Window & { TRIP_CONFIG?: Partial<TripConfig> }).TRIP_CONFIG || {};
 }
 
-/** 既定値と実行時設定をマージした、ページ共通の確定設定。 */
-export function resolvedTripConfig(): TripConfig {
+/**
+ * 既定値と実行時設定をマージした、ページ共通の確定設定。
+ * override を渡すと、開いている計画などページ側の上書きを最後に重ねる。
+ */
+export function resolvedTripConfig(override?: Partial<TripConfig>): TripConfig {
+  const runtime = mergeConfig(
+    readGlobalTripConfig() as Record<string, unknown>,
+    (override || {}) as Record<string, unknown>,
+  );
   return normalizeTripConfig(
     mergeConfig(
       DEFAULT_CONFIG as unknown as Record<string, unknown>,
-      readGlobalTripConfig() as Record<string, unknown>,
+      runtime,
     ) as unknown as TripConfig,
   );
 }

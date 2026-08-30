@@ -1,6 +1,7 @@
 // 旅程を LINE などにそのまま貼れるプレーンテキストへ整形する。
 // マークダウンは解釈されない前提で、記号と改行だけで読みやすくする。
 
+import { WEEKDAYS } from "./date";
 import type { ItineraryItem, TripInfo } from "./types";
 
 /** buildItineraryShareText が必要とする1日分の最小形（dashboard の DayGroup 互換）。 */
@@ -10,8 +11,6 @@ export interface ShareDay {
   area?: string;
   items: ItineraryItem[];
 }
-
-const WEEKDAYS = ["日", "月", "火", "水", "木", "金", "土"];
 
 /** "2026-08-01" → "8/1(金)"。パースできなければ元文字列を返す。 */
 function dateLabel(iso: string): string {

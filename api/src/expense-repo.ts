@@ -1,6 +1,6 @@
 // 費用・負担割・精算・監査ログの永続化。
 import mysql from "mysql2/promise";
-import { all, pool, type Row, withTransaction } from "./db.js";
+import { all, firstRow, pool, type Row, withTransaction } from "./db.js";
 import { BadRequest } from "./errors.js";
 import { newId } from "./ids.js";
 import { activeMemberSet, assertMember, safeUrl } from "./repo-helpers.js";
@@ -32,6 +32,14 @@ export interface ExpenseInput {
 const CATEGORIES = new Set(["food", "transport", "lodging", "sightseeing", "communication", "other"]);
 const SPLIT = new Set(["equal_all", "equal_selected", "custom", "none"]);
 const PAY = new Set(["card", "cash", "transfer", "other"]);
+
+/** 支払額・レート・base_currency 換算額を検証つきで求める。create/update で共有する。 */
+function computeAmounts(input: ExpenseInput): { amount: number; rate: number; base: number } {
+  const amount = Math.round(Number(input.amount_minor) || 0);
+  if (!Number.isSafeInteger(amount) || amount <= 0) throw new BadRequest("支払額は1以上の整数で指定してください");
+  const rate = Number(input.fx_rate) > 0 ? Number(input.fx_rate) : 1;
+  return { amount, rate, base: Math.round(amount * rate) };
+}
 
 function normalizeShares(shares: unknown): { user_id: string; amount_base_minor: number }[] {
   const byUser = new Map<string, number>();
@@ -69,10 +77,7 @@ async function validateExpenseInput(
 /** 費用を1件追加する。行の INSERT なので、複数端末の同時追加でも衝突しない。 */
 export async function createExpense(planId: string, input: ExpenseInput, actorUserId: string): Promise<{ id: string }> {
   const id = input.id && /^[\w-]{1,32}$/.test(input.id) ? input.id : newId("exp");
-  const amount = Math.round(Number(input.amount_minor) || 0);
-  if (!Number.isSafeInteger(amount) || amount <= 0) throw new BadRequest("支払額は1以上の整数で指定してください");
-  const rate = Number(input.fx_rate) > 0 ? Number(input.fx_rate) : 1;
-  const base = Math.round(amount * rate);
+  const { amount, rate, base } = computeAmounts(input);
   await withTransaction(async (conn) => {
     const { splitMethod, shares } = await validateExpenseInput(planId, input, base, conn);
     await conn.query(
@@ -164,13 +169,11 @@ export async function listExpenseAudit(planId: string): Promise<Record<string, u
 }
 
 export async function updateExpense(id: string, input: ExpenseInput, actorUserId: string): Promise<void> {
-  const amount = Math.round(Number(input.amount_minor) || 0);
-  if (!Number.isSafeInteger(amount) || amount <= 0) throw new BadRequest("支払額は1以上の整数で指定してください");
-  const rate = Number(input.fx_rate) > 0 ? Number(input.fx_rate) : 1;
-  const base = Math.round(amount * rate);
+  const { amount, rate, base } = computeAmounts(input);
   await withTransaction(async (conn) => {
-    const [expenseRows] = await conn.query<Row[]>("SELECT plan_id FROM expenses WHERE id = ? FOR UPDATE", [id]);
-    const planId = (expenseRows as unknown as { plan_id: string }[])[0]?.plan_id;
+    const planId = (await firstRow<{ plan_id: string }>(
+      conn, "SELECT plan_id FROM expenses WHERE id = ? FOR UPDATE", [id],
+    ))?.plan_id;
     if (!planId) throw new BadRequest("費用が見つかりません");
     const before = await expenseSnapshot(conn, id);
     const { splitMethod, shares } = await validateExpenseInput(planId, input, base, conn);
@@ -212,8 +215,9 @@ export async function restoreExpense(id: string, actorUserId: string): Promise<v
 
 async function setExpenseDeleted(id: string, actorUserId: string, deleted: boolean): Promise<void> {
   await withTransaction(async (conn) => {
-    const [rows] = await conn.query<Row[]>("SELECT plan_id FROM expenses WHERE id = ? FOR UPDATE", [id]);
-    const planId = (rows as unknown as { plan_id: string }[])[0]?.plan_id;
+    const planId = (await firstRow<{ plan_id: string }>(
+      conn, "SELECT plan_id FROM expenses WHERE id = ? FOR UPDATE", [id],
+    ))?.plan_id;
     if (!planId) throw new BadRequest("費用が見つかりません");
     const before = await expenseSnapshot(conn, id);
     await conn.query(

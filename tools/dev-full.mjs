@@ -17,7 +17,7 @@ Starts the MySQL SSH tunnel, local API, TypeScript watcher, and Vite frontend.
 
 Environment:
   ENV_FILE                 API environment file (default: .env)
-  LOCAL_DB_SSH_TARGET      SSH target (default: ubuntu@163.44.121.146)
+  LOCAL_DB_SSH_TARGET      SSH target, e.g. ubuntu@YOUR_VPS_HOST (set in .env)
   LOCAL_DB_SSH_PORT        SSH port (default: 22)
   LOCAL_DB_REMOTE_HOST     MySQL host seen from the VPS (default: 127.0.0.1)
   LOCAL_DB_REMOTE_PORT     MySQL port seen from the VPS (default: 3306)
@@ -181,7 +181,10 @@ try {
     if (await canConnect(dbHost, dbPort)) {
       console.log(`[dev:full] 既存のDB接続を再利用します: ${dbHost}:${dbPort}`);
     } else {
-      const sshTarget = apiEnv.LOCAL_DB_SSH_TARGET || "ubuntu@163.44.121.146";
+      const sshTarget = apiEnv.LOCAL_DB_SSH_TARGET;
+      if (!sshTarget) {
+        throw new Error("LOCAL_DB_SSH_TARGET が未設定です。.env に ubuntu@<VPSホスト> を設定するか、LOCAL_DB_TUNNEL=0 で直接接続してください");
+      }
       const sshPort = apiEnv.LOCAL_DB_SSH_PORT || "22";
       const remoteHost = apiEnv.LOCAL_DB_REMOTE_HOST || "127.0.0.1";
       const remotePort = apiEnv.LOCAL_DB_REMOTE_PORT || "3306";

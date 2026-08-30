@@ -1,7 +1,7 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { timingSafeEqual } from "node:crypto";
 import type { ItineraryCandidate } from "@tabi/contracts";
-import { config } from "./config.js";
 import { AiInputError } from "./ai-errors.js";
+import { hmac } from "./signing.js";
 
 const TOKEN_TTL_MS = 30 * 60 * 1000;
 
@@ -37,10 +37,6 @@ function canonicalContext(context: ConsultationContext): ConsultationContext {
   };
 }
 
-function signature(encodedPayload: string): Buffer {
-  return createHmac("sha256", config.sessionSecret).update(encodedPayload).digest();
-}
-
 export function createConsultationToken(
   userId: string,
   context: ConsultationContext,
@@ -54,13 +50,13 @@ export function createConsultationToken(
     candidates: candidates.map(({ id, name, area }) => ({ id, name, area })),
   };
   const encoded = Buffer.from(JSON.stringify(payload)).toString("base64url");
-  return `${encoded}.${signature(encoded).toString("base64url")}`;
+  return `${encoded}.${hmac(encoded).toString("base64url")}`;
 }
 
 function decodeToken(token: string): ConsultationPayload {
   const [encoded, suppliedSignature, extra] = String(token || "").split(".");
   if (!encoded || !suppliedSignature || extra) throw new AiInputError("AI相談を最初からやり直してください");
-  const expected = signature(encoded);
+  const expected = hmac(encoded);
   let supplied: Buffer;
   try {
     supplied = Buffer.from(suppliedSignature, "base64url");

@@ -86,7 +86,7 @@ jobs:
           path: frontend/dist
 
       - name: Prepare VPS upload directory
-        uses: appleboy/ssh-action@v1.2.0
+        uses: appleboy/ssh-action@7eaf76671a0d7eec5d98ee897acda4f968735a17 # v1.2.0
         env:
           APP_DIR: ${{ vars.PRODUCTION_APP_DIR }}
         with:
@@ -94,6 +94,7 @@ jobs:
           username: ${{ secrets.PRODUCTION_SSH_USER }}
           key: ${{ secrets.PRODUCTION_SSH_KEY }}
           port: ${{ secrets.PRODUCTION_SSH_PORT || 22 }}
+          fingerprint: ${{ secrets.PRODUCTION_SSH_FINGERPRINT }}
           envs: APP_DIR
           script_stop: true
           script: |
@@ -105,18 +106,19 @@ jobs:
             rm -rf "$APP_DIR/frontend/dist"
 
       - name: Upload build to VPS
-        uses: appleboy/scp-action@v0.1.7
+        uses: appleboy/scp-action@917f8b81dfc1ccd331fef9e2d61bdc6c8be94634 # v0.1.7
         with:
           host: ${{ secrets.PRODUCTION_SSH_HOST }}
           username: ${{ secrets.PRODUCTION_SSH_USER }}
           key: ${{ secrets.PRODUCTION_SSH_KEY }}
           port: ${{ secrets.PRODUCTION_SSH_PORT || 22 }}
+          fingerprint: ${{ secrets.PRODUCTION_SSH_FINGERPRINT }}
           source: "frontend/dist"
           target: ${{ vars.PRODUCTION_APP_DIR }}
           overwrite: true
 
       - name: Publish through nginx
-        uses: appleboy/ssh-action@v1.2.0
+        uses: appleboy/ssh-action@7eaf76671a0d7eec5d98ee897acda4f968735a17 # v1.2.0
         env:
           APP_DIR: ${{ vars.PRODUCTION_APP_DIR }}
           DOMAIN: ${{ vars.PRODUCTION_DOMAIN }}
@@ -127,6 +129,7 @@ jobs:
           username: ${{ secrets.PRODUCTION_SSH_USER }}
           key: ${{ secrets.PRODUCTION_SSH_KEY }}
           port: ${{ secrets.PRODUCTION_SSH_PORT || 22 }}
+          fingerprint: ${{ secrets.PRODUCTION_SSH_FINGERPRINT }}
           envs: APP_DIR,DOMAIN,REPO_BRANCH,INSTALL_NGINX
           script_stop: true
           script: |
@@ -156,7 +159,7 @@ jobs:
       # 環境ファイルへ書き込む。未設定なら何もしない（機能だけ無効になる）。
       # secrets は if: では参照できないので、空かどうかは script 側で見る。
       - name: Sync OpenAI key to VPS
-        uses: appleboy/ssh-action@v1.2.0
+        uses: appleboy/ssh-action@7eaf76671a0d7eec5d98ee897acda4f968735a17 # v1.2.0
         env:
           ENV_FILE: ${{ vars.PRODUCTION_API_ENV_FILE || '~/secure_env/travel-api.env' }}
           OPENAI_KEY: ${{ secrets.OPENAI_KEY }}
@@ -166,6 +169,7 @@ jobs:
           username: ${{ secrets.PRODUCTION_SSH_USER }}
           key: ${{ secrets.PRODUCTION_SSH_KEY }}
           port: ${{ secrets.PRODUCTION_SSH_PORT || 22 }}
+          fingerprint: ${{ secrets.PRODUCTION_SSH_FINGERPRINT }}
           envs: ENV_FILE,OPENAI_KEY,OPENAI_MODEL
           script_stop: true
           script: |
@@ -190,7 +194,7 @@ jobs:
             echo "OPENAI_KEY を書き込みました（値は出力しません）"
 
       - name: Deploy API on VPS
-        uses: appleboy/ssh-action@v1.2.0
+        uses: appleboy/ssh-action@7eaf76671a0d7eec5d98ee897acda4f968735a17 # v1.2.0
         env:
           APP_DIR: ${{ vars.PRODUCTION_APP_DIR }}
           API_DOMAIN: ${{ vars.PRODUCTION_API_DOMAIN }}
@@ -201,6 +205,7 @@ jobs:
           username: ${{ secrets.PRODUCTION_SSH_USER }}
           key: ${{ secrets.PRODUCTION_SSH_KEY }}
           port: ${{ secrets.PRODUCTION_SSH_PORT || 22 }}
+          fingerprint: ${{ secrets.PRODUCTION_SSH_FINGERPRINT }}
           envs: APP_DIR,API_DOMAIN,REPO_BRANCH,INSTALL_NGINX
           script_stop: true
           script: |

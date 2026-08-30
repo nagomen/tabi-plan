@@ -7,6 +7,8 @@ import "./style.css";
 import { initPageTransitions, navigateWithPageTransition } from "../shared/page-transition";
 import { icon, type IconName } from "../shared/icons";
 import { escapeHtml, makeScopedQuery, errorMessage } from "../shared/dom";
+import { mdOf } from "../shared/date";
+import { planDashboardHref } from "../shared/plan-url";
 import { registerServiceWorker } from "../shared/pwa";
 import * as Backend from "../shared/backend";
 import * as TripPlans from "../shared/plans-store";
@@ -20,7 +22,7 @@ import { currentAccount, logOut, updateName, isLoggedIn, searchAccounts, searchA
 import * as Friendships from "../shared/friendship-store";
 import { isHistoryPublic, setHistoryPublic } from "../shared/history-privacy";
 import { mountAppHeader } from "../shared/app-header";
-import { monthCalendarHtml } from "../shared/calendar";
+import { monthCalendarHtml, bandColor, stepMonth } from "../shared/calendar";
 
 initPageTransitions();
 
@@ -58,28 +60,12 @@ ICONS.forEach(([sel, name]) => {
   if (el) el.insertAdjacentHTML("afterbegin", icon(name) + (el.tagName === "BUTTON" && el.textContent ? " " : ""));
 });
 
-// ---- 配色（計画ごとに一意の色） ----------------------------------------
-
-const PALETTE = ["#0b5a42", "#22719d", "#b87418", "#6246a6", "#cf4f3d", "#2f7d6b", "#8a5a2b", "#3b4c8a"];
-function colorFor(slug: string, allSlugs: string[]): string {
-  const i = allSlugs.indexOf(slug);
-  return PALETTE[(i < 0 ? 0 : i) % PALETTE.length];
-}
-
 // ---- 日付ユーティリティ -------------------------------------------------
 
 function toDate(value: string | undefined): Date | null {
   const m = /(\d{4})[-/](\d{1,2})[-/](\d{1,2})/.exec(String(value || ""));
   if (!m) return null;
   return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
-}
-
-function dayKey(d: Date): string {
-  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
-}
-
-function fmtMD(d: Date): string {
-  return `${d.getMonth() + 1}/${d.getDate()}`;
 }
 
 interface PlanRange { start: Date; end: Date }
@@ -208,8 +194,8 @@ function planRow(plan: PlanMeta, allSlugs: string[]): string {
   const draft = !TripPlans.isPublished(plan);
   const href = draft
     ? `plan-editor.html?plan=${encodeURIComponent(plan.slug)}`
-    : `index.html?plan=${encodeURIComponent(plan.slug)}`;
-  const dotColor = draft ? "#b87418" : colorFor(plan.slug, allSlugs);
+    : planDashboardHref(plan.slug);
+  const dotColor = draft ? "#b87418" : bandColor(plan.slug, allSlugs);
   return (
     `<a class="mp-row${draft ? " is-draft" : ""}" href="${href}">` +
     `<span class="mp-dot" style="background:${dotColor}"></span>` +
@@ -293,7 +279,7 @@ function renderCalendar(): void {
   const bands: PlanBand[] = mine
     .map((plan) => {
       const range = planRange(plan);
-      return range ? { plan, range, color: colorFor(plan.slug, allSlugs) } : null;
+      return range ? { plan, range, color: bandColor(plan.slug, allSlugs) } : null;
     })
     .filter((b): b is PlanBand => Boolean(b));
 
@@ -328,23 +314,15 @@ function renderCalendar(): void {
             `<a class="mp-legend-row" href="index.html?plan=${encodeURIComponent(b.plan.slug)}">` +
             `<span class="mp-legend-sw" style="background:${b.color}"></span>` +
             `<span class="mp-legend-name">${escapeHtml(b.plan.title || "無題の旅行")}</span>` +
-            `<span class="mp-legend-dates">${fmtMD(b.range.start)}〜${fmtMD(b.range.end)}</span>` +
+            `<span class="mp-legend-dates">${mdOf(b.range.start)}〜${mdOf(b.range.end)}</span>` +
             `</a>`,
         )
         .join("")
     : `<div class="mp-empty"><b>この月の旅行はありません</b><span>前後の月も確認してください</span></div>`;
 }
 
-qs<HTMLButtonElement>("[data-cal-prev]").addEventListener("click", () => {
-  view.month -= 1;
-  if (view.month < 0) { view.month = 11; view.year -= 1; }
-  renderCalendar();
-});
-qs<HTMLButtonElement>("[data-cal-next]").addEventListener("click", () => {
-  view.month += 1;
-  if (view.month > 11) { view.month = 0; view.year += 1; }
-  renderCalendar();
-});
+qs<HTMLButtonElement>("[data-cal-prev]").addEventListener("click", () => { stepMonth(view, -1); renderCalendar(); });
+qs<HTMLButtonElement>("[data-cal-next]").addEventListener("click", () => { stepMonth(view, 1); renderCalendar(); });
 
 // ---- 送金リンク登録（PayPay 受取リンク/ID） ----------------------------
 
@@ -757,7 +735,6 @@ document.addEventListener("click", (event) => {
 
 async function init(): Promise<void> {
   await Backend.preload();
-  void dayKey; // 予約（将来の選択状態用）
   registerServiceWorker();
   renderProfile();
   renderPlans();
@@ -771,9 +748,7 @@ async function init(): Promise<void> {
 void db.load().then(init);
 
 // 控え（キャッシュ）で先に描いているので、裏の取り直しで中身が変わったら描き直す。
-window.addEventListener("trip-db-sync", (event) => {
-  const detail = (event as CustomEvent<{ refreshed?: boolean; changed?: boolean }>).detail;
-  if (!detail?.refreshed || !detail.changed) return;
+db.onDbSync(() => {
   renderProfile();
   renderPlans();
   renderCalendar();

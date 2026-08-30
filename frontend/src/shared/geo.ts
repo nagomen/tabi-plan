@@ -44,6 +44,14 @@ function normalizeName(name: string): string {
     .replace(/・/g, "");
 }
 
+// 正規化キー→座標を初期化時に一度だけ作る（呼び出しごとの全キー再正規化を避ける）。
+// 同じ正規化キーが複数あれば辞書の登場順で先勝ち（従来の探索順と一致）。
+const NORMALIZED_COORDS = new Map<string, [number, number]>();
+for (const [key, value] of Object.entries(COORDS)) {
+  const norm = normalizeName(key);
+  if (!NORMALIZED_COORDS.has(norm)) NORMALIZED_COORDS.set(norm, value);
+}
+
 export function coordsFor(name: string | undefined): LatLng | null {
   const raw = String(name || "").trim();
   if (COORDS[raw]) return { lat: COORDS[raw][0], lng: COORDS[raw][1] };
@@ -52,11 +60,8 @@ export function coordsFor(name: string | undefined): LatLng | null {
   // 「新大阪駅」のように辞書が駅名の「駅」なしで持つ場合だけ最後に補完する。
   const candidates = [norm, norm.endsWith("駅") ? norm.slice(0, -1) : ""].filter(Boolean);
   for (const candidate of candidates) {
-    for (const key of Object.keys(COORDS)) {
-      if (normalizeName(key) === candidate) {
-        return { lat: COORDS[key][0], lng: COORDS[key][1] };
-      }
-    }
+    const hit = NORMALIZED_COORDS.get(candidate);
+    if (hit) return { lat: hit[0], lng: hit[1] };
   }
   return null;
 }

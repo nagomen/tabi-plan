@@ -15,7 +15,6 @@ window.TRIP_CONFIG = {
   mapDefaults: {
     center: [39.6, 140.6],
     zoom: 6,
-    activeRadiusKm: 180,
     overviewRadiusKm: 620
   },
   // 共有ストア（MySQL）。これを有効にすると計画・費用・アカウント・権限などが

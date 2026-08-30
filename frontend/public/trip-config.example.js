@@ -11,7 +11,6 @@ window.TRIP_CONFIG = {
   mapDefaults: {
     center: [35.6812, 139.7671],
     zoom: 5,
-    activeRadiusKm: 300,
     overviewRadiusKm: 800
   },
   geocoding: {

@@ -36,6 +36,35 @@ server {
     # 共有ストアの JSON は最大 2MB を想定（API 側の MAX_BODY_BYTES と合わせる）
     client_max_body_size 4m;
 
+    # Cloudflare からの接続に限り CF-Connecting-IP を本物の接続元として採用する。
+    # これらの range 外（＝オリジンへ直接来た接続）が送ってきた CF-Connecting-IP は
+    # 信用しない。これが無いと、Cloudflare を迂回した攻撃者が CF-Connecting-IP を
+    # 毎回詐称してレート制限（ログイン総当たり対策を含む）を回避できてしまう。
+    # 最新の一覧: https://www.cloudflare.com/ips/ （変更時はここを更新する）
+    set_real_ip_from 173.245.48.0/20;
+    set_real_ip_from 103.21.244.0/22;
+    set_real_ip_from 103.22.200.0/22;
+    set_real_ip_from 103.31.4.0/22;
+    set_real_ip_from 141.101.64.0/18;
+    set_real_ip_from 108.162.192.0/18;
+    set_real_ip_from 190.93.240.0/20;
+    set_real_ip_from 188.114.96.0/20;
+    set_real_ip_from 197.234.240.0/22;
+    set_real_ip_from 198.41.128.0/17;
+    set_real_ip_from 162.158.0.0/15;
+    set_real_ip_from 104.16.0.0/13;
+    set_real_ip_from 104.24.0.0/14;
+    set_real_ip_from 172.64.0.0/13;
+    set_real_ip_from 131.0.72.0/22;
+    set_real_ip_from 2400:cb00::/32;
+    set_real_ip_from 2606:4700::/32;
+    set_real_ip_from 2803:f800::/32;
+    set_real_ip_from 2405:b500::/32;
+    set_real_ip_from 2405:8100::/32;
+    set_real_ip_from 2a06:98c0::/29;
+    set_real_ip_from 2c0f:f248::/32;
+    real_ip_header CF-Connecting-IP;
+
     # CORS は API 本体が Origin を見て付ける。ここでは付けない
     # （nginx でも付けるとヘッダが重複して全ブラウザが弾く）。
     location /api/ {
@@ -43,10 +72,10 @@ server {
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
-        # Cloudflare 経由なら CF-Connecting-IP を API 側で見られるように残す。
-        # 直接アクセスでも rate limit が全員 127.0.0.1 扱いにならないよう、
-        # X-Forwarded-For は通常の nginx チェーンを渡す。
-        proxy_set_header CF-Connecting-IP $http_cf_connecting_ip;
+        # $remote_addr は real_ip 適用後の本物の接続元。Cloudflare 経由なら
+        # 実訪問者 IP、直接接続なら攻撃者の実 IP になり、詐称値は入らない。
+        # よって API 側の TRUST_CLOUDFLARE_CONNECTING_IP を有効化しても安全。
+        proxy_set_header CF-Connecting-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_read_timeout 30s;

@@ -21,6 +21,7 @@ import type { LocalPlanData, PlanVisibility } from "../shared/plans-store";
 import type { ItineraryItem, ItemType, Candidate } from "../shared/types";
 import { readGlobalTripConfig } from "../shared/config";
 import { escapeHtml, errorMessage } from "../shared/dom";
+import { parseISO, toISO, weekday, mdOf } from "../shared/date";
 import { icon, type IconName } from "../shared/icons";
 import { planCoverThumbnail } from "../shared/cover";
 import { registerServiceWorker } from "../shared/pwa";
@@ -291,8 +292,9 @@ function qs<E extends Element = HTMLElement>(parent: ParentNode, selector: strin
   return el;
 }
 
-const root = document.getElementById("editor");
-if (!root) throw new Error("エディタのルート要素が見つかりません: #editor");
+const rootOrNull = document.getElementById("editor");
+if (!rootOrNull) throw new Error("エディタのルート要素が見つかりません: #editor");
+const root: HTMLElement = rootOrNull;
 
 mountAppHeader({
   kicker: "Plan Editor",
@@ -392,8 +394,8 @@ function lockEditor(message: string): false {
 }
 
 function applyEditorLock(): void {
-  root!.classList.add("is-readonly");
-  root!.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement | HTMLButtonElement>(
+  root.classList.add("is-readonly");
+  root.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement | HTMLButtonElement>(
     "input, select, textarea, button",
   ).forEach((control) => {
     control.disabled = true;
@@ -449,12 +451,6 @@ function newItem(kind: ItemKind, seed?: Partial<Item>): Item {
 // ---- 日付ユーティリティ -------------------------------------------------
 
 function pad(n: number): string { return n < 10 ? "0" + n : String(n); }
-function toISO(d: Date): string { return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()); }
-function parseISO(s: string): Date | null {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(s || ""));
-  return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : null;
-}
-function weekday(d: Date): string { return ["日", "月", "火", "水", "木", "金", "土"][d.getDay()]; }
 function datesString(): string {
   const a = parseISO(model.startDate);
   const b = parseISO(model.endDate);
@@ -1070,10 +1066,10 @@ function unselectedAiCities(): string[] {
 }
 
 function aiPreferences(): AiPreferences {
-  const pace = root!.querySelector<HTMLInputElement>('input[name="ai-pace"]:checked')?.value || "標準";
+  const pace = root.querySelector<HTMLInputElement>('input[name="ai-pace"]:checked')?.value || "標準";
   return {
     pace: pace as AiPreferences["pace"],
-    interests: Array.from(root!.querySelectorAll<HTMLInputElement>('input[name="ai-interest"]:checked'))
+    interests: Array.from(root.querySelectorAll<HTMLInputElement>('input[name="ai-interest"]:checked'))
       .map((input) => input.value),
     walking: aiWalking.value as AiPreferences["walking"],
     transport: aiTransport.value as AiPreferences["transport"],
@@ -1143,7 +1139,7 @@ function setAiStage(stage: AiStage): void {
   aiPreferencesStage.hidden = stage !== "preferences";
   aiDoneStage.hidden = stage !== "done";
   const index = stage === "idle" || stage === "candidates" ? 0 : stage === "preferences" ? 1 : 2;
-  root!.querySelectorAll<HTMLElement>("[data-ai-flow]").forEach((item, itemIndex) => {
+  root.querySelectorAll<HTMLElement>("[data-ai-flow]").forEach((item, itemIndex) => {
     item.classList.toggle("is-current", itemIndex === index);
     item.classList.toggle("is-done", itemIndex < index || stage === "done");
   });
@@ -2833,7 +2829,7 @@ const icsBtn = qs<HTMLButtonElement>(root, "[data-ics]");
 
 function fmtMd(iso: string): string {
   const d = parseISO(iso);
-  return d ? `${d.getMonth() + 1}/${d.getDate()}` : "";
+  return d ? mdOf(d) : "";
 }
 
 /** カレンダー予定の説明文: メンバー・訪問地に加え、日ごとの詳細を書き出す。 */
@@ -3029,8 +3025,8 @@ citiesEl.addEventListener("input", (event) => {
 // ---- 保存・読み込み -----------------------------------------------------
 
 function syncBasicInputs(): void {
-  qs<HTMLInputElement>(root!, '[data-f="title"]').value = model.title || "";
-  qs<HTMLInputElement>(root!, '[data-f="note"]').value = model.note || "";
+  qs<HTMLInputElement>(root, '[data-f="title"]').value = model.title || "";
+  qs<HTMLInputElement>(root, '[data-f="note"]').value = model.note || "";
   updateCoverPreview();
   updateMemberVisibility();
   renderMembers();
@@ -3191,7 +3187,7 @@ async function save(): Promise<void> {
 
 function focusPublishError(field: "title" | "dates" | "cities", step: 1 | 2): void {
   setViewStep(step);
-  if (field === "title") qs<HTMLInputElement>(root!, '[data-f="title"]').focus();
+  if (field === "title") qs<HTMLInputElement>(root, '[data-f="title"]').focus();
   else if (field === "dates") rangeTrigger.focus();
   else cityInput.focus();
 }
@@ -3375,7 +3371,7 @@ const mapClose = qs<HTMLButtonElement>(root, "[data-map-close]");
 mapClose.innerHTML = icon("xMark");
 function setMapCollapsed(collapsed: boolean): void {
   if (!collapsed) ensureMap();
-  root!.classList.toggle("map-collapsed", collapsed);
+  root.classList.toggle("map-collapsed", collapsed);
   mapHeaderBtn.classList.toggle("is-on", !collapsed);
   mapHeaderBtn.setAttribute("aria-label", collapsed ? "地図を表示" : "地図を隠す");
   mapHeaderBtn.setAttribute("title", collapsed ? "地図を表示" : "地図を隠す");
@@ -3383,14 +3379,14 @@ function setMapCollapsed(collapsed: boolean): void {
   try { localStorage.setItem("pe-map-collapsed", collapsed ? "1" : "0"); } catch { /* ignore */ }
   if (!collapsed) window.setTimeout(() => { if (map) { map.invalidateSize(); refreshMap(true); } }, 60);
 }
-mapToggle.addEventListener("click", () => setMapCollapsed(!root!.classList.contains("map-collapsed")));
-mapHeaderBtn.addEventListener("click", () => setMapCollapsed(!root!.classList.contains("map-collapsed")));
+mapToggle.addEventListener("click", () => setMapCollapsed(!root.classList.contains("map-collapsed")));
+mapHeaderBtn.addEventListener("click", () => setMapCollapsed(!root.classList.contains("map-collapsed")));
 mapClose.addEventListener("pointerdown", (event) => event.stopPropagation());
 mapClose.addEventListener("click", (event) => { event.stopPropagation(); setMapCollapsed(true); });
 
 // スマホ: 地図ボトムシートの境界をドラッグして高さを変更
-const mapGrip = root!.querySelector<HTMLElement>("[data-map-grip]");
-const mapWrapEl = root!.querySelector<HTMLElement>(".pe-mapwrap");
+const mapGrip = root.querySelector<HTMLElement>("[data-map-grip]");
+const mapWrapEl = root.querySelector<HTMLElement>(".pe-mapwrap");
 if (mapGrip && mapWrapEl) {
   const MIN_MAP_H = 180;
   const maxMapH = (): number => Math.round(window.innerHeight * 0.92);
@@ -3398,14 +3394,14 @@ if (mapGrip && mapWrapEl) {
   let dragging = false;
   const applyMapHeight = (height: number, persist = true): void => {
     const h = Math.max(MIN_MAP_H, Math.min(maxMapH(), Math.round(height)));
-    root!.style.setProperty("--pe-map-h", `${h}px`);
+    root.style.setProperty("--pe-map-h", `${h}px`);
     if (resizeRaf) cancelAnimationFrame(resizeRaf);
     resizeRaf = requestAnimationFrame(() => { if (map) map.invalidateSize({ animate: false }); });
     if (persist) { try { localStorage.setItem("pe-map-h", String(h)); } catch { /* ignore */ } }
   };
   mapGrip.addEventListener("pointerdown", (e) => {
     dragging = true;
-    root!.classList.add("is-map-resizing");
+    root.classList.add("is-map-resizing");
     try { mapGrip.setPointerCapture(e.pointerId); } catch { /* ignore */ }
     e.preventDefault();
   });
@@ -3416,7 +3412,7 @@ if (mapGrip && mapWrapEl) {
   const endMapDrag = (e: PointerEvent): void => {
     if (!dragging) return;
     dragging = false;
-    root!.classList.remove("is-map-resizing");
+    root.classList.remove("is-map-resizing");
     try { mapGrip.releasePointerCapture(e.pointerId); } catch { /* ignore */ }
     if (map) map.invalidateSize();
   };
@@ -3498,7 +3494,7 @@ function bootstrapEditor(): void {
     setMapCollapsed(true);
   }
   // 畳まない構成（PC など）はこの時点で見えているので、ここで作る。
-  if (!root!.classList.contains("map-collapsed")) ensureMap();
+  if (!root.classList.contains("map-collapsed")) ensureMap();
   statusEl.textContent = isNew ? "下書き（自動保存・未保存）" : editable ? "読み込み完了" : statusEl.textContent;
   const meta = slug ? TripPlans.get(slug) : null;
   publishBtn.hidden = Boolean(meta && !canManagePlan(meta));

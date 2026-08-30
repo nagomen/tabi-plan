@@ -1001,3 +1001,14 @@ export async function saveFriendship(input: { a: string; b: string; requested_by
     });
   }
 }
+
+/**
+ * DB 同期イベント（trip-db-sync）の購読。
+ * 実データが更新された（refreshed かつ changed）ときだけ handler を呼ぶ。
+ */
+export function onDbSync(handler: () => void): void {
+  window.addEventListener("trip-db-sync", (event) => {
+    const detail = (event as CustomEvent<{ refreshed?: boolean; changed?: boolean }>).detail;
+    if (detail?.refreshed && detail.changed) handler();
+  });
+}

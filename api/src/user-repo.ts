@@ -40,8 +40,8 @@ export async function searchUsers(query: string, actorUserId: string): Promise<
   if (!actorUserId) throw new BadRequest("ログインが必要です");
   const q = String(query || "").trim().slice(0, 64);
   if (!q) return [];
+  // 名前キーもメールも同じ正規化規則。完全一致のときだけメールを返す。
   const key = identityKey(q);
-  const email = identityKey(q);
   const rows = await all<{ id: string; display_name: string; email: string | null }>(
     `SELECT u.id, u.display_name, CASE WHEN c.email = ? THEN c.email ELSE '' END AS email
        FROM users u
@@ -50,7 +50,7 @@ export async function searchUsers(query: string, actorUserId: string): Promise<
         AND (u.name_key LIKE ? OR c.email = ?)
       ORDER BY u.created_at DESC
       LIMIT 20`,
-    [email, actorUserId, `%${key}%`, email],
+    [key, actorUserId, `%${key}%`, key],
   );
   return rows.map((row) => ({ id: row.id, display_name: row.display_name, email: row.email || "" }));
 }

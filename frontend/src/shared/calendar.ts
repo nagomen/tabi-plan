@@ -2,6 +2,10 @@
 //  1) Google カレンダーのテンプレートURL（認証不要・ワンクリックで追加）
 //  2) .ics 書き出し（Google/Apple など任意のカレンダーにインポート）
 
+import { WEEKDAYS } from "./date";
+import { escapeHtml } from "./dom";
+import { planDashboardHref } from "./plan-url";
+
 export interface CalEvent {
   title: string;
   start: Date;
@@ -73,8 +77,6 @@ export interface MonthCalendarBand {
   color: string;
 }
 
-const DOW = ["日", "月", "火", "水", "木", "金", "土"];
-
 function sameDay(a: Date, b: Date): boolean {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
@@ -83,8 +85,20 @@ function dayValue(date: Date): number {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
 }
 
-function html(value: string): string {
-  return value.replace(/[&<>"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[char] || char);
+/** 計画ごとに一意の帯色。マイページ・旅行履歴で共通。 */
+export const CALENDAR_PALETTE = ["#0b5a42", "#22719d", "#b87418", "#6246a6", "#cf4f3d", "#2f7d6b", "#8a5a2b", "#3b4c8a"];
+
+/** slug の並び順から帯色を決める。 */
+export function bandColor(slug: string, allSlugs: string[]): string {
+  const i = allSlugs.indexOf(slug);
+  return CALENDAR_PALETTE[(i < 0 ? 0 : i) % CALENDAR_PALETTE.length];
+}
+
+/** {year, month} を delta か月ぶん進める（年跨ぎを処理して view を書き換える）。 */
+export function stepMonth(view: { year: number; month: number }, delta: number): void {
+  const total = view.year * 12 + view.month + delta;
+  view.year = Math.floor(total / 12);
+  view.month = ((total % 12) + 12) % 12;
 }
 
 /** マイページと旅行履歴で共通の、6週分の旅行帯カレンダーを描画する。 */
@@ -103,7 +117,7 @@ export function monthCalendarHtml(input: {
     return value >= dayValue(band.start) && value <= dayValue(band.end);
   };
 
-  let output = DOW.map(
+  let output = WEEKDAYS.map(
     (day, index) => `<div class="${classPrefix}-cal-dow${index === 0 ? " sun" : index === 6 ? " sat" : ""}">${day}</div>`,
   ).join("");
 
@@ -117,7 +131,7 @@ export function monthCalendarHtml(input: {
       const continuesLeft = covers(band, previous) && date.getDay() !== 0;
       const continuesRight = covers(band, next) && date.getDay() !== 6;
       const classes = `${classPrefix}-bar${continuesLeft ? " cont-l" : ""}${continuesRight ? " cont-r" : ""}`;
-      return `<a class="${classes}" href="index.html?plan=${encodeURIComponent(band.slug)}" style="background:${html(band.color)}" title="${html(band.title)}">${continuesLeft ? "" : html(band.title || "旅行")}</a>`;
+      return `<a class="${classes}" href="${planDashboardHref(band.slug)}" style="background:${escapeHtml(band.color)}" title="${escapeHtml(band.title)}">${continuesLeft ? "" : escapeHtml(band.title || "旅行")}</a>`;
     }).join("");
     const more = dayBands.length > shown.length
       ? `<span class="${classPrefix}-bar-more">+${dayBands.length - shown.length}</span>`

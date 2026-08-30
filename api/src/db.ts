@@ -22,6 +22,16 @@ export async function all<T>(sql: string, params: unknown[] = []): Promise<T[]> 
   return rows as unknown as T[];
 }
 
+/** 単一行取得。トランザクション接続でもプールでも使える（`... LIMIT 1`／`FOR UPDATE` 向け）。 */
+export async function firstRow<T>(
+  executor: mysql.Pool | mysql.PoolConnection,
+  sql: string,
+  params: unknown[] = [],
+): Promise<T | undefined> {
+  const [rows] = await executor.query<Row[]>(sql, params);
+  return (rows as unknown as T[])[0];
+}
+
 export function inClause(ids: string[]): { sql: string; params: string[] } {
   return { sql: ids.map(() => "?").join(","), params: ids };
 }

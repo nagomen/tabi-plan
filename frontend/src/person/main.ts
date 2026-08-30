@@ -9,6 +9,7 @@ import { initPageTransitions } from "../shared/page-transition";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { escapeHtml } from "../shared/dom";
+import { WEEKDAYS } from "../shared/date";
 import { registerServiceWorker } from "../shared/pwa";
 import { mountAppHeader } from "../shared/app-header";
 import { icon, type IconName } from "../shared/icons";
@@ -25,7 +26,7 @@ import { planCoverThumbnail } from "../shared/cover";
 import { getViews } from "../shared/views-store";
 import { canEditPlan, canViewPlan, ownerNameOf } from "../shared/membership";
 import { addBaseLayer } from "../shared/map-tiles";
-import { monthCalendarHtml } from "../shared/calendar";
+import { monthCalendarHtml, bandColor, stepMonth } from "../shared/calendar";
 
 // ---- 対象の名前 ---------------------------------------------------------
 
@@ -44,17 +45,8 @@ registerServiceWorker();
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string): T | null => document.querySelector<T>(sel);
 
-// ---- 配色（計画ごとに一意の色。カレンダーの帯のみで使う） --------------
-
-const PALETTE = ["#0b5a42", "#22719d", "#b87418", "#6246a6", "#cf4f3d", "#2f7d6b", "#8a5a2b", "#3b4c8a"];
-function colorFor(slug: string, allSlugs: string[]): string {
-  const i = allSlugs.indexOf(slug);
-  return PALETTE[(i < 0 ? 0 : i) % PALETTE.length];
-}
-
 // ---- 日付ユーティリティ -------------------------------------------------
 
-const DOW = ["日", "月", "火", "水", "木", "金", "土"];
 function sameDay(a: Date, b: Date): boolean {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
@@ -64,7 +56,7 @@ function fmtShort(d: Date): string {
 }
 /** ポップアップ用の読みやすい日付（YYYY年M月D日(曜)）。 */
 function fmtFull(d: Date): string {
-  return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日(${DOW[d.getDay()]})`;
+  return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日(${WEEKDAYS[d.getDay()]})`;
 }
 
 // ---- 起動 ---------------------------------------------------------------
@@ -247,10 +239,7 @@ function createdPlanLocations(meta: PlanMeta, max = 3): string {
     ...(data?.cities || []).map((city) => city.name || ""),
     ...(data?.itinerary || []).map((item) => item.area || item.place || ""),
     meta.route || "",
-  ]
-    .flatMap((raw) => String(raw).split(/\s*(?:→|、|,|\/|・|\|)\s*/))
-    .map((part) => part.trim())
-    .filter((part) => part && !/旅行|計画|ダッシュボード|年|月/.test(part));
+  ].flatMap((raw) => TripPlans.splitRouteLocations(raw));
   return Array.from(new Set(names)).slice(0, max).join("、");
 }
 
@@ -415,14 +404,14 @@ function tripYear(trip: PersonTrip): string {
 }
 
 function fmtMonthDay(d: Date): string {
-  return `${d.getMonth() + 1}/${d.getDate()}(${DOW[d.getDay()]})`;
+  return `${d.getMonth() + 1}/${d.getDate()}(${WEEKDAYS[d.getDay()]})`;
 }
 
 function tripDateRange(trip: PersonTrip): string {
   if (!trip.start) return String(trip.plan.dates || "日付未定");
   if (!trip.end || sameDay(trip.start, trip.end)) return fmtMonthDay(trip.start);
   if (trip.start.getMonth() === trip.end.getMonth()) {
-    return `${fmtMonthDay(trip.start)}-${trip.end.getDate()}(${DOW[trip.end.getDay()]})`;
+    return `${fmtMonthDay(trip.start)}-${trip.end.getDate()}(${WEEKDAYS[trip.end.getDay()]})`;
   }
   return `${fmtMonthDay(trip.start)}-${fmtMonthDay(trip.end)}`;
 }
@@ -484,7 +473,7 @@ let bands: Band[] = [];
 function renderCalendar(trips: PersonTrip[], allSlugs: string[]): void {
   bands = trips
     .filter((t): t is PersonTrip & { start: Date; end: Date } => Boolean(t.start && t.end))
-    .map((t) => ({ plan: t.plan, start: t.start, end: t.end, color: colorFor(t.plan.slug, allSlugs) }));
+    .map((t) => ({ plan: t.plan, start: t.start, end: t.end, color: bandColor(t.plan.slug, allSlugs) }));
 
   // 直近の旅行がある月を初期表示にする。
   if (bands.length) {
@@ -516,16 +505,8 @@ function drawCalendar(): void {
   });
 }
 
-$("[data-cal-prev]")?.addEventListener("click", () => {
-  view.month -= 1;
-  if (view.month < 0) { view.month = 11; view.year -= 1; }
-  drawCalendar();
-});
-$("[data-cal-next]")?.addEventListener("click", () => {
-  view.month += 1;
-  if (view.month > 11) { view.month = 0; view.year += 1; }
-  drawCalendar();
-});
+$("[data-cal-prev]")?.addEventListener("click", () => { stepMonth(view, -1); drawCalendar(); });
+$("[data-cal-next]")?.addEventListener("click", () => { stepMonth(view, 1); drawCalendar(); });
 
 // 全モジュール変数の宣言後に描画を開始する。
 async function init(): Promise<void> {
@@ -537,7 +518,4 @@ async function init(): Promise<void> {
 void db.load().then(init);
 
 // 控え（キャッシュ）で先に描いているので、裏の取り直しで中身が変わったら描き直す。
-window.addEventListener("trip-db-sync", (event) => {
-  const detail = (event as CustomEvent<{ refreshed?: boolean; changed?: boolean }>).detail;
-  if (detail?.refreshed && detail.changed) void init();
-});
+db.onDbSync(() => void init());

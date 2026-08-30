@@ -579,3 +579,14 @@ export function toDashboardData(data: LocalPlanData | null): TripData {
     cities: Array.isArray(source.cities) ? source.cities : undefined,
   };
 }
+
+const ROUTE_SPLIT_RE = /\s*(?:→|、|,|\/|・|\|)\s*/;
+const ROUTE_NOISE_RE = /旅行|計画|ダッシュボード|年|月/;
+
+/** ルート・行き先文字列を地名の配列へ割る（「旅行」などのノイズ語と空要素は除く）。 */
+export function splitRouteLocations(text: string): string[] {
+  return String(text || "")
+    .split(ROUTE_SPLIT_RE)
+    .map((part) => part.trim())
+    .filter((part) => part && !ROUTE_NOISE_RE.test(part));
+}

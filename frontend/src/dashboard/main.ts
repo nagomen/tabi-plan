@@ -13,10 +13,8 @@ import { icon, type IconName } from "../shared/icons";
 initPageTransitions();
 
 import {
-  DEFAULT_CONFIG,
-  mergeConfig,
-  normalizeTripConfig,
   readGlobalTripConfig,
+  resolvedTripConfig,
   type TripConfig,
 } from "../shared/config";
 import * as TripPlans from "../shared/plans-store";
@@ -45,7 +43,8 @@ import { taskStatus, nextTaskStatus, setTaskStatus, checklistSummary, TASK_STATU
 import * as Backend from "../shared/backend";
 import { bindExpenseSplitForm, expenseCurrencyCodes, expenseParticipantNames } from "../shared/expense-form";
 import { setTripDocumentTitle } from "../shared/page-meta";
-import { localDateISO } from "../shared/date";
+import { localDateISO, parseISO, toISO, mdLabel } from "../shared/date";
+import { mapsSearchUrl } from "../shared/maps";
 import type {
   TripData,
   TripLink,
@@ -88,15 +87,7 @@ interface AppState {
 
 const BASE_TRIP_CONFIG = readGlobalTripConfig();
 const PLAN_OVERRIDE = TripPlans.resolveConfigOverride(BASE_TRIP_CONFIG) || {};
-const CONFIG: TripConfig = normalizeTripConfig(
-  mergeConfig(
-    DEFAULT_CONFIG as unknown as Record<string, unknown>,
-    mergeConfig(
-      BASE_TRIP_CONFIG as Record<string, unknown>,
-      PLAN_OVERRIDE as Record<string, unknown>,
-    ) as Record<string, unknown>,
-  ) as unknown as TripConfig,
-);
+const CONFIG: TripConfig = resolvedTripConfig(PLAN_OVERRIDE);
 setTripDocumentTitle(CONFIG.tripTitle, (title) => `${title}ダッシュボード`, "");
 
 /** 共有ストアを読み終えたあと、開いている計画の実体で CONFIG を補正する。 */
@@ -234,13 +225,9 @@ function setHtml(selector: string, value: string | undefined): void {
   qs(selector).innerHTML = value || "";
 }
 
-function mapsSearch(query: string | undefined): string {
-  return "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(query || "");
-}
-
 function mapsDir(places: ItineraryItem[]): string {
   const clean = places.map((p) => p.mapQuery || p.place).filter(Boolean) as string[];
-  if (clean.length < 2) return mapsSearch(clean[0] || "");
+  if (clean.length < 2) return mapsSearchUrl(clean[0] || "");
   const origin = clean[0];
   const destination = clean[clean.length - 1];
   const waypoints = clean.slice(1, -1).join("|");
@@ -554,21 +541,10 @@ function untilLabel(minutes: number): string {
   return mm ? `あと${h}時間${mm}分` : `あと${h}時間`;
 }
 
-function parseIsoDate(value: string): Date | null {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
-  if (!match) return null;
-  const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
-  return isNaN(date.getTime()) ? null : date;
-}
-
 function addDays(date: Date, days: number): Date {
   const next = new Date(date.getTime());
   next.setDate(next.getDate() + days);
   return next;
-}
-
-function toIsoDate(date: Date): string {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
 function tripDateRange(data: TripData): string[] {
@@ -584,14 +560,14 @@ function tripDateRange(data: TripData): string[] {
     start = start || cityDates[0] || "";
     end = end || cityDates[cityDates.length - 1] || "";
   }
-  const a = parseIsoDate(start);
-  const b = parseIsoDate(end);
+  const a = parseISO(start);
+  const b = parseISO(end);
   if (!a || !b || b < a) return [];
   const dates: string[] = [];
   let cursor = a;
   let guard = 0;
   while (cursor <= b && guard < 400) {
-    dates.push(toIsoDate(cursor));
+    dates.push(toISO(cursor));
     cursor = addDays(cursor, 1);
     guard++;
   }
@@ -1557,11 +1533,6 @@ function nightsBetween(from: string, to: string): number {
   return Math.max(0, Math.round((b.getTime() - a.getTime()) / 86400000));
 }
 
-function mdLabel(iso: string): string {
-  const m = /^\d{4}-(\d{2})-(\d{2})/.exec(iso || "");
-  return m ? `${Number(m[1])}/${Number(m[2])}` : iso || "";
-}
-
 // 滞在都市セグメントを算出。cities があればそれ、無ければ各日 area の連続区間。
 function computeRoute(): { segs: RouteSeg[]; dayToSeg: number[] } {
   const days = state.days;
@@ -2086,7 +2057,7 @@ function stayRowHtml(s: ItineraryItem, variant: string, label: string): string {
       <span class="tl-stay-name">${escapeHtml(s.title || "宿泊先")}</span>
       ${place ? `<span class="tl-stay-place">${escapeHtml(place)}</span>` : ""}
     </div>
-    <a class="tl-stay-map" href="${mapsSearch(s.mapQuery || s.place || s.title)}" target="_blank" rel="noopener">地図 ${icon("arrowTopRightOnSquare")}</a>
+    <a class="tl-stay-map" href="${mapsSearchUrl(s.mapQuery || s.place || s.title)}" target="_blank" rel="noopener">地図 ${icon("arrowTopRightOnSquare")}</a>
   </div>`;
 }
 
@@ -2137,7 +2108,7 @@ function timelineHtmlForDay(idx: number): string {
       <div class="tl-plan">
         <div class="tl-plan-line">${label}${title}</div>
         ${item.needed ? `<p class="tl-needed">${escapeHtml(item.needed)}</p>` : ""}
-        <p class="tl-meta">${metaText ? `<span class="tl-meta-text">${escapeHtml(metaText)}</span>` : ""}<a class="tl-maplink" href="${mapsSearch(item.mapQuery || item.place || item.title)}" target="_blank" rel="noopener">地図 ${icon("arrowTopRightOnSquare")}</a></p>
+        <p class="tl-meta">${metaText ? `<span class="tl-meta-text">${escapeHtml(metaText)}</span>` : ""}<a class="tl-maplink" href="${mapsSearchUrl(item.mapQuery || item.place || item.title)}" target="_blank" rel="noopener">地図 ${icon("arrowTopRightOnSquare")}</a></p>
       </div>
     </article>`;
   }).join("");
@@ -2233,7 +2204,7 @@ function renderActive(): void {
   activePlaces.forEach((place, index) => {
     const pin = document.createElement("a");
     pin.className = "tl-pin" + (index === Math.min(1, activePlaces.length - 1) ? " is-active" : "");
-    pin.href = mapsSearch(place.mapQuery || place.place || place.title);
+    pin.href = mapsSearchUrl(place.mapQuery || place.place || place.title);
     pin.target = "_blank";
     pin.rel = "noopener";
     pin.style.left = `${place.x}%`;

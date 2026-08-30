@@ -12,6 +12,9 @@ import "leaflet/dist/leaflet.css";
 import type { LocalPlanData, PlanMeta, PlanSource } from "../shared/plans-store";
 import { readGlobalTripConfig } from "../shared/config";
 import { escapeHtml, errorMessage, makeScopedQuery } from "../shared/dom";
+import { mdLabel } from "../shared/date";
+import { mapsSearchUrl } from "../shared/maps";
+import { planDashboardHref } from "../shared/plan-url";
 import { registerServiceWorker } from "../shared/pwa";
 import { icon, type IconName } from "../shared/icons";
 import { mountAppHeader } from "../shared/app-header";
@@ -139,7 +142,7 @@ function planText(meta: PlanMeta): string {
 }
 
 function planHref(meta: PlanMeta, view = false): string {
-  return "index.html?plan=" + encodeURIComponent(meta.slug) + (view ? "&view=1" : "");
+  return planDashboardHref(meta.slug, { view });
 }
 
 function timeValue(meta: PlanMeta): number {
@@ -210,11 +213,7 @@ function emptyList(message: string): string {
 
 function routeParts(meta: PlanMeta): string[] {
   const source = [meta.route, meta.title].filter(Boolean).join("、");
-  return source
-    .split(/\s*(?:→|、|,|\/|・|\|)\s*/)
-    .map((part) => part.trim())
-    .filter((part) => part && !/旅行|計画|ダッシュボード|年|月/.test(part))
-    .slice(0, 8);
+  return TripPlans.splitRouteLocations(source).slice(0, 8);
 }
 
 function destinationName(meta: PlanMeta): string {
@@ -449,15 +448,6 @@ function itemTitle(item: LocalPlanData["itinerary"][number]): string {
   return item.title || item.place || item.area || item.destination || item.origin || "予定";
 }
 
-function mdLabel(iso: string | undefined): string {
-  const m = /^\d{4}-(\d{2})-(\d{2})/.exec(iso || "");
-  return m ? `${Number(m[1])}/${Number(m[2])}` : iso || "";
-}
-
-function mapsSearch(query: string | undefined): string {
-  return "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(query || "");
-}
-
 const SCHEDULE_KIND_ICON: Record<string, IconName> = {
   sight: "camera",
   food: "cake",
@@ -477,7 +467,7 @@ function scheduleKindIcon(type: string | undefined): string {
 }
 
 function scheduleMapLink(query: string | undefined): string {
-  return '<a class="schedule-maplink" href="' + mapsSearch(query) + '" target="_blank" rel="noopener">地図 ' +
+  return '<a class="schedule-maplink" href="' + mapsSearchUrl(query) + '" target="_blank" rel="noopener">地図 ' +
     icon("arrowTopRightOnSquare") + '</a>';
 }
 
@@ -814,7 +804,7 @@ function rowHtml(
     '" data-open>' +
     '<div class="plan-cover">' +
     '<img src="' +
-    coverSrc +
+    escapeHtml(coverSrc) +
     '" alt="' +
     escapeHtml(meta.title || "旅行画像") +
     '" loading="lazy">' +
@@ -1157,7 +1147,7 @@ async function handleJoinLink(): Promise<boolean> {
       const accepted = await db.acceptInvite(payload.token);
       const nextSlug = accepted.planSlug || slug;
       TripPlans.setActiveSlug(nextSlug);
-      navigateWithPageTransition("index.html?plan=" + encodeURIComponent(nextSlug), { replace: true });
+      navigateWithPageTransition(planDashboardHref(nextSlug), { replace: true });
     } catch (error) {
       showToast(errorMessage(error) || "招待リンクを受け取れませんでした。ログインしてからもう一度開いてください。", true);
     }
@@ -1174,7 +1164,4 @@ void db.load().then(() => handleJoinLink()).then((joined) => {
 });
 
 // 控え（キャッシュ）で先に描いているので、裏の取り直しで中身が変わったら描き直す。
-window.addEventListener("trip-db-sync", (event) => {
-  const detail = (event as CustomEvent<{ refreshed?: boolean; changed?: boolean }>).detail;
-  if (detail?.refreshed && detail.changed) render();
-});
+db.onDbSync(render);

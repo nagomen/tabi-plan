@@ -5,7 +5,7 @@
 //   - bootstrap、認証、認可、招待、メンバー、ユーザー、費用は各専用repositoryへ分離する。
 
 import mysql from "mysql2/promise";
-import { all, pool, type Row, withTransaction } from "./db.js";
+import { all, firstRow, pool, withTransaction } from "./db.js";
 import { BadRequest, VersionConflict } from "./errors.js";
 import { newId } from "./ids.js";
 import {
@@ -121,19 +121,20 @@ export async function replacePlanContent(planId: string, body: {
   candidates?: { id?: string; title: string; place?: string | null; proposed_by_id?: string | null; adopted?: boolean; votes?: string[] }[];
 }, expectedVersion?: number): Promise<number> {
   return withTransaction(async (conn) => {
-    const [planRows] = await conn.query<Row[]>(
+    const planRow = await firstRow<{ version: number }>(
+      conn,
       "SELECT version FROM plans WHERE id = ? AND deleted_at IS NULL LIMIT 1 FOR UPDATE",
       [planId],
     );
-    const currentVersion = Number((planRows as unknown as { version: number }[])[0]?.version || 0);
+    const currentVersion = Number(planRow?.version || 0);
     if (!currentVersion) throw new BadRequest("計画が見つかりません");
     if (expectedVersion !== undefined && currentVersion !== expectedVersion) {
       throw new VersionConflict("計画が別の端末で更新されています");
     }
 
     if (body.cities) {
-      const [statusRows] = await conn.query<Row[]>("SELECT status FROM plans WHERE id = ? LIMIT 1", [planId]);
-      const status = String((statusRows as unknown as { status: string }[])[0]?.status || "draft");
+      const statusRow = await firstRow<{ status: string }>(conn, "SELECT status FROM plans WHERE id = ? LIMIT 1", [planId]);
+      const status = String(statusRow?.status || "draft");
       if (status === "published" && !body.cities.some((city) => String(city?.name || "").trim())) {
         throw new BadRequest("公開中の計画には訪問地が1つ以上必要です。先に下書きへ戻してください");
       }

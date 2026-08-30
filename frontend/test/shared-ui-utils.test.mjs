@@ -5,14 +5,26 @@ import vm from "node:vm";
 import ts from "typescript";
 
 const root = new URL("../", import.meta.url);
+const moduleCache = new Map();
 
+// 単一の .ts を CommonJS へトランスパイルして VM 実行する簡易ローダー。
+// 共有モジュール同士の相対 import（./date 等）を再帰的に解決する。
 function load(relativePath) {
-  const source = fs.readFileSync(new URL(relativePath, root), "utf8");
+  const url = new URL(relativePath, root);
+  if (moduleCache.has(url.href)) return moduleCache.get(url.href);
+  const source = fs.readFileSync(url, "utf8");
   const javascript = ts.transpileModule(source, {
     compilerOptions: { target: ts.ScriptTarget.ES2020, module: ts.ModuleKind.CommonJS },
   }).outputText;
   const module = { exports: {} };
-  vm.runInNewContext(javascript, { module, exports: module.exports, Date });
+  moduleCache.set(url.href, module.exports);
+  const require = (spec) => {
+    if (!spec.startsWith(".")) throw new Error(`unsupported import in test loader: ${spec}`);
+    const depUrl = new URL(spec.endsWith(".ts") ? spec : `${spec}.ts`, url);
+    return load(depUrl.href.slice(root.href.length));
+  };
+  vm.runInNewContext(javascript, { module, exports: module.exports, Date, require });
+  moduleCache.set(url.href, module.exports);
   return module.exports;
 }
 

@@ -80,10 +80,6 @@ export async function canEditPlanWorkspace(planId: string, userId: string): Prom
   return (await getPlanAccess(planId, userId)).canEditWorkspace;
 }
 
-export async function canEditPlan(planId: string, userId: string): Promise<boolean> {
-  return (await getPlanAccess(planId, userId)).canEdit;
-}
-
 export async function canViewPlan(planId: string, userId: string): Promise<boolean> {
   return (await getPlanAccess(planId, userId)).canView;
 }

@@ -4,14 +4,11 @@ import { config } from "./config.js";
 import { all, pool, withTransaction } from "./db.js";
 import { BadRequest } from "./errors.js";
 import { newId } from "./ids.js";
-import { identityKey } from "./identity.js";
+import { identityKey, isValidEmail } from "./identity.js";
+import { hmac } from "./signing.js";
 
 const pbkdf2 = promisify(crypto.pbkdf2);
 const PASSWORD_ITERATIONS = 600_000;
-
-function sessionTokenHash(token: string): Buffer {
-  return crypto.createHmac("sha256", config.sessionSecret).update(token, "utf8").digest();
-}
 
 export async function createSession(userId: string, ttlMs: number): Promise<string> {
   const token = crypto.randomBytes(32).toString("base64url");
@@ -30,7 +27,7 @@ export async function createSession(userId: string, ttlMs: number): Promise<stri
     );
     await conn.query(
       "INSERT INTO user_sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)",
-      [newId("ses"), userId, sessionTokenHash(token), expiresAt],
+      [newId("ses"), userId, hmac(token), expiresAt],
     );
   });
   return token;
@@ -43,7 +40,7 @@ export async function resolveSession(token: string): Promise<string> {
       WHERE token_hash = ? AND revoked_at IS NULL AND expires_at > CURRENT_TIMESTAMP
         AND created_at >= FROM_UNIXTIME(?)
       LIMIT 1`,
-    [sessionTokenHash(token), config.sessionEpochMs / 1000],
+    [hmac(token), config.sessionEpochMs / 1000],
   );
   return rows[0]?.user_id || "";
 }
@@ -59,7 +56,7 @@ export async function revokeOtherSessions(userId: string, keepToken: string): Pr
   const [result] = await pool.query<import("mysql2/promise").ResultSetHeader>(
     `UPDATE user_sessions SET revoked_at = CURRENT_TIMESTAMP
       WHERE user_id = ? AND revoked_at IS NULL AND token_hash <> ?`,
-    [userId, keepToken ? sessionTokenHash(keepToken) : Buffer.alloc(32)],
+    [userId, keepToken ? hmac(keepToken) : Buffer.alloc(32)],
   );
   return result.affectedRows || 0;
 }
@@ -68,7 +65,7 @@ export async function revokeSession(token: string): Promise<void> {
   if (!token) return;
   await pool.query(
     "UPDATE user_sessions SET revoked_at = CURRENT_TIMESTAMP WHERE token_hash = ? AND revoked_at IS NULL",
-    [sessionTokenHash(token)],
+    [hmac(token)],
   );
 }
 
@@ -85,7 +82,7 @@ export async function signUp(input: {
 }): Promise<{ user: { id: string; display_name: string; email: string } }> {
   const email = identityKey(input.email);
   const displayName = String(input.displayName || "").trim().slice(0, 64) || email.split("@")[0] || "ユーザー";
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new BadRequest("メールアドレスの形式が正しくありません");
+  if (!isValidEmail(email)) throw new BadRequest("メールアドレスの形式が正しくありません");
   if (String(input.password || "").length < 8) throw new BadRequest("パスワードは8文字以上にしてください");
   if (String(input.password || "").length > 256) throw new BadRequest("パスワードは256文字以下にしてください");
   const userId = newId("usr");
@@ -139,15 +136,6 @@ export async function logIn(input: {
   return { user: { id: found.user_id, display_name: found.display_name, email: found.email } };
 }
 
-/** この人がメールアドレスとパスワードを登録しているか。 */
-export async function hasCredentials(userId: string): Promise<boolean> {
-  if (!userId) return false;
-  const rows = await all<{ user_id: string }>(
-    "SELECT user_id FROM user_credentials WHERE user_id = ? LIMIT 1", [userId],
-  );
-  return Boolean(rows[0]);
-}
-
 function validatePassword(password: string): string {
   const value = String(password || "");
   if (value.length < 8) throw new BadRequest("パスワードは8文字以上にしてください");
@@ -193,7 +181,7 @@ export async function addCredentials(input: {
   userId: string; email: string; password: string;
 }): Promise<{ email: string }> {
   const email = identityKey(input.email);
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new BadRequest("メールアドレスの形式が正しくありません");
+  if (!isValidEmail(email)) throw new BadRequest("メールアドレスの形式が正しくありません");
   const password = validatePassword(input.password);
   const salt = crypto.randomBytes(16);
   const hash = await passwordHash(password, salt, PASSWORD_ITERATIONS);

@@ -14,6 +14,7 @@ import crypto from "node:crypto";
 import { config } from "./config.js";
 import { all, pool } from "./db.js";
 import { newId } from "./ids.js";
+import { hmac } from "./signing.js";
 
 const AUTHORIZE_URL = "https://access.line.me/oauth2/v2.1/authorize";
 const TOKEN_URL = "https://api.line.me/oauth2/v2.1/token";
@@ -27,7 +28,7 @@ export function lineLoginEnabled(): boolean {
 }
 
 function sign(value: string): string {
-  return crypto.createHmac("sha256", config.sessionSecret).update(value).digest("base64url");
+  return hmac(value).toString("base64url");
 }
 
 /**
@@ -246,15 +247,6 @@ export async function handleLineCallback(input: {
     userId, returnTo: safeReturnTo(state.returnTo),
     linked: Boolean(state.linkTo), nonce: state.nonce,
   };
-}
-
-/** この利用者に紐付いている外部ログイン。マイページの表示に使う。 */
-export async function identitiesOf(userId: string): Promise<{ provider: string; display_name: string | null }[]> {
-  if (!userId) return [];
-  return all<{ provider: string; display_name: string | null }>(
-    "SELECT provider, display_name FROM user_identities WHERE user_id = ?",
-    [userId],
-  );
 }
 
 /**
