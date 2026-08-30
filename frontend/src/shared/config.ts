@@ -1,12 +1,11 @@
 // 旅行設定（window.TRIP_CONFIG）の型と、既定値・マージ・正規化ユーティリティ。
 // trip-config.js（public/）が実行時に window.TRIP_CONFIG を設定する。
 
-export type TripMode = "sample" | "googleSheets" | "appsScript" | "local";
-export type TripSchema = "standard" | "trip" | "southAmerica";
+export type TripMode = "sample" | "local";
 
 export interface AuthConfig {
   enabled: boolean;
-  mode: "local" | "appsScript";
+  mode: "local";
   passwordHash: string;
   storageKey: string;
   rememberDays: number;
@@ -17,39 +16,6 @@ export interface MapDefaults {
   zoom: number;
   activeRadiusKm: number;
   overviewRadiusKm: number;
-}
-
-export interface SheetsConfig {
-  basicInfo: string;
-  itinerary: string;
-  links: string;
-  tripLinks: string;
-  settlement: string;
-  checklist: string;
-  tripChecklist: string;
-  tripItinerary: string;
-  southAmericaItinerary: string;
-  reservations: string;
-  budget: string;
-  localInfo: string;
-}
-
-export interface RangesConfig {
-  basicInfo: string;
-  tripItinerary: string;
-  southAmericaItinerary: string;
-  tripLinks: string;
-  tripChecklist: string;
-  reservations: string;
-  budget: string;
-  localInfo: string;
-}
-
-export interface LinkOverrides {
-  itinerary: string;
-  maps: string;
-  expenseSheet: string;
-  photos: string;
 }
 
 export interface MapEmbedConfig {
@@ -88,15 +54,9 @@ export interface TripConfig {
   tripRoute: string;
   tripMembers: string;
   tripCover: string;
-  spreadsheetId: string;
-  schema: TripSchema;
   defaultParticipants: string[];
   currencies: string[];
-  sheets: SheetsConfig;
-  ranges: RangesConfig;
-  linkOverrides: LinkOverrides;
   mapEmbed: MapEmbedConfig;
-  appsScriptUrl: string;
   todayOverride: string;
   refreshMinutes: number;
   refreshOnFocus: boolean;
@@ -122,53 +82,20 @@ export const DEFAULT_CONFIG: TripConfig = {
   tripRoute: "",
   tripMembers: "",
   tripCover: "",
-  spreadsheetId: "",
-  schema: "trip",
   defaultParticipants: ["参加者A", "参加者B"],
   currencies: ["JPY", "USD", "EUR", "KRW", "TWD", "CNY", "THB", "SGD", "AUD", "GBP"],
-  sheets: {
-    basicInfo: "基本情報",
-    itinerary: "Itinerary",
-    links: "Links",
-    tripLinks: "リンク管理",
-    settlement: "Settlement",
-    checklist: "Checklist",
-    tripChecklist: "チェックリスト",
-    tripItinerary: "行程表",
-    southAmericaItinerary: "行程表",
-    reservations: "予約管理",
-    budget: "予算",
-    localInfo: "現地実用情報",
-  },
-  ranges: {
-    basicInfo: "A1:D",
-    tripItinerary: "A2:X",
-    southAmericaItinerary: "A2:X",
-    tripLinks: "A1:G",
-    tripChecklist: "A1:F",
-    reservations: "A1:I",
-    budget: "A1:F",
-    localInfo: "A1:O",
-  },
-  linkOverrides: {
-    itinerary: "",
-    maps: "",
-    expenseSheet: "",
-    photos: "",
-  },
   mapEmbed: {
     mode: "leaflet",
     myMapsEmbedUrl: "",
     mapsEmbedApiKey: "",
   },
-  appsScriptUrl: "",
   todayOverride: "",
   refreshMinutes: 3,
   refreshOnFocus: true,
   minRefreshSeconds: 90,
   auth: {
     enabled: true,
-    mode: "appsScript",
+    mode: "local",
     passwordHash: "",
     storageKey: "",
     rememberDays: 14,

@@ -1,6 +1,4 @@
 // 旅行ダッシュボードの共有データモデル。
-// Google Sheets / Apps Script / ローカルプランのいずれの取得元でも、
-// この TripData 形状に正規化してから各画面が描画する。
 
 export type ItemType = "sight" | "move" | "food" | "stay" | "todo" | "form";
 
@@ -10,14 +8,14 @@ export interface ItineraryItem {
   day: string;
   area?: string;
   time?: string;
-  /** チップ色に対応する種別。Sheets からは任意文字列が来ることがある */
+  /** チップ色に対応する種別。 */
   type: ItemType | string;
   typeLabel?: string;
   title?: string;
   place?: string;
   note?: string;
   needed?: string;
-  /** 緯度経度。Sheets からは文字列、ローカル作成では number か "" が入る */
+  /** 緯度経度。編集中は空文字が入ることがある。 */
   lat?: number | string;
   lng?: number | string;
   mapQuery?: string;
@@ -31,28 +29,6 @@ export interface ItineraryItem {
   originLng?: number;
   destinationLat?: number;
   destinationLng?: number;
-  /** Apps Script 行程編集で使う表示上書き情報（任意） */
-  rowNumber?: number | string;
-  edit?: ItineraryEdit;
-}
-
-export interface ItineraryEdit {
-  visible?: boolean;
-  displayTime?: string;
-  displayTitle?: string;
-  displayPlace?: string;
-  displayNote?: string;
-  needed?: string;
-  mapQuery?: string;
-  weather?: string;
-  rawMemo?: string;
-  origin?: string;
-  destination?: string;
-  transport?: string;
-  duration?: string;
-  status?: string;
-  certainty?: string;
-  purpose?: string;
 }
 
 export interface TripInfo {
@@ -213,9 +189,6 @@ export interface TripData {
   /** 滞在都市（任意）。無ければダッシュボードは行程の area から推定する */
   cities?: RouteCity[];
 }
-
-/** Sheets の gviz から得られる1行（ヘッダー名 -> セル値） */
-export type SheetRow = Record<string, string>;
 
 /** 緯度経度ペア */
 export interface LatLng {

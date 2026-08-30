@@ -1,13 +1,16 @@
 // 共有パスワード認証セッション（localStorage）。
-// Apps Script モードのページが共有する。storageKey とポリシーは auth 設定から取る。
 
 import type { AuthConfig } from "./config";
-import { authenticateAppsScript, sha256Hex } from "./apps-script";
 import { errorMessage } from "./dom";
+
+async function sha256Hex(value: string): Promise<string> {
+  const bytes = new TextEncoder().encode(value);
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
 
 export interface AuthSession {
   ok?: boolean;
-  token?: string;
   expiresAt?: number;
 }
 
@@ -19,56 +22,37 @@ export function readAuthSession(storageKey: string): AuthSession {
   }
 }
 
-/**
- * 有効なセッションがあるか。
- * appsScript モードではトークン必須、それ以外（local 認証）はトークン無しでも可。
- */
+/** 有効なセッションがあるか。 */
 export function hasAuthSession(auth: AuthConfig): boolean {
   if (!auth.enabled) return true;
   const session = readAuthSession(auth.storageKey);
   return Boolean(
     session &&
     session.expiresAt &&
-    Date.now() < session.expiresAt &&
-    (auth.mode !== "appsScript" || session.token),
+    Date.now() < session.expiresAt,
   );
 }
 
-export function getAuthToken(storageKey: string): string {
-  const session = readAuthSession(storageKey);
-  return session && session.expiresAt && Date.now() < session.expiresAt ? session.token || "" : "";
-}
-
-export function saveAuthSession(
-  auth: AuthConfig,
-  token: string | undefined,
-  expiresAt: number | undefined,
-): void {
+export function saveAuthSession(auth: AuthConfig): void {
   const days = Number(auth.rememberDays || 1);
   localStorage.setItem(
     auth.storageKey,
     JSON.stringify({
       ok: true,
-      token: token || "",
-      expiresAt: expiresAt || Date.now() + days * 24 * 60 * 60 * 1000,
+      expiresAt: Date.now() + days * 24 * 60 * 60 * 1000,
     }),
   );
 }
 
-export function clearAuthSession(storageKey: string): void {
-  localStorage.removeItem(storageKey);
-}
-
 export interface PasswordGateOptions {
   auth: AuthConfig;
-  appsScriptUrl: string;
   classPrefix: string;
   title: string;
   submitLabel?: string;
   showDescription?: boolean;
 }
 
-/** Apps Script / ローカルハッシュ認証で共通のパスワードゲートを表示する。 */
+/** ローカルハッシュ認証のパスワードゲートを表示する。 */
 export function requestPasswordGate(options: PasswordGateOptions): Promise<boolean> {
   return new Promise((resolve) => {
     if (!options.auth.enabled || hasAuthSession(options.auth)) {
@@ -107,16 +91,11 @@ export function requestPasswordGate(options: PasswordGateOptions): Promise<boole
       event.preventDefault();
       const password = input.value || "";
       try {
-        if (options.auth.mode === "appsScript") {
-          const response = await authenticateAppsScript(options.appsScriptUrl, password);
-          saveAuthSession(options.auth, response.token, response.expiresAt);
-        } else {
-          if (!options.auth.passwordHash) throw new Error("passwordHash が未設定です。");
-          if (await sha256Hex(password) !== options.auth.passwordHash) {
-            throw new Error("パスワードが違います。");
-          }
-          saveAuthSession(options.auth, undefined, undefined);
+        if (!options.auth.passwordHash) throw new Error("passwordHash が未設定です。");
+        if (await sha256Hex(password) !== options.auth.passwordHash) {
+          throw new Error("パスワードが違います。");
         }
+        saveAuthSession(options.auth);
         gate.remove();
         resolve(true);
       } catch (authError) {

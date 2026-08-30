@@ -141,6 +141,21 @@ async function migrate006() {
   ) ENGINE=InnoDB`);
 }
 
+async function migrate007() {
+  // 旧外部データソースの計画は、以後MySQL内の計画として扱う。
+  await conn.query("UPDATE plans SET source = 'local' WHERE source NOT IN ('local', 'sample')");
+  await conn.query("ALTER TABLE plans MODIFY COLUMN source ENUM('local','sample') NOT NULL DEFAULT 'local'");
+
+  for (const column of ["external_spreadsheet_id", "external_apps_script_url", "external_schema"]) {
+    if (await exists(
+      "SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'plans' AND COLUMN_NAME = ?",
+      [database, column],
+    )) {
+      await conn.query(`ALTER TABLE plans DROP COLUMN \`${column}\``);
+    }
+  }
+}
+
 async function main() {
   await conn.query(`CREATE TABLE IF NOT EXISTS schema_migrations (
     id VARCHAR(64) NOT NULL PRIMARY KEY,
@@ -151,6 +166,7 @@ async function main() {
   await applyMigration("004_cover_storage_contract", migrate004);
   await applyMigration("005_ai_usage_limits", migrate005);
   await applyMigration("006_line_login", migrate006);
+  await applyMigration("007_remove_external_plan_sources", migrate007);
 }
 
 try {

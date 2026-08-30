@@ -813,9 +813,6 @@ export function createPlanLocal(input: Partial<PlanRow> & { slug: string }): Pla
     source: input.source || "local", visibility: input.visibility || "public",
     status: input.status || "draft", version: input.version || 1, open_editing: input.open_editing || 0,
     owner_user_id: input.owner_user_id ?? null,
-    external_spreadsheet_id: input.external_spreadsheet_id ?? null,
-    external_apps_script_url: input.external_apps_script_url ?? null,
-    external_schema: input.external_schema ?? null,
     created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
   };
   snap.plans.push(row);

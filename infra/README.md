@@ -74,4 +74,4 @@ For the API process, set a strong `SESSION_SECRET` in addition to `API_TOKEN`.
 
 ## App Config
 
-`frontend/public/trip-config.js` is included in the static build. Do not put secrets in it. Apps Script URLs and public IDs are okay; passwords, reservation numbers, private addresses, and emergency contacts are not.
+`frontend/public/trip-config.js` is included in the static build. Do not put passwords, reservation numbers, private addresses, emergency contacts, or other secrets in it.

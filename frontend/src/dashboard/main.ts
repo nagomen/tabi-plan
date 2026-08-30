@@ -1,6 +1,6 @@
 // 旅行ダッシュボード本体。docs/index.html のインライン IIFE を
 // strict TypeScript モジュールへ移行したもの。
-// データ取得（sample / googleSheets / appsScript / local）、日別タイムライン、
+// データ取得（sample / local）、日別タイムライン、
 // Leaflet 地図、費用精算・明細、本人設定・認証、Service Worker 登録を担う。
 
 import "../shared/ui.css";
@@ -32,19 +32,8 @@ import { splitNames } from "../shared/friend-store";
 import { buildInviteLink } from "../shared/invite";
 import * as ExpenseStore from "../shared/expense-store";
 import { escapeHtml, errorMessage, makeScopedQuery, safeHref } from "../shared/dom";
-import {
-  getAuthToken as getAuthTokenShared,
-  clearAuthSession as clearAuthSessionShared,
-  requestPasswordGate,
-} from "../shared/auth";
-import {
-  postAppsScript as postAppsScriptShared,
-  isAuthError,
-  type AppsScriptParams,
-  type AppsScriptResponse,
-} from "../shared/apps-script";
-import { uploadReceiptPhoto as uploadReceiptPhotoShared } from "../shared/receipt-photo";
-import { loadData, normalizeDate, numberOrNaN, formatYen } from "./data-source";
+import { requestPasswordGate } from "../shared/auth";
+import { loadData, normalizeDate, numberOrNaN, formatYen } from "./api-data-source";
 import { renderLeafletMap } from "./leaflet-map";
 import type { DayGroup, LeafletState } from "./types";
 import { registerServiceWorker } from "../shared/pwa";
@@ -115,14 +104,7 @@ function applyPlanConfig(): void {
   const meta = TripPlans.get(CONFIG.tripSlug);
   if (!meta) return;
   CONFIG.tripTitle = meta.title || CONFIG.tripTitle;
-  CONFIG.mode =
-    meta.source === "local" ? "local"
-    : meta.source === "appsScript" ? "appsScript"
-    : meta.source === "sample" ? "sample"
-    : "googleSheets";
-  if (meta.spreadsheetId) CONFIG.spreadsheetId = meta.spreadsheetId;
-  if (meta.appsScriptUrl) CONFIG.appsScriptUrl = meta.appsScriptUrl;
-  if (meta.schema) CONFIG.schema = meta.schema as TripConfig["schema"];
+  CONFIG.mode = meta.source === "sample" ? "sample" : "local";
   setTripDocumentTitle(CONFIG.tripTitle, (title) => `${title}ダッシュボード`, "");
 }
 
@@ -143,14 +125,11 @@ const SAMPLE: TripData = {
     title: CONFIG.tripTitle || "サンプル旅行",
     dates: "2027/3/10 - 3/12",
     members: "参加者A / 参加者B",
-    note: "共有メモ: 予約番号や住所などの詳細はスプレッドシート側で管理してください。",
+    note: "共有メモ: 予約番号や住所などの機密情報は公開ページに載せないでください。",
   },
   links: [
-    { key: "itinerary", label: "旅程", icon: "旅", url: "https://docs.google.com/spreadsheets/", caption: "Google Sheets" },
     { key: "maps", label: "My Maps", icon: "地", url: "https://www.google.com/maps/d/", caption: "Google My Maps" },
-    { key: "expenseSheet", label: "費用", icon: "￥", url: "https://docs.google.com/spreadsheets/", caption: "Google Sheets" },
     { key: "photos", label: "写真", icon: "写", url: "https://photos.google.com/", caption: "Google Photos" },
-    { key: "packing", label: "持ち物リスト", icon: "荷", url: "https://docs.google.com/spreadsheets/", caption: "Google Sheets" },
   ],
   settlement: {
     paid: "¥3,200",
@@ -183,7 +162,7 @@ const SAMPLE: TripData = {
   ],
   localInfo: [
     { country: "日本", currencyCode: "JPY", currencyName: "円", approxRate: "1 JPY = ¥1", rateUpdatedAt: "", feeFreeAtm: "必要に応じて記入", atmBest: "", atmFee: "", atmNote: "", rideBest: "タクシーアプリ", rideAlt: "公共交通", paymentNote: "国内旅行では原則JPYで入力" },
-    { country: "海外渡航先", currencyCode: "USD", currencyName: "現地通貨", approxRate: "為替レートシートで管理", rateUpdatedAt: "", feeFreeAtm: "現地で確認", atmBest: "", atmFee: "", atmNote: "DCCは原則拒否", rideBest: "", rideAlt: "", paymentNote: "カードと少額現金を併用" },
+    { country: "海外渡航先", currencyCode: "USD", currencyName: "現地通貨", approxRate: "最新レートを確認", rateUpdatedAt: "", feeFreeAtm: "現地で確認", atmBest: "", atmFee: "", atmNote: "DCCは原則拒否", rideBest: "", rideAlt: "", paymentNote: "カードと少額現金を併用" },
   ],
   itinerary: [
     { date: "2027-03-10", day: "Day 1", area: "東京", time: "10:00", type: "move", typeLabel: "移動", title: "集合", place: "東京駅", note: "集合場所を確認。", lat: 35.6812, lng: 139.7671, mapQuery: "東京駅", weather: "" },
@@ -331,13 +310,6 @@ function updateHeaderHero(day: DayGroup): void {
   setAppHeaderHero(appHeaderEl, planCoverImageForLocation(meta, dayCoverLocation(day)));
 }
 
-// ---- Apps Script 通信 ---------------------------------------------------
-
-/** Apps Script(Web App) が無い構成では、費用は端末内 JSON で保存・精算する。 */
-function usingLocalExpenses(): boolean {
-  return !CONFIG.appsScriptUrl;
-}
-
 // フォームは日本語ラベルを value に持つ。列挙へ寄せる変換をここに集約する。
 function categoryFromLabel(label: string): ExpenseStore.ExpenseCategory {
   return (ExpenseStore.CATEGORIES.find((c) => ExpenseStore.CATEGORY_LABEL[c] === label) || "other");
@@ -368,35 +340,6 @@ function localSettlement(): Settlement {
   return ExpenseStore.computeSettlement(planId(), memberIds(), currentUserId());
 }
 
-/** 費用登録・精算完了など、状態を変更するアクション用の iframe POST。
- *  トークンや金額をクエリ文字列に残す GET/JSONP を避けるため POST で送る。
- *  source は backend/src/main.ts の POST_ACTIONS と対応させること。 */
-const MUTATING_ACTION_SOURCE = {
-  expense: "trip-expense-save",
-  settlementComplete: "trip-settlement-complete",
-  itineraryUpdate: "trip-itinerary-update",
-} as const;
-
-const postAppsScriptAction = (
-  action: keyof typeof MUTATING_ACTION_SOURCE,
-  params: AppsScriptParams,
-): Promise<AppsScriptResponse> =>
-  postAppsScriptShared(
-    CONFIG.appsScriptUrl,
-    { ...params, action },
-    {
-      source: MUTATING_ACTION_SOURCE[action],
-      idPrefix: action,
-      timeoutMessage: "通信がタイムアウトしました",
-      failMessage: "保存に失敗しました",
-    },
-  );
-
-// ---- 画像処理 -----------------------------------------------------------
-
-const uploadReceiptPhoto = (file: File): Promise<AppsScriptResponse> =>
-  uploadReceiptPhotoShared(CONFIG.appsScriptUrl, getAuthToken(), file);
-
 // ---- 描画フロー ---------------------------------------------------------
 
 function renderData(data: TripData | null | undefined, source?: string): void {
@@ -421,10 +364,6 @@ function setLoading(isLoading: boolean, label?: string): void {
 }
 
 // ---- 認証 / プロフィール ------------------------------------------------
-
-// 認証セッション系は shared/auth を CONFIG.auth にバインドして使う。
-const getAuthToken = (): string => getAuthTokenShared(CONFIG.auth.storageKey);
-const clearAuthSession = (): void => clearAuthSessionShared(CONFIG.auth.storageKey);
 
 function readProfile(): ProfileRecord | null {
   try {
@@ -576,7 +515,6 @@ async function requestIdentityIfNeeded(): Promise<void> {
 function requestPassword(): Promise<boolean> {
   return requestPasswordGate({
     auth: CONFIG.auth,
-    appsScriptUrl: CONFIG.appsScriptUrl,
     classPrefix: "tl-auth",
     title: "旅行ページを開く",
     submitLabel: "送信",
@@ -1036,30 +974,16 @@ function setupSettlementCompleteHandlers(mount: HTMLElement): void {
       button.disabled = true;
       if (status) status.textContent = `${from} → ${to} を精算完了にしています...`;
       try {
-        if (usingLocalExpenses()) {
-          // 精算は settlements テーブルへ（費用と同居させない）。
-          const fromId = button.dataset.fromId || "";
-          const toId = button.dataset.toId || "";
-          if (!fromId || !toId) throw new Error("精算相手を特定できませんでした");
-          await ExpenseStore.addSettlement(planId(), {
-            fromUserId: fromId,
-            toUserId: toId,
-            amountBaseMinor: amount,
-            note: `サイト上で${from}から${to}への精算完了`,
-          });
-        } else {
-          const response = await postAppsScriptAction("settlementComplete", {
-            token: getAuthToken(),
-            from,
-            to,
-            amount,
-            note: `サイト上で${from}から${to}への精算完了`,
-          });
-          if (response.data) {
-            state.data = response.data;
-            state.days = groupDays(state.data.itinerary || []);
-          }
-        }
+        // 精算は settlements テーブルへ（費用と同居させない）。
+        const fromId = button.dataset.fromId || "";
+        const toId = button.dataset.toId || "";
+        if (!fromId || !toId) throw new Error("精算相手を特定できませんでした");
+        await ExpenseStore.addSettlement(planId(), {
+          fromUserId: fromId,
+          toUserId: toId,
+          amountBaseMinor: amount,
+          note: `サイト上で${from}から${to}への精算完了`,
+        });
         renderBase();
         renderActive();
         const nextStatus = root.querySelector<HTMLElement>("[data-settlement-status]");
@@ -1068,7 +992,6 @@ function setupSettlementCompleteHandlers(mount: HTMLElement): void {
           nextStatus.classList.add("is-ok");
         }
       } catch (error) {
-        if (isAuthError(error)) clearAuthSession();
         if (status) {
           status.textContent = (error as Error).message || "精算完了の登録に失敗しました。";
           status.classList.add("is-error");
@@ -1140,7 +1063,7 @@ function renderExpenseDetails(settlement: Settlement): void {
 
   // 利用者は identity（user_id）が正。表示名は users から引く。
   const profileName = db.nameOf(currentUserId());
-  const canManageExpenses = usingLocalExpenses() && !READ_ONLY;
+  const canManageExpenses = !READ_ONLY;
   const details = settlement.expenseDetails || [];
   const related = canManageExpenses ? details : profileName ? details.filter((detail) => {
     const shares = detail.shares || [];
@@ -1372,9 +1295,6 @@ function renderExpenseEntry(data: TripData, options: { force?: boolean } = {}): 
     </label>`).join("");
 
   mount.innerHTML = `
-    ${usingLocalExpenses() ? "" : `<div class="tl-expense-head">
-      <a href="expense-entry.html">別ページで入力する</a>
-    </div>`}
     <form class="tl-expense-form" data-expense-form-native>
       <div class="tl-expense-primary">
         <label class="tl-field tl-amount-field">
@@ -1455,10 +1375,6 @@ function renderExpenseEntry(data: TripData, options: { force?: boolean } = {}): 
               <option>その他</option>
             </select>
           </label>
-          ${usingLocalExpenses() ? "" : `<label class="tl-field tl-photo-field">
-            <span>レシート写真</span>
-            <input type="file" name="receiptPhoto" accept="image/*" capture="environment">
-          </label>`}
         </details>
         <details class="tl-expense-editor">
           <summary>${icon("pencilSquare")}<span>メモ</span><b data-expense-summary-note>任意</b>${icon("chevronDown")}</summary>
@@ -1573,59 +1489,28 @@ function setupExpenseEntryHandlers(form: HTMLFormElement, participants: string[]
     button.disabled = true;
     setStatus("保存中...", "");
     try {
-      if (usingLocalExpenses()) {
-        // フォームは表示名と日本語ラベルを持つので、user_id と列挙へ変換して保存する。
-        const idOf = (name: string): string => db.ensureUserLocal(name).id;
-        const custom: Record<string, number> = {};
-        for (const [name, value] of Object.entries(individual)) custom[idOf(name)] = value;
-        const payload: ExpenseStore.AddInput = {
-          paidOn: (field("paidDate") as HTMLInputElement).value || null,
-          payerUserId: idOf((field("payer") as HTMLSelectElement).value),
-          category: categoryFromLabel((field("category") as HTMLSelectElement).value),
-          title: (field("title") as HTMLInputElement).value,
-          amountMinor: amount,
-          currency: (field("currency") as HTMLSelectElement).value,
-          splitMethod: splitFromLabel(mode),
-          paymentMethod: paymentFromLabel((field("paymentMethod") as HTMLSelectElement).value),
-          note: (field("note") as HTMLTextAreaElement).value,
-          memberIds: memberIds(),
-          selectedIds: targets.map(idOf),
-          customAmounts: custom,
-        };
-        if (editingExpenseId) {
-          await ExpenseStore.update(editingExpenseId, payload);
-        } else {
-          await ExpenseStore.add(planId(), payload);
-        }
+      // フォームは表示名と日本語ラベルを持つので、user_id と列挙へ変換して保存する。
+      const idOf = (name: string): string => db.ensureUserLocal(name).id;
+      const custom: Record<string, number> = {};
+      for (const [name, value] of Object.entries(individual)) custom[idOf(name)] = value;
+      const payload: ExpenseStore.AddInput = {
+        paidOn: (field("paidDate") as HTMLInputElement).value || null,
+        payerUserId: idOf((field("payer") as HTMLSelectElement).value),
+        category: categoryFromLabel((field("category") as HTMLSelectElement).value),
+        title: (field("title") as HTMLInputElement).value,
+        amountMinor: amount,
+        currency: (field("currency") as HTMLSelectElement).value,
+        splitMethod: splitFromLabel(mode),
+        paymentMethod: paymentFromLabel((field("paymentMethod") as HTMLSelectElement).value),
+        note: (field("note") as HTMLTextAreaElement).value,
+        memberIds: memberIds(),
+        selectedIds: targets.map(idOf),
+        customAmounts: custom,
+      };
+      if (editingExpenseId) {
+        await ExpenseStore.update(editingExpenseId, payload);
       } else {
-        const receiptInput = field("receiptPhoto") as HTMLInputElement;
-        const photo = receiptInput && receiptInput.files ? receiptInput.files[0] : null;
-        let receiptUrl = "";
-        if (photo) {
-          setStatus("写真アップロード中...", "");
-          const upload = await uploadReceiptPhoto(photo);
-          receiptUrl = upload.url || "";
-          setStatus("保存中...", "");
-        }
-        const response = await postAppsScriptAction("expense", {
-          token: getAuthToken(),
-          paidDate: (field("paidDate") as HTMLInputElement).value,
-          payer: (field("payer") as HTMLSelectElement).value,
-          category: (field("category") as HTMLSelectElement).value,
-          title: (field("title") as HTMLInputElement).value,
-          amount: (field("amount") as HTMLInputElement).value,
-          currency: (field("currency") as HTMLSelectElement).value,
-          splitMode: mode,
-          targets: JSON.stringify(targets),
-          individual: JSON.stringify(individual),
-          paymentMethod: (field("paymentMethod") as HTMLSelectElement).value,
-          receiptUrl,
-          note: (field("note") as HTMLTextAreaElement).value,
-        });
-        if (response.data) {
-          state.data = response.data;
-          state.days = groupDays(state.data.itinerary || []);
-        }
+        await ExpenseStore.add(planId(), payload);
       }
       form.reset();
       form.dataset.dirty = "false";
@@ -1643,7 +1528,6 @@ function setupExpenseEntryHandlers(form: HTMLFormElement, participants: string[]
         nextStatus.classList.add("is-ok");
       }
     } catch (error) {
-      if (isAuthError(error)) clearAuthSession();
       setStatus((error as Error).message || "保存に失敗しました。", "error");
     } finally {
       button.disabled = false;
@@ -1815,7 +1699,7 @@ function renderBase(): void {
 
   qs<HTMLAnchorElement>("[data-my-maps]").href = linkByKey("maps").url || "#";
 
-  if (workspaceView && usingLocalExpenses()) {
+  if (workspaceView) {
     data.settlement = { ...data.settlement, ...localSettlement() };
   }
   const settlement = data.settlement || {};
@@ -2436,7 +2320,7 @@ function showError(error: unknown): void {
   root.insertAdjacentElement("afterbegin", box);
 }
 
-async function syncData(isInitial: boolean, didRetryAuth?: boolean): Promise<void> {
+async function syncData(isInitial: boolean): Promise<void> {
   if (syncInFlight) return syncInFlight;
   const minInterval = Number(CONFIG.minRefreshSeconds || 0) * 1000;
   if (!isInitial && minInterval && Date.now() - lastSyncAt < minInterval) return;
@@ -2449,12 +2333,6 @@ async function syncData(isInitial: boolean, didRetryAuth?: boolean): Promise<voi
       renderData(data, CONFIG.mode);
       if (isInitial) setLoading(false);
     } catch (error) {
-      if (CONFIG.mode === "appsScript" && CONFIG.auth.enabled && !didRetryAuth && isAuthError(error)) {
-        clearAuthSession();
-        await requestPassword();
-        await syncData(isInitial, true);
-        return;
-      }
       showError(error);
       if (isInitial || !state.days.length) renderData(SAMPLE, "sample");
       if (isInitial) setLoading(false);
@@ -2672,8 +2550,7 @@ async function init(): Promise<void> {
   });
   // マイページはヘッダーの [data-mypage] を共通ドロワー（mypage-drawer）が拾って
   // 右からスライドインで開く。ここでの遷移は不要。
-  // フッターの「編集」を source で振り分け（ローカル→計画エディタ / appsScript→行程編集）。
-  // googleSheets/sample は閲覧のみなので非表示。
+  // ローカル計画は計画エディタで編集する。サンプルは閲覧のみ。
   const editWrap = root.querySelector<HTMLElement>("[data-edit-wrap]");
   const editLink = root.querySelector<HTMLAnchorElement>("[data-edit-link]");
   const editHead = root.querySelector<HTMLAnchorElement>("[data-edit-head]");
@@ -2682,7 +2559,6 @@ async function init(): Promise<void> {
   const editTarget =
     READ_ONLY ? null
     : CONFIG.mode === "local" ? { href: "plan-editor.html" + planQuery, label: "計画を編集" }
-    : CONFIG.mode === "appsScript" ? { href: "itinerary-editor.html" + planQuery, label: "行程編集" }
     : null;
   if (editWrap && editLink && editTarget) {
     editLink.href = editTarget.href;

@@ -9,7 +9,6 @@ export const PLAN_COLLABORATE_FIELDS = new Set([
 
 export const PLAN_MANAGE_FIELDS = new Set([
   "slug", "source", "visibility", "status", "open_editing",
-  "external_spreadsheet_id", "external_apps_script_url", "external_schema",
 ]);
 
 export const PLAN_PATCH_FIELDS = new Set([...PLAN_EDIT_FIELDS, ...PLAN_MANAGE_FIELDS]);

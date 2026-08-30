@@ -6,10 +6,6 @@ frontend/dist/
 frontend/.vite/
 api/dist/
 
-# clasp local config (per-developer Apps Script binding)
-backend/.clasp.json
-.clasprc.json
-
 # 秘密情報（DB パスワード・API トークン）。
 # このリポジトリのビルド成果物は GitHub Pages で公開されるため、
 # .env を絶対にコミットしないこと。雛形は .env.sample を使う。

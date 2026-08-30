@@ -22,7 +22,7 @@ import type {
 
 export { coordsFor, TYPES } from "./geo";
 
-export type PlanSource = "local" | "googleSheets" | "appsScript" | "sample";
+export type PlanSource = "local" | "sample";
 export type PlanVisibility = "public" | "invite";
 
 export interface PlanMeta {
@@ -39,9 +39,6 @@ export interface PlanMeta {
   cover?: string;
   source: PlanSource;
   visibility?: PlanVisibility;
-  spreadsheetId?: string;
-  appsScriptUrl?: string;
-  schema?: string;
   mapDefaults?: MapDefaults | null;
   builtIn?: boolean;
   published?: boolean;
@@ -62,11 +59,8 @@ export interface LocalPlanData {
 export const ACTIVE_KEY = "trip-dashboard-active-plan";
 export const safeSlug = safeTripSlug;
 
-const SOURCE_TO_VIEW: Record<db.PlanRow["source"], PlanSource> = {
-  local: "local", google_sheets: "googleSheets", apps_script: "appsScript", sample: "sample",
-};
 const SOURCE_TO_ROW: Record<PlanSource, db.PlanRow["source"]> = {
-  local: "local", googleSheets: "google_sheets", appsScript: "apps_script", sample: "sample",
+  local: "local", sample: "sample",
 };
 const KINDS = new Set<string>(["sight", "move", "food", "stay", "todo", "form"]);
 
@@ -119,12 +113,9 @@ function toMeta(row: db.PlanRow): PlanMeta {
     memberIds: ids,
     note: row.note || "",
     cover: row.cover_url || "",
-    source: SOURCE_TO_VIEW[row.source] || "local",
+    source: row.source === "sample" ? "sample" : "local",
     visibility: row.visibility,
-    spreadsheetId: row.external_spreadsheet_id || "",
-    appsScriptUrl: row.external_apps_script_url || "",
-    schema: row.external_schema || "",
-    builtIn: row.source !== "local",
+    builtIn: row.source === "sample",
     published: row.status === "published",
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -260,9 +251,6 @@ export function upsert(meta: Partial<PlanMeta> & { slug: string }): PlanMeta | n
     ...(meta.source !== undefined ? { source: SOURCE_TO_ROW[meta.source] } : {}),
     ...(meta.visibility !== undefined ? { visibility: meta.visibility } : {}),
     ...(meta.published !== undefined ? { status: meta.published ? "published" : "draft" } : {}),
-    ...(meta.spreadsheetId !== undefined ? { external_spreadsheet_id: meta.spreadsheetId || null } : {}),
-    ...(meta.appsScriptUrl !== undefined ? { external_apps_script_url: meta.appsScriptUrl || null } : {}),
-    ...(meta.schema !== undefined ? { external_schema: meta.schema || null } : {}),
   };
 
   if (existing) {
@@ -541,11 +529,8 @@ export function seedMeta(config: Partial<TripConfig>): PlanMeta | null {
     route: config.tripRoute || "",
     members: config.tripMembers || "",
     cover: config.tripCover || "",
-    source: mode === "appsScript" ? "appsScript" : mode === "googleSheets" ? "googleSheets" : "sample",
+    source: mode === "local" ? "local" : "sample",
     visibility: "public",
-    spreadsheetId: config.spreadsheetId || "",
-    appsScriptUrl: config.appsScriptUrl || "",
-    schema: config.schema || "trip",
     builtIn: true,
     published: true,
   };
@@ -570,14 +555,7 @@ export function resolveConfigOverride(config: Partial<TripConfig>): Partial<Trip
   if (!meta) return {};
   setActiveSlug(meta.slug);
   const override: Partial<TripConfig> = { tripSlug: meta.slug, tripTitle: meta.title || config.tripTitle };
-  if (meta.source === "local") {
-    override.mode = "local";
-  } else {
-    override.mode = meta.source === "appsScript" ? "appsScript" : meta.source === "sample" ? "sample" : "googleSheets";
-    if (meta.spreadsheetId) override.spreadsheetId = meta.spreadsheetId;
-    if (meta.appsScriptUrl) override.appsScriptUrl = meta.appsScriptUrl;
-    if (meta.schema) override.schema = meta.schema as TripConfig["schema"];
-  }
+  override.mode = meta.source === "sample" ? "sample" : "local";
   if (meta.mapDefaults) override.mapDefaults = meta.mapDefaults;
   return override;
 }

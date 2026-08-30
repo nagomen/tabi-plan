@@ -12,15 +12,12 @@ export interface PlanRow {
   dates_label: string | null;
   cover_url: string | null;
   base_currency: string;
-  source: "local" | "google_sheets" | "apps_script" | "sample";
+  source: "local" | "sample";
   visibility: "public" | "invite";
   status: "draft" | "published";
   version: number;
   open_editing: 0 | 1;
   owner_user_id: string | null;
-  external_spreadsheet_id: string | null;
-  external_apps_script_url: string | null;
-  external_schema: string | null;
   created_at: string;
   updated_at: string;
 }

@@ -153,7 +153,7 @@ function pageTransitionHead(): Plugin {
   };
 }
 
-// 複数ページ（ダッシュボード / 計画一覧 / 計画エディタ / 費用入力 / 行程編集）を
+// 複数ページ（ダッシュボード / 計画一覧 / 計画エディタなど）を
 // それぞれ独立した HTML エントリとしてビルドする。
 // GitHub Pages のプロジェクトサイトでも動くよう base は相対パスにする。
 export default defineConfig({
@@ -190,8 +190,6 @@ export default defineConfig({
         person: resolve(rootDir, "person.html"),
         login: resolve(rootDir, "login.html"),
         planEditor: resolve(rootDir, "plan-editor.html"),
-        expenseEntry: resolve(rootDir, "expense-entry.html"),
-        itineraryEditor: resolve(rootDir, "itinerary-editor.html"),
       },
     },
   },

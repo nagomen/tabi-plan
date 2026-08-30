@@ -148,7 +148,7 @@ CREATE TABLE plans (
   -- アプリ/API側で300KBに制限し、無制限な画像格納には使わない。
   cover_url       MEDIUMTEXT NULL,
   base_currency   CHAR(3)     NOT NULL DEFAULT 'JPY',
-  source          ENUM('local','google_sheets','apps_script','sample') NOT NULL DEFAULT 'local',
+  source          ENUM('local','sample') NOT NULL DEFAULT 'local',
   visibility      ENUM('public','invite') NOT NULL DEFAULT 'public',
   status          ENUM('draft','published') NOT NULL DEFAULT 'draft',
   version         BIGINT UNSIGNED NOT NULL DEFAULT 1, -- 本文・メタ保存の楽観ロック
@@ -156,10 +156,6 @@ CREATE TABLE plans (
   -- メンバー・費用・精算・公開設定の権限は付与しない。
   open_editing    TINYINT(1)  NOT NULL DEFAULT 0,
   owner_user_id   VARCHAR(32) NULL,              -- 作成者。plan_members の owner と重複するが引きやすさのため保持
-  -- 外部連携（source が google_sheets / apps_script のときだけ使う）
-  external_spreadsheet_id  VARCHAR(128) NULL,
-  external_apps_script_url VARCHAR(512) NULL,
-  external_schema          VARCHAR(32)  NULL,
   created_at      TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at      TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   deleted_at      TIMESTAMP   NULL DEFAULT NULL,

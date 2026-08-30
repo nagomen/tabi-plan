@@ -1,9 +1,0 @@
-key,value,説明,公開ページに表示
-tripTitle,サンプル旅行,旅行名。ダッシュボードのタイトルに表示,TRUE
-dateStart,,旅行開始日。未定なら空欄,TRUE
-dateEnd,,旅行終了日。未定なら空欄,TRUE
-members,参加者A / 参加者B,参加者名。公開してよい範囲で記載,TRUE
-dashboardNote,詳細な予約番号や宿泊先住所は公開ページに載せず、スプレッドシート側で管理してください。,共有メモ,TRUE
-myMapsUrl,https://www.google.com/maps/d/,Google My Mapsの共有URL,TRUE
-photosUrl,https://photos.google.com/,Googleフォト共有アルバムURL,TRUE
-photoTitle,旅行アルバム,写真アルバム表示名,TRUE

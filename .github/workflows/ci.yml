@@ -26,7 +26,7 @@ jobs:
       - run: npm ci
       - name: Type-check all workspaces
         run: npm run typecheck
-      - name: Test API and Apps Script backend
+      - name: Test frontend and API
         run: npm test
       - name: Build production frontend
         run: npm run build

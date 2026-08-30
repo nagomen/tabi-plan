@@ -4,10 +4,7 @@ window.TRIP_CONFIG = {
   tripDates: "2026年8月",
   tripRoute: "仙台、松島、蔵王、青森",
   tripCover: "./images/cover_tohoku.webp",
-  mode: "googleSheets",
-  spreadsheetId: "1Vsed92F7ao0rW0y5WWao_6VOasuqwATVH1GwE7MvsXw",
-  schema: "trip",
-  appsScriptUrl: "",
+  mode: "local",
   defaultParticipants: ["参加者A", "参加者B"],
   currencies: ["JPY"],
   auth: {

@@ -20,7 +20,6 @@ export async function bootstrapForUser(userId = ""): Promise<Bootstrap> {
   const [plans, workspaceRows, credentials, friendships, pendingInvites] = await Promise.all([
     all<PlanRow>(`SELECT p.id, p.slug, p.title, p.note, p.start_date, p.end_date, p.dates_label, p.cover_url,
            p.base_currency, p.source, p.visibility, p.status, p.version, p.open_editing, p.owner_user_id,
-           p.external_spreadsheet_id, p.external_apps_script_url, p.external_schema,
            p.created_at, p.updated_at
          FROM plans p ${actorJoin}
          WHERE ${visibleWhere}

@@ -47,9 +47,7 @@ const CATEGORY = {
   観光: "sightseeing", 通信: "communication", その他: "other",
 };
 const PAYMENT_METHOD = { カード: "card", 現金: "cash", 送金: "transfer", その他: "other" };
-const SOURCE = {
-  local: "local", googleSheets: "google_sheets", appsScript: "apps_script", sample: "sample",
-};
+const SOURCE = { local: "local", sample: "sample" };
 const KIND = new Set(["sight", "move", "food", "stay", "todo", "form"]);
 
 const nameKey = (s) => String(s || "").trim().toLowerCase();
@@ -257,14 +255,13 @@ try {
       p.published === false ? "draft" : "published",
       0,
       ownerBySlug.get(p.slug) || null,
-      p.spreadsheetId || null, p.appsScriptUrl || null, p.schema || null,
       ts(p.createdAt) || new Date(), ts(p.updatedAt) || new Date(),
     ]);
   }
   await insert(
     `INSERT INTO plans (id, slug, title, note, start_date, end_date, dates_label, cover_url,
        base_currency, source, visibility, status, open_editing, owner_user_id,
-       external_spreadsheet_id, external_apps_script_url, external_schema, created_at, updated_at) VALUES ?`,
+       created_at, updated_at) VALUES ?`,
     planRows,
   );
 

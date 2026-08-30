@@ -1298,8 +1298,6 @@
   }
 
   .plan-dot.local { background: var(--green); }
-  .plan-dot.googleSheets { background: var(--blue); }
-  .plan-dot.appsScript { background: var(--violet); }
   .plan-dot.sample { background: #9aa5a0; }
 
   .plan-body {

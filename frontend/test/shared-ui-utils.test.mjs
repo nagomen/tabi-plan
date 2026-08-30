@@ -16,7 +16,7 @@ function load(relativePath) {
   return module.exports;
 }
 
-test("expense choices are normalized consistently for both entry screens", () => {
+test("expense choices are normalized consistently for the expense form", () => {
   const { expenseParticipantNames, expenseCurrencyCodes } = load("src/shared/expense-form.ts");
   assert.deepEqual(
     Array.from(expenseParticipantNames({ participants: [{ displayName: " Alice " }, { "表示名": "Bob" }] })),
