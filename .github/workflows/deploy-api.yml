@@ -14,7 +14,7 @@ on:
       ref:
         description: "配るブランチ"
         required: true
-        default: "restructure-frontend-backend-ts"
+        default: "main"
 
 permissions:
   contents: read

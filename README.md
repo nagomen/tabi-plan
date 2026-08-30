@@ -100,7 +100,7 @@ Web検索を利用できないモデル・環境では`OPENAI_WEB_SEARCH_ENABLED
 | 2 | Apps Script | `setupTripDashboard({ ... })` を実行する | `appsScript` モードを使う場合。読み取り試作だけなら省略可 |
 | 3 | Apps Script | Web App としてデプロイする | 発行された URL を `appsScriptUrl` に入れる |
 | 4 | ローカル | ルートで `npm run build` を実行する | push 前に型検査とビルドで確認する |
-| 5 | GitHub | `restructure-frontend-backend-ts` に push する | Actions が preview Pages を更新する |
+| 5 | GitHub | `main` に push する | Actions が preview Pages を更新する |
 | 6 | GitHub | `Deploy Production` を手動実行する | Actions が build 済み `frontend/dist` を nginx 配信先へ反映する |
 
 `tripSlug` は localStorage のキーに使います。旅行ごとに必ず変えてください。
@@ -126,7 +126,7 @@ window.TRIP_CONFIG = {
 
 ## GitHub Actions デプロイ
 
-`.github/workflows/deploy-pages.yml` は preview 用です。`restructure-frontend-backend-ts` に push された `frontend/` を Vite でビルドし、出力 `frontend/dist` を GitHub Pages にデプロイします。
+`.github/workflows/deploy-pages.yml` は preview 用です。`main` に push された `frontend/` を Vite でビルドし、出力 `frontend/dist` を GitHub Pages にデプロイします。
 
 `.github/workflows/deploy-production.yml` は本番用です。手動実行で、まずAPIをビルドしてDBマイグレーションとサービス再起動を行い、成功後に `frontend/dist` をnginxの配信先へatomicに反映します。`install_nginx` を有効にする場合は Repository variable `PRODUCTION_API_DOMAIN` も設定してください。
 

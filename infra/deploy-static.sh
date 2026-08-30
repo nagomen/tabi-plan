@@ -5,7 +5,7 @@ set -euo pipefail
 trap 'echo "[deploy-static] failed at line $LINENO: $BASH_COMMAND" >&2' ERR
 
 APP_DIR="${APP_DIR:-$HOME/travel-dashboard}"
-REPO_BRANCH="${REPO_BRANCH:-restructure-frontend-backend-ts}"
+REPO_BRANCH="${REPO_BRANCH:-main}"
 DOMAIN="${DOMAIN:-example.com}"
 WEB_BASE="${WEB_BASE:-/var/www/travel-dashboard}"
 RELEASES_DIR="${RELEASES_DIR:-$WEB_BASE/releases}"
@@ -28,7 +28,7 @@ Usage: infra/deploy-static.sh [--skip-git] [--skip-build] [--install-nginx]
 
 Environment:
   APP_DIR       Repository directory. Default: $HOME/travel-dashboard
-  REPO_BRANCH   Branch to deploy. Default: restructure-frontend-backend-ts
+  REPO_BRANCH   Branch to deploy. Default: main
   DOMAIN        Public domain, e.g. travel.example.com
   WEB_BASE      Web root base. Default: /var/www/travel-dashboard
   KEEP_RELEASES Number of old releases to keep. Default: 5

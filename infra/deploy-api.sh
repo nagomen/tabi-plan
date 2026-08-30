@@ -21,7 +21,7 @@ set -euo pipefail
 trap 'echo "[deploy-api] failed at line $LINENO: $BASH_COMMAND" >&2' ERR
 
 APP_DIR="${APP_DIR:-$HOME/travel-dashboard}"
-REPO_BRANCH="${REPO_BRANCH:-restructure-frontend-backend-ts}"
+REPO_BRANCH="${REPO_BRANCH:-main}"
 API_PORT="${API_PORT:-8001}"
 API_DOMAIN="${API_DOMAIN:-}"
 ENV_FILE="${ENV_FILE:-$HOME/secure_env/travel-api.env}"

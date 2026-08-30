@@ -3,7 +3,7 @@ name: Deploy Preview Pages
 on:
   push:
     branches:
-      - restructure-frontend-backend-ts
+      - main
     paths:
       - "frontend/**"
       - "tools/build-trip-config.js"

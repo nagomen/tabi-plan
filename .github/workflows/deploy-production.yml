@@ -6,7 +6,7 @@ on:
       ref:
         description: "Git ref to deploy"
         required: true
-        default: "restructure-frontend-backend-ts"
+        default: "main"
       install_nginx:
         description: "Render and install nginx config before deploy"
         required: true

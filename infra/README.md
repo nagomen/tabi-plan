@@ -40,7 +40,7 @@ sudo -u ubuntu APP_DIR=/home/ubuntu/travel-dashboard DOMAIN=travel.example.com \
 
 The script:
 
-- pulls `restructure-frontend-backend-ts` by default
+- pulls `main` by default
 - runs `npm ci`
 - runs `npm run build`
 - publishes `frontend/dist` under `/var/www/travel-dashboard/releases/<timestamp>`

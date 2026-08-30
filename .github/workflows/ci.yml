@@ -4,7 +4,7 @@ on:
   pull_request:
   push:
     branches:
-      - restructure-frontend-backend-ts
+      - main
 
 permissions:
   contents: read
