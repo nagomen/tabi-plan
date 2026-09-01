@@ -65,3 +65,12 @@ test("友達以外を名前で追加し、保存後に未登録メンバーと�
   assert.match(plans, /db\.inspectInvite/);
   assert.match(plans, /db\.acceptInvite\(payload\.token, selectedMemberId\)/);
 });
+
+test("LINEログインでも招待tokenを外部へ送らずブラウザ内で選択状態を復元する", () => {
+  const database = fs.readFileSync(new URL("src/shared/db.ts", root), "utf8");
+  assert.match(database, /LINE_RETURN_HASH_KEY/);
+  assert.match(database, /rememberLineReturnHash\(returnTo, nonce\)/);
+  assert.match(database, /takeLineReturnHash\(nonce\)/);
+  assert.match(database, /url\.origin !== location\.origin/);
+  assert.doesNotMatch(database, /return_to:\s*returnTo[\s\S]{0,100}join/);
+});

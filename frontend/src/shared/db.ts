@@ -110,6 +110,7 @@ export function isEnabled(): boolean {
 // 開始時にこの端末へ印を置き、戻ってきた印と一致しなければ受け取らない。
 
 const LINE_NONCE_KEY = "trip-line-nonce";
+const LINE_RETURN_HASH_KEY = "trip-line-return-hash";
 const LINE_NONCE_TTL_MS = 10 * 60 * 1000;
 
 function issueLineNonce(): string {
@@ -133,6 +134,44 @@ function takeLineNonce(): string {
     if (!raw) return "";
     const parsed = JSON.parse(raw) as { value?: string; expiresAt?: number };
     if (!parsed.value || !parsed.expiresAt || parsed.expiresAt < Date.now()) return "";
+    return parsed.value;
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * LINEへ招待トークンを渡さず、同じブラウザ内だけで招待fragmentを一時保持する。
+ * OAuthのstateやURLクエリへ入れないので、LINE・nginx・アクセスログには送られない。
+ */
+function rememberLineReturnHash(rawUrl: string, nonce: string): void {
+  try {
+    const url = new URL(rawUrl, location.href);
+    if (url.origin !== location.origin) throw new Error("foreign origin");
+    const input = new URLSearchParams(url.hash.startsWith("#") ? url.hash.slice(1) : url.hash);
+    const join = String(input.get("join") || "").slice(0, 8192);
+    if (!join) {
+      localStorage.removeItem(LINE_RETURN_HASH_KEY);
+      return;
+    }
+    const output = new URLSearchParams({ join });
+    const member = String(input.get("member") || "");
+    if (/^[\w-]{1,32}$/.test(member)) output.set("member", member);
+    localStorage.setItem(LINE_RETURN_HASH_KEY, JSON.stringify({
+      value: output.toString(), nonce, expiresAt: Date.now() + 10 * 60 * 1000,
+    }));
+  } catch {
+    try { localStorage.removeItem(LINE_RETURN_HASH_KEY); } catch { /* ignore */ }
+  }
+}
+
+function takeLineReturnHash(nonce: string): string {
+  try {
+    const raw = localStorage.getItem(LINE_RETURN_HASH_KEY);
+    localStorage.removeItem(LINE_RETURN_HASH_KEY);
+    if (!raw) return "";
+    const parsed = JSON.parse(raw) as { value?: string; nonce?: string; expiresAt?: number };
+    if (!parsed.value || parsed.nonce !== nonce || !parsed.expiresAt || parsed.expiresAt < Date.now()) return "";
     return parsed.value;
   } catch {
     return "";
@@ -168,9 +207,11 @@ export function adoptSessionFromUrl(): { ok: boolean; error: string } {
  */
 export async function lineAuthorizeUrl(returnTo: string): Promise<string> {
   if (!api()) return "";
+  const nonce = issueLineNonce();
+  rememberLineReturnHash(returnTo, nonce);
   const result = await request<{ url?: string }>("POST", "/api/auth/line/authorize-url", {
     return_to: returnTo,
-    nonce: issueLineNonce(),
+    nonce,
   });
   return result.url || "";
 }
@@ -217,6 +258,10 @@ function readSessionFromUrl(): { ok: boolean; error: string } {
     localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({ userId: "", email: "", name: "", token }));
   } catch {
     return { ok: false, error: "この端末にログイン情報を保存できませんでした" };
+  }
+  const returnHash = takeLineReturnHash(nonce);
+  if (returnHash) {
+    try { history.replaceState(null, "", location.pathname + location.search + "#" + returnHash); } catch { /* ignore */ }
   }
   return { ok: true, error: "" };
 }
