@@ -2739,3 +2739,51 @@
   /* PC は地図が右の列に常設で、畳むボタンも地図の中にあるので出さない */
   [data-map-header] { display: none; }
 }
+
+/* 途中合流/離脱の参加期間エディタ */
+.pe-mperiods {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #f7faf8;
+}
+.pe-mperiods-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.pe-mperiods-head svg { width: 15px; height: 15px; }
+.pe-mperiod {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 6px 0;
+  border-top: 1px solid var(--line);
+}
+.pe-mperiod:first-of-type { border-top: 0; }
+.pe-mperiod-name { flex: 1 1 6em; min-width: 5em; font-size: 13px; }
+.pe-mperiod-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.pe-mperiod-field input[type="date"] {
+  font: inherit;
+  padding: 3px 6px;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  background: #fff;
+}
+.pe-mperiods-note {
+  margin: 8px 0 0;
+  font-size: 11px;
+  color: var(--muted);
+}

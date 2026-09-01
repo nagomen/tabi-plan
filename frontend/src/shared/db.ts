@@ -924,10 +924,13 @@ export async function deletePlan(planId: string): Promise<void> {
   await reload();
 }
 
-export function replaceMembers(planId: string, list: { user_id: string; role?: PlanMemberRow["role"] }[]): void {
+export function replaceMembers(planId: string, list: {
+  user_id: string; role?: PlanMemberRow["role"]; from_date?: string | null; to_date?: string | null;
+}[]): void {
   snap.members = snap.members.filter((m) => m.plan_id !== planId).concat(
     list.filter((m) => m.user_id).map((m) => ({
       plan_id: planId, user_id: m.user_id, role: m.role || "editor", status: "active" as const,
+      from_date: m.from_date ?? null, to_date: m.to_date ?? null,
     })),
   );
   send("PUT", `/api/plans/${encodeURIComponent(planId)}/members`, { members: list });

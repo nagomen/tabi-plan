@@ -15,6 +15,7 @@ import * as db from "./db";
 import { currentUserId } from "./identity";
 import { formatDurationMinutes, parseDurationMinutes } from "./travel-duration";
 import { collisionResistantPlanSlug } from "./plan-slug";
+import { presentMemberIds, type MemberPeriod } from "./member-period";
 import type {
   TripData, TripInfo, ItineraryItem, TripLink, ChecklistItem, LocalInfoItem,
   RouteCity, Candidate, ItemType,
@@ -291,6 +292,9 @@ export function upsert(meta: Partial<PlanMeta> & { slug: string }): PlanMeta | n
             return {
               user_id: id,
               role: id === owner ? "owner" : currentMember?.role === "viewer" ? "viewer" : "editor",
+              // 追加/削除で他メンバーの参加期間（途中合流/離脱）を消さない。
+              from_date: currentMember?.from_date ?? null,
+              to_date: currentMember?.to_date ?? null,
             };
           }));
         }
@@ -578,6 +582,20 @@ export function toDashboardData(data: LocalPlanData | null): TripData {
     settlement: {},
     cities: Array.isArray(source.cities) ? source.cities : undefined,
   };
+}
+
+// ---- メンバーの参加期間（途中合流/離脱）--------------------------------
+
+/** 計画の在籍メンバーの参加期間。NULL 端は「全日程」を意味する。 */
+export function memberPeriods(planId: string): MemberPeriod[] {
+  return db.members()
+    .filter((m) => m.plan_id === planId && m.status === "active")
+    .map((m) => ({ user_id: m.user_id, from_date: m.from_date ?? null, to_date: m.to_date ?? null }));
+}
+
+/** 費用日 date に旅行へ在籍しているメンバーIDだけを返す。date 未指定なら全員。 */
+export function memberIdsPresentOn(planId: string, date: string): string[] {
+  return presentMemberIds(memberPeriods(planId), date);
 }
 
 const ROUTE_SPLIT_RE = /\s*(?:→|、|,|\/|・|\|)\s*/;

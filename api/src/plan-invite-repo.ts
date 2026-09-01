@@ -129,9 +129,10 @@ async function claimPlaceholder(
 ): Promise<void> {
   const placeholder = await firstRow<{
     user_id: string; role: "owner" | "editor" | "viewer";
+    from_date: string | null; to_date: string | null;
   }>(
     conn,
-    `SELECT pmp.user_id, pm.role
+    `SELECT pmp.user_id, pm.role, pm.from_date, pm.to_date
        FROM plan_member_placeholders pmp
        JOIN plan_members pm ON pm.plan_id = pmp.plan_id AND pm.user_id = pmp.user_id AND pm.status = 'active'
       WHERE pmp.plan_id = ? AND pmp.user_id = ? AND pmp.status = 'unclaimed'
@@ -148,9 +149,9 @@ async function claimPlaceholder(
   if (existingMember) throw new BadRequest("このアカウントは既に別のメンバーとして旅行に参加しています");
 
   await conn.query(
-    `INSERT INTO plan_members (plan_id, user_id, role, status, invited_by_id)
-     VALUES (?, ?, ?, 'active', ?)`,
-    [invite.plan_id, userId, placeholder.role, invite.created_by_id],
+    `INSERT INTO plan_members (plan_id, user_id, role, status, invited_by_id, from_date, to_date)
+     VALUES (?, ?, ?, 'active', ?, ?, ?)`,
+    [invite.plan_id, userId, placeholder.role, invite.created_by_id, placeholder.from_date, placeholder.to_date],
   );
   await conn.query(
     "UPDATE expenses SET payer_user_id = ? WHERE plan_id = ? AND payer_user_id = ?",

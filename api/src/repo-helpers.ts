@@ -40,3 +40,9 @@ export function assertMember(memberIds: Set<string>, userId: string, label: stri
 export function friendshipPair(a: string, b: string): [string, string] {
   return a < b ? [a, b] : [b, a];
 }
+
+/** "YYYY-MM-DD" 形式だけ通す。それ以外（空・不正）は null。 */
+export function safeDate(value: unknown): string | null {
+  const raw = String(value || "").trim();
+  return /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : null;
+}

@@ -3,6 +3,7 @@ import { BadRequest } from "./errors.js";
 import { newId } from "./ids.js";
 import { identityKey } from "./identity.js";
 import { planRole } from "./plan-access-repo.js";
+import { safeDate } from "./repo-helpers.js";
 
 /** 名前だけ分かっている人を、この旅行専用の未登録メンバーとして追加する。 */
 export async function createPlaceholderMember(
@@ -38,15 +39,21 @@ export async function createPlaceholderMember(
 
 export async function replaceMembers(
   planId: string,
-  members: { user_id: string; role?: string }[],
+  members: { user_id: string; role?: string; from_date?: string | null; to_date?: string | null }[],
   actorUserId = "",
 ): Promise<void> {
-  const byUserId = new Map<string, { user_id: string; role: "owner" | "editor" | "viewer" }>();
+  const byUserId = new Map<string, {
+    user_id: string; role: "owner" | "editor" | "viewer"; from_date: string | null; to_date: string | null;
+  }>();
   for (const member of members) {
     const userId = String(member?.user_id || "").trim();
     if (!userId) continue;
     const role = member.role === "owner" || member.role === "viewer" ? member.role : "editor";
-    byUserId.set(userId, { user_id: userId, role });
+    // 合流日が離脱日より後なら、両方無視して「全日程」に倒す（矛盾入力の保険）。
+    let fromDate = safeDate(member.from_date);
+    let toDate = safeDate(member.to_date);
+    if (fromDate && toDate && fromDate > toDate) { fromDate = null; toDate = null; }
+    byUserId.set(userId, { user_id: userId, role, from_date: fromDate, to_date: toDate });
   }
   const normalized = [...byUserId.values()];
   const owners = normalized.filter((member) => member.role === "owner");
@@ -70,10 +77,12 @@ export async function replaceMembers(
         WHERE plan_id = ? AND status = 'unclaimed' AND user_id NOT IN (${activeIn.sql})`,
       [planId, ...activeIn.params],
     );
-    const rows = normalized.map((member) => [planId, member.user_id, member.role, "active"]);
+    const rows = normalized.map((member) =>
+      [planId, member.user_id, member.role, "active", member.from_date, member.to_date]);
     await conn.query(
-      `INSERT INTO plan_members (plan_id, user_id, role, status) VALUES ?
-       ON DUPLICATE KEY UPDATE role = VALUES(role), status = 'active'`,
+      `INSERT INTO plan_members (plan_id, user_id, role, status, from_date, to_date) VALUES ?
+       ON DUPLICATE KEY UPDATE role = VALUES(role), status = 'active',
+         from_date = VALUES(from_date), to_date = VALUES(to_date)`,
       [rows],
     );
     const ownerIds = normalized.filter((member) => member.role === "owner").map((member) => member.user_id);

@@ -1469,8 +1469,9 @@ function setupExpenseEntryHandlers(form: HTMLFormElement, participants: string[]
       const idOf = (name: string): string => db.ensureUserLocal(name).id;
       const custom: Record<string, number> = {};
       for (const [name, value] of Object.entries(individual)) custom[idOf(name)] = value;
+      const paidOn = (field("paidDate") as HTMLInputElement).value || "";
       const payload: ExpenseStore.AddInput = {
-        paidOn: (field("paidDate") as HTMLInputElement).value || null,
+        paidOn: paidOn || null,
         payerUserId: idOf((field("payer") as HTMLSelectElement).value),
         category: categoryFromLabel((field("category") as HTMLSelectElement).value),
         title: (field("title") as HTMLInputElement).value,
@@ -1479,7 +1480,9 @@ function setupExpenseEntryHandlers(form: HTMLFormElement, participants: string[]
         splitMethod: splitFromLabel(mode),
         paymentMethod: paymentFromLabel((field("paymentMethod") as HTMLSelectElement).value),
         note: (field("note") as HTMLTextAreaElement).value,
-        memberIds: memberIds(),
+        // 「全員で等分」は、その費用の日に旅行へ在籍していたメンバーだけを対象にする
+        // （途中合流/離脱を反映）。日付未指定なら全員。
+        memberIds: TripPlans.memberIdsPresentOn(planId(), paidOn),
         selectedIds: targets.map(idOf),
         customAmounts: custom,
       };

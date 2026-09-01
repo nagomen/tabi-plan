@@ -67,7 +67,7 @@ export async function bootstrapForUser(userId = ""): Promise<Bootstrap> {
   const workspaceIn = inClause(workspacePlanIds);
   const [members, memberPlaceholders, checklist, candidates, expenses, expenseShares, settlements] = workspacePlanIds.length
     ? await Promise.all([
-      all<PlanMemberRow>(`SELECT plan_id, user_id, role, status FROM plan_members
+      all<PlanMemberRow>(`SELECT plan_id, user_id, role, status, from_date, to_date FROM plan_members
          WHERE status = 'active' AND plan_id IN (${workspaceIn.sql})`, workspaceIn.params),
       all<PlanMemberPlaceholderRow>(`SELECT plan_id, user_id, original_name, status, claimed_by_user_id, claimed_at
          FROM plan_member_placeholders

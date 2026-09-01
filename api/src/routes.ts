@@ -237,7 +237,11 @@ export async function route(method: string, path: string, body: Body, actorUserI
   if (m && method === "PUT") {
     const denied = await forbiddenUnless(accessRepo.canManagePlan(m[1], actorUserId));
     if (denied) return denied;
-    await memberRepo.replaceMembers(m[1], arr(body.members) as { user_id: string; role?: string }[], actorUserId);
+    await memberRepo.replaceMembers(
+      m[1],
+      arr(body.members) as { user_id: string; role?: string; from_date?: string | null; to_date?: string | null }[],
+      actorUserId,
+    );
     return { status: 200, body: { ok: true } };
   }
   m = /^\/api\/plans\/([\w-]{1,32})\/members\/me$/.exec(path);

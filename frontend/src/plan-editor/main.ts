@@ -214,6 +214,8 @@ interface Model {
   members: string;
   memberIds: string[];
   pendingMembers: { key: string; name: string }[];
+  /** メンバーごとの旅行内参加期間（途中合流/離脱）。null 端は全日程。 */
+  memberDates: Record<string, { from: string | null; to: string | null }>;
   note: string;
   cover: string;
   startDate: string;
@@ -371,7 +373,7 @@ const isNew = !planParam;
 let slug = isNew ? "" : TripPlans.safeSlug(planParam);
 
 const model: Model = {
-  slug, title: "", members: "", memberIds: [], pendingMembers: [], note: "", cover: "", startDate: "", endDate: "", cities: [], days: [], candidates: [],
+  slug, title: "", members: "", memberIds: [], pendingMembers: [], memberDates: {}, note: "", cover: "", startDate: "", endDate: "", cities: [], days: [], candidates: [],
 };
 let dirty = false;
 let editRevision = 0;
@@ -2543,7 +2545,7 @@ function renderMembers(): void {
     model.pendingMembers.map((member) => ({ id: "", name: member.name, pendingKey: member.key })),
   );
   const planId = stored?.id || "";
-  membersMount.innerHTML = displayMembers
+  const memberChips = displayMembers
     .map((member) => {
       const self = account?.id ? member.id === account.id : Boolean(me) && member.name === me;
       const placeholder = Boolean(member.id && planId && db.isPlaceholderMember(planId, member.id));
@@ -2569,6 +2571,55 @@ function renderMembers(): void {
       );
     })
     .join("");
+  membersMount.innerHTML = memberChips + memberPeriodsHtml();
+}
+
+/**
+ * 途中合流/離脱の入力。合流日・離脱日を空欄にすると全日程参加。
+ * 保存済み計画で、旅行期間が決まっていて、管理者のときだけ出す。
+ */
+function memberPeriodsHtml(): string {
+  const meta = slug ? TripPlans.get(slug) : null;
+  if (!meta?.id || !canManagePlan(meta)) return "";
+  if (!model.startDate || !model.endDate) return "";
+  const ids = model.memberIds.filter((id) => id && db.nameOf(id));
+  if (!ids.length) return "";
+  const start = model.startDate;
+  const end = model.endDate;
+  const row = (id: string): string => {
+    const dates = model.memberDates[id] || { from: null, to: null };
+    return (
+      `<div class="pe-mperiod">` +
+      `<span class="pe-mperiod-name">${escapeHtml(db.nameOf(id))}</span>` +
+      `<label class="pe-mperiod-field">合流<input type="date" data-member-from="${escapeHtml(id)}" value="${dates.from || ""}" min="${start}" max="${end}"></label>` +
+      `<label class="pe-mperiod-field">離脱<input type="date" data-member-to="${escapeHtml(id)}" value="${dates.to || ""}" min="${start}" max="${end}"></label>` +
+      `</div>`
+    );
+  };
+  return (
+    `<div class="pe-mperiods">` +
+    `<p class="pe-mperiods-head">${icon("calendarDays")}参加期間（途中合流/離脱・空欄＝全日程）</p>` +
+    ids.map(row).join("") +
+    `<p class="pe-mperiods-note">その日の費用は「全員で等分」でも、在籍していた人だけで割ります。</p>` +
+    `</div>`
+  );
+}
+
+/** 現在の memberIds・役割・参加期間から、メンバー一覧をまるごと保存する。 */
+function persistMemberDates(): void {
+  const meta = slug ? TripPlans.get(slug) : null;
+  if (!meta?.id || !canManagePlan(meta)) return;
+  const ownerId = db.planBySlug(meta.slug)?.owner_user_id || currentAccount()?.id || "";
+  db.replaceMembers(meta.id, model.memberIds.filter(Boolean).map((id) => {
+    const current = db.members().find((member) => member.plan_id === meta.id && member.user_id === id);
+    const dates = model.memberDates[id] || { from: null, to: null };
+    return {
+      user_id: id,
+      role: id === ownerId ? "owner" : current?.role === "viewer" ? "viewer" : "editor",
+      from_date: dates.from,
+      to_date: dates.to,
+    };
+  }));
 }
 
 function memberCandidates(): { id: string; name: string }[] {
@@ -2646,6 +2697,26 @@ membersMount.addEventListener("click", (event) => {
   }
   const inv = t.closest<HTMLElement>("[data-invite]");
   if (inv) { void shareInvite(inv.dataset.invite || "", inv.dataset.inviteUser || ""); }
+});
+
+// 途中合流/離脱の日付入力。確定した時点で参加期間を保存する。
+membersMount.addEventListener("change", (event) => {
+  const input = event.target;
+  if (!(input instanceof HTMLInputElement)) return;
+  const fromId = input.dataset.memberFrom;
+  const toId = input.dataset.memberTo;
+  const id = fromId || toId;
+  if (!id) return;
+  const meta = slug ? TripPlans.get(slug) : null;
+  if (!meta?.id || !canManagePlan(meta)) return;
+  const current = model.memberDates[id] || { from: null, to: null };
+  const value = input.value || null;
+  const next = fromId ? { from: value, to: current.to } : { from: current.from, to: value };
+  // 合流が離脱より後なら矛盾。両方クリアして全日程に倒す（サーバ側も同様に無効化）。
+  if (next.from && next.to && next.from > next.to) { next.from = null; next.to = null; }
+  model.memberDates[id] = next;
+  persistMemberDates();
+  renderMembers();
 });
 
 async function transferOwnership(userId: string, name: string): Promise<void> {
@@ -3186,6 +3257,12 @@ function loadExisting(): boolean {
   model.title = trip.title || "";
   model.members = trip.members || "";
   model.memberIds = meta?.memberIds ? [...meta.memberIds] : [];
+  model.memberDates = {};
+  if (meta?.id) {
+    for (const period of TripPlans.memberPeriods(meta.id)) {
+      model.memberDates[period.user_id] = { from: period.from_date, to: period.to_date };
+    }
+  }
   model.note = trip.note || "";
   model.cover = trip.cover || "";
   model.candidates = Array.isArray(data.candidates) ? data.candidates : [];

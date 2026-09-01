@@ -177,6 +177,22 @@ async function migrate008() {
   ) ENGINE=InnoDB`);
 }
 
+async function migrate009() {
+  // メンバーの途中合流/離脱（旅行内の参加期間）。NULL は全日程。
+  if (!(await exists(
+    "SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'plan_members' AND COLUMN_NAME = 'from_date'",
+    [database],
+  ))) {
+    await conn.query("ALTER TABLE plan_members ADD COLUMN from_date DATE NULL AFTER invited_by_id");
+  }
+  if (!(await exists(
+    "SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'plan_members' AND COLUMN_NAME = 'to_date'",
+    [database],
+  ))) {
+    await conn.query("ALTER TABLE plan_members ADD COLUMN to_date DATE NULL AFTER from_date");
+  }
+}
+
 async function main() {
   await conn.query(`CREATE TABLE IF NOT EXISTS schema_migrations (
     id VARCHAR(64) NOT NULL PRIMARY KEY,
@@ -189,6 +205,7 @@ async function main() {
   await applyMigration("006_line_login", migrate006);
   await applyMigration("007_remove_external_plan_sources", migrate007);
   await applyMigration("008_placeholder_plan_members", migrate008);
+  await applyMigration("009_member_participation_dates", migrate009);
 }
 
 try {

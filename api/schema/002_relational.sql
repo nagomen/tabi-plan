@@ -174,6 +174,10 @@ CREATE TABLE plan_members (
   role        ENUM('owner','editor','viewer') NOT NULL DEFAULT 'editor',
   status      ENUM('active','left','revoked') NOT NULL DEFAULT 'active',
   invited_by_id VARCHAR(32) NULL,
+  -- 旅行内の参加期間（途中合流/離脱）。NULL は「全日程」を意味する。
+  -- 割り勘の「全員で等分」は、費用の日付にこの期間が重なるメンバーだけを対象にする。
+  from_date   DATE        NULL,
+  to_date     DATE        NULL,
   joined_at   TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at  TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (plan_id, user_id),

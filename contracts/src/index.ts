@@ -27,6 +27,10 @@ export interface PlanMemberRow {
   user_id: string;
   role: "owner" | "editor" | "viewer";
   status: "active" | "left" | "revoked";
+  /** 旅行内の参加開始日（YYYY-MM-DD）。null は初日から参加。 */
+  from_date: string | null;
+  /** 旅行内の参加終了日（YYYY-MM-DD）。null は最終日まで参加。 */
+  to_date: string | null;
 }
 
 /** 旅行内だけで先に作られ、招待後に本人アカウントへ紐付くメンバー。 */
