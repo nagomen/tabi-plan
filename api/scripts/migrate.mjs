@@ -156,6 +156,27 @@ async function migrate007() {
   }
 }
 
+async function migrate008() {
+  await conn.query(`CREATE TABLE IF NOT EXISTS plan_member_placeholders (
+    plan_id             VARCHAR(32) NOT NULL,
+    user_id             VARCHAR(32) NOT NULL,
+    original_name       VARCHAR(64) NOT NULL,
+    status              ENUM('unclaimed','claimed','removed') NOT NULL DEFAULT 'unclaimed',
+    claimed_by_user_id  VARCHAR(32) NULL,
+    claimed_at          TIMESTAMP NULL DEFAULT NULL,
+    created_by_id       VARCHAR(32) NOT NULL,
+    created_at          TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at          TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (plan_id, user_id),
+    UNIQUE KEY uq_plan_member_placeholder_user (user_id),
+    KEY idx_plan_member_placeholders_claim (plan_id, status),
+    CONSTRAINT fk_plan_member_placeholder_plan FOREIGN KEY (plan_id) REFERENCES plans (id) ON DELETE CASCADE,
+    CONSTRAINT fk_plan_member_placeholder_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+    CONSTRAINT fk_plan_member_placeholder_claimed FOREIGN KEY (claimed_by_user_id) REFERENCES users (id) ON DELETE SET NULL,
+    CONSTRAINT fk_plan_member_placeholder_creator FOREIGN KEY (created_by_id) REFERENCES users (id) ON DELETE RESTRICT
+  ) ENGINE=InnoDB`);
+}
+
 async function main() {
   await conn.query(`CREATE TABLE IF NOT EXISTS schema_migrations (
     id VARCHAR(64) NOT NULL PRIMARY KEY,
@@ -167,6 +188,7 @@ async function main() {
   await applyMigration("005_ai_usage_limits", migrate005);
   await applyMigration("006_line_login", migrate006);
   await applyMigration("007_remove_external_plan_sources", migrate007);
+  await applyMigration("008_placeholder_plan_members", migrate008);
 }
 
 try {

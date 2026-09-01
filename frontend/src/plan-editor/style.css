@@ -532,7 +532,8 @@
   .pe-member-hint { margin: 8px 0 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
   .pe-member-hint a { color: var(--green); font-weight: 700; }
   .pe-member-inputwrap { position: relative; min-width: 0; }
-  .pe-member-inputwrap select {
+  .pe-member-inputwrap select,
+  .pe-member-inputwrap input {
     width: 100%;
     min-height: 40px;
     border: 0;
@@ -544,11 +545,15 @@
     font: inherit;
     font-size: 13px;
   }
-  .pe-member-inputwrap select:focus {
+  .pe-member-inputwrap select:focus,
+  .pe-member-inputwrap input:focus {
     outline: none;
     border-color: var(--green);
     box-shadow: none;
   }
+  .pe-member-free { margin-top: 8px; }
+  .pe-member-free .pe-mini { white-space: nowrap; }
+  .pe-chip-pending { color: var(--amber); font-size: 10px; font-weight: 700; }
 
   /* 名前登録モーダル */
   .pe-modal { position: fixed; inset: 0; z-index: 9999; display: grid; place-items: center; padding: 18px; background: rgba(17, 25, 22, .45); }

@@ -304,7 +304,8 @@ const server = http.createServer(async (req, res) => {
     }
     // 手元のトークンが無効なのに書き込みへ来たら、権限不足ではなく期限切れ。
     // 403 だと画面に「権限がありません」と出て、ログインし直す導線が出ない。
-    if (sessionToken && !actorUserId && req.method !== "GET") {
+    const publicWrite = path === "/api/invites/inspect" && req.method === "POST";
+    if (sessionToken && !actorUserId && req.method !== "GET" && !publicWrite) {
       send(res, 401, { error: "session_required" }, cors);
       return;
     }

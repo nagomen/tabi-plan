@@ -1,39 +1,39 @@
-import mysql from "mysql2/promise";
 import { inClause, pool, type Row, withTransaction } from "./db.js";
 import { BadRequest } from "./errors.js";
 import { newId } from "./ids.js";
+import { identityKey } from "./identity.js";
 import { planRole } from "./plan-access-repo.js";
-import { activeMemberIds, friendshipPair } from "./repo-helpers.js";
 
-async function ensureAcceptedFriendship(
-  a: string,
-  b: string,
-  requestedById: string,
-  conn: mysql.PoolConnection | mysql.Pool = pool,
-): Promise<void> {
-  if (!a || !b || a === b) return;
-  const [low, high] = friendshipPair(a, b);
-  await conn.query(
-    `INSERT INTO friendships (id, user_low_id, user_high_id, requested_by_id, status, responded_at)
-     VALUES (?, ?, ?, ?, 'accepted', CURRENT_TIMESTAMP)
-     ON DUPLICATE KEY UPDATE
-       status = 'accepted',
-       responded_at = CURRENT_TIMESTAMP`,
-    [newId("frd"), low, high, requestedById],
-  );
-}
-
-export async function ensurePlanMembersAreFriends(
+/** 名前だけ分かっている人を、この旅行専用の未登録メンバーとして追加する。 */
+export async function createPlaceholderMember(
   planId: string,
-  requestedById: string,
-  conn: mysql.PoolConnection | mysql.Pool = pool,
-): Promise<void> {
-  const ids = Array.from(new Set(await activeMemberIds(planId, conn)));
-  for (let i = 0; i < ids.length; i += 1) {
-    for (let j = i + 1; j < ids.length; j += 1) {
-      await ensureAcceptedFriendship(ids[i], ids[j], requestedById, conn);
-    }
-  }
+  displayName: string,
+  actorUserId: string,
+): Promise<{ user: { id: string; display_name: string }; member: { plan_id: string; user_id: string; role: "editor"; status: "active" } }> {
+  const name = String(displayName || "").trim().slice(0, 64);
+  if (!name) throw new BadRequest("メンバー名を入力してください");
+  const userId = newId("gst");
+  await withTransaction(async (conn) => {
+    await conn.query(
+      "INSERT INTO users (id, display_name, name_key) VALUES (?, ?, ?)",
+      [userId, name, identityKey(name)],
+    );
+    await conn.query(
+      `INSERT INTO plan_members (plan_id, user_id, role, status, invited_by_id)
+       VALUES (?, ?, 'editor', 'active', ?)`,
+      [planId, userId, actorUserId],
+    );
+    await conn.query(
+      `INSERT INTO plan_member_placeholders
+         (plan_id, user_id, original_name, status, created_by_id)
+       VALUES (?, ?, ?, 'unclaimed', ?)`,
+      [planId, userId, name, actorUserId],
+    );
+  });
+  return {
+    user: { id: userId, display_name: name },
+    member: { plan_id: planId, user_id: userId, role: "editor", status: "active" },
+  };
 }
 
 export async function replaceMembers(
@@ -64,6 +64,12 @@ export async function replaceMembers(
        WHERE plan_id = ? AND user_id NOT IN (${activeIn.sql})`,
       [planId, ...activeIn.params],
     );
+    await conn.query(
+      `UPDATE plan_member_placeholders
+          SET status = 'removed'
+        WHERE plan_id = ? AND status = 'unclaimed' AND user_id NOT IN (${activeIn.sql})`,
+      [planId, ...activeIn.params],
+    );
     const rows = normalized.map((member) => [planId, member.user_id, member.role, "active"]);
     await conn.query(
       `INSERT INTO plan_members (plan_id, user_id, role, status) VALUES ?
@@ -84,7 +90,6 @@ export async function replaceMembers(
        WHERE id = ?`,
       [...ownerIn.params, preferredOwner, planId],
     );
-    await ensurePlanMembersAreFriends(planId, actorUserId || owner.user_id, conn);
   });
 }
 

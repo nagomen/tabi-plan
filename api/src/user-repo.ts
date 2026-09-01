@@ -45,8 +45,11 @@ export async function searchUsers(query: string, actorUserId: string): Promise<
   const rows = await all<{ id: string; display_name: string; email: string | null }>(
     `SELECT u.id, u.display_name, CASE WHEN c.email = ? THEN c.email ELSE '' END AS email
        FROM users u
-       LEFT JOIN user_credentials c ON c.user_id = u.id
+      LEFT JOIN user_credentials c ON c.user_id = u.id
       WHERE u.id <> ?
+        AND NOT EXISTS (
+          SELECT 1 FROM plan_member_placeholders pmp WHERE pmp.user_id = u.id
+        )
         AND (u.name_key LIKE ? OR c.email = ?)
       ORDER BY u.created_at DESC
       LIMIT 20`,

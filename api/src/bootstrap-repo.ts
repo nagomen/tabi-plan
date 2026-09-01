@@ -1,6 +1,6 @@
 // フロントエンド起動時に必要な、認可済みデータ一式を1往復で組み立てる。
 import { all, inClause } from "./db.js";
-import type { Bootstrap, ExpenseRow, ExpenseShareRow, PlanMemberRow, PlanRow, SettlementRow } from "./types.js";
+import type { Bootstrap, ExpenseRow, ExpenseShareRow, PlanMemberPlaceholderRow, PlanMemberRow, PlanRow, SettlementRow } from "./types.js";
 
 export async function bootstrapForUser(userId = ""): Promise<Bootstrap> {
   const actorJoin = userId
@@ -65,10 +65,13 @@ export async function bootstrapForUser(userId = ""): Promise<Bootstrap> {
     : [[], [], []];
 
   const workspaceIn = inClause(workspacePlanIds);
-  const [members, checklist, candidates, expenses, expenseShares, settlements] = workspacePlanIds.length
+  const [members, memberPlaceholders, checklist, candidates, expenses, expenseShares, settlements] = workspacePlanIds.length
     ? await Promise.all([
       all<PlanMemberRow>(`SELECT plan_id, user_id, role, status FROM plan_members
          WHERE status = 'active' AND plan_id IN (${workspaceIn.sql})`, workspaceIn.params),
+      all<PlanMemberPlaceholderRow>(`SELECT plan_id, user_id, original_name, status, claimed_by_user_id, claimed_at
+         FROM plan_member_placeholders
+         WHERE plan_id IN (${workspaceIn.sql})`, workspaceIn.params),
       all<Bootstrap["checklist"][number]>(`SELECT id, plan_id, label, status, sort_order FROM plan_checklist_items
          WHERE plan_id IN (${workspaceIn.sql})
          ORDER BY plan_id, sort_order`, workspaceIn.params),
@@ -89,7 +92,7 @@ export async function bootstrapForUser(userId = ""): Promise<Bootstrap> {
          WHERE deleted_at IS NULL AND plan_id IN (${workspaceIn.sql})
          ORDER BY plan_id, settled_at`, workspaceIn.params),
     ])
-    : [[], [], [], [], [], []];
+    : [[], [], [], [], [], [], []];
 
   const candidateIn = inClause(candidates.map((candidate) => String(candidate.id)));
   const candidateVotes = candidates.length
@@ -156,7 +159,7 @@ export async function bootstrapForUser(userId = ""): Promise<Bootstrap> {
   return {
     viewer: userId ? { id: userId } : null,
     identities,
-    users, credentials, plans, members, itinerary, cities, links, checklist,
+    users, credentials, plans, members, memberPlaceholders, itinerary, cities, links, checklist,
     candidates, candidateVotes, expenses, expenseShares, settlements, views,
     paymentLinks, userSettings, friendships, pendingInvites,
   } as Bootstrap;

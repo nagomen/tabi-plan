@@ -11,12 +11,14 @@
 //   PATCH  /api/plans/<id>                   メタ更新
 //   DELETE /api/plans/<id>                   論理削除
 //   PUT    /api/plans/<id>/members           参加者を一括置換
+//   POST   /api/plans/<id>/placeholder-members 名前だけの未登録参加者を追加
 //   POST   /api/plans/<id>/owner-transfer    所有権を参加者へ移譲
 //   DELETE /api/plans/<id>/members/me        自分が計画から脱退
 //   PUT    /api/plans/<id>/content           行程・都市・リンク・チェックリスト・候補を一括置換
 //   POST   /api/plans/<id>/views             閲覧を1加算
 //   POST   /api/plans/<id>/invites           招待リンクを作る
 //   POST   /api/invites/accept               招待リンクを受けて参加する
+//   POST   /api/invites/inspect              ログイン前に招待対象を確認する
 //   POST   /api/plans/<id>/expenses          費用を1件追加（行の INSERT なので衝突しない）
 //   PATCH  /api/expenses/<id>                費用を1件更新
 //   DELETE /api/expenses/<id>                論理削除
@@ -186,6 +188,15 @@ export async function route(method: string, path: string, body: Body, actorUserI
     await userRepo.setUserSettings(m[1], Boolean(body.history_public));
     return { status: 200, body: { ok: true } };
   }
+  m = /^\/api\/plans\/([\w-]{1,32})\/placeholder-members$/.exec(path);
+  if (m && method === "POST") {
+    const denied = await forbiddenUnless(accessRepo.canManagePlan(m[1], actorUserId));
+    if (denied) return denied;
+    return {
+      status: 200,
+      body: await memberRepo.createPlaceholderMember(m[1], str(body.display_name), actorUserId),
+    };
+  }
 
   // ---- 計画 ----
   if (method === "POST" && path === "/api/plans") {
@@ -310,7 +321,13 @@ export async function route(method: string, path: string, body: Body, actorUserI
   }
   if (method === "POST" && path === "/api/invites/accept") {
     if (!actorUserId) return { status: 403, body: { error: "forbidden" } };
-    return { status: 200, body: await inviteRepo.acceptInvite(str(body.token), actorUserId) };
+    return {
+      status: 200,
+      body: await inviteRepo.acceptInvite(str(body.token), actorUserId, str(body.member_user_id)),
+    };
+  }
+  if (method === "POST" && path === "/api/invites/inspect") {
+    return { status: 200, body: await inviteRepo.inspectInvite(str(body.token)) };
   }
   m = /^\/api\/plans\/([\w-]{1,32})\/expenses$/.exec(path);
   if (m && method === "POST") {

@@ -29,3 +29,20 @@ test("AI route distinguishes an expired login session from missing plan permissi
   assert.match(routes, /reserveAi\(actorUserId, "itinerary"\)/);
   assert.doesNotMatch(routes, /causeDetail[^\n]*body/);
 });
+
+test("unregistered trip members are explicit placeholders, not auto-created friends", () => {
+  const routes = source("routes.ts");
+  const members = source("plan-member-repo.ts");
+  const invites = source("plan-invite-repo.ts");
+  assert.match(routes, /\/placeholder-members/);
+  assert.match(routes, /\/api\/invites\/inspect/);
+  assert.match(members, /createPlaceholderMember/);
+  assert.match(members, /newId\("gst"\)/);
+  assert.match(invites, /claimPlaceholder/);
+  assert.match(invites, /FOR UPDATE/);
+  assert.match(invites, /UPDATE expenses SET payer_user_id/);
+  assert.match(invites, /INSERT INTO expense_shares/);
+  assert.match(invites, /UPDATE settlements SET from_user_id/);
+  assert.match(invites, /UPDATE plan_member_placeholders[\s\S]*status = 'claimed'/);
+  assert.doesNotMatch(members + invites, /ensurePlanMembersAreFriends/);
+});

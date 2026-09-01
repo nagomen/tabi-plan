@@ -39,7 +39,7 @@
               <input data-range type="text" tabindex="-1" aria-hidden="true" hidden>
             </div>
             <div class="pe-field pe-member-field c6" data-member-field hidden>
-              <span data-ic-members>メンバー <em>友達から選択・任意</em></span>
+              <span data-ic-members>メンバー <em>友達または名前から追加・任意</em></span>
               <div class="pe-members" data-members></div>
               <div class="pe-member-add">
                 <div class="pe-member-inputwrap">
@@ -47,7 +47,13 @@
                 </div>
                 <button class="pe-mini" type="button" data-member-add data-ic-memberadd>追加</button>
               </div>
-              <p class="pe-member-hint" data-member-hint hidden>友達がまだいません。<a href="mypage.html">マイページ</a>から友達を追加すると、ここで選んで招待できます。</p>
+              <div class="pe-member-add pe-member-free">
+                <div class="pe-member-inputwrap">
+                  <input data-member-name maxlength="64" placeholder="未登録の人の名前（例: たかし）" aria-label="名前だけでメンバーを追加">
+                </div>
+                <button class="pe-mini" type="button" data-member-name-add>名前で追加</button>
+              </div>
+              <p class="pe-member-hint" data-member-hint>友達以外や、まだアカウントを持っていない人も名前だけで追加できます。</p>
             </div>
             <label class="pe-field pe-soft-field c6">
               <span data-ic-note>共有メモ <em>任意</em></span>

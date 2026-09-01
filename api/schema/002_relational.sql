@@ -183,6 +183,28 @@ CREATE TABLE plan_members (
   CONSTRAINT fk_plan_members_inviter FOREIGN KEY (invited_by_id) REFERENCES users (id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
+-- アプリ未登録・友達ではない人を、旅行内の仮メンバーとして先に扱う。
+-- users 行を持たせることで、登録前でも費用・精算・投票を user_id で参照できる。
+-- 同名で既存ユーザーを自動照合せず、招待を受けた本人だけが後から claim する。
+CREATE TABLE plan_member_placeholders (
+  plan_id             VARCHAR(32) NOT NULL,
+  user_id             VARCHAR(32) NOT NULL,
+  original_name       VARCHAR(64) NOT NULL,
+  status              ENUM('unclaimed','claimed','removed') NOT NULL DEFAULT 'unclaimed',
+  claimed_by_user_id  VARCHAR(32) NULL,
+  claimed_at          TIMESTAMP NULL DEFAULT NULL,
+  created_by_id       VARCHAR(32) NOT NULL,
+  created_at          TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at          TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (plan_id, user_id),
+  UNIQUE KEY uq_plan_member_placeholder_user (user_id),
+  KEY idx_plan_member_placeholders_claim (plan_id, status),
+  CONSTRAINT fk_plan_member_placeholder_plan FOREIGN KEY (plan_id) REFERENCES plans (id) ON DELETE CASCADE,
+  CONSTRAINT fk_plan_member_placeholder_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+  CONSTRAINT fk_plan_member_placeholder_claimed FOREIGN KEY (claimed_by_user_id) REFERENCES users (id) ON DELETE SET NULL,
+  CONSTRAINT fk_plan_member_placeholder_creator FOREIGN KEY (created_by_id) REFERENCES users (id) ON DELETE RESTRICT
+) ENGINE=InnoDB;
+
 -- 招待。トークンは平文で保存しない（現行は inviteId が分かれば editor が取れてしまう）。
 CREATE TABLE plan_invites (
   id            VARCHAR(32) NOT NULL,

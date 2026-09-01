@@ -1972,6 +1972,39 @@
     color: var(--green);
   }
 
+  .join-member-options {
+    display: grid;
+    gap: 8px;
+    margin: 4px 0;
+  }
+
+  .join-member-option {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 48px;
+    padding: 10px 12px;
+    border: 1px solid var(--line-strong);
+    cursor: pointer;
+  }
+
+  .join-member-option:has(input:checked) {
+    border-color: var(--green);
+    background: var(--green-soft);
+  }
+
+  .pub-body .join-member-option input {
+    width: 18px;
+    min-height: 18px;
+    padding: 0;
+    accent-color: var(--green);
+  }
+
+  .pub-actions button:disabled {
+    opacity: .45;
+    cursor: default;
+  }
+
   .pub-error {
     min-height: 16px;
     color: var(--red);

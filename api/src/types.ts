@@ -2,11 +2,11 @@
 // 命名は DB 列（snake_case）に合わせる。変換層を挟まないほうが追いやすい。
 
 import type {
-  CredentialRow, ExpenseRow, ExpenseShareRow, ItineraryRow, PlanMemberRow, PlanRow,
+  CredentialRow, ExpenseRow, ExpenseShareRow, ItineraryRow, PlanMemberPlaceholderRow, PlanMemberRow, PlanRow,
   SettlementRow, UserRow,
 } from "@tabi/contracts";
 export type {
-  CredentialRow, ExpenseRow, ExpenseShareRow, ItineraryRow, PlanMemberRow, PlanRow,
+  CredentialRow, ExpenseRow, ExpenseShareRow, ItineraryRow, PlanMemberPlaceholderRow, PlanMemberRow, PlanRow,
   SettlementRow, UserRow,
 } from "@tabi/contracts";
 
@@ -24,6 +24,7 @@ export interface Bootstrap {
   credentials: CredentialRow[];
   plans: PlanRow[];
   members: PlanMemberRow[];
+  memberPlaceholders: PlanMemberPlaceholderRow[];
   itinerary: ItineraryRow[];
   cities: { id: string; plan_id: string; name: string; sort_order: number }[];
   links: { id: string; plan_id: string; link_key: string; label: string; url: string; caption: string | null; sort_order: number }[];

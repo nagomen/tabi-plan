@@ -29,6 +29,16 @@ export interface PlanMemberRow {
   status: "active" | "left" | "revoked";
 }
 
+/** 旅行内だけで先に作られ、招待後に本人アカウントへ紐付くメンバー。 */
+export interface PlanMemberPlaceholderRow {
+  plan_id: string;
+  user_id: string;
+  original_name: string;
+  status: "unclaimed" | "claimed" | "removed";
+  claimed_by_user_id: string | null;
+  claimed_at: string | null;
+}
+
 export type ItineraryKind = "sight" | "move" | "food" | "stay" | "todo" | "form";
 export interface ItineraryRow {
   id: string;

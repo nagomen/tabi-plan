@@ -15,12 +15,12 @@ import { resolvedTripConfig } from "./config";
 import type {
   CredentialRow, ExpenseCategory, ExpenseRow, ExpenseShareRow, ItineraryRow,
   ItineraryAiBaseInput, ItineraryAiGenerateInput, ItineraryDraft, ItineraryOptions,
-  PaymentMethod, PlanMemberRow, PlanRow, SettlementRow, SplitMethod, UserRow,
+  PaymentMethod, PlanMemberPlaceholderRow, PlanMemberRow, PlanRow, SettlementRow, SplitMethod, UserRow,
 } from "@tabi/contracts";
 export type {
   CredentialRow, ExpenseCategory, ExpenseRow, ExpenseShareRow, ItineraryKind, ItineraryRow,
   ItineraryAiBaseInput, ItineraryAiGenerateInput, ItineraryAiPreferences, ItineraryDraft, ItineraryOptions,
-  PaymentMethod, PlanMemberRow, PlanRow, SettlementRow, SplitMethod, UserRow,
+  PaymentMethod, PlanMemberPlaceholderRow, PlanMemberRow, PlanRow, SettlementRow, SplitMethod, UserRow,
 } from "@tabi/contracts";
 
 // ---- 行の型（API と同じ形。snake_case のまま扱う） ---------------------
@@ -38,6 +38,13 @@ export interface PendingInviteRow {
   role: "editor" | "viewer"; invited_name: string | null;
   created_at: string; expires_at: string | null;
 }
+export interface InviteInspection {
+  planSlug: string;
+  planTitle: string;
+  invitedName: string;
+  requiresMemberSelection: boolean;
+  memberOptions: { userId: string; displayName: string }[];
+}
 export interface FriendshipRow {
   id: string; user_low_id: string; user_high_id: string; requested_by_id: string;
   status: string; created_at: string; responded_at: string | null;
@@ -52,6 +59,7 @@ interface Snapshot {
   credentials: CredentialRow[];
   plans: PlanRow[];
   members: PlanMemberRow[];
+  memberPlaceholders: PlanMemberPlaceholderRow[];
   itinerary: ItineraryRow[];
   cities: CityRow[];
   links: LinkRow[];
@@ -70,7 +78,7 @@ interface Snapshot {
 
 function emptySnapshot(): Snapshot {
   return {
-    users: [], credentials: [], plans: [], members: [], itinerary: [], cities: [], links: [],
+    users: [], credentials: [], plans: [], members: [], memberPlaceholders: [], itinerary: [], cities: [], links: [],
     checklist: [], candidates: [], candidateVotes: [], expenses: [], expenseShares: [],
     settlements: [], views: [], paymentLinks: [], userSettings: [], pendingInvites: [], friendships: [],
     viewer: null, identities: [],
@@ -627,6 +635,7 @@ export const users = (): UserRow[] => snap.users;
 export const credentials = (): CredentialRow[] => snap.credentials;
 export const plans = (): PlanRow[] => snap.plans;
 export const members = (): PlanMemberRow[] => snap.members;
+export const memberPlaceholders = (): PlanMemberPlaceholderRow[] => snap.memberPlaceholders || [];
 export const itinerary = (): ItineraryRow[] => snap.itinerary;
 export const cities = (): CityRow[] => snap.cities;
 export const links = (): LinkRow[] => snap.links;
@@ -785,10 +794,47 @@ export async function createInvite(planId: string, input: {
   });
 }
 
-export async function acceptInvite(token: string): Promise<{ planSlug: string }> {
-  const result = await request<{ planSlug: string }>("POST", "/api/invites/accept", { token });
+export async function createPlaceholderMember(planId: string, displayName: string): Promise<{
+  user: UserRow;
+  member: PlanMemberRow;
+}> {
+  const result = await request<{ user: UserRow; member: PlanMemberRow }>(
+    "POST",
+    `/api/plans/${encodeURIComponent(planId)}/placeholder-members`,
+    { display_name: displayName },
+  );
+  if (!snap.users.some((row) => row.id === result.user.id)) snap.users.push(result.user);
+  snap.members.push(result.member);
+  snap.memberPlaceholders ||= [];
+  snap.memberPlaceholders.push({
+    plan_id: planId,
+    user_id: result.user.id,
+    original_name: result.user.display_name,
+    status: "unclaimed",
+    claimed_by_user_id: null,
+    claimed_at: null,
+  });
+  writeCache(snap);
+  return result;
+}
+
+export function inspectInvite(token: string): Promise<InviteInspection> {
+  return request<InviteInspection>("POST", "/api/invites/inspect", { token });
+}
+
+export async function acceptInvite(token: string, memberUserId = ""): Promise<{ planSlug: string }> {
+  const result = await request<{ planSlug: string }>("POST", "/api/invites/accept", {
+    token,
+    member_user_id: memberUserId,
+  });
   await reload();
   return result;
+}
+
+export function isPlaceholderMember(planId: string, userId: string): boolean {
+  return memberPlaceholders().some((row) =>
+    row.plan_id === planId && row.user_id === userId && row.status === "unclaimed"
+  );
 }
 
 export async function leavePlan(planId: string): Promise<void> {

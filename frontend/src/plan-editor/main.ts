@@ -213,6 +213,7 @@ interface Model {
   title: string;
   members: string;
   memberIds: string[];
+  pendingMembers: { key: string; name: string }[];
   note: string;
   cover: string;
   startDate: string;
@@ -370,7 +371,7 @@ const isNew = !planParam;
 let slug = isNew ? "" : TripPlans.safeSlug(planParam);
 
 const model: Model = {
-  slug, title: "", members: "", memberIds: [], note: "", cover: "", startDate: "", endDate: "", cities: [], days: [], candidates: [],
+  slug, title: "", members: "", memberIds: [], pendingMembers: [], note: "", cover: "", startDate: "", endDate: "", cities: [], days: [], candidates: [],
 };
 let dirty = false;
 let editRevision = 0;
@@ -740,6 +741,7 @@ async function performPersist(explicit = false, slugRetry = 0): Promise<boolean>
   TripPlans.setActiveSlug(slug);
   try {
     await db.flushMutations(mutationCheckpoint);
+    await persistPendingMembers();
     if (contentChanged) lastSavedContentFingerprint = nextContentFingerprint;
     if (revision !== editRevision) return true;
     dirty = false;
@@ -2453,6 +2455,8 @@ const membersMount = qs<HTMLElement>(root, "[data-members]");
 const memberField = qs<HTMLElement>(root, "[data-member-field]");
 const memberSelect = qs<HTMLSelectElement>(root, "[data-member-select]");
 const memberAddBtn = qs<HTMLButtonElement>(root, "[data-member-add]");
+const memberNameInput = qs<HTMLInputElement>(root, "[data-member-name]");
+const memberNameAddBtn = qs<HTMLButtonElement>(root, "[data-member-name-add]");
 const memberHint = qs<HTMLElement>(root, "[data-member-hint]");
 
 function hasMemberAccount(): boolean {
@@ -2460,9 +2464,15 @@ function hasMemberAccount(): boolean {
 }
 
 function memberArray(): string[] { return splitNames(model.members); }
+function syncMemberNames(): void {
+  model.members = [
+    ...model.memberIds.map((id) => db.nameOf(id)).filter(Boolean),
+    ...model.pendingMembers.map((member) => member.name),
+  ].join("、");
+}
 function setMembers(ids: string[]): void {
   model.memberIds = [...new Set(ids.filter(Boolean))];
-  model.members = model.memberIds.map((id) => db.nameOf(id)).filter(Boolean).join("、");
+  syncMemberNames();
   markDirty();
   updateMemberVisibility();
   renderMembers();
@@ -2475,6 +2485,46 @@ function addMember(userId: string): void {
 function removeMember(userId: string): void {
   setMembers(model.memberIds.filter((id) => id !== userId));
 }
+function addPendingMember(name: string): void {
+  const displayName = name.trim().slice(0, 64);
+  if (!displayName) return;
+  model.pendingMembers.push({ key: `pending-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, name: displayName });
+  syncMemberNames();
+  markDirty();
+  renderMembers();
+}
+function removePendingMember(key: string): void {
+  model.pendingMembers = model.pendingMembers.filter((member) => member.key !== key);
+  syncMemberNames();
+  markDirty();
+  renderMembers();
+}
+
+async function persistPendingMembers(): Promise<void> {
+  if (!model.pendingMembers.length || !slug) return;
+  const planId = TripPlans.planIdOf(slug);
+  if (!planId) throw new Error("旅行を保存してから未登録メンバーを追加してください");
+  model.memberIds = [...new Set([
+    ...model.memberIds,
+    ...db.members()
+      .filter((member) => member.plan_id === planId && member.status === "active")
+      .map((member) => member.user_id),
+  ])];
+  const pending = [...model.pendingMembers];
+  try {
+    for (const entry of pending) {
+      const created = await db.createPlaceholderMember(planId, entry.name);
+      model.memberIds.push(created.user.id);
+      model.pendingMembers = model.pendingMembers.filter((member) => member.key !== entry.key);
+    }
+  } finally {
+    // 途中の1件で失敗しても、既に作成済みの人を「保存前」と表示し続けない。
+    model.memberIds = [...new Set(model.memberIds)];
+    syncMemberNames();
+    renderMembers();
+    renderMemberSelect();
+  }
+}
 
 function renderMembers(): void {
   const account = currentAccount();
@@ -2484,24 +2534,35 @@ function renderMembers(): void {
   const stored = meta ? db.planBySlug(meta.slug) : null;
   const ownerId = stored?.owner_user_id || account?.id || "";
   const memberAccounts = model.memberIds.map((id) => ({ id, name: db.nameOf(id) })).filter((member) => member.name);
-  const displayMembers = memberAccounts.length
-    ? memberAccounts
-    : arr.map((name) => ({ id: listFriends().find((friend) => friend.name === name)?.id || "", name }));
+  const savedMembers = memberAccounts.length
+    ? memberAccounts.map((member) => ({ ...member, pendingKey: "" }))
+    : model.pendingMembers.length
+      ? []
+      : arr.map((name) => ({ id: listFriends().find((friend) => friend.name === name)?.id || "", name, pendingKey: "" }));
+  const displayMembers = savedMembers.concat(
+    model.pendingMembers.map((member) => ({ id: "", name: member.name, pendingKey: member.key })),
+  );
+  const planId = stored?.id || "";
   membersMount.innerHTML = displayMembers
     .map((member) => {
       const self = account?.id ? member.id === account.id : Boolean(me) && member.name === me;
+      const placeholder = Boolean(member.id && planId && db.isPlaceholderMember(planId, member.id));
       return (
         `<span class="pe-chip-m${self ? " is-self" : ""}">` +
         `<span>${escapeHtml(member.name)}</span>` +
         (self ? `<span class="pe-chip-self">自分</span>` : "") +
         (member.id === ownerId ? `<span class="pe-chip-self">Owner</span>` : "") +
-        (meta && canManagePlan(meta) && member.id && !self && member.id !== ownerId
+        (member.pendingKey ? `<span class="pe-chip-pending">保存前</span>` : "") +
+        (placeholder ? `<span class="pe-chip-pending">未登録</span>` : "") +
+        (meta && canManagePlan(meta) && member.id && !placeholder && !self && member.id !== ownerId
           ? `<button class="pe-chip-ic" type="button" data-transfer-owner="${escapeHtml(member.id)}" data-transfer-name="${escapeHtml(member.name)}" title="所有権を移譲" aria-label="${escapeHtml(member.name)}へ所有権を移譲">${icon("arrowsRightLeft")}</button>`
           : "") +
-        (!account || self
+        (!account || self || member.pendingKey
           ? ""
           : `<button class="pe-chip-ic invite" type="button" data-invite="${escapeHtml(member.name)}" data-invite-user="${escapeHtml(member.id)}" title="招待リンクを送る" aria-label="${escapeHtml(member.name)}を招待">${icon("paperAirplane")}</button>`) +
-        (member.id && member.id !== ownerId
+        (member.pendingKey
+          ? `<button class="pe-chip-ic del" type="button" data-rm-pending="${escapeHtml(member.pendingKey)}" title="削除" aria-label="${escapeHtml(member.name)}を削除">${icon("xMark")}</button>`
+          : member.id && member.id !== ownerId
           ? `<button class="pe-chip-ic del" type="button" data-rm="${escapeHtml(member.id)}" title="削除" aria-label="${escapeHtml(member.name)}を削除">${icon("xMark")}</button>`
           : "") +
         `</span>`
@@ -2532,7 +2593,7 @@ function renderMemberSelect(): void {
   memberSelect.value = "";
   memberSelect.disabled = !candidates.length;
   memberAddBtn.disabled = !candidates.length;
-  memberHint.hidden = candidates.length > 0;
+  memberHint.hidden = false;
 }
 
 function updateMemberVisibility(): void {
@@ -2576,6 +2637,8 @@ membersMount.addEventListener("click", (event) => {
   if (!(t instanceof Element)) return;
   const rm = t.closest<HTMLElement>("[data-rm]");
   if (rm) { removeMember(rm.dataset.rm || ""); return; }
+  const pending = t.closest<HTMLElement>("[data-rm-pending]");
+  if (pending) { removePendingMember(pending.dataset.rmPending || ""); return; }
   const transfer = t.closest<HTMLElement>("[data-transfer-owner]");
   if (transfer) {
     void transferOwnership(transfer.dataset.transferOwner || "", transfer.dataset.transferName || "");
@@ -2606,6 +2669,19 @@ function commitMemberSelect(): void {
 }
 memberAddBtn.addEventListener("click", commitMemberSelect);
 memberSelect.addEventListener("change", commitMemberSelect);
+function commitMemberName(): void {
+  const name = memberNameInput.value;
+  if (!name.trim()) return;
+  addPendingMember(name);
+  memberNameInput.value = "";
+  memberNameInput.focus();
+}
+memberNameAddBtn.addEventListener("click", commitMemberName);
+memberNameInput.addEventListener("keydown", (event) => {
+  if (event.key !== "Enter" || event.isComposing) return;
+  event.preventDefault();
+  commitMemberName();
+});
 
 function toast(message: string): void {
   const el = document.createElement("div");
