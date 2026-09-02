@@ -25,6 +25,8 @@ test("AI route distinguishes an expired login session from missing plan permissi
   const routes = source("routes.ts");
   assert.match(routes, /path === "\/api\/ai\/itinerary"[\s\S]*status: 401, body: \{ error: "session_required" \}/);
   assert.match(routes, /path === "\/api\/ai\/itinerary-options"[\s\S]*suggestItineraryOptions/);
+  assert.match(routes, /path === "\/api\/ai\/itinerary-refine"[\s\S]*access\.canEditWorkspace/);
+  assert.match(routes, /access\.canEditWorkspace[\s\S]*refineItinerary/);
   assert.match(routes, /reserveAi\(actorUserId, "options"\)/);
   assert.match(routes, /reserveAi\(actorUserId, "itinerary"\)/);
   assert.doesNotMatch(routes, /causeDetail[^\n]*body/);

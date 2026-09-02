@@ -45,6 +45,7 @@ import { bindExpenseSplitForm, expenseCurrencyCodes, expenseParticipantNames } f
 import { setTripDocumentTitle } from "../shared/page-meta";
 import { localDateISO, parseISO, toISO, mdLabel } from "../shared/date";
 import { mapsSearchUrl } from "../shared/maps";
+import { formatDurationMinutes, parseDurationMinutes } from "../shared/travel-duration";
 import type {
   TripData,
   TripLink,
@@ -271,6 +272,16 @@ function applyMoneyTab(next?: "settle" | "details"): void {
 let editingExpenseId: string | null = null;
 let syncInFlight: Promise<void> | null = null;
 let lastSyncAt = 0;
+
+interface AiChatEntry {
+  role: "user" | "assistant";
+  text: string;
+  proposal?: db.ItineraryRefineResult;
+  applied?: boolean;
+}
+
+const aiChatEntries: AiChatEntry[] = [];
+let aiChatBusy = false;
 
 function activeDayCoverMeta(): HeaderCoverMeta {
   const configuredCover = "cover" in coverMeta ? coverMeta.cover : "";
@@ -2205,6 +2216,7 @@ function renderActive(): void {
 
   const titleMain = day.date === todayISO() ? "今日の予定" : "この日の予定";
   setHtml("[data-day-title]", `<span>${escapeHtml(titleMain)}</span>`);
+  updateAiChatContext();
 
   const activePlaces = projectPlaces(day.items);
   const placeNames = activePlaces.map((place) => place.place || place.title).filter(Boolean);
@@ -2361,7 +2373,7 @@ function computeReadOnly(): boolean {
  * 見ている計画を自分の下書きとして複製し、そのまま編集画面へ移る。
  * 元の計画には触らない（参加者も引き継がない）。
  */
-async function copyPlanToMine(button: HTMLButtonElement, openAi = false): Promise<void> {
+async function copyPlanToMine(button: HTMLButtonElement): Promise<void> {
   const meta = TripPlans.get(CONFIG.tripSlug);
   if (!meta) return;
   if (!currentUserId()) {
@@ -2373,7 +2385,7 @@ async function copyPlanToMine(button: HTMLButtonElement, openAi = false): Promis
   const already = TripPlans.existingCopyOf(CONFIG.tripSlug);
   if (already) {
     TripPlans.setActiveSlug(already.slug);
-    location.href = "plan-editor.html?plan=" + encodeURIComponent(already.slug) + (openAi ? "&ai=1" : "");
+    location.href = "plan-editor.html?plan=" + encodeURIComponent(already.slug);
     return;
   }
   button.disabled = true;
@@ -2384,12 +2396,217 @@ async function copyPlanToMine(button: HTMLButtonElement, openAi = false): Promis
       return;
     }
     TripPlans.setActiveSlug(copy.slug);
-    location.href = "plan-editor.html?plan=" + encodeURIComponent(copy.slug) + (openAi ? "&ai=1" : "");
+    location.href = "plan-editor.html?plan=" + encodeURIComponent(copy.slug);
   } catch (error) {
     window.alert("コピーを保存できませんでした。" + (error instanceof Error ? error.message : ""));
   } finally {
     button.disabled = false;
   }
+}
+
+function numberOrNull(value: unknown, minimum: number, maximum: number): number | null {
+  const number = Number(value);
+  return value !== "" && value !== null && value !== undefined && Number.isFinite(number) && number >= minimum && number <= maximum
+    ? number
+    : null;
+}
+
+function moveCities(item: ItineraryItem): { from: string; to: string } {
+  const title = String(item.title || "");
+  const parts = title.split(/\s*(?:→|⇒|->|から)\s*/).map((part) => part.trim()).filter(Boolean);
+  return {
+    from: parts.length > 1 ? parts[0] : "",
+    to: parts.length > 1 ? parts[parts.length - 1] : String(item.area || ""),
+  };
+}
+
+function itineraryForAi(items: ItineraryItem[]): db.ItineraryRefineItem[] {
+  return items.map((item) => {
+    const move = String(item.type) === "move";
+    const cities = moveCities(item);
+    const city = move ? cities.to || String(item.area || "") : String(item.area || "");
+    return {
+      date: normalizeDate(item.date),
+      time: String(item.time || "").slice(0, 5),
+      kind: (["sight", "move", "food", "stay", "todo", "form"].includes(String(item.type))
+        ? item.type
+        : "sight") as db.ItineraryKind,
+      city,
+      title: String(item.title || ""),
+      place: String(item.place || ""),
+      address: String(item.mapQuery || item.place || ""),
+      latitude: numberOrNull(item.lat, -90, 90),
+      longitude: numberOrNull(item.lng, -180, 180),
+      note: String(item.note || ""),
+      from_city: move ? cities.from : "",
+      from_place: move ? String(item.origin || "") : "",
+      from_address: move ? String(item.origin || "") : "",
+      from_latitude: move ? numberOrNull(item.originLat, -90, 90) : null,
+      from_longitude: move ? numberOrNull(item.originLng, -180, 180) : null,
+      to_city: move ? cities.to || city : "",
+      to_place: move ? String(item.destination || item.place || "") : "",
+      to_address: move ? String(item.destination || item.mapQuery || "") : "",
+      to_latitude: move ? numberOrNull(item.destinationLat ?? item.lat, -90, 90) : null,
+      to_longitude: move ? numberOrNull(item.destinationLng ?? item.lng, -180, 180) : null,
+      transport: move ? String(item.transport || "その他") : "",
+      duration_minutes: move ? parseDurationMinutes(item.duration) || 0 : 0,
+    };
+  }).filter((item) => item.date);
+}
+
+function latestAiItinerary(): db.ItineraryRefineItem[] {
+  for (let index = aiChatEntries.length - 1; index >= 0; index -= 1) {
+    if (aiChatEntries[index].proposal) return aiChatEntries[index].proposal!.itinerary;
+  }
+  return itineraryForAi(state.data.itinerary || []);
+}
+
+function itineraryFromAi(items: db.ItineraryRefineItem[]): ItineraryItem[] {
+  const dates = tripDateRange(state.data);
+  return items.map((item) => {
+    const dayIndex = Math.max(0, dates.indexOf(item.date));
+    const move = item.kind === "move";
+    return {
+      date: item.date,
+      day: `Day ${dayIndex + 1}`,
+      time: item.time,
+      type: item.kind,
+      title: item.title,
+      place: move ? item.to_place || item.place : item.place,
+      area: item.city,
+      note: item.note,
+      mapQuery: move ? item.to_address || item.address : item.address,
+      lat: move ? item.to_latitude ?? item.latitude ?? "" : item.latitude ?? "",
+      lng: move ? item.to_longitude ?? item.longitude ?? "" : item.longitude ?? "",
+      origin: move ? item.from_place : "",
+      originLat: move ? item.from_latitude ?? undefined : undefined,
+      originLng: move ? item.from_longitude ?? undefined : undefined,
+      destination: move ? item.to_place : "",
+      destinationLat: move ? item.to_latitude ?? undefined : undefined,
+      destinationLng: move ? item.to_longitude ?? undefined : undefined,
+      transport: move ? item.transport : "",
+      duration: move ? formatDurationMinutes(item.duration_minutes) : "",
+    };
+  });
+}
+
+function updateAiChatContext(): void {
+  const context = root.querySelector<HTMLElement>("[data-ai-chat-context]");
+  const day = state.days[state.active];
+  if (!context || !day) return;
+  context.textContent = `${day.day || "選択中の日"}・${mdLabel(day.date)}を中心に、旅行全体を相談できます`;
+}
+
+function renderAiChat(): void {
+  const log = root.querySelector<HTMLElement>("[data-ai-chat-log]");
+  if (!log) return;
+  const greeting = aiChatEntries.length ? "" : `
+    <div class="tl-ai-message is-assistant">
+      <span>選択中の日だけでなく、別の日や旅行全体についても変更を頼めます。提案を確認してから行程へ反映します。</span>
+    </div>`;
+  log.innerHTML = greeting + aiChatEntries.map((entry, index) => `
+    <div class="tl-ai-message is-${entry.role}">
+      <span>${escapeHtml(entry.text).replace(/\n/g, "<br>")}</span>
+      ${entry.proposal ? `<button type="button" data-ai-apply="${index}" ${entry.applied ? "disabled" : ""}>${entry.applied ? "反映済み" : "この提案を行程に反映"}</button>` : ""}
+    </div>`).join("") + (aiChatBusy ? `
+    <div class="tl-ai-message is-assistant is-thinking"><span>全日程を確認して修正案を作っています…</span></div>` : "");
+  log.scrollTop = log.scrollHeight;
+  log.querySelectorAll<HTMLButtonElement>("[data-ai-apply]").forEach((button) => {
+    button.addEventListener("click", () => void applyAiProposal(Number(button.dataset.aiApply)));
+  });
+}
+
+async function applyAiProposal(index: number): Promise<void> {
+  const entry = aiChatEntries[index];
+  if (!entry?.proposal || entry.applied || aiChatBusy) return;
+  const status = root.querySelector<HTMLElement>("[data-ai-chat-status]");
+  const checkpoint = db.mutationCheckpoint();
+  state.data.itinerary = itineraryFromAi(entry.proposal.itinerary);
+  const saved = TripPlans.saveData(CONFIG.tripSlug, state.data as TripPlans.LocalPlanData);
+  if (!saved) {
+    if (status) status.textContent = "行程を保存できませんでした。";
+    return;
+  }
+  aiChatBusy = true;
+  if (status) status.textContent = "保存しています…";
+  renderAiChat();
+  try {
+    await db.flushMutations(checkpoint);
+    entry.applied = true;
+    if (status) status.textContent = "行程に反映して保存しました。";
+    renderData(state.data, CONFIG.mode);
+  } catch (error) {
+    if (status) status.textContent = errorMessage(error) || "保存できませんでした。もう一度お試しください。";
+    await syncData(false);
+  } finally {
+    aiChatBusy = false;
+    renderAiChat();
+  }
+}
+
+function setupAiChat(aiSupport: HTMLButtonElement): void {
+  const chat = root.querySelector<HTMLElement>("[data-ai-chat]");
+  const close = root.querySelector<HTMLButtonElement>("[data-ai-chat-close]");
+  const form = root.querySelector<HTMLFormElement>("[data-ai-chat-form]");
+  const input = root.querySelector<HTMLTextAreaElement>("[data-ai-chat-input]");
+  const send = root.querySelector<HTMLButtonElement>("[data-ai-chat-send]");
+  const status = root.querySelector<HTMLElement>("[data-ai-chat-status]");
+  if (!chat || !close || !form || !input || !send || !status) return;
+  const setOpen = (open: boolean): void => {
+    chat.hidden = !open;
+    aiSupport.setAttribute("aria-expanded", String(open));
+    if (open) {
+      updateAiChatContext();
+      renderAiChat();
+      chat.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      input.focus({ preventScroll: true });
+    }
+  };
+  aiSupport.setAttribute("aria-controls", "tl-ai-chat-input");
+  aiSupport.setAttribute("aria-expanded", "false");
+  aiSupport.addEventListener("click", () => setOpen(chat.hidden));
+  close.addEventListener("click", () => setOpen(false));
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const instruction = input.value.trim();
+    if (!instruction || aiChatBusy) return;
+    const dates = tripDateRange(state.data);
+    const activeDate = state.days[state.active]?.date || dates[0] || "";
+    if (!dates.length || !activeDate || !planId()) {
+      status.textContent = "旅行期間または旅行計画を確認できませんでした。";
+      return;
+    }
+    const history = aiChatEntries.map((entry) => ({ role: entry.role, content: entry.text })).slice(-6);
+    aiChatEntries.push({ role: "user", text: instruction });
+    input.value = "";
+    aiChatBusy = true;
+    send.disabled = true;
+    input.disabled = true;
+    status.textContent = "AIが考えています…";
+    renderAiChat();
+    try {
+      const proposal = await db.refineItinerary({
+        plan_id: planId(),
+        start_date: dates[0],
+        end_date: dates[dates.length - 1],
+        active_date: activeDate,
+        instruction,
+        history,
+        current_itinerary: latestAiItinerary(),
+      });
+      aiChatEntries.push({ role: "assistant", text: proposal.message, proposal });
+      status.textContent = "提案を確認して、反映するか選んでください。";
+    } catch (error) {
+      aiChatEntries.push({ role: "assistant", text: errorMessage(error) || "修正案を作れませんでした。もう一度お試しください。" });
+      status.textContent = "";
+    } finally {
+      aiChatBusy = false;
+      send.disabled = false;
+      input.disabled = false;
+      renderAiChat();
+      input.focus();
+    }
+  });
 }
 
 function computeAccessDenied(): boolean {
@@ -2558,22 +2775,14 @@ async function init(): Promise<void> {
       editHead.hidden = true;
     }
   }
-  // 「この日の予定」ヘッダーのAIサポート。編集できる計画はそのままAI相談へ進む。
-  // 閲覧専用の公開計画では、元データを変更せず自分の下書きへ複製してからAI相談を開く。
+  // 「この日の予定」ヘッダーのAIサポート。正式な編集メンバーの計画だけに出す。
+  // 閲覧専用や公開共同編集では表示もAPI利用も許可しない。
   const aiSupport = root.querySelector<HTMLButtonElement>("[data-ai-support]");
-  if (aiSupport && CONFIG.mode === "local") {
+  if (aiSupport && editTarget && isEditableLocalPlan()) {
     aiSupport.hidden = false;
-    aiSupport.setAttribute("title", editTarget
-      ? "AI旅行相談を開く"
-      : "この旅行を自分の下書きにコピーしてAI旅行相談を開く");
-    aiSupport.setAttribute("aria-label", aiSupport.getAttribute("title") || "AI旅行相談を開く");
-    aiSupport.addEventListener("click", () => {
-      if (editTarget) {
-        location.href = "plan-editor.html" + planQuery + "&ai=1";
-        return;
-      }
-      void copyPlanToMine(aiSupport, true);
-    });
+    aiSupport.setAttribute("title", "AI旅行相談を開く");
+    aiSupport.setAttribute("aria-label", "AI旅行相談を開く");
+    setupAiChat(aiSupport);
   }
   // 編集できない（＝人の計画を見ている）ときは、コピーして持ち帰れるようにする
   const copyHead = root.querySelector<HTMLButtonElement>("[data-copy-head]");

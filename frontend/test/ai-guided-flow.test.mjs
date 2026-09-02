@@ -50,18 +50,22 @@ test("AIで登録した移動端点の座標もDB往復で保持する", () => {
   assert.match(store, /String\(v\)\.trim\(\) === ""\) return null/);
 });
 
-test("旅行詳細のこの日の予定からAI旅行相談へ直接移動できる", () => {
+test("旅行詳細では編集メンバーだけが全日程対応のAIチャットを使える", () => {
   const html = read("index.html");
   const dashboard = read("src/dashboard/main.ts");
+  const db = read("src/shared/db.ts");
   const style = read("src/dashboard/style.css");
-  const editor = read("src/plan-editor/main.ts");
   assert.match(html, /data-day-title[\s\S]*data-ai-support[\s\S]*AIサポート/);
-  assert.match(dashboard, /if \(aiSupport && CONFIG\.mode === "local"\)/);
+  assert.match(html, /data-ai-chat[\s\S]*data-ai-chat-log[\s\S]*data-ai-chat-form/);
+  assert.match(dashboard, /if \(aiSupport && editTarget && isEditableLocalPlan\(\)\)/);
   assert.match(dashboard, /aiSupport\.hidden = false/);
-  assert.match(dashboard, /if \(editTarget\)[\s\S]*planQuery \+ "&ai=1"/);
-  assert.match(dashboard, /copyPlanToMine\(aiSupport, true\)/);
-  assert.match(dashboard, /encodeURIComponent\(copy\.slug\) \+ \(openAi \? "&ai=1" : ""\)/);
-  assert.match(editor, /params\.get\("ai"\) === "1"[\s\S]*aiBlock\.scrollIntoView/);
+  assert.match(dashboard, /setupAiChat\(aiSupport\)/);
+  assert.match(dashboard, /current_itinerary: latestAiItinerary\(\)/);
+  assert.match(dashboard, /await db\.refineItinerary/);
+  assert.match(dashboard, /この提案を行程に反映/);
+  assert.match(dashboard, /await db\.flushMutations\(checkpoint\)/);
+  assert.match(db, /"POST", "\/api\/ai\/itinerary-refine"/);
   assert.match(style, /\.tl-ai-support \{[\s\S]*border-radius: 999px/);
+  assert.match(style, /\.tl-ai-chat \{[\s\S]*\.tl-ai-message\.is-user/);
   assert.match(style, /\.tl-day-title \.tl-ai-support \{[\s\S]*grid-column: 3/);
 });

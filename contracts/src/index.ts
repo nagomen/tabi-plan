@@ -160,6 +160,52 @@ export interface ItineraryDraft {
   omitted_selected_places: string[];
 }
 
+/** 旅行詳細のAIチャットで、現在の行程と修正案をやり取りする1予定。 */
+export interface ItineraryRefineItem {
+  date: string;
+  time: string;
+  kind: ItineraryKind;
+  city: string;
+  title: string;
+  place: string;
+  address: string;
+  latitude: number | null;
+  longitude: number | null;
+  note: string;
+  from_city: string;
+  from_place: string;
+  from_address: string;
+  from_latitude: number | null;
+  from_longitude: number | null;
+  to_city: string;
+  to_place: string;
+  to_address: string;
+  to_latitude: number | null;
+  to_longitude: number | null;
+  transport: string;
+  duration_minutes: number;
+}
+
+export interface ItineraryRefineMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
+export interface ItineraryRefineInput {
+  plan_id: string;
+  start_date: string;
+  end_date: string;
+  active_date: string;
+  instruction: string;
+  history: ItineraryRefineMessage[];
+  current_itinerary: ItineraryRefineItem[];
+}
+
+export interface ItineraryRefineResult {
+  message: string;
+  itinerary: ItineraryRefineItem[];
+}
+
 export type ExpenseCategory = "food" | "transport" | "lodging" | "sightseeing" | "communication" | "other";
 export type SplitMethod = "equal_all" | "equal_selected" | "custom" | "none";
 export type PaymentMethod = "card" | "cash" | "transfer" | "other";

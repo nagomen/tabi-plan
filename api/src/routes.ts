@@ -28,6 +28,7 @@
 //   DELETE /api/auth/line/link               LINE の紐付けを外す
 //   POST   /api/ai/itinerary-options         行き先から選択用の観光候補を作る
 //   POST   /api/ai/itinerary                 選択候補と条件から旅程の下書きを作る
+//   POST   /api/ai/itinerary-refine          既存の全行程をチャットの依頼で修正する
 
 import * as repo from "./plan-repo.js";
 import * as accessRepo from "./plan-access-repo.js";
@@ -38,6 +39,8 @@ import * as expenseRepo from "./expense-repo.js";
 import * as userRepo from "./user-repo.js";
 import { PLAN_MANAGE_FIELDS, PLAN_PATCH_FIELDS } from "./plan-contract.js";
 import { generateItinerary, MAX_AI_CITIES, suggestItineraryOptions, type ItineraryInput } from "./ai-itinerary.js";
+import { refineItinerary } from "./ai-itinerary-refine.js";
+import type { ItineraryKind, ItineraryRefineInput, ItineraryRefineItem } from "@tabi/contracts";
 import { AiInputError, AiOutputError, AiUnavailableError, AiUpstreamError } from "./ai-errors.js";
 import { BadRequest } from "./errors.js";
 import { reserveAiRequest, type AiScope } from "./ai-usage-repo.js";
@@ -58,6 +61,7 @@ const strArr = (v: unknown): string[] => Array.isArray(v)
   ? v.filter((item): item is string => typeof item === "string").map((item) => item.trim()).filter(Boolean)
   : [];
 const PLAN_CONTENT_FIELDS = new Set(["itinerary", "cities", "links", "checklist", "candidates"]);
+const ITINERARY_KINDS = new Set<ItineraryKind>(["sight", "move", "food", "stay", "todo", "form"]);
 
 function itineraryInput(body: Body): ItineraryInput {
   const rawPreferences = isRecord(body.preferences) ? body.preferences : {};
@@ -99,6 +103,63 @@ function itineraryInput(body: Body): ItineraryInput {
       from_date: str(city.from_date),
       to_date: str(city.to_date),
     })),
+  };
+}
+
+const finiteOrNull = (value: unknown): number | null => {
+  if (value === null || value === undefined || value === "") return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+};
+
+function itineraryRefineInput(body: Body): ItineraryRefineInput {
+  const instruction = str(body.instruction).trim().slice(0, 1_200);
+  if (!instruction) throw new AiInputError("変更したい内容を入力してください");
+  const planId = str(body.plan_id).trim();
+  if (!/^[\w-]{1,32}$/.test(planId)) throw new AiInputError("旅行計画を確認できませんでした");
+  const history = arr(body.history).slice(-6).flatMap((message) => {
+    const role = str(message.role);
+    const content = str(message.content).trim().slice(0, 600);
+    return (role === "user" || role === "assistant") && content
+      ? [{ role: role as "user" | "assistant", content }]
+      : [];
+  });
+  const currentItinerary = arr(body.current_itinerary).slice(0, 168).map((item): ItineraryRefineItem => {
+    const rawKind = str(item.kind) as ItineraryKind;
+    const kind = ITINERARY_KINDS.has(rawKind) ? rawKind : "sight";
+    return {
+      date: str(item.date).slice(0, 10),
+      time: str(item.time).slice(0, 5),
+      kind,
+      city: str(item.city).slice(0, 100),
+      title: str(item.title).slice(0, 160),
+      place: str(item.place).slice(0, 160),
+      address: str(item.address).slice(0, 240),
+      latitude: finiteOrNull(item.latitude),
+      longitude: finiteOrNull(item.longitude),
+      note: str(item.note).slice(0, 300),
+      from_city: str(item.from_city).slice(0, 100),
+      from_place: str(item.from_place).slice(0, 160),
+      from_address: str(item.from_address).slice(0, 240),
+      from_latitude: finiteOrNull(item.from_latitude),
+      from_longitude: finiteOrNull(item.from_longitude),
+      to_city: str(item.to_city).slice(0, 100),
+      to_place: str(item.to_place).slice(0, 160),
+      to_address: str(item.to_address).slice(0, 240),
+      to_latitude: finiteOrNull(item.to_latitude),
+      to_longitude: finiteOrNull(item.to_longitude),
+      transport: str(item.transport).slice(0, 40),
+      duration_minutes: Math.max(0, Math.min(1440, Math.round(Number(item.duration_minutes) || 0))),
+    };
+  });
+  return {
+    plan_id: planId,
+    start_date: str(body.start_date).slice(0, 10),
+    end_date: str(body.end_date).slice(0, 10),
+    active_date: str(body.active_date).slice(0, 10),
+    instruction,
+    history,
+    current_itinerary: currentItinerary,
   };
 }
 
@@ -466,6 +527,21 @@ export async function route(method: string, path: string, body: Body, actorUserI
       if (limited) return limited;
       const draft = await generateItinerary(actorUserId, input);
       return { status: 200, body: draft };
+    } catch (error) {
+      return aiFailure(error);
+    }
+  }
+  if (method === "POST" && path === "/api/ai/itinerary-refine") {
+    if (!actorUserId) return { status: 401, body: { error: "session_required" } };
+    try {
+      const input = itineraryRefineInput(body);
+      // 閲覧者や公開共同編集者が他人の計画を材料にAI費用を使わないよう、
+      // 正式な owner / editor メンバーだけに限定する。
+      const access = await accessRepo.getPlanAccess(input.plan_id, actorUserId);
+      if (!access.canEditWorkspace) return { status: 403, body: { error: "forbidden" } };
+      const limited = await reserveAi(actorUserId, "itinerary");
+      if (limited) return limited;
+      return { status: 200, body: await refineItinerary(actorUserId, input) };
     } catch (error) {
       return aiFailure(error);
     }

@@ -85,6 +85,26 @@
             <span class="tl-copy-schedule-ic" data-ic="paperAirplane"></span><span data-copy-schedule-label>日程をLINEで送る</span>
           </button>
         </div>
+        <section class="tl-ai-chat" data-ai-chat hidden aria-label="AI旅行相談">
+          <div class="tl-ai-chat-head">
+            <span class="tl-ai-chat-mark" aria-hidden="true" data-ic="sparkles"></span>
+            <div>
+              <strong>AI旅行相談</strong>
+              <span data-ai-chat-context>この日の予定を見ながら相談できます</span>
+            </div>
+            <button type="button" data-ai-chat-close aria-label="AI旅行相談を閉じる">×</button>
+          </div>
+          <div class="tl-ai-chat-log" data-ai-chat-log aria-live="polite"></div>
+          <form class="tl-ai-chat-form" data-ai-chat-form>
+            <label for="tl-ai-chat-input">どう変えたいですか？</label>
+            <textarea id="tl-ai-chat-input" data-ai-chat-input rows="3" maxlength="1200" placeholder="例：この日は午前中に深圳を観光してから廈門へ移動。6日目は金門島をゆっくり回る行程にして"></textarea>
+            <div class="tl-ai-chat-actions">
+              <span data-ai-chat-status></span>
+              <button type="submit" data-ai-chat-send>AIに相談する</button>
+            </div>
+          </form>
+          <p class="tl-ai-chat-note">AIの提案は確認後に反映できます。交通・営業情報は予約前に公式情報をご確認ください。</p>
+        </section>
         <div data-day-feed></div>
       </div>
     </section>

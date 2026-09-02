@@ -1085,6 +1085,117 @@
   /* AIサポートが出ているときは、そちらが右寄せを担う */
   .tl-ai-support:not([hidden]) + .tl-copy-schedule { margin-left: 0; }
 
+  .tl-ai-chat {
+    margin: 2px 0 24px;
+    border: 1px solid #c7ddd4;
+    border-radius: 16px;
+    background: #f6fbf8;
+    box-shadow: 0 12px 30px rgba(0, 75, 54, .08);
+    overflow: hidden;
+  }
+  .tl-ai-chat[hidden] { display: none; }
+  .tl-ai-chat-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 16px;
+    border-bottom: 1px solid #d9e8e1;
+    background: #e8f5ef;
+    color: var(--green);
+  }
+  .tl-ai-chat-mark { display: inline-flex; }
+  .tl-ai-chat-mark svg { width: 20px; height: 20px; }
+  .tl-ai-chat-head > div { display: grid; gap: 1px; min-width: 0; }
+  .tl-ai-chat-head strong { font-size: 14px; }
+  .tl-ai-chat-head span { font-size: 11px; color: #577069; }
+  .tl-ai-chat-head button {
+    margin-left: auto;
+    width: 32px;
+    height: 32px;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: #577069;
+    font: 24px/1 inherit;
+    cursor: pointer;
+  }
+  .tl-ai-chat-head button:hover { background: rgba(0, 104, 75, .08); }
+  .tl-ai-chat-log {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-height: 360px;
+    padding: 16px;
+    overflow-y: auto;
+  }
+  .tl-ai-message {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 9px;
+    max-width: min(78%, 680px);
+    padding: 10px 13px;
+    border-radius: 14px 14px 14px 4px;
+    background: #fff;
+    border: 1px solid #dce9e3;
+    color: #263b35;
+    font-size: 13px;
+    line-height: 1.65;
+  }
+  .tl-ai-message.is-user {
+    align-self: flex-end;
+    border-color: var(--green);
+    border-radius: 14px 14px 4px 14px;
+    background: var(--green);
+    color: #fff;
+  }
+  .tl-ai-message.is-thinking span::after { content: ""; animation: tl-ai-dots 1.2s steps(4, end) infinite; }
+  @keyframes tl-ai-dots { 0% { content: ""; } 25% { content: "."; } 50% { content: ".."; } 75%, 100% { content: "..."; } }
+  .tl-ai-message button {
+    min-height: 34px;
+    padding: 6px 12px;
+    border: 1px solid var(--green);
+    border-radius: 999px;
+    background: #fff;
+    color: var(--green);
+    font: 800 12px/1.2 inherit;
+    cursor: pointer;
+  }
+  .tl-ai-message button:hover { background: #eaf6f1; }
+  .tl-ai-message button:disabled { border-color: #bdcbc5; color: #71807a; cursor: default; }
+  .tl-ai-chat-form {
+    display: grid;
+    gap: 8px;
+    padding: 0 16px 14px;
+  }
+  .tl-ai-chat-form label { color: #334d45; font-size: 12px; font-weight: 800; }
+  .tl-ai-chat-form textarea {
+    width: 100%;
+    min-height: 82px;
+    resize: vertical;
+    padding: 11px 12px;
+    border: 1px solid #b9d0c7;
+    border-radius: 10px;
+    background: #fff;
+    color: var(--ink);
+    font: 13px/1.55 inherit;
+  }
+  .tl-ai-chat-form textarea:focus { outline: 2px solid rgba(0, 104, 75, .18); border-color: var(--green); }
+  .tl-ai-chat-actions { display: flex; align-items: center; gap: 12px; }
+  .tl-ai-chat-actions > span { flex: 1; color: #577069; font-size: 11px; }
+  .tl-ai-chat-actions button {
+    min-height: 38px;
+    padding: 8px 16px;
+    border: 1px solid var(--green);
+    border-radius: 999px;
+    background: var(--green);
+    color: #fff;
+    font: 800 12px/1.2 inherit;
+    cursor: pointer;
+  }
+  .tl-ai-chat-actions button:disabled { opacity: .55; cursor: wait; }
+  .tl-ai-chat-note { margin: 0; padding: 0 16px 14px; color: #75867f; font-size: 10.5px; line-height: 1.5; }
+
   .tl-day-title h2 {
     margin: 0;
     font-family: inherit;
@@ -3126,6 +3237,14 @@
       justify-self: end;
       margin-left: 0;
     }
+    .tl-ai-chat { margin: 0 0 20px; border-radius: 13px; }
+    .tl-ai-chat-head { padding: 12px; }
+    .tl-ai-chat-log { max-height: 320px; padding: 12px; }
+    .tl-ai-message { max-width: 90%; font-size: 12.5px; }
+    .tl-ai-chat-form { padding: 0 12px 12px; }
+    .tl-ai-chat-actions { align-items: flex-end; }
+    .tl-ai-chat-actions button { flex: none; }
+    .tl-ai-chat-note { padding: 0 12px 12px; }
     .tl-day-heading-meta {
       font-size: 11px;
       font-weight: 560;

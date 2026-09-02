@@ -15,11 +15,13 @@ import { resolvedTripConfig } from "./config";
 import type {
   CredentialRow, ExpenseCategory, ExpenseRow, ExpenseShareRow, ItineraryRow,
   ItineraryAiBaseInput, ItineraryAiGenerateInput, ItineraryDraft, ItineraryOptions,
+  ItineraryRefineInput, ItineraryRefineResult,
   PaymentMethod, PlanMemberPlaceholderRow, PlanMemberRow, PlanRow, SettlementRow, SplitMethod, UserRow,
 } from "@tabi/contracts";
 export type {
   CredentialRow, ExpenseCategory, ExpenseRow, ExpenseShareRow, ItineraryKind, ItineraryRow,
   ItineraryAiBaseInput, ItineraryAiGenerateInput, ItineraryAiPreferences, ItineraryDraft, ItineraryOptions,
+  ItineraryRefineInput, ItineraryRefineItem, ItineraryRefineMessage, ItineraryRefineResult,
   PaymentMethod, PlanMemberPlaceholderRow, PlanMemberRow, PlanRow, SettlementRow, SplitMethod, UserRow,
 } from "@tabi/contracts";
 
@@ -815,6 +817,11 @@ export async function suggestItineraryOptions(input: ItineraryAiBaseInput): Prom
 
 export async function generateItinerary(input: ItineraryAiGenerateInput): Promise<ItineraryDraft> {
   return request<ItineraryDraft>("POST", "/api/ai/itinerary", input);
+}
+
+/** 旅行詳細のAIチャットから、現在の全行程に対する修正案を作る。 */
+export async function refineItinerary(input: ItineraryRefineInput): Promise<ItineraryRefineResult> {
+  return request<ItineraryRefineResult>("POST", "/api/ai/itinerary-refine", input);
 }
 
 /** 自分に紐付いている外部ログイン。 */
