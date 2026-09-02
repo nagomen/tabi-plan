@@ -61,6 +61,8 @@ jobs:
     needs:
       - build
       - deploy-api
+    # 現在のフロントは GitHub Pages 配信。VPS 配信用ドメインを設定した環境でだけ実行する。
+    if: ${{ vars.PRODUCTION_DOMAIN != '' }}
     runs-on: ubuntu-latest
     environment: production
 
