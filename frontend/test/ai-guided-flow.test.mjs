@@ -56,8 +56,11 @@ test("旅行詳細のこの日の予定からAI旅行相談へ直接移動でき
   const style = read("src/dashboard/style.css");
   const editor = read("src/plan-editor/main.ts");
   assert.match(html, /data-day-title[\s\S]*data-ai-support[\s\S]*AIサポート/);
-  assert.match(dashboard, /aiSupport\.href = "plan-editor\.html" \+ planQuery \+ "&ai=1"/);
+  assert.match(dashboard, /if \(aiSupport && CONFIG\.mode === "local"\)/);
   assert.match(dashboard, /aiSupport\.hidden = false/);
+  assert.match(dashboard, /if \(editTarget\)[\s\S]*planQuery \+ "&ai=1"/);
+  assert.match(dashboard, /copyPlanToMine\(aiSupport, true\)/);
+  assert.match(dashboard, /encodeURIComponent\(copy\.slug\) \+ \(openAi \? "&ai=1" : ""\)/);
   assert.match(editor, /params\.get\("ai"\) === "1"[\s\S]*aiBlock\.scrollIntoView/);
   assert.match(style, /\.tl-ai-support \{[\s\S]*border-radius: 999px/);
   assert.match(style, /\.tl-day-title \.tl-ai-support \{[\s\S]*grid-column: 3/);

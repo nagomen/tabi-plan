@@ -2361,7 +2361,7 @@ function computeReadOnly(): boolean {
  * 見ている計画を自分の下書きとして複製し、そのまま編集画面へ移る。
  * 元の計画には触らない（参加者も引き継がない）。
  */
-async function copyPlanToMine(button: HTMLButtonElement): Promise<void> {
+async function copyPlanToMine(button: HTMLButtonElement, openAi = false): Promise<void> {
   const meta = TripPlans.get(CONFIG.tripSlug);
   if (!meta) return;
   if (!currentUserId()) {
@@ -2373,7 +2373,7 @@ async function copyPlanToMine(button: HTMLButtonElement): Promise<void> {
   const already = TripPlans.existingCopyOf(CONFIG.tripSlug);
   if (already) {
     TripPlans.setActiveSlug(already.slug);
-    location.href = "plan-editor.html?plan=" + encodeURIComponent(already.slug);
+    location.href = "plan-editor.html?plan=" + encodeURIComponent(already.slug) + (openAi ? "&ai=1" : "");
     return;
   }
   button.disabled = true;
@@ -2384,7 +2384,7 @@ async function copyPlanToMine(button: HTMLButtonElement): Promise<void> {
       return;
     }
     TripPlans.setActiveSlug(copy.slug);
-    location.href = "plan-editor.html?plan=" + encodeURIComponent(copy.slug);
+    location.href = "plan-editor.html?plan=" + encodeURIComponent(copy.slug) + (openAi ? "&ai=1" : "");
   } catch (error) {
     window.alert("コピーを保存できませんでした。" + (error instanceof Error ? error.message : ""));
   } finally {
@@ -2558,12 +2558,22 @@ async function init(): Promise<void> {
       editHead.hidden = true;
     }
   }
-  // 「この日の予定」ヘッダーのAIサポート。AI相談は計画エディタ内の機能なので、
-  // 編集できる人にだけ、エディタのAIブロックへ直行する導線を出す。
-  const aiSupport = root.querySelector<HTMLAnchorElement>("[data-ai-support]");
-  if (aiSupport && editTarget) {
-    aiSupport.href = "plan-editor.html" + planQuery + "&ai=1";
+  // 「この日の予定」ヘッダーのAIサポート。編集できる計画はそのままAI相談へ進む。
+  // 閲覧専用の公開計画では、元データを変更せず自分の下書きへ複製してからAI相談を開く。
+  const aiSupport = root.querySelector<HTMLButtonElement>("[data-ai-support]");
+  if (aiSupport && CONFIG.mode === "local") {
     aiSupport.hidden = false;
+    aiSupport.setAttribute("title", editTarget
+      ? "AI旅行相談を開く"
+      : "この旅行を自分の下書きにコピーしてAI旅行相談を開く");
+    aiSupport.setAttribute("aria-label", aiSupport.getAttribute("title") || "AI旅行相談を開く");
+    aiSupport.addEventListener("click", () => {
+      if (editTarget) {
+        location.href = "plan-editor.html" + planQuery + "&ai=1";
+        return;
+      }
+      void copyPlanToMine(aiSupport, true);
+    });
   }
   // 編集できない（＝人の計画を見ている）ときは、コピーして持ち帰れるようにする
   const copyHead = root.querySelector<HTMLButtonElement>("[data-copy-head]");
