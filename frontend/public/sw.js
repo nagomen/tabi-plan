@@ -17,7 +17,9 @@ const APP_SHELL = [
 self.addEventListener("install", (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME)
-      .then((cache) => cache.addAll(APP_SHELL))
+      // addAll は1件でも失敗すると install ごと失敗し、オフライン対応が
+      // 永久に効かなくなる。1件ずつ入れて、失敗した分だけ諦める。
+      .then((cache) => Promise.allSettled(APP_SHELL.map((path) => cache.add(path))))
       .then(() => self.skipWaiting())
   );
 });
@@ -57,7 +59,7 @@ self.addEventListener("fetch", (event) => {
         const copy = response.clone();
         caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
         return response;
-      });
+      }).catch(() => new Response("", { status: 504, statusText: "offline" }));
     })
   );
 });

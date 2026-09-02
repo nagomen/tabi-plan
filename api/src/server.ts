@@ -12,16 +12,19 @@
 // X-Travel-Session を検証して判定し、ブラウザ側の userId は信頼しない。
 
 import http from "node:http";
+import crypto from "node:crypto";
 import { config } from "./config.js";
-import { authorizeUrl, handleLineCallback, lineLoginEnabled, loginErrorUrl, peekReturnTo } from "./line-auth.js";
+import {
+  authorizeUrl, handleLineCallback, LineAuthError, lineLoginEnabled, loginErrorUrl, peekReturnTo,
+} from "./line-auth.js";
 import {
   signUp, logIn, createSession, resolveSession, revokeSession,
   revokeOtherSessions, changePassword, addCredentials,
 } from "./auth-repo.js";
-import { BadRequest, VersionConflict as PlanVersionConflict } from "./errors.js";
+import { describeError } from "./errors.js";
 import { route } from "./routes.js";
 import { closeDatabase, pingDatabase } from "./db.js";
-import { rateLimited, sweepExpired, type RateBucket } from "./rate-limit.js";
+import { rateLimitCheck, sweepExpired, type RateBucket } from "./rate-limit.js";
 import { clientIp } from "./client-ip.js";
 
 // ---- レート制限（プロセス内・1分窓） -----------------------------------
@@ -44,6 +47,8 @@ function corsHeaders(origin: string | undefined): Record<string, string> {
     "Access-Control-Allow-Origin": origin,
     "Access-Control-Allow-Methods": "GET,POST,PATCH,PUT,DELETE,OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type,Authorization,X-Travel-Session",
+    // 問い合わせ番号と再試行待ち時間は、別オリジンのブラウザにも読ませる。
+    "Access-Control-Expose-Headers": "X-Request-Id,Retry-After",
     "Access-Control-Max-Age": "86400",
     Vary: "Origin",
   };
@@ -64,6 +69,13 @@ function send(
   body: unknown,
   extra: Record<string, string> = {},
 ): void {
+  // 二重送信は writeHead が throw し、async ハンドラ内だと未処理拒否で
+  // プロセスごと落ちる。送信済みならログに残して黙って打ち切る。
+  if (res.headersSent) {
+    console.error("[travel-api] response already sent", JSON.stringify({ status }));
+    res.end();
+    return;
+  }
   const json = JSON.stringify(body);
   res.writeHead(status, {
     "Content-Type": "application/json; charset=utf-8",
@@ -129,6 +141,9 @@ const server = http.createServer(async (req, res) => {
   const cors = corsHeaders(origin);
   const url = new URL(req.url || "/", "http://localhost");
   const path = url.pathname.replace(/\/+$/, "") || "/";
+  // 問い合わせ番号。全レスポンスに付け、エラーログと突き合わせられるようにする。
+  const requestId = crypto.randomBytes(8).toString("hex");
+  res.setHeader("X-Request-Id", requestId);
 
   if (req.method === "OPTIONS") {
     res.writeHead(Object.keys(cors).length ? 204 : 403, cors);
@@ -143,8 +158,15 @@ const server = http.createServer(async (req, res) => {
   }
 
   const ip = clientIp(req, config.trustCloudflareConnectingIp);
-  if (rateLimited(hits, ip, config.rateLimitPerMinute)) {
-    send(res, 429, { error: "too many requests" }, cors);
+  const globalWait = rateLimitCheck(hits, ip, config.rateLimitPerMinute);
+  if (globalWait > 0) {
+    send(res, 429, {
+      error: "too many requests",
+      message: "アクセスが集中しています。少し待ってからもう一度お試しください。",
+      retryable: true,
+      retry_after: globalWait,
+      action: "retry_later",
+    }, { ...cors, "Retry-After": String(globalWait) });
     return;
   }
 
@@ -153,7 +175,9 @@ const server = http.createServer(async (req, res) => {
       await pingDatabase();
       send(res, 200, { ok: true }, cors);
     } catch (error) {
-      send(res, 503, { ok: false, error: String(error) }, cors);
+      // 認証前に匿名で叩ける口なので、接続文字列などの内部情報は返さない。
+      console.error("[travel-api] health check failed", JSON.stringify({ request_id: requestId }), error);
+      send(res, 503, { ok: false, error: "database unavailable" }, cors);
     }
     return;
   }
@@ -161,15 +185,19 @@ const server = http.createServer(async (req, res) => {
   // LINE ログインはブラウザの画面遷移で来るので、API トークンを付けられない。
   // ここだけトークン判定の前に置き、代わりに認証用の厳しい回数制限を当てる。
   if (path === "/api/auth/line/start" || path === "/api/auth/line/callback") {
+    const query = new URL(req.url || "/", "http://localhost").searchParams;
     if (!lineLoginEnabled()) {
       send(res, 503, { error: "LINE ログインは設定されていません" }, cors);
       return;
     }
-    if (rateLimited(authHits, ip, config.authRateLimitPerMinute)) {
-      send(res, 429, { error: "too many authentication attempts" }, cors);
+    // 画面遷移で来る口なので、拒否も JSON ではなくログイン画面へ戻して伝える。
+    if (rateLimitCheck(authHits, ip, config.authRateLimitPerMinute) > 0) {
+      redirect(res, loginErrorUrl(
+        query.get("return_to") || peekReturnTo(query.get("state") || ""),
+        "ログインの試行回数が上限に達しました。しばらく待ってからお試しください",
+      ));
       return;
     }
-    const query = new URL(req.url || "/", "http://localhost").searchParams;
     if (path === "/api/auth/line/start") {
       // ここは画面遷移で来るため、クエリはアクセスログに残る。
       // よってセッショントークンは受け取らない（紐付けは
@@ -200,7 +228,15 @@ const server = http.createServer(async (req, res) => {
         + (result.nonce ? `&line_nonce=${encodeURIComponent(result.nonce)}` : "");
       redirect(res, `${result.returnTo}#${fragment}`);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "LINE ログインに失敗しました";
+      // 画面に出すのは LineAuthError の安全な文言だけ。DB・fetch の生エラーは
+      // URL（＝アクセスログや画面）へ出さず、問い合わせ番号付きでログに残す。
+      console.error("[travel-api] line login failed", JSON.stringify({
+        request_id: requestId,
+        detail: error instanceof LineAuthError ? error.causeDetail : "",
+      }), error instanceof LineAuthError ? error.message : error);
+      const message = error instanceof LineAuthError
+        ? error.message
+        : "LINEログインを完了できませんでした。時間をおいてもう一度お試しください";
       redirect(res, loginErrorUrl(peekReturnTo(query.get("state") || ""), message));
     }
     return;
@@ -214,10 +250,21 @@ const server = http.createServer(async (req, res) => {
   const authPaths = [
     "/api/auth/signup", "/api/auth/login",
     "/api/auth/password", "/api/auth/credentials",
+    // 招待トークンは総当たりの対象になるため、認証と同じ厳しい制限を当てる。
+    "/api/invites/accept", "/api/invites/inspect",
   ];
-  if (authPaths.includes(path) && rateLimited(authHits, ip, config.authRateLimitPerMinute)) {
-    send(res, 429, { error: "too many authentication attempts" }, cors);
-    return;
+  if (authPaths.includes(path)) {
+    const authWait = rateLimitCheck(authHits, ip, config.authRateLimitPerMinute);
+    if (authWait > 0) {
+      send(res, 429, {
+        error: "too many authentication attempts",
+        message: "試行回数が上限に達しました。しばらく待ってからもう一度お試しください。",
+        retryable: true,
+        retry_after: authWait,
+        action: "retry_later",
+      }, { ...cors, "Retry-After": String(authWait) });
+      return;
+    }
   }
 
   try {
@@ -317,39 +364,71 @@ const server = http.createServer(async (req, res) => {
 
     send(res, 404, { error: "not found" }, cors);
   } catch (error) {
-    if ((error as Error).message === "PAYLOAD_TOO_LARGE") {
-      send(res, 413, { error: "payload too large" }, cors);
-      return;
+    // 分類はすべて errors.ts に集約。内部情報は本文へ出さず、ログにだけ残す。
+    const { status, body } = describeError(error, requestId);
+    if (status >= 500 || body.error === "db_unavailable" || body.error === "server_busy") {
+      console.error("[travel-api] request failed", JSON.stringify({
+        request_id: requestId,
+        method: req.method || "",
+        path,
+        status,
+        code: body.error,
+      }), error);
     }
-    if ((error as Error).message === "INVALID_JSON" || error instanceof BadRequest) {
-      send(res, 400, { error: (error as Error).message }, cors);
-      return;
-    }
-    if (error instanceof PlanVersionConflict) {
-      send(res, 409, { error: error.message }, cors);
-      return;
-    }
-    // 外部キー違反などは呼び出し側の誤りとして 409 を返す
-    const code = (error as { code?: string }).code || "";
-    if (code.startsWith("ER_NO_REFERENCED_ROW") || code === "ER_DUP_ENTRY" || code === "ER_CHECK_CONSTRAINT_VIOLATED") {
-      send(res, 409, { error: code }, cors);
-      return;
-    }
-    console.error("[travel-api]", error);
-    send(res, 500, { error: "internal error" }, cors);
+    const retryAfter: Record<string, string> = body.retry_after
+      ? { "Retry-After": String(body.retry_after) }
+      : {};
+    send(res, status, body, { ...cors, ...retryAfter });
   }
+});
+
+// listen 失敗（ポート使用中など）を素のスタックではなく一行で説明して終了する。
+server.on("error", (error: NodeJS.ErrnoException) => {
+  console.error(`[travel-api] server error: ${error.code || ""} ${error.message}`);
+  process.exit(1);
 });
 
 server.listen(config.port, config.host, () => {
   console.log(`[travel-api] listening on http://${config.host}:${config.port}`);
   console.log(`[travel-api] db=${config.db.user}@${config.db.host}:${config.db.port}/${config.db.database}`);
   console.log(`[travel-api] allowed origins: ${config.allowedOrigins.join(", ") || "(なし)"}`);
+  if (!config.allowedOrigins.length) {
+    console.warn("[travel-api] ALLOWED_ORIGINS が空のため、ブラウザからのリクエストはすべて403になります");
+  }
+  // 起動直後にDBへ到達できるか確かめる。lazyなプールだと初回リクエストまで
+  // 設定ミスに気付けないため、ここで一度だけ検査してログに残す（起動は止めない）。
+  pingDatabase().catch((error) => {
+    console.error("[travel-api] 起動時のDB接続確認に失敗しました。設定を確認してください", error);
+  });
 });
 
-for (const signal of ["SIGINT", "SIGTERM"] as const) {
-  process.on(signal, () => {
-    server.close(() => {
-      void closeDatabase().finally(() => process.exit(0));
-    });
+// ---- プロセスの安全網 -----------------------------------------------------
+// 想定外の例外は握りつぶさずログへ残す。uncaughtException は状態が信用できない
+// ため終了し、systemd（Restart=always）に再起動させる。
+process.on("unhandledRejection", (reason) => {
+  console.error("[travel-api] unhandled rejection", reason);
+});
+process.on("uncaughtException", (error) => {
+  console.error("[travel-api] uncaught exception", error);
+  shutdown(1);
+});
+
+let shuttingDown = false;
+function shutdown(exitCode: number): void {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  server.close(() => {
+    void closeDatabase().finally(() => process.exit(exitCode));
   });
+  // keep-alive の遊休接続は自然には閉じない。先に切って close を進める。
+  server.closeIdleConnections();
+  // 処理中のリクエストが残っても、systemd の SIGKILL を待たず自分で締める。
+  setTimeout(() => {
+    server.closeAllConnections();
+    void closeDatabase().finally(() => process.exit(exitCode));
+  }, 10_000).unref();
+}
+
+for (const signal of ["SIGINT", "SIGTERM"] as const) {
+  process.on(signal, () => shutdown(0));
 }

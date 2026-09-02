@@ -10,8 +10,12 @@ import { hashNewPassword, needsRehash, PASSWORD_ITERATIONS, validatePassword, ve
 export async function createSession(userId: string, ttlMs: number): Promise<string> {
   const token = crypto.randomBytes(32).toString("base64url");
   const expiresAt = new Date(Date.now() + ttlMs);
+  // 期限切れセッションの掃除は単なる衛生処理。ログインのトランザクションに
+  // 入れるとテーブル全体のロック競合（デッドロック）源になるため、外で
+  // 失敗してもよい形で実行する。
+  void pool.query("DELETE FROM user_sessions WHERE expires_at < CURRENT_TIMESTAMP OR revoked_at IS NOT NULL")
+    .catch((error) => console.warn("[travel-api] session sweep failed", error));
   await withTransaction(async (conn) => {
-    await conn.query("DELETE FROM user_sessions WHERE expires_at < CURRENT_TIMESTAMP OR revoked_at IS NOT NULL");
     await conn.query(
       `UPDATE user_sessions SET revoked_at = CURRENT_TIMESTAMP
         WHERE user_id = ? AND revoked_at IS NULL AND id NOT IN (
@@ -74,22 +78,30 @@ export async function signUp(input: {
   if (!isValidEmail(email)) throw new BadRequest("メールアドレスの形式が正しくありません");
   validatePassword(input.password);
   const userId = newId("usr");
-  await withTransaction(async (conn) => {
-    const [existing] = await conn.query<import("mysql2/promise").RowDataPacket[]>(
-      "SELECT user_id FROM user_credentials WHERE email = ? LIMIT 1", [email],
-    );
-    if (existing.length) throw new BadRequest("このメールアドレスは既に登録されています");
-    const { salt, hash, iterations } = await hashNewPassword(input.password);
-    await conn.query(
-      "INSERT INTO users (id, display_name, name_key) VALUES (?, ?, ?)",
-      [userId, displayName, identityKey(displayName)],
-    );
-    await conn.query(
-      `INSERT INTO user_credentials (user_id, email, password_salt, password_hash, iterations)
-       VALUES (?, ?, ?, ?, ?)`,
-      [userId, email, salt, hash, iterations],
-    );
-  });
+  try {
+    await withTransaction(async (conn) => {
+      const [existing] = await conn.query<import("mysql2/promise").RowDataPacket[]>(
+        "SELECT user_id FROM user_credentials WHERE email = ? LIMIT 1", [email],
+      );
+      if (existing.length) throw new BadRequest("このメールアドレスは既に登録されています");
+      const { salt, hash, iterations } = await hashNewPassword(input.password);
+      await conn.query(
+        "INSERT INTO users (id, display_name, name_key) VALUES (?, ?, ?)",
+        [userId, displayName, identityKey(displayName)],
+      );
+      await conn.query(
+        `INSERT INTO user_credentials (user_id, email, password_salt, password_hash, iterations)
+         VALUES (?, ?, ?, ?, ?)`,
+        [userId, email, salt, hash, iterations],
+      );
+    });
+  } catch (error) {
+    // SELECT→INSERT の間に同じメールで登録が走った場合。事前チェックと同じ文言で返す。
+    if ((error as { code?: string }).code === "ER_DUP_ENTRY") {
+      throw new BadRequest("このメールアドレスは既に登録されています");
+    }
+    throw error;
+  }
   return { user: { id: userId, display_name: displayName, email } };
 }
 
@@ -163,20 +175,27 @@ export async function addCredentials(input: {
   if (!isValidEmail(email)) throw new BadRequest("メールアドレスの形式が正しくありません");
   const password = validatePassword(input.password);
   const { salt, hash, iterations } = await hashNewPassword(password);
-  await withTransaction(async (conn) => {
-    const [mine] = await conn.query<import("mysql2/promise").RowDataPacket[]>(
-      "SELECT user_id FROM user_credentials WHERE user_id = ? LIMIT 1", [input.userId],
-    );
-    if (mine.length) throw new BadRequest("すでにメールアドレスが登録されています");
-    const [taken] = await conn.query<import("mysql2/promise").RowDataPacket[]>(
-      "SELECT user_id FROM user_credentials WHERE email = ? LIMIT 1", [email],
-    );
-    if (taken.length) throw new BadRequest("このメールアドレスは既に登録されています");
-    await conn.query(
-      `INSERT INTO user_credentials (user_id, email, password_salt, password_hash, iterations)
-       VALUES (?, ?, ?, ?, ?)`,
-      [input.userId, email, salt, hash, iterations],
-    );
-  });
+  try {
+    await withTransaction(async (conn) => {
+      const [mine] = await conn.query<import("mysql2/promise").RowDataPacket[]>(
+        "SELECT user_id FROM user_credentials WHERE user_id = ? LIMIT 1", [input.userId],
+      );
+      if (mine.length) throw new BadRequest("すでにメールアドレスが登録されています");
+      const [taken] = await conn.query<import("mysql2/promise").RowDataPacket[]>(
+        "SELECT user_id FROM user_credentials WHERE email = ? LIMIT 1", [email],
+      );
+      if (taken.length) throw new BadRequest("このメールアドレスは既に登録されています");
+      await conn.query(
+        `INSERT INTO user_credentials (user_id, email, password_salt, password_hash, iterations)
+         VALUES (?, ?, ?, ?, ?)`,
+        [input.userId, email, salt, hash, iterations],
+      );
+    });
+  } catch (error) {
+    if ((error as { code?: string }).code === "ER_DUP_ENTRY") {
+      throw new BadRequest("このメールアドレスは既に登録されています");
+    }
+    throw error;
+  }
   return { email };
 }

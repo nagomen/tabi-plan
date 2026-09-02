@@ -13,6 +13,11 @@ EnvironmentFile=__ENV_FILE__
 ExecStart=/usr/bin/node __APP_DIR__/api/dist/server.js
 Restart=always
 RestartSec=3
+# server.ts 側が10秒で自主的に締めるので、systemd の既定90秒を待たない
+TimeoutStopSec=15
+# 起動直後に落ち続ける場合（設定ミス等）は再起動ループを止めてログに残す
+StartLimitIntervalSec=60
+StartLimitBurst=5
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=travel-api

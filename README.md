@@ -76,6 +76,25 @@ Responses APIの構造化出力を使用し、既定ではWeb検索で観光地�
 Web検索を利用できないモデル・環境では`OPENAI_WEB_SEARCH_ENABLED=false`にできますが、候補や移動情報の
 根拠が弱くなるため本番では有効を推奨します。
 
+行程生成は`OPENAI_TIMEOUT_MS`（既定60秒）まで応答にかかります。APIの前段に置くリバースプロキシの
+読み取りタイムアウトはこれより長くしてください（`infra/nginx/travel-api.conf.template`は90秒）。
+短いとプロキシが先に切断し、CORSヘッダの無いエラーになるため、ブラウザでは「AIサーバーへ接続
+できませんでした」と表示されます。Cloudflare経由の場合は同社のプロキシ上限（約100秒）未満に収めます。
+
+### エラー契約
+
+APIのエラーは全経路で共通の形
+`{ error, message, retryable, retry_after?, action, request_id? }`
+を返します（分類は`api/src/errors.ts`の`describeError`、AI系は`api/src/ai-errors.ts`）。
+`message`は利用者へそのまま表示できる日本語、`action`は`retry / retry_later / revise_input /
+restart_consultation / reload / contact_support / sign_in`のいずれかで、フロントの
+`ApiRequestError`（`frontend/src/shared/db.ts`）が解釈します。全レスポンスに`X-Request-Id`が付き、
+サーバーログと突き合わせられます。DBのデッドロックは自動再試行し、接続断・キュー超過は
+`retry_after`付きの503になります。フロント側は全リクエストに打ち切り時間（AI 90秒・他 30秒）があり、
+投げっぱなしの書き込み失敗と読み込み失敗は`trip-sync-error`イベント経由で画面上部の帯
+（`frontend/src/shared/session-notice.ts`）に表示されます。計画の409（版の衝突）では、相手の変更を
+上書きしないよう自動保存を止めて読み込み直しを促します。
+
 ## 構成
 
 | 用途 | モード | データ保存 | ページからの書き込み |

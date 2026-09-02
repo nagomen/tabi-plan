@@ -318,6 +318,7 @@ export type ApiRecoveryAction =
   | "retry_later"
   | "revise_input"
   | "restart_consultation"
+  | "reload"
   | "contact_support"
   | "sign_in";
 
@@ -342,6 +343,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   const aiPath = path.startsWith("/api/ai/");
   let res: Response;
   try {
+    // AI以外も必ず打ち切る。無限に待つと「ログイン中…」のままボタンが戻らない。
     res = await fetch(cfg.base + path, {
       method,
       headers: {
@@ -350,7 +352,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
         ...(sessionToken ? { "X-Travel-Session": sessionToken } : {}),
       },
       body: body === undefined ? undefined : JSON.stringify(body),
-      ...(aiPath ? { signal: AbortSignal.timeout(90_000) } : {}),
+      signal: AbortSignal.timeout(aiPath ? 90_000 : 30_000),
     });
   } catch (error) {
     const timedOut = error instanceof DOMException && ["AbortError", "TimeoutError"].includes(error.name);
@@ -395,22 +397,38 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
       };
       if (typeof parsed.message === "string" && parsed.message) message = parsed.message;
       else if (typeof parsed.error === "string" && parsed.error) {
+        // message を返さない旧APIサーバー向けの読み替え。新サーバーは常に message を返す。
         message = parsed.error === "forbidden"
           ? "この計画を保存する権限がありません"
           : parsed.error === "ER_DUP_ENTRY"
             ? "同じURLの計画が既に存在します。別のURLで再試行してください"
             : parsed.error === "internal error"
               ? "サーバーで保存処理に失敗しました"
-              : parsed.error;
+              : parsed.error === "too many requests"
+                ? "アクセスが集中しています。少し待ってからもう一度お試しください。"
+                : parsed.error === "too many authentication attempts"
+                  ? "試行回数が上限に達しました。しばらく待ってからもう一度お試しください。"
+                  : parsed.error;
       }
       retryAfter = Math.max(0, Number(parsed.retry_after) || 0);
       retryable = parsed.retryable === true;
       const parsedAction = typeof parsed.action === "string" ? parsed.action : "";
-      if (["retry", "retry_later", "revise_input", "restart_consultation", "contact_support", "sign_in"].includes(parsedAction)) {
+      if (["retry", "retry_later", "revise_input", "restart_consultation", "reload", "contact_support", "sign_in"].includes(parsedAction)) {
         action = parsedAction as ApiRecoveryAction;
       }
       if (typeof parsed.request_id === "string") requestId = parsed.request_id.slice(0, 128);
     } catch { /* JSONでない上流情報は画面へ出さない */ }
+    if (!retryAfter) {
+      // 本文に無ければヘッダの Retry-After（新サーバーは429で返す）を使う。
+      const headerRetry = Number(res.headers.get("retry-after"));
+      if (Number.isFinite(headerRetry) && headerRetry > 0) retryAfter = Math.ceil(headerRetry);
+    }
+    if (res.status === 429 && !retryable) retryable = true;
+    // 問い合わせ番号は「管理者へ知らせる」案内のときだけ本文へ添える。
+    // AI相談はエラーパネルが別枠で表示するため、二重表示を避けてここでは足さない。
+    if (!aiPath && requestId && action === "contact_support") {
+      message += `（問い合わせ番号: ${requestId}）`;
+    }
     throw new ApiRequestError(message, res.status, code || "request_failed", retryAfter, retryable, action, requestId);
   }
   return (await res.json()) as T;
@@ -485,6 +503,28 @@ function recoverAfterMutations(tail: Promise<void>, sequence: number): void {
   });
 }
 
+/**
+ * 投げっぱなし書き込み（チェックリスト・費用の削除・参加期間など）の失敗を
+ * 全画面共通の帯（session-notice.ts）へ知らせる。flushMutations で拾い直す
+ * 保存経路（計画エディタの保存バー）は自前で表示するので、そちらが拾った
+ * 失敗は二重に出ない（flush が同じ error を throw して checkpoint 側で表示）。
+ */
+function notifySyncError(error: unknown): void {
+  // 期限切れは専用の帯（trip-session-expired）が出るので重ねない。
+  if (error instanceof ApiRequestError && error.code === "session_required") return;
+  const message = error instanceof ApiRequestError && error.message
+    ? error.message
+    : "変更を保存できませんでした。通信状態を確認して、画面を読み込み直してください。";
+  try {
+    window.dispatchEvent(new CustomEvent("trip-sync-error", {
+      detail: {
+        message,
+        action: error instanceof ApiRequestError ? error.action : "",
+      },
+    }));
+  } catch { /* ignore */ }
+}
+
 function send(method: string, path: string, body?: unknown): void {
   const sequence = ++mutationSequence;
   const tail = mutationQueue.then(async () => {
@@ -495,6 +535,7 @@ function send(method: string, path: string, body?: unknown): void {
     } catch (error) {
       mutationErrors.set(sequence, error);
       console.error("[db]", method, path, error);
+      notifySyncError(error);
       emit({ ok: false, path, error: String(error) });
     }
   });
@@ -707,10 +748,18 @@ export async function load(options: { fresh?: boolean; strict?: boolean } = {}):
       emit({ ok: true, path: "/api/bootstrap" });
     } catch (error) {
       // 編集画面では空データのまま新規作成すると既存計画と衝突するため失敗を返す。
-      // 一覧など読み取り画面は従来どおり空表示で立ち上げられる。
+      // 一覧など読み取り画面は従来どおり空表示で立ち上げるが、「データが無い」と
+      // 「読み込みに失敗した」を見分けられるよう、共通の帯で必ず知らせる。
       loaded = !options.strict;
       emit({ ok: false, path: "/api/bootstrap", error: String(error) });
       if (options.strict) throw error;
+      console.error("[db] bootstrap load failed", error);
+      notifySyncError(error instanceof ApiRequestError
+        ? error
+        : new ApiRequestError(
+          "データを読み込めませんでした。通信状態を確認して、画面を読み込み直してください。",
+          0, "load_failed", 0, true, "reload",
+        ));
     }
   })().finally(() => {
     loading = null;

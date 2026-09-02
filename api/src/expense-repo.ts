@@ -37,8 +37,25 @@ const PAY = new Set(["card", "cash", "transfer", "other"]);
 export function computeAmounts(input: ExpenseInput): { amount: number; rate: number; base: number } {
   const amount = Math.round(Number(input.amount_minor) || 0);
   if (!Number.isSafeInteger(amount) || amount <= 0) throw new BadRequest("支払額は1以上の整数で指定してください");
-  const rate = Number(input.fx_rate) > 0 ? Number(input.fx_rate) : 1;
-  return { amount, rate, base: Math.round(amount * rate) };
+  // レート未指定は1（同一通貨）。指定されたのに不正な値を黙って1へ倒すと
+  // 金額が変わってしまうので、Infinity・0以下・巨大値はここで400にする。
+  const provided = input.fx_rate !== undefined && input.fx_rate !== null && String(input.fx_rate) !== "";
+  const rawRate = Number(input.fx_rate);
+  if (provided && (!Number.isFinite(rawRate) || rawRate <= 0 || rawRate > 1_000_000)) {
+    throw new BadRequest("換算レートの値が正しくありません");
+  }
+  const rate = provided ? rawRate : 1;
+  const base = Math.round(amount * rate);
+  if (!Number.isSafeInteger(base) || base <= 0) throw new BadRequest("換算後の金額が扱える範囲を超えています");
+  return { amount, rate, base };
+}
+
+/** 支払日はDBのDATE型に入る前に検査する。空は「日付未設定」として通す。 */
+export function paidOnOrNull(value: unknown): string | null {
+  const text = String(value || "");
+  if (!text) return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) throw new BadRequest("支払日の形式が正しくありません");
+  return text;
 }
 
 export function normalizeShares(shares: unknown): { user_id: string; amount_base_minor: number }[] {
@@ -88,7 +105,7 @@ export async function createExpense(planId: string, input: ExpenseInput, actorUs
          currency, fx_rate, amount_base_minor, split_method, payment_method, note, receipt_url, created_by_id)
        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [
-        id, planId, input.paid_on || null, input.payer_user_id,
+        id, planId, paidOnOrNull(input.paid_on), input.payer_user_id,
         CATEGORIES.has(String(input.category)) ? input.category : "other",
         String(input.title || "").slice(0, 200), amount,
         String(input.currency || "JPY").toUpperCase().slice(0, 3), rate, base,
@@ -185,7 +202,7 @@ export async function updateExpense(id: string, input: ExpenseInput, actorUserId
          currency = ?, fx_rate = ?, amount_base_minor = ?, split_method = ?, payment_method = ?,
          note = ?, receipt_url = ? WHERE id = ?`,
       [
-        input.paid_on || null, input.payer_user_id,
+        paidOnOrNull(input.paid_on), input.payer_user_id,
         CATEGORIES.has(String(input.category)) ? input.category : "other",
         String(input.title || "").slice(0, 200), amount,
         String(input.currency || "JPY").toUpperCase().slice(0, 3), rate, base,

@@ -39,6 +39,7 @@ import * as userRepo from "./user-repo.js";
 import { PLAN_MANAGE_FIELDS, PLAN_PATCH_FIELDS } from "./plan-contract.js";
 import { generateItinerary, MAX_AI_CITIES, suggestItineraryOptions, type ItineraryInput } from "./ai-itinerary.js";
 import { AiInputError, AiOutputError, AiUnavailableError, AiUpstreamError } from "./ai-errors.js";
+import { BadRequest } from "./errors.js";
 import { reserveAiRequest, type AiScope } from "./ai-usage-repo.js";
 import { unlinkLine } from "./line-auth.js";
 
@@ -437,7 +438,10 @@ export async function route(method: string, path: string, body: Body, actorUserI
       await unlinkLine(actorUserId);
       return { status: 200, body: { ok: true } };
     } catch (error) {
-      return { status: 400, body: { error: error instanceof Error ? error.message : "解除できません" } };
+      // 業務上の理由（他のログイン手段が無い等）だけ400で説明する。
+      // DB障害などの生エラーは server.ts の分類に任せ、画面へ漏らさない。
+      if (!(error instanceof BadRequest)) throw error;
+      return { status: 400, body: { error: "bad_request", message: error.message } };
     }
   }
 

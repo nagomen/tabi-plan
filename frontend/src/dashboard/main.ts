@@ -362,20 +362,28 @@ function readProfile(): ProfileRecord | null {
 }
 
 function saveProfile(name: string): void {
-  localStorage.setItem(CONFIG.profile.storageKey, JSON.stringify({
-    name,
-    savedAt: new Date().toISOString(),
-  }));
+  try {
+    localStorage.setItem(CONFIG.profile.storageKey, JSON.stringify({
+      name,
+      savedAt: new Date().toISOString(),
+    }));
+  } catch {
+    // プライベートモード等。名前はこのセッション内でだけ有効になる。
+  }
 }
 
 function saveExpenseEntryCache(data: TripData): void {
   const participants = expenseParticipants(data || SAMPLE);
   if (!participants.length) return;
-  localStorage.setItem(CONFIG.expenseCache.storageKey, JSON.stringify({
-    participants,
-    tripTitle: (data && data.trip && data.trip.title) || CONFIG.tripTitle || "旅行",
-    savedAt: new Date().toISOString(),
-  }));
+  try {
+    localStorage.setItem(CONFIG.expenseCache.storageKey, JSON.stringify({
+      participants,
+      tripTitle: (data && data.trip && data.trip.title) || CONFIG.tripTitle || "旅行",
+      savedAt: new Date().toISOString(),
+    }));
+  } catch {
+    // 保存できなくても入力補助が効かなくなるだけなので続行する。
+  }
 }
 
 function currentProfileName(participants: string[]): string {
@@ -1994,8 +2002,9 @@ async function shareTripInvite(): Promise<void> {
       window.prompt("招待リンクをコピーしてください", link);
     }
     if (nameInput) nameInput.value = "";
-  } catch {
-    if (btn) flashButton(btn, "作成できませんでした");
+  } catch (error) {
+    // 権限なし・回数制限・期限切れを見分けられるよう、サーバーの説明をそのまま出す
+    if (btn) flashButton(btn, errorMessage(error) || "作成できませんでした");
   }
 }
 
@@ -2549,6 +2558,13 @@ async function init(): Promise<void> {
       editHead.hidden = true;
     }
   }
+  // 「この日の予定」ヘッダーのAIサポート。AI相談は計画エディタ内の機能なので、
+  // 編集できる人にだけ、エディタのAIブロックへ直行する導線を出す。
+  const aiSupport = root.querySelector<HTMLAnchorElement>("[data-ai-support]");
+  if (aiSupport && editTarget) {
+    aiSupport.href = "plan-editor.html" + planQuery + "&ai=1";
+    aiSupport.hidden = false;
+  }
   // 編集できない（＝人の計画を見ている）ときは、コピーして持ち帰れるようにする
   const copyHead = root.querySelector<HTMLButtonElement>("[data-copy-head]");
   if (copyHead) {
@@ -2570,4 +2586,8 @@ async function init(): Promise<void> {
   }
 }
 
-void init();
+// 初期化のどこかで落ちても「最新データを取得しています」のまま固まらせない。
+void init().catch((error) => {
+  console.error("[dashboard] init failed", error);
+  showError(error);
+});

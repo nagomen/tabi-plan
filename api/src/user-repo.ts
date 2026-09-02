@@ -110,9 +110,20 @@ export async function upsertFriendship(input: {
     return existing[0];
   }
   const id = newId("frd");
-  await pool.query(
-    "INSERT INTO friendships (id, user_low_id, user_high_id, requested_by_id, status) VALUES (?,?,?,?,?)",
-    [id, low, high, input.requested_by_id, input.status || "pending"],
-  );
+  try {
+    await pool.query(
+      "INSERT INTO friendships (id, user_low_id, user_high_id, requested_by_id, status) VALUES (?,?,?,?,?)",
+      [id, low, high, input.requested_by_id, input.status || "pending"],
+    );
+  } catch (error) {
+    // 双方から同時に申請すると SELECT→INSERT の間で衝突する。既存行を成立とみなす。
+    if ((error as { code?: string }).code === "ER_DUP_ENTRY") {
+      const raced = await all<{ id: string }>(
+        "SELECT id FROM friendships WHERE user_low_id = ? AND user_high_id = ? LIMIT 1", [low, high],
+      );
+      if (raced[0]) return raced[0];
+    }
+    throw error;
+  }
   return { id };
 }

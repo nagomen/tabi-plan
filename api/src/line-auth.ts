@@ -13,6 +13,7 @@
 import crypto from "node:crypto";
 import { config } from "./config.js";
 import { all, pool } from "./db.js";
+import { BadRequest } from "./errors.js";
 import { newId } from "./ids.js";
 import { hmac } from "./signing.js";
 
@@ -22,6 +23,16 @@ const VERIFY_URL = "https://api.line.me/oauth2/v2.1/verify";
 
 /** state の有効時間。認可画面での操作に十分で、使い回されない長さ。 */
 const STATE_TTL_MS = 10 * 60 * 1000;
+
+/**
+ * 利用者へそのまま表示してよいLINEログイン失敗。
+ * これ以外の例外（DB・fetchの生エラー）は画面へ出さず、ログにだけ残す。
+ */
+export class LineAuthError extends Error {
+  constructor(message: string, readonly causeDetail = "") {
+    super(message);
+  }
+}
 
 export function lineLoginEnabled(): boolean {
   return Boolean(config.line.channelId && config.line.channelSecret);
@@ -151,36 +162,51 @@ interface LineProfile {
   pictureUrl: string;
 }
 
+/** LINEのAPIを呼ぶ。接続断・タイムアウトは利用者向けメッセージへ変換する。 */
+async function lineFetch(url: string, body: URLSearchParams, label: string): Promise<Response> {
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body,
+      signal: AbortSignal.timeout(15_000),
+    });
+  } catch (error) {
+    throw new LineAuthError(
+      "LINEに接続できませんでした。時間をおいてもう一度お試しください",
+      `${label}: ${String(error).slice(0, 300)}`,
+    );
+  }
+  if (!response.ok) {
+    throw new LineAuthError(
+      response.status >= 500
+        ? "LINE側で一時的な障害が起きています。時間をおいてもう一度お試しください"
+        : "LINEログインの有効期限が切れました。最初からもう一度お試しください",
+      `${label}: ${response.status}`,
+    );
+  }
+  return response;
+}
+
 async function exchangeCode(code: string): Promise<LineProfile> {
-  const body = new URLSearchParams({
+  const tokenRes = await lineFetch(TOKEN_URL, new URLSearchParams({
     grant_type: "authorization_code",
     code,
     redirect_uri: config.line.callbackUrl,
     client_id: config.line.channelId,
     client_secret: config.line.channelSecret,
-  });
-  const tokenRes = await fetch(TOKEN_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body,
-    signal: AbortSignal.timeout(15_000),
-  });
-  if (!tokenRes.ok) {
-    throw new Error(`LINE のトークン取得に失敗しました (${tokenRes.status})`);
-  }
-  const token = await tokenRes.json() as { id_token?: string };
-  if (!token.id_token) throw new Error("LINE から id_token が返りませんでした");
+  }), "token");
+  const token = await tokenRes.json().catch(() => null) as { id_token?: string } | null;
+  if (!token?.id_token) throw new LineAuthError("LINE から id_token が返りませんでした");
 
   // 署名と宛先の検証は LINE の verify に任せる（自前で JWKS を持たない）。
-  const verifyRes = await fetch(VERIFY_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({ id_token: token.id_token, client_id: config.line.channelId }),
-    signal: AbortSignal.timeout(15_000),
-  });
-  if (!verifyRes.ok) throw new Error(`LINE の本人確認に失敗しました (${verifyRes.status})`);
-  const claims = await verifyRes.json() as { sub?: string; name?: string; picture?: string };
-  if (!claims.sub) throw new Error("LINE のユーザー識別子が取れませんでした");
+  const verifyRes = await lineFetch(VERIFY_URL, new URLSearchParams({
+    id_token: token.id_token, client_id: config.line.channelId,
+  }), "verify");
+  const claims = await verifyRes.json().catch(() => null) as
+    { sub?: string; name?: string; picture?: string } | null;
+  if (!claims?.sub) throw new LineAuthError("LINE のユーザー識別子が取れませんでした");
   return {
     subject: claims.sub,
     displayName: String(claims.name || "").trim().slice(0, 64),
@@ -239,8 +265,8 @@ export async function handleLineCallback(input: {
   state: string;
 }): Promise<{ userId: string; returnTo: string; linked: boolean; nonce: string }> {
   const state = readState(input.state);
-  if (!state) throw new Error("ログインの手続きが期限切れです。もう一度お試しください");
-  if (!input.code) throw new Error("LINE から認可コードが返りませんでした");
+  if (!state) throw new LineAuthError("ログインの手続きが期限切れです。もう一度お試しください");
+  if (!input.code) throw new LineAuthError("LINE から認可コードが返りませんでした");
   const profile = await exchangeCode(input.code);
   const userId = await resolveLineUser(profile, state.linkTo);
   return {
@@ -259,7 +285,7 @@ export async function unlinkLine(userId: string): Promise<void> {
     [userId],
   );
   if (!credentials[0]) {
-    throw new Error("メールアドレスとパスワードを登録してから解除してください");
+    throw new BadRequest("メールアドレスとパスワードを登録してから解除してください");
   }
   await pool.query("DELETE FROM user_identities WHERE user_id = ? AND provider = 'line'", [userId]);
 }

@@ -91,19 +91,30 @@ export async function updatePlan(
   }
   if (!sets.length) {
     const rows = await all<{ version: number }>("SELECT version FROM plans WHERE id = ? LIMIT 1", [id]);
-    return Number(rows[0]?.version || 0);
+    const currentVersion = Number(rows[0]?.version || 0);
+    // 変更対象が無くても、期待版がずれていれば衝突として伝える（黙って成功にしない）。
+    if (expectedVersion !== undefined && currentVersion !== expectedVersion) {
+      throw new VersionConflict("計画が別の端末で更新されています", currentVersion);
+    }
+    return currentVersion;
   }
   sets.push("version = version + 1");
   vals.push(id);
-  let sql = `UPDATE plans SET ${sets.join(", ")} WHERE id = ?`;
+  let sql = `UPDATE plans SET ${sets.join(", ")} WHERE id = ? AND deleted_at IS NULL`;
   if (expectedVersion !== undefined) {
     sql += " AND version = ?";
     vals.push(expectedVersion);
   }
   const [result] = await pool.query<mysql.ResultSetHeader>(sql, vals);
   if (result.affectedRows !== 1) {
-    if (expectedVersion !== undefined) throw new VersionConflict("計画が別の端末で更新されています");
-    throw new BadRequest("計画が見つかりません");
+    // 「消えた計画」と「別端末の更新」を区別する。前者を409にすると、
+    // 画面が読み込み直しを繰り返しても直らない案内を出してしまう。
+    const rows = await all<{ version: number }>(
+      "SELECT version FROM plans WHERE id = ? AND deleted_at IS NULL LIMIT 1", [id],
+    );
+    const currentVersion = Number(rows[0]?.version || 0);
+    if (!rows.length) throw new BadRequest("計画が見つかりません");
+    throw new VersionConflict("計画が別の端末で更新されています", currentVersion);
   }
   return expectedVersion !== undefined ? expectedVersion + 1 : 0;
 }
@@ -129,7 +140,7 @@ export async function replacePlanContent(planId: string, body: {
     const currentVersion = Number(planRow?.version || 0);
     if (!currentVersion) throw new BadRequest("計画が見つかりません");
     if (expectedVersion !== undefined && currentVersion !== expectedVersion) {
-      throw new VersionConflict("計画が別の端末で更新されています");
+      throw new VersionConflict("計画が別の端末で更新されています", currentVersion);
     }
 
     if (body.cities) {
@@ -142,14 +153,24 @@ export async function replacePlanContent(planId: string, body: {
 
     if (body.itinerary) {
       await conn.query("DELETE FROM itinerary_items WHERE plan_id = ?", [planId]);
+      // 日付・時刻・座標・分数は、DBの厳格モードで500になる前に安全な値へ丸める。
+      const dateOrNull = (v: unknown): string | null =>
+        /^\d{4}-\d{2}-\d{2}$/.test(String(v || "")) ? String(v) : null;
+      const timeOrNull = (v: unknown): string | null =>
+        /^\d{1,2}:\d{2}(:\d{2})?$/.test(String(v || "")) ? String(v) : null;
+      const numOrNull = (v: unknown, min: number, max: number): number | null => {
+        if (v === null || v === undefined || v === "") return null;
+        const n = Number(v);
+        return Number.isFinite(n) && n >= min && n <= max ? n : null;
+      };
       const rows = body.itinerary.map((it, i) => [
-        newId("itm"), planId, it.item_date || null, it.day_index ?? null, i,
-        it.kind || "sight", it.start_time || null, String(it.title || "").slice(0, 200),
+        newId("itm"), planId, dateOrNull(it.item_date), numOrNull(it.day_index, 0, 1000), i,
+        it.kind || "sight", timeOrNull(it.start_time), String(it.title || "").slice(0, 200),
         it.place || null, it.area || null, it.note || null, it.map_query || null,
-        it.lat ?? null, it.lng ?? null,
-        it.from_place || null, it.from_lat ?? null, it.from_lng ?? null,
-        it.to_place || null, it.to_lat ?? null, it.to_lng ?? null,
-        it.transport || null, it.duration_minutes ?? null,
+        numOrNull(it.lat, -90, 90), numOrNull(it.lng, -180, 180),
+        it.from_place || null, numOrNull(it.from_lat, -90, 90), numOrNull(it.from_lng, -180, 180),
+        it.to_place || null, numOrNull(it.to_lat, -90, 90), numOrNull(it.to_lng, -180, 180),
+        it.transport || null, numOrNull(it.duration_minutes, 0, 100_000),
       ]);
       if (rows.length) {
         await conn.query(

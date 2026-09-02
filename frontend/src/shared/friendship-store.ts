@@ -106,8 +106,15 @@ function persistFriendship(input: {
   status: FriendRequestStatus;
 }): void {
   if (!db.isEnabled()) return;
-  void db.saveFriendship(input).catch(() => {
-    /* 画面側はローカル状態で即時反映し、次の同期でDB状態に寄せる */
+  void db.saveFriendship(input).catch((error) => {
+    // 画面はローカル状態で即時反映済みなので、届かなかったことを帯で知らせる。
+    // 黙って捨てると「申請中」のままサーバーには存在しない状態になる。
+    console.error("[friendship] save failed", error);
+    try {
+      window.dispatchEvent(new CustomEvent("trip-sync-error", {
+        detail: { message: "友達申請を送信できませんでした。通信状態を確認して、もう一度お試しください。" },
+      }));
+    } catch { /* ignore */ }
   });
 }
 

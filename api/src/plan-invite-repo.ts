@@ -148,9 +148,13 @@ async function claimPlaceholder(
   );
   if (existingMember) throw new BadRequest("このアカウントは既に別のメンバーとして旅行に参加しています");
 
+  // 以前に脱退・除外された（status が active でない）行が残っていることがある。
+  // その場合は主キー衝突にせず、参加者として復帰させる。
   await conn.query(
     `INSERT INTO plan_members (plan_id, user_id, role, status, invited_by_id, from_date, to_date)
-     VALUES (?, ?, ?, 'active', ?, ?, ?)`,
+     VALUES (?, ?, ?, 'active', ?, ?, ?)
+     ON DUPLICATE KEY UPDATE role = VALUES(role), status = 'active',
+       invited_by_id = VALUES(invited_by_id), from_date = VALUES(from_date), to_date = VALUES(to_date)`,
     [invite.plan_id, userId, placeholder.role, invite.created_by_id, placeholder.from_date, placeholder.to_date],
   );
   await conn.query(

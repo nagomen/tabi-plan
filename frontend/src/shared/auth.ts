@@ -35,13 +35,17 @@ export function hasAuthSession(auth: AuthConfig): boolean {
 
 export function saveAuthSession(auth: AuthConfig): void {
   const days = Number(auth.rememberDays || 1);
-  localStorage.setItem(
-    auth.storageKey,
-    JSON.stringify({
-      ok: true,
-      expiresAt: Date.now() + days * 24 * 60 * 60 * 1000,
-    }),
-  );
+  try {
+    localStorage.setItem(
+      auth.storageKey,
+      JSON.stringify({
+        ok: true,
+        expiresAt: Date.now() + days * 24 * 60 * 60 * 1000,
+      }),
+    );
+  } catch {
+    // プライベートモード等では記憶できないだけで、このセッションの認証は通す。
+  }
 }
 
 export interface PasswordGateOptions {

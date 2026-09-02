@@ -704,8 +704,32 @@ function contentFingerprint(data: LocalPlanData): string {
  * 1回分の保存処理。旅行名・メモなどメタ情報だけの変更では本文を全置換しない。
  * 行程等が変わった時だけ content API を使う。
  */
+// 別の端末が先に保存していた（409）ときは、こちらの自動保存で相手の変更を
+// 上書きしないよう、読み込み直すまで保存を止める。
+let versionConflictHalt = false;
+
+function haltOnVersionConflict(error: db.ApiRequestError): void {
+  versionConflictHalt = true;
+  dirty = true;
+  statusEl.textContent = "保存を一時停止しました";
+  statusEl.className = "is-dirty";
+  savebarNoteEl.textContent = "計画が別の端末で更新されています。相手の変更を上書きしないよう保存を止めました。";
+  const link = document.createElement("a");
+  link.href = location.href;
+  link.textContent = "読み込み直す";
+  savebarNoteEl.append(" ", link);
+  console.warn("[plan-editor] version conflict", error.message);
+}
+
 async function performPersist(explicit = false, slugRetry = 0): Promise<boolean> {
   if (editorLocked) return false;
+  if (versionConflictHalt) {
+    if (explicit) {
+      statusEl.textContent = "別の端末の更新があるため保存できません。読み込み直してください";
+      statusEl.className = "is-dirty";
+    }
+    return false;
+  }
   if (!worthSaving()) {
     if (explicit) {
       statusEl.textContent = "旅行名または旅行内容を入力してください";
@@ -765,6 +789,11 @@ async function performPersist(explicit = false, slugRetry = 0): Promise<boolean>
       model.slug = slug;
       try { history.replaceState(null, "", "plan-editor.html?plan=" + encodeURIComponent(slug)); } catch { /* ignore */ }
       return performPersist(explicit, slugRetry + 1);
+    }
+    if (error instanceof db.ApiRequestError &&
+        (error.code === "plan_version_conflict" || (error.status === 409 && /別の端末で更新/.test(error.message)))) {
+      haltOnVersionConflict(error);
+      return false;
     }
     dirty = true;
     statusEl.textContent = "保存できませんでした";
@@ -2728,6 +2757,7 @@ function persistMemberDates(): void {
   const meta = slug ? TripPlans.get(slug) : null;
   if (!meta?.id || !canManagePlan(meta)) return;
   const ownerId = db.planBySlug(meta.slug)?.owner_user_id || currentAccount()?.id || "";
+  const checkpoint = db.mutationCheckpoint();
   db.replaceMembers(meta.id, model.memberIds.filter(Boolean).map((id) => {
     const current = db.members().find((member) => member.plan_id === meta.id && member.user_id === id);
     const dates = model.memberDates[id] || { from: null, to: null };
@@ -2738,6 +2768,10 @@ function persistMemberDates(): void {
       to_date: dates.to,
     };
   }));
+  // 投げっぱなしにせず、失敗したら画面へ返す（成功表示のまま消えるのを防ぐ）
+  void db.flushMutations(checkpoint).catch((error) => {
+    toast(errorMessage(error) || "参加期間を保存できませんでした");
+  });
 }
 
 function memberCandidates(): { id: string; name: string }[] {
@@ -3073,23 +3107,30 @@ async function shareInvite(name: string, userId = ""): Promise<void> {
   if (meta && !canManagePlan(meta)) { toast("招待できるのは計画の所有者だけです"); return; }
   const planId = TripPlans.planIdOf(slug);
   if (!planId) { toast("保存してから招待してください"); return; }
-  const invite = await db.createInvite(planId, {
-    invited_name: name, invited_user_id: userId || undefined, role: "editor",
-  });
-  const link = await buildInviteLink({
-    v: 1,
-    meta: {
-      slug,
-      title: model.title,
-      dates: datesString(),
-      members: model.members,
-      route: (data.cities || []).map((c) => c.name).filter(Boolean).join("→"),
-      updatedAt: TripPlans.get(slug)?.updatedAt,
-    },
-    token: invite.token,
-    invitedName: name,
-    role: "editor",
-  });
+  let link = "";
+  try {
+    const invite = await db.createInvite(planId, {
+      invited_name: name, invited_user_id: userId || undefined, role: "editor",
+    });
+    link = await buildInviteLink({
+      v: 1,
+      meta: {
+        slug,
+        title: model.title,
+        dates: datesString(),
+        members: model.members,
+        route: (data.cities || []).map((c) => c.name).filter(Boolean).join("→"),
+        updatedAt: TripPlans.get(slug)?.updatedAt,
+      },
+      token: invite.token,
+      invitedName: name,
+      role: "editor",
+    });
+  } catch (error) {
+    // 権限なし・回数制限・期限切れが黙って失敗にならないよう、理由ごと知らせる
+    toast(errorMessage(error) || "招待リンクを作成できませんでした");
+    return;
+  }
   const shareData = {
     title: model.title || "旅行計画",
     text: `「${model.title || "旅行"}」に${name ? `${name}さんを` : ""}招待します`,
@@ -3774,7 +3815,10 @@ function bootstrapEditor(): void {
   renderDays();
   renderCandidates();
   // 地図の初期表示：スマホは入力を優先し、地図は必要な時だけ開く。
-  const savedMapPref = localStorage.getItem("pe-map-collapsed");
+  let savedMapPref: string | null = null;
+  try {
+    savedMapPref = localStorage.getItem("pe-map-collapsed");
+  } catch { /* localStorage が使えない環境では既定の表示にする */ }
   if (window.matchMedia("(max-width: 680px)").matches) {
     setMapCollapsed(true);
   } else if (savedMapPref === "1" || (savedMapPref == null && window.matchMedia("(max-width: 760px)").matches)) {
@@ -3786,6 +3830,16 @@ function bootstrapEditor(): void {
   const meta = slug ? TripPlans.get(slug) : null;
   publishBtn.hidden = Boolean(meta && !canManagePlan(meta));
   if (!editable || editorLocked) applyEditorLock();
+  // ダッシュボードの「AIサポート」から来たとき（?ai=1）は、AI相談ブロックへ案内する。
+  if (params.get("ai") === "1" && editable && !editorLocked) {
+    const aiBlock = root.querySelector<HTMLElement>("[data-ai-block]");
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    window.setTimeout(() => {
+      if (!aiBlock || !aiBlock.offsetParent) return; // スマホのステップ表示などで隠れていたら何もしない
+      aiBlock.scrollIntoView({ block: "center", behavior: reduce ? "auto" : "smooth" });
+      aiArea.focus({ preventScroll: true });
+    }, 0);
+  }
 }
 
 // 編集画面は控え（キャッシュ）を使わずサーバーの最新を待つ。

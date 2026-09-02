@@ -21,6 +21,14 @@ export function planFieldError(input: Record<string, unknown>): string {
   if (Object.prototype.hasOwnProperty.call(input, "title") && String(input.title || "").trim().length > 120) {
     return "旅行名は120文字以内にしてください";
   }
+  // 日付はDBのDATE型に入る前に検査する。厳格モードでは不正値が500になるため。
+  for (const field of ["start_date", "end_date"] as const) {
+    if (!Object.prototype.hasOwnProperty.call(input, field)) continue;
+    const value = String(input[field] ?? "");
+    if (value && !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      return "旅行期間の日付形式が正しくありません";
+    }
+  }
   if (Object.prototype.hasOwnProperty.call(input, "note") && String(input.note || "").length > 5000) {
     return "共有メモは5000文字以内にしてください";
   }

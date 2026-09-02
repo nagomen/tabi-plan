@@ -25,6 +25,7 @@ const REVISE_CODES = new Set([
   "ai_input_too_large",
   "ai_output_too_long",
   "ai_refused",
+  "payload_too_large",
 ]);
 const SUPPORT_CODES = new Set([
   "ai_access_denied",
@@ -51,8 +52,10 @@ const RETRY_CODES = new Set([
   "client_network_failed",
   "client_offline",
   "client_timeout",
+  "db_unavailable",
   "invalid_ai_output",
   "request_failed",
+  "server_busy",
   "too many requests",
 ]);
 

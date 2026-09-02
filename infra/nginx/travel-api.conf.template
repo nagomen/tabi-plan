@@ -78,7 +78,11 @@ server {
         proxy_set_header CF-Connecting-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_read_timeout 30s;
+        # AI行程生成は API 側の OpenAI 期限（OPENAI_TIMEOUT_MS, 既定60s）まで応答に
+        # かかる。ここが短いと nginx が先に切断し、CORS ヘッダの無い 504 が返って
+        # ブラウザでは「接続できません」に見える。API の期限より長く、前段
+        # Cloudflare の proxy 上限（約100s）より短くする。
+        proxy_read_timeout 90s;
     }
 
     location = / {

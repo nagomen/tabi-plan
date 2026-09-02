@@ -5,6 +5,13 @@
 
 import mysql from "mysql2/promise";
 
+for (const name of ["DB_USER", "DB_PASSWORD"]) {
+  if (!process.env[name]) {
+    console.error(`環境変数 ${name} が設定されていません`);
+    process.exit(1);
+  }
+}
+
 const database = process.env.DB_NAME || "TravelPlan";
 const conn = await mysql.createConnection({
   host: process.env.DB_HOST || "127.0.0.1",
@@ -13,6 +20,7 @@ const conn = await mysql.createConnection({
   password: process.env.DB_PASSWORD,
   database,
   charset: "utf8mb4",
+  connectTimeout: 10_000,
 });
 
 async function exists(sql, params) {
@@ -208,8 +216,16 @@ async function main() {
   await applyMigration("009_member_participation_dates", migrate009);
 }
 
+// 同時デプロイが同じDDLを並走させないよう、DB側の advisory lock で直列化する。
+const LOCK_NAME = "travel_plan_migrate";
 try {
+  const [rows] = await conn.query("SELECT GET_LOCK(?, 60) AS ok", [LOCK_NAME]);
+  if (Number(rows[0]?.ok) !== 1) {
+    throw new Error("別のマイグレーションが実行中です。完了を待ってから再実行してください");
+  }
   await main();
 } finally {
-  await conn.end();
+  // 後始末の失敗で本来のエラーを隠さない。
+  await conn.query("SELECT RELEASE_LOCK(?)", [LOCK_NAME]).catch(() => {});
+  await conn.end().catch(() => {});
 }
