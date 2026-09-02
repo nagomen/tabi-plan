@@ -66,8 +66,12 @@ export function coverImageForLocation(location: string): string {
   if (/ベトナム|ハノイ|ホーチミン|ダナン|ハロン湾|ホイアン|vietnam|hanoi|ho.*chi.*minh|da.*nang|halong.*bay/.test(loc)) {
     return "./images/cover_vietnam.webp";
   }
+  // 香港
+  if (/香港|hong.*kong/.test(loc)) {
+    return "./images/cover_hongkong.webp";
+  }
   // 中国
-  if (/中国|北京|beijing|上海|shanghai|香港|hong.*kong|マカオ|広州|深セン|西安|成都|ハルビン|哈爾浜|哈尔滨|harbin|延吉|yanji|長春|changchun|瀋陽|沈阳|shenyang|大連|大连|dalian/.test(loc)) {
+  if (/中国|北京|beijing|上海|shanghai|マカオ|広州|深セン|西安|成都|ハルビン|哈爾浜|哈尔滨|harbin|延吉|yanji|長春|changchun|瀋陽|沈阳|shenyang|大連|大连|dalian/.test(loc)) {
     return "./images/cover_china.webp";
   }
   // 韓国
