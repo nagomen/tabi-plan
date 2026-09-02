@@ -1,8 +1,8 @@
 window.TRIP_CONFIG = {
-  tripSlug: "2703-sample-trip",
-  tripTitle: "2027年3月サンプル旅行",
+  tripSlug: "tabi-plan",
+  tripTitle: "Tabi Plan",
   mode: "local",
-  defaultParticipants: ["参加者A", "参加者B"],
+  defaultParticipants: [],
   currencies: ["JPY", "USD", "EUR", "KRW", "TWD", "CNY", "THB", "SGD", "AUD", "GBP"],
   // true にすると、この計画だけログイン・新規登録なしで誰でも参加者として扱う。
   // 名前を入れるだけで費用の追加・精算が使える（?view=1 で開いても編集できる）。
@@ -22,12 +22,10 @@ window.TRIP_CONFIG = {
   },
   sharedBackend: {
     // true にすると計画・費用・アカウント・権限などを共有ストア API（MySQL）へ
-    // 同期する。静的サイトのままで、別端末/別ブラウザから同じデータを扱える。
-    // apiToken は静的サイトに埋まる＝公開値。無差別アクセス避け程度の意味しかない。
+    // 同期する。非公開データと書き込みはログインセッションで認可する。
     enabled: false,
     mode: "api",
     // 空なら同一オリジンの /api を使う。別ドメイン API の場合だけ URL を入れる。
-    apiBaseUrl: "",
-    apiToken: ""
+    apiBaseUrl: ""
   }
 };

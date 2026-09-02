@@ -16,7 +16,9 @@ export function registerServiceWorker(swUrl = "sw.js"): void {
   }
 
   if (!/^https?:$/.test(location.protocol)) return;
-  navigator.serviceWorker.register(swUrl).catch(() => {
-    /* ignore */
-  });
+  navigator.serviceWorker.register(swUrl, { updateViaCache: "none" })
+    .then((registration) => registration.update())
+    .catch(() => {
+      /* オフライン時は既存Service Workerをそのまま使う */
+    });
 }

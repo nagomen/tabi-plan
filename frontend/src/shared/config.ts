@@ -38,11 +38,6 @@ export interface SharedBackendConfig {
    * 空なら同一オリジンの /api を使う。末尾スラッシュ不要。
    */
   apiBaseUrl?: string;
-  /**
-   * mode="api" のときのトークン。静的サイトに埋まる＝公開値なので、
-   * 権限管理ではなく無差別アクセス避けとして扱うこと。
-   */
-  apiToken?: string;
 }
 
 export interface TripConfig {

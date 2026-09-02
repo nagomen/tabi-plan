@@ -134,7 +134,7 @@ if (!existsSync(envFile)) {
 const fileEnv = parseEnvFile(envFile);
 // 明示的に渡した環境変数で .env の値を一時上書きできるようにする。
 const apiEnv = { ...fileEnv, ...process.env };
-for (const name of ["DB_USER", "DB_PASSWORD", "DB_NAME", "API_TOKEN"]) {
+for (const name of ["DB_USER", "DB_PASSWORD", "DB_NAME"]) {
   if (!apiEnv[name]) {
     console.error(`[dev:full] ${name} が ${envFile} に設定されていません。`);
     process.exit(1);

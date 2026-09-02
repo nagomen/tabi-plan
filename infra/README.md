@@ -1,77 +1,48 @@
-# Static Deploy
+# Production operations
 
-This app ships the frontend as Vite static files. GitHub remains the source of truth for source code, CI, and deploy orchestration.
+Tabi Plan has one production path per responsibility:
 
-- GitHub Pages is a preview target.
-- Production should be nginx on a VPS/EC2, with the API either on the same origin under `/api/` or on a dedicated API domain.
-- `frontend/public/trip-config.js` is included in the static build. Do not put secrets in it.
+- Frontend: GitHub Pages, deployed by `.github/workflows/deploy-pages.yml`.
+- API: nginx and `travel-api.service` on the VPS, deployed by `.github/workflows/deploy-api.yml`.
+- Data: the `TravelPlan` MySQL database on the VPS.
+- Backups: `travel-mysql-backup.timer`, stored locally for 7 days and in Cloudflare R2 for 30 days.
 
-## Server Setup
+The frontend is not served from the VPS. Do not create a second nginx frontend root or copy `frontend/dist` to the VPS.
 
-On a fresh Ubuntu 24.04 server:
+## API deployment
 
-```bash
-sudo APP_USER=ubuntu bash infra/setup-static-vps.sh
-```
+Run the `Deploy API` GitHub Actions workflow with the Git ref to deploy. It validates the API, synchronizes the source, applies backward-compatible migrations, restarts the API, checks its health, and installs the backup timer.
 
-Clone this repository to `/home/ubuntu/travel-dashboard` or set `APP_DIR` to your chosen path.
-
-## First nginx Install
-
-Point DNS for your domain to the server, then install nginx config:
-
-```bash
-sudo -u ubuntu APP_DIR=/home/ubuntu/travel-dashboard DOMAIN=travel.example.com \
-  bash /home/ubuntu/travel-dashboard/infra/deploy-static.sh --install-nginx --skip-git
-```
-
-Issue TLS:
-
-```bash
-sudo certbot --nginx -d travel.example.com -d www.travel.example.com --redirect
-```
-
-## Deploy
-
-```bash
-sudo -u ubuntu APP_DIR=/home/ubuntu/travel-dashboard DOMAIN=travel.example.com \
-  bash /home/ubuntu/travel-dashboard/infra/deploy-static.sh
-```
-
-The script:
-
-- pulls `main` by default
-- runs `npm ci`
-- runs `npm run build`
-- publishes `frontend/dist` under `/var/www/travel-dashboard/releases/<timestamp>`
-- atomically points `/var/www/travel-dashboard/current` to that release
-- reloads nginx
-
-For GitHub Actions production deploy, use `.github/workflows/deploy-production.yml`.
-It builds in Actions, uploads `frontend/dist` to the VPS, then runs:
-
-```bash
-bash infra/deploy-static.sh --skip-build
-```
-
-Required repository/environment settings:
+Required repository settings:
 
 | Name | Kind | Purpose |
 | --- | --- | --- |
 | `PRODUCTION_SSH_HOST` | Secret | VPS hostname or IP |
-| `PRODUCTION_SSH_USER` | Secret | SSH user |
-| `PRODUCTION_SSH_KEY` | Secret | Private deploy key |
-| `PRODUCTION_SSH_PORT` | Secret | Optional SSH port, defaults to `22` |
-| `PRODUCTION_DOMAIN` | Variable | Public frontend domain |
-| `PRODUCTION_APP_DIR` | Variable | Repo path on the VPS, for example `/home/ubuntu/travel-dashboard` |
-| `PRODUCTION_TRIP_CONFIG_JSON` | Variable | Optional production config. Falls back to `TRIP_CONFIG_JSON` |
+| `PRODUCTION_SSH_USER` | Secret | VPS deploy user |
+| `PRODUCTION_SSH_KEY` | Secret | CI deploy key |
+| `PRODUCTION_SSH_PORT` | Secret | Optional SSH port; defaults to `22` |
+| `PRODUCTION_SSH_KNOWN_HOSTS` | Secret | Pinned output of `ssh-keyscan` |
+| `PRODUCTION_SSH_FINGERPRINT` | Secret | Pinned host-key SHA256 fingerprint |
+| `PRODUCTION_APP_DIR` | Variable | API source directory on the VPS |
+| `PRODUCTION_API_DOMAIN` | Variable | Public API hostname |
+| `PRODUCTION_API_ENV_FILE` | Variable | Server-only environment file |
 
-If `sharedBackend.apiBaseUrl` is empty, the frontend calls the same origin (`/api/...`).
-Enable the `/api/` proxy block in `infra/nginx/travel-dashboard.conf.template` when using that setup.
+## Database backups
 
-For the API process, set a strong `SESSION_SECRET` in addition to `API_TOKEN`.
-`API_TOKEN` is still exposed to the static frontend as a basic API gate; per-user permissions rely on the server-signed `X-Travel-Session` token issued by `/api/auth/login` and `/api/auth/signup`.
+`infra/backup-mysql.sh` creates a transactionally consistent compressed dump, validates gzip integrity, writes a SHA-256 checksum, uploads both files to R2, and prunes expired generations.
 
-## App Config
+The API environment file supplies `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, and `DB_PASSWORD`. Optional monitoring endpoints are:
 
-`frontend/public/trip-config.js` is included in the static build. Do not put passwords, reservation numbers, private addresses, emergency contacts, or other secrets in it.
+- `BACKUP_HEALTHCHECK_URL_START`
+- `BACKUP_HEALTHCHECK_URL_OK`
+- `BACKUP_HEALTHCHECK_URL_FAIL`
+
+Check the timer and the latest run with:
+
+```bash
+systemctl list-timers travel-mysql-backup.timer
+systemctl status travel-mysql-backup.service
+journalctl -u travel-mysql-backup.service -n 50 --no-pager
+```
+
+A backup is not considered proven until an R2 copy has been downloaded, its checksum has passed, and it has been restored into a temporary database.

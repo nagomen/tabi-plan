@@ -1,8 +1,6 @@
 name: Deploy API
 
-# API だけを VPS へ配る。フロントは GitHub Pages 配信なので触らない
-# （deploy-production.yml は nginx への静的配信も含むが、そちらの
-#  設定はサーバーに無いため、API の入れ替えにはこちらを使う）。
+# API だけを VPS へ配る。フロントは GitHub Pages の Deploy Frontend が担当する。
 #
 # 接続には CI 専用の鍵を使う。個人の鍵は登録しない。
 # 鍵を無効にしたいときは、サーバーの ~/.ssh/authorized_keys から
@@ -72,6 +70,19 @@ jobs:
         uses: actions/checkout@v7
         with:
           ref: ${{ inputs.ref }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Validate API
+        run: |
+          npm ci
+          npm run typecheck -w api
+          npm test -w api
 
       - name: Send source to VPS
         env:

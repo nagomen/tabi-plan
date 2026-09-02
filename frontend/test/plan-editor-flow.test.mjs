@@ -74,3 +74,9 @@ test("LINEログインでも招待tokenを外部へ送らずブラウザ内で�
   assert.match(database, /url\.origin !== location\.origin/);
   assert.doesNotMatch(database, /return_to:\s*returnTo[\s\S]{0,100}join/);
 });
+
+test("MySQL運用では静的設定から旅行を自動作成しない", () => {
+  const plans = fs.readFileSync(new URL("src/shared/plans-store.ts", root), "utf8");
+  assert.match(plans, /if \(db\.isEnabled\(\)\) return;/);
+  assert.match(plans, /!db\.isEnabled\(\) \? seedMeta\(config\) : null/);
+});

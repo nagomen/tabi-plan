@@ -7,6 +7,7 @@ const read = (path) => fs.readFileSync(new URL(path, root), "utf8");
 
 test("全APIリクエストに打ち切り時間があり、429は日本語と待ち時間で伝わる", () => {
   const db = read("src/shared/db.ts");
+  assert.doesNotMatch(db, /Authorization:\s*`Bearer/);
   assert.match(db, /AbortSignal\.timeout\(aiPath \? 90_000 : 30_000\)/);
   assert.match(db, /too many requests[\s\S]*アクセスが集中しています/);
   assert.match(db, /too many authentication attempts[\s\S]*試行回数が上限に達しました/);
@@ -50,6 +51,23 @@ test("ページ初期化の失敗が白画面・空表示のままにならな�
 
 test("Service Workerは1件の取得失敗でオフライン対応を失わない", () => {
   const sw = read("public/sw.js");
-  assert.match(sw, /Promise\.allSettled\(APP_SHELL\.map/);
+  assert.match(sw, /Promise\.allSettled\(\s*APP_SHELL\.map/);
   assert.match(sw, /statusText: "offline"/);
+});
+
+test("固定名の設定と画像は再検証し、内容ハッシュ付きassetだけをcache-firstにする", () => {
+  const sw = read("public/sw.js");
+  assert.match(sw, /cache: "no-cache"/);
+  assert.match(sw, /hashedAsset \? cacheFirst\(request\) : networkFirst\(request, false\)/);
+  assert.match(sw, /travel-dashboard-v18/);
+  const pwa = read("src/shared/pwa.ts");
+  assert.match(pwa, /updateViaCache: "none"/);
+  assert.match(pwa, /registration\.update\(\)/);
+});
+
+test("Pages向けHTMLにCSPとreferrer policyを注入する", () => {
+  const vite = read("vite.config.ts");
+  assert.match(vite, /Content-Security-Policy/);
+  assert.match(vite, /script-src 'self'/);
+  assert.match(vite, /strict-origin-when-cross-origin/);
 });

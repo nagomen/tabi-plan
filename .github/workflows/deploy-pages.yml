@@ -1,4 +1,4 @@
-name: Deploy Preview Pages
+name: Deploy Frontend
 
 on:
   push:
@@ -16,12 +16,12 @@ permissions:
   id-token: write
 
 concurrency:
-  group: pages
-  cancel-in-progress: false
+  group: frontend-production
+  cancel-in-progress: true
 
 jobs:
   build:
-    name: Build preview frontend
+    name: Validate and build frontend
     runs-on: ubuntu-latest
 
     steps:
@@ -40,11 +40,17 @@ jobs:
           TRIP_CONFIG_JSON: ${{ vars.TRIP_CONFIG_JSON }}
         run: node tools/build-trip-config.js
 
+      - name: Write deployment identity
+        env:
+          DEPLOY_COMMIT: ${{ github.sha }}
+        run: |
+          node -e 'require("fs").writeFileSync("frontend/public/deployment.json", JSON.stringify({ commit: process.env.DEPLOY_COMMIT, built_at: new Date().toISOString() }) + "\n")'
+
       - name: Install dependencies
         run: npm ci
 
-      - name: Type-check and build
-        run: npm run build
+      - name: Validate and build
+        run: npm run ci
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v6
@@ -55,9 +61,12 @@ jobs:
           path: frontend/dist
 
   deploy:
-    name: Deploy preview
+    name: Deploy production frontend
     needs: build
     runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     permissions:
       pages: write
       id-token: write
@@ -66,3 +75,25 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v5
+
+      - name: Verify deployed commit and critical assets
+        env:
+          FRONTEND_URL: ${{ steps.deployment.outputs.page_url }}
+          EXPECTED_COMMIT: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          base="${FRONTEND_URL%/}"
+          for attempt in $(seq 1 12); do
+            payload="$(curl -fsS -H 'Cache-Control: no-cache' "$base/deployment.json?attempt=$attempt" || true)"
+            if printf '%s' "$payload" | grep -q "$EXPECTED_COMMIT"; then
+              break
+            fi
+            if [ "$attempt" = 12 ]; then
+              echo "deployed commit could not be verified" >&2
+              exit 1
+            fi
+            sleep 5
+          done
+          for path in plans.html trip-config.js sw.js images/cover_hongkong.webp; do
+            curl -fsS -o /dev/null -H 'Cache-Control: no-cache' "$base/$path"
+          done

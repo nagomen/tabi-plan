@@ -1,7 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-process.env.API_TOKEN ||= "test-public-api-token";
 process.env.SESSION_SECRET ||= "test-session-secret-that-is-longer-than-32-characters";
 process.env.DB_USER ||= "test";
 process.env.DB_PASSWORD ||= "test";

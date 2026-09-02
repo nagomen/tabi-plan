@@ -36,13 +36,9 @@ function oneOf<const T extends readonly string[]>(name: string, fallback: T[numb
   return value as T[number];
 }
 
-const apiToken = required("API_TOKEN");
 const sessionSecret = required("SESSION_SECRET");
 if (sessionSecret.length < 32) {
   throw new Error("SESSION_SECRET は32文字以上のランダム値にしてください");
-}
-if (sessionSecret === apiToken) {
-  throw new Error("SESSION_SECRET は公開 API_TOKEN とは別の十分に長い秘密値にしてください");
 }
 
 export const config = {
@@ -57,10 +53,7 @@ export const config = {
     database: optional("DB_NAME", "TravelPlan"),
   },
 
-  /** 静的サイトから呼ぶので、この値はブラウザに見える。総当たり避け程度の意味しかない。 */
-  apiToken,
-
-  /** ログインセッション署名用。API_TOKEN は静的サイトに露出するため絶対に流用しない。 */
+  /** ログインセッション署名用。ブラウザへ公開しない。 */
   sessionSecret,
 
   /** ログインセッションの保持日数。漏えい時の影響を抑えるため既定は30日。 */

@@ -94,10 +94,10 @@ const SESSION_STORAGE_KEY = "trip-dashboard-session";
 
 // ---- 設定 ---------------------------------------------------------------
 
-function api(): { base: string; token: string } | null {
+function api(): { base: string } | null {
   const shared = resolvedTripConfig().sharedBackend;
   if (!shared?.enabled || shared.mode !== "api") return null;
-  return { base: (shared.apiBaseUrl || "").replace(/\/+$/, ""), token: shared.apiToken || "" };
+  return { base: (shared.apiBaseUrl || "").replace(/\/+$/, "") };
 }
 
 /** API を使う構成か（未設定なら読み取り専用のサンプル動作になる）。 */
@@ -350,7 +350,6 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
       method,
       headers: {
         "Content-Type": "application/json",
-        ...(cfg.token ? { Authorization: `Bearer ${cfg.token}` } : {}),
         ...(sessionToken ? { "X-Travel-Session": sessionToken } : {}),
       },
       body: body === undefined ? undefined : JSON.stringify(body),

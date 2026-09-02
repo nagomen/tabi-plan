@@ -2,7 +2,7 @@
 
 旅行の計画・共有ダッシュボードアプリです。行程・地図・チェックリスト・費用精算を仲間と共有できます。共有データの正本は MySQL API です。
 
-静的ファイルに含めた情報は公開情報として扱ってください。予約番号、宿泊先住所、電話番号、保険証券番号などの機密は置かず、非公開データは API 側の認可で制御します。GitHub Pages はプレビュー、本番は GitHub Actions から nginx 配信先へデプロイする運用を推奨します。
+静的ファイルに含めた情報は公開情報として扱ってください。予約番号、宿泊先住所、電話番号、保険証券番号などの機密は置かず、非公開データは API 側の認可で制御します。フロント本番は GitHub Pages、API と MySQL は VPS で運用します。
 
 ## ディレクトリ構成
 
@@ -110,8 +110,8 @@ restart_consultation / reload / contact_support / sign_in`のいずれかで、�
 | --- | --- | --- | --- |
 | 1 | 旅行 repo | `frontend/public/trip-config.example.js` を参考に `frontend/public/trip-config.js` を編集する | `tripSlug` は旅行ごとに必ず変える |
 | 2 | ローカル | ルートで `npm run ci` を実行する | 型検査・テスト・ビルドを確認する |
-| 3 | GitHub | `main` に push する | Actions が Pages を更新する |
-| 4 | GitHub | `Deploy Production` を手動実行する | APIと静的ファイルをVPSへ反映する |
+| 3 | GitHub | `main` に push する | Actions が本番Pagesを更新し、配信内容を検証する |
+| 4 | GitHub | APIを変更した場合だけ `Deploy API` を手動実行する | API更新・DBマイグレーション・バックアップタイマー更新 |
 
 `tripSlug` は localStorage のキーに使います。旅行ごとに必ず変えてください。
 
@@ -125,29 +125,27 @@ window.TRIP_CONFIG = {
   sharedBackend: {
     enabled: true,
     mode: "api",
-    apiBaseUrl: "",
-    apiToken: ""
+    apiBaseUrl: "https://travel-api.example.com"
   }
 };
 ```
 
 ## GitHub Actions デプロイ
 
-`.github/workflows/deploy-pages.yml` は preview 用です。`main` に push された `frontend/` を Vite でビルドし、出力 `frontend/dist` を GitHub Pages にデプロイします。
+`.github/workflows/deploy-pages.yml` はフロント本番用です。`main` に push された `frontend/` を検査・ビルドし、出力 `frontend/dist` を GitHub Pages にデプロイします。デプロイ後はコミット識別子と主要ファイルを実URLで検証します。
 
-`.github/workflows/deploy-production.yml` は本番用です。手動実行で、まずAPIをビルドしてDBマイグレーションとサービス再起動を行い、成功後に `frontend/dist` をnginxの配信先へatomicに反映します。`install_nginx` を有効にする場合は Repository variable `PRODUCTION_API_DOMAIN` も設定してください。
+`.github/workflows/deploy-api.yml` はAPI本番用です。手動実行でテスト後にソースをVPSへ同期し、DBマイグレーション、API再起動、日次バックアップタイマーの更新を行います。
 
 | workflow | 用途 | トリガー | 反映先 |
 | --- | --- | --- | --- |
-| `Deploy Preview Pages` | preview | push / 手動 | GitHub Pages |
-| `Deploy Production` | production | 手動 | nginx VPS |
+| `Deploy Frontend` | production | push / 手動 | GitHub Pages |
+| `Deploy API` | production | 手動 | API VPS |
 
-旅行ごとに repo を分ける場合は、`frontend/public/trip-config.js` をその repo にコミットする運用で十分です。コミットしたくない場合だけ、GitHub の Repository variables に `TRIP_CONFIG_JSON` を設定してください。本番だけ設定を変える場合は `PRODUCTION_TRIP_CONFIG_JSON` を使います。
+`frontend/public/trip-config.js` は旅行そのものではなく、API接続先や通貨一覧などアプリ全体の公開設定です。旅行本体はMySQLだけを正本にし、静的設定から自動作成しません。環境別に変えたい場合はGitHubの `TRIP_CONFIG_JSON` を使います。
 
 | 変数 | 例 | 公開可否 |
 | --- | --- | --- |
-| `TRIP_CONFIG_JSON` | `{"tripSlug":"2703-taiwan","tripTitle":"2027年3月台湾旅行","mode":"local","defaultParticipants":["A","B"],"currencies":["JPY","TWD"],"sharedBackend":{"enabled":true,"mode":"api","apiBaseUrl":"","apiToken":""}}` | Pages に含まれるため公開情報として扱う |
-| `PRODUCTION_TRIP_CONFIG_JSON` | 本番用の同形式設定 | nginx 配信物に含まれるため公開情報として扱う |
+| `TRIP_CONFIG_JSON` | `{"tripSlug":"tabi-plan","tripTitle":"Tabi Plan","mode":"local","defaultParticipants":[],"currencies":["JPY","TWD"],"sharedBackend":{"enabled":true,"mode":"api","apiBaseUrl":"https://travel-api.example.com"}}` | Pages に含まれるため公開情報として扱う |
 
 `TRIP_CONFIG_JSON` に共有パスワード、予約番号、宿泊先住所、緊急連絡先、保険証券番号は入れないでください。
 
@@ -226,4 +224,4 @@ window.TRIP_CONFIG = {
 
 ## 公開範囲
 
-GitHub Pages と nginx のどちらでも、静的ファイルは公開情報です。ページに出してよい設定だけを `trip-config.js` に入れ、非公開計画・参加者・費用・招待は API 側の認可で制御してください。
+GitHub Pages の静的ファイルは公開情報です。ページに出してよい設定だけを `trip-config.js` に入れ、非公開計画・参加者・費用・招待は API 側のセッション認可で制御してください。

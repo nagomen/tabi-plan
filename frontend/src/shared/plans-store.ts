@@ -546,7 +546,8 @@ export function seedMeta(config: Partial<TripConfig>): PlanMeta | null {
 
 /** 組み込み計画が DB に無ければ作る。 */
 export function ensureSeed(config: Partial<TripConfig>): void {
-  if (db.isEnabled() && !db.isLoaded()) return;
+  // MySQL運用ではDBだけを正本にし、静的設定から旅行を自動作成しない。
+  if (db.isEnabled()) return;
   const seed = seedMeta(config);
   if (!seed || db.planBySlug(seed.slug)) return;
   upsert(seed);
@@ -559,7 +560,7 @@ export function resolveConfigOverride(config: Partial<TripConfig>): Partial<Trip
   // データ読み込み前でも URL/保存済みの slug は信用する。
   // ここで種計画へ落とすと、読み終えたあとも別の計画を開いたままになる。
   if (!meta && slug) return { tripSlug: slug };
-  if (!meta) meta = list()[0] || seedMeta(config);
+  if (!meta) meta = list()[0] || (!db.isEnabled() ? seedMeta(config) : null);
   if (!meta) return {};
   setActiveSlug(meta.slug);
   const override: Partial<TripConfig> = { tripSlug: meta.slug, tripTitle: meta.title || config.tripTitle };

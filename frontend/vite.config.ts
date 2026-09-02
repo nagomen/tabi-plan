@@ -153,6 +153,43 @@ function pageTransitionHead(): Plugin {
   };
 }
 
+/** GitHub Pagesでもブラウザが強制できる最低限のセキュリティポリシー。 */
+function securityMetaHead(): Plugin {
+  const content = [
+    "default-src 'self'",
+    "base-uri 'self'",
+    "object-src 'none'",
+    "script-src 'self'",
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: blob: https:",
+    "font-src 'self' data:",
+    "connect-src 'self' https: ws: wss:",
+    "frame-src 'self' https:",
+    "form-action 'self' https:",
+    "worker-src 'self' blob:",
+    "manifest-src 'self'",
+    "upgrade-insecure-requests",
+  ].join("; ");
+  return {
+    name: "security-meta-head",
+    apply: "build",
+    transformIndexHtml() {
+      return [
+        {
+          tag: "meta",
+          injectTo: "head-prepend",
+          attrs: { "http-equiv": "Content-Security-Policy", content },
+        },
+        {
+          tag: "meta",
+          injectTo: "head-prepend",
+          attrs: { name: "referrer", content: "strict-origin-when-cross-origin" },
+        },
+      ];
+    },
+  };
+}
+
 // 複数ページ（ダッシュボード / 計画一覧 / 計画エディタなど）を
 // それぞれ独立した HTML エントリとしてビルドする。
 // GitHub Pages のプロジェクトサイトでも動くよう base は相対パスにする。
@@ -161,6 +198,7 @@ export default defineConfig({
   root: ".",
   publicDir: "public",
   plugins: [
+    securityMetaHead(),
     pageTransitionHead(),
     ...(!localApiProxyTarget ? [devStoreFiles()] : []),
     devApiProxyConfig(),
