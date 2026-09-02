@@ -49,3 +49,16 @@ test("AIで登録した移動端点の座標もDB往復で保持する", () => {
   assert.match(store, /to_lat: num\(item\.destinationLat\)/);
   assert.match(store, /String\(v\)\.trim\(\) === ""\) return null/);
 });
+
+test("旅行詳細のこの日の予定からAI旅行相談へ直接移動できる", () => {
+  const html = read("index.html");
+  const dashboard = read("src/dashboard/main.ts");
+  const style = read("src/dashboard/style.css");
+  const editor = read("src/plan-editor/main.ts");
+  assert.match(html, /data-day-title[\s\S]*data-ai-support[\s\S]*AIサポート/);
+  assert.match(dashboard, /aiSupport\.href = "plan-editor\.html" \+ planQuery \+ "&ai=1"/);
+  assert.match(dashboard, /aiSupport\.hidden = false/);
+  assert.match(editor, /params\.get\("ai"\) === "1"[\s\S]*aiBlock\.scrollIntoView/);
+  assert.match(style, /\.tl-ai-support \{[\s\S]*border-radius: 999px/);
+  assert.match(style, /\.tl-day-title \.tl-ai-support \{[\s\S]*grid-column: 3/);
+});

@@ -1,7 +1,7 @@
 // Vite がバンドルする JS/CSS（assets/*.HASH.js）はハッシュ名なので precache せず、
 // fetch ハンドラの cache-first で初回取得時にキャッシュする。
 // ここでは安定名の HTML と public 配下の静的ファイルだけを precache する。
-const CACHE_NAME = "travel-dashboard-v14";
+const CACHE_NAME = "travel-dashboard-v15";
 const APP_SHELL = [
   "./",
   "./index.html",
