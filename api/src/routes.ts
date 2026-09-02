@@ -103,31 +103,82 @@ function itineraryInput(body: Body): ItineraryInput {
 
 function aiFailure(error: unknown): Handled {
   const detail = error instanceof AiUpstreamError ? error.causeDetail : error instanceof Error ? error.stack : String(error);
-  console.error("[travel-ai] request failed", detail);
+  console.error("[travel-ai] request failed", JSON.stringify({
+    code: error instanceof AiUpstreamError || error instanceof AiOutputError ||
+      error instanceof AiInputError || error instanceof AiUnavailableError ? error.code : "ai_internal_error",
+    request_id: error instanceof AiUpstreamError ? error.requestId : "",
+    retryable: error instanceof AiUpstreamError ? error.retryable : false,
+    detail,
+  }));
   if (error instanceof AiInputError) {
-    return { status: 400, body: { error: error.code, message: error.message } };
+    return { status: 400, body: { error: error.code, message: error.message, retryable: false, action: error.action } };
   }
   if (error instanceof AiUnavailableError) {
-    return { status: 503, body: { error: error.code, message: error.message } };
+    return {
+      status: 503,
+      body: { error: error.code, message: error.message, retryable: false, action: error.action },
+    };
   }
   if (error instanceof AiUpstreamError) {
-    const status = error.code === "ai_rate_limited" ? 429 : 502;
-    return { status, body: { error: error.code, message: error.message } };
+    const status = error.code === "ai_rate_limited"
+      ? 429
+      : error.code === "ai_timeout"
+        ? 504
+        : ["ai_authentication_failed", "ai_access_denied", "ai_model_unavailable", "ai_quota_exceeded"].includes(error.code)
+          ? 503
+          : ["ai_refused", "ai_content_filtered", "ai_input_too_large", "ai_output_too_long"].includes(error.code)
+            ? 422
+            : 502;
+    return {
+      status,
+      body: {
+        error: error.code,
+        message: error.message,
+        retryable: error.retryable,
+        retry_after: error.retryAfter,
+        action: error.action,
+        request_id: error.requestId,
+      },
+    };
   }
   if (error instanceof AiOutputError) {
     return {
       status: 502,
-      body: { error: error.code, message: "AIの行程が不完全だったため適用しませんでした。もう一度お試しください。" },
+      body: {
+        error: error.code,
+        message: "AIの行程が不完全だったため適用しませんでした。もう一度お試しください。",
+        retryable: true,
+        action: error.action,
+      },
     };
   }
-  return { status: 500, body: { error: "ai_internal_error", message: "AI旅行相談でエラーが発生しました" } };
+  return {
+    status: 500,
+    body: {
+      error: "ai_internal_error",
+      message: "AI旅行相談で予期しないエラーが発生しました。管理者へお知らせください。",
+      retryable: false,
+      action: "contact_support",
+    },
+  };
 }
 
 async function reserveAi(userId: string, scope: AiScope): Promise<Handled | null> {
   const reservation = await reserveAiRequest(userId, scope);
   return reservation.allowed
     ? null
-    : { status: 429, body: { error: "ai_usage_limited", message: "続けて利用できません", retry_after: reservation.retryAfter } };
+    : {
+      status: 429,
+      body: {
+        error: reservation.reason === "daily" ? "ai_daily_limit" : "ai_cooldown",
+        message: reservation.reason === "daily"
+          ? "本日のAI利用上限に達しました。翌日以降にもう一度お試しください。"
+          : "短時間に続けてAIを利用しています。表示された時間を待ってお試しください。",
+        retryable: true,
+        retry_after: reservation.retryAfter,
+        action: "retry_later",
+      },
+    };
 }
 
 function expectedVersion(body: Body): number | null {

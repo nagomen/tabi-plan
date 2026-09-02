@@ -15,7 +15,9 @@ test("session_required clears the stale browser session and emits an expiry even
 test("account state and AI UI react to an expired API session", () => {
   const accounts = source("shared/account-store.ts");
   const editor = source("plan-editor/main.ts");
+  const guidance = source("plan-editor/ai-error-guidance.ts");
   assert.match(accounts, /addEventListener\("trip-session-expired"/);
   assert.match(accounts, /clearLocalSession\(\)/);
-  assert.match(editor, /別タブで再ログイン/);
+  assert.match(guidance, /別タブで再ログイン/);
+  assert.match(editor, /login\.html\?returnTo=/);
 });

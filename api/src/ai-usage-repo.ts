@@ -12,7 +12,11 @@ interface UsageRow extends mysql.RowDataPacket {
 }
 
 /** 複数APIプロセス間でも共有される、ユーザー単位の原子的な利用枠確保。 */
-export async function reserveAiRequest(userId: string, scope: AiScope): Promise<{ allowed: boolean; retryAfter: number }> {
+export async function reserveAiRequest(userId: string, scope: AiScope): Promise<{
+  allowed: boolean;
+  retryAfter: number;
+  reason: "daily" | "cooldown" | null;
+}> {
   return withTransaction(async (connection) => {
     await connection.query(
       `INSERT IGNORE INTO ai_usage_daily
@@ -34,10 +38,10 @@ export async function reserveAiRequest(userId: string, scope: AiScope): Promise<
     if (!usage) throw new Error("AI usage row was not created");
     if (Number(usage.request_count) >= config.ai.dailyRequestsPerUser ||
         Number(usage.token_count) >= config.ai.dailyTokensPerUser) {
-      return { allowed: false, retryAfter: Number(usage.daily_retry_after) || 3600 };
+      return { allowed: false, retryAfter: Number(usage.daily_retry_after) || 3600, reason: "daily" };
     }
     if (Number(usage.cooldown_remaining) > 0) {
-      return { allowed: false, retryAfter: Math.ceil(Number(usage.cooldown_remaining)) };
+      return { allowed: false, retryAfter: Math.ceil(Number(usage.cooldown_remaining)), reason: "cooldown" };
     }
     const scopeColumn = scope === "options" ? "options_count" : "itinerary_count";
     await connection.query(
@@ -48,7 +52,7 @@ export async function reserveAiRequest(userId: string, scope: AiScope): Promise<
         WHERE user_id = ? AND usage_date = CURRENT_DATE()`,
       [userId],
     );
-    return { allowed: true, retryAfter: 0 };
+    return { allowed: true, retryAfter: 0, reason: null };
   });
 }
 

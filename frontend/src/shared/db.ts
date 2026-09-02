@@ -313,12 +313,23 @@ function responseErrorCode(text: string): string {
   }
 }
 
+export type ApiRecoveryAction =
+  | "retry"
+  | "retry_later"
+  | "revise_input"
+  | "restart_consultation"
+  | "contact_support"
+  | "sign_in";
+
 export class ApiRequestError extends Error {
   constructor(
     message: string,
     readonly status: number,
     readonly code: string,
     readonly retryAfter = 0,
+    readonly retryable = false,
+    readonly action: ApiRecoveryAction | "" = "",
+    readonly requestId = "",
   ) {
     super(message);
   }
@@ -328,26 +339,60 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   const cfg = api();
   if (!cfg) throw new Error("共有ストアが設定されていません");
   const sessionToken = sessionTokenForRequest();
-  const res = await fetch(cfg.base + path, {
-    method,
-    headers: {
-      "Content-Type": "application/json",
-      ...(cfg.token ? { Authorization: `Bearer ${cfg.token}` } : {}),
-      ...(sessionToken ? { "X-Travel-Session": sessionToken } : {}),
-    },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
+  const aiPath = path.startsWith("/api/ai/");
+  let res: Response;
+  try {
+    res = await fetch(cfg.base + path, {
+      method,
+      headers: {
+        "Content-Type": "application/json",
+        ...(cfg.token ? { Authorization: `Bearer ${cfg.token}` } : {}),
+        ...(sessionToken ? { "X-Travel-Session": sessionToken } : {}),
+      },
+      body: body === undefined ? undefined : JSON.stringify(body),
+      ...(aiPath ? { signal: AbortSignal.timeout(90_000) } : {}),
+    });
+  } catch (error) {
+    const timedOut = error instanceof DOMException && ["AbortError", "TimeoutError"].includes(error.name);
+    const offline = typeof navigator !== "undefined" && navigator.onLine === false;
+    const server = aiPath ? "AIサーバー" : "サーバー";
+    throw new ApiRequestError(
+      timedOut
+        ? `${server}から時間内に応答がありませんでした。通信を確認してもう一度お試しください。`
+        : offline
+          ? "インターネットに接続されていません。接続後にもう一度お試しください。"
+          : `${server}へ接続できませんでした。通信状態を確認してもう一度お試しください。`,
+      timedOut ? 504 : 0,
+      timedOut ? "client_timeout" : offline ? "client_offline" : "client_network_failed",
+      0,
+      true,
+      timedOut ? "retry" : "retry_later",
+    );
+  }
   if (!res.ok) {
     const text = await res.text().catch(() => "");
     const code = responseErrorCode(text);
     if (res.status === 401 && code === "session_required") {
       expireBrowserSession();
-      throw new Error("ログインセッションの期限が切れました。再ログインしてください。");
+      throw new ApiRequestError(
+        "ログインセッションの期限が切れました。再ログインしてください。",
+        401,
+        "session_required",
+        0,
+        false,
+        "sign_in",
+      );
     }
     let message = "リクエストに失敗しました";
     let retryAfter = 0;
+    let retryable = false;
+    let action: ApiRecoveryAction | "" = "";
+    let requestId = res.headers.get("x-request-id") || "";
     try {
-      const parsed = JSON.parse(text) as { error?: unknown; message?: unknown; retry_after?: unknown };
+      const parsed = JSON.parse(text) as {
+        error?: unknown; message?: unknown; retry_after?: unknown;
+        retryable?: unknown; action?: unknown; request_id?: unknown;
+      };
       if (typeof parsed.message === "string" && parsed.message) message = parsed.message;
       else if (typeof parsed.error === "string" && parsed.error) {
         message = parsed.error === "forbidden"
@@ -359,8 +404,14 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
               : parsed.error;
       }
       retryAfter = Math.max(0, Number(parsed.retry_after) || 0);
+      retryable = parsed.retryable === true;
+      const parsedAction = typeof parsed.action === "string" ? parsed.action : "";
+      if (["retry", "retry_later", "revise_input", "restart_consultation", "contact_support", "sign_in"].includes(parsedAction)) {
+        action = parsedAction as ApiRecoveryAction;
+      }
+      if (typeof parsed.request_id === "string") requestId = parsed.request_id.slice(0, 128);
     } catch { /* JSONでない上流情報は画面へ出さない */ }
-    throw new ApiRequestError(message, res.status, code || "request_failed", retryAfter);
+    throw new ApiRequestError(message, res.status, code || "request_failed", retryAfter, retryable, action, requestId);
   }
   return (await res.json()) as T;
 }

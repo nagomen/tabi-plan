@@ -21,7 +21,7 @@ import type { LocalPlanData, PlanVisibility } from "../shared/plans-store";
 import type { ItineraryItem, ItemType, Candidate } from "../shared/types";
 import { readGlobalTripConfig } from "../shared/config";
 import { escapeHtml, errorMessage } from "../shared/dom";
-import { parseISO, toISO, weekday, mdOf } from "../shared/date";
+import { parseISO, toISO, weekday, mdOf, mdLabel } from "../shared/date";
 import { icon, type IconName } from "../shared/icons";
 import { planCoverThumbnail } from "../shared/cover";
 import { registerServiceWorker } from "../shared/pwa";
@@ -37,6 +37,7 @@ import { addBaseLayer } from "../shared/map-tiles";
 import { validatePublishPlan } from "./validation";
 import { formatDurationMinutes } from "../shared/travel-duration";
 import { AiConsultationState, type AiStage } from "./ai-consultation-state";
+import { aiErrorGuidance, retryWaitLabel, type AiErrorPhase } from "./ai-error-guidance";
 import { resolveAiMapGeocodeJobs, type AiMapGeocodeSummary } from "./ai-map-geocoding";
 import {
   automaticGeocodingAvailable,
@@ -418,6 +419,7 @@ const fp = flatpickr(rangeEl, {
     updateRangeButton();
     rebuildDays();
     renderDays();
+    renderMembers(); // 参加期間の初期値・min/max・サマリ表示は旅行期間に依存する
     refreshMap(false);
     markDirty();
   },
@@ -1014,6 +1016,11 @@ const aiRunLabel = qs<HTMLElement>(root, "[data-ai-run-label]");
 const aiRunIcon = qs<HTMLElement>(root, "[data-ai-run-ic]");
 const aiBar = qs<HTMLElement>(root, "[data-ai-bar]");
 const aiStatus = qs<HTMLElement>(root, "[data-ai-status]");
+const aiError = qs<HTMLElement>(root, "[data-ai-error]");
+const aiErrorTitle = qs<HTMLElement>(root, "[data-ai-error-title]");
+const aiErrorMessage = qs<HTMLElement>(root, "[data-ai-error-message]");
+const aiErrorAction = qs<HTMLButtonElement>(root, "[data-ai-error-action]");
+const aiErrorReference = qs<HTMLElement>(root, "[data-ai-error-reference]");
 const aiIntro = qs<HTMLElement>(root, "[data-ai-intro]");
 const aiDialog = qs<HTMLElement>(root, "[data-ai-dialog]");
 const aiThread = qs<HTMLElement>(root, "[data-ai-thread]");
@@ -1030,6 +1037,8 @@ const aiExtra = qs<HTMLTextAreaElement>(root, "[data-ai-extra]");
 
 type AiPreferences = db.ItineraryAiPreferences;
 const aiConsultation = new AiConsultationState();
+let aiErrorTimer: number | null = null;
+let aiErrorHandler: (() => void) | null = null;
 
 aiRunIcon.innerHTML = icon("sparkles");
 
@@ -1042,20 +1051,85 @@ function setAiBusy(busy: boolean, label = "考えています"): void {
   aiBar.hidden = !busy;
 }
 
+function clearAiError(): void {
+  if (aiErrorTimer !== null) window.clearInterval(aiErrorTimer);
+  aiErrorTimer = null;
+  aiErrorHandler = null;
+  aiError.hidden = true;
+  aiErrorAction.hidden = true;
+  aiErrorAction.disabled = false;
+  aiErrorReference.hidden = true;
+}
+
 function setAiStatus(text: string, kind?: "warn" | "ok"): void {
+  clearAiError();
   aiStatus.textContent = text;
   aiStatus.className = "pe-ai-status" + (kind ? " is-" + kind : "");
 }
 
-function setAiSessionExpiredStatus(): void {
-  setAiStatus("ログインセッションの期限が切れました。入力内容を残したまま、", "warn");
-  const link = document.createElement("a");
-  link.href = "login.html?returnTo=" + encodeURIComponent("plan-editor.html" + location.search);
-  link.target = "_blank";
-  link.rel = "noopener";
-  link.textContent = "別タブで再ログイン";
-  aiStatus.append(link, "してから、もう一度作成してください。");
+function showAiError(error: unknown, phase: AiErrorPhase): void {
+  clearAiError();
+  const source = error instanceof db.ApiRequestError
+    ? error
+    : { message: errorMessage(error), code: "request_failed", retryable: false };
+  const guidance = aiErrorGuidance(source, phase);
+  aiStatus.textContent = "";
+  aiStatus.className = "pe-ai-status";
+  aiError.hidden = false;
+  aiErrorTitle.textContent = guidance.title;
+  aiErrorMessage.textContent = guidance.message;
+  aiErrorReference.hidden = !guidance.requestId;
+  aiErrorReference.textContent = guidance.requestId ? `問い合わせ番号: ${guidance.requestId}` : "";
+
+  if (guidance.action === "contact_support") {
+    aiErrorAction.hidden = true;
+    return;
+  }
+  aiErrorAction.hidden = false;
+  aiErrorHandler = guidance.action === "retry"
+    ? () => { void (phase === "candidates" ? startAiConsultation() : runAiDraft()); }
+    : guidance.action === "restart"
+      ? () => { resetAiConsultation(); aiArea.focus(); }
+      : guidance.action === "sign_in"
+        ? () => {
+          window.open(
+            "login.html?returnTo=" + encodeURIComponent("plan-editor.html" + location.search),
+            "_blank",
+            "noopener",
+          );
+        }
+        : () => {
+          clearAiError();
+          if (phase === "candidates") aiNote.focus();
+          else aiExtra.focus();
+        };
+
+  if (!guidance.retryAfter) {
+    aiErrorAction.textContent = guidance.actionLabel;
+    return;
+  }
+  const availableAt = Date.now() + guidance.retryAfter * 1000;
+  const updateCountdown = (): void => {
+    const remaining = Math.max(0, Math.ceil((availableAt - Date.now()) / 1000));
+    aiErrorAction.disabled = remaining > 0;
+    aiErrorAction.textContent = remaining > 0
+      ? `${retryWaitLabel(remaining)}後に再試行できます`
+      : guidance.actionLabel;
+    if (!remaining && aiErrorTimer !== null) {
+      window.clearInterval(aiErrorTimer);
+      aiErrorTimer = null;
+    }
+  };
+  updateCountdown();
+  if (aiErrorAction.disabled) aiErrorTimer = window.setInterval(updateCountdown, 1000);
 }
+
+aiErrorAction.addEventListener("click", () => {
+  if (aiErrorAction.disabled) return;
+  const handler = aiErrorHandler;
+  clearAiError();
+  handler?.();
+});
 
 function selectedAiCandidates(): db.ItineraryOptions["candidates"] {
   return aiConsultation.selectedCandidates();
@@ -1410,11 +1484,7 @@ async function startAiConsultation(): Promise<void> {
     setAiStage("candidates");
     setAiStatus("候補を選ぶと、次にペースや移動条件を指定できます。", "ok");
   } catch (error) {
-    const message = errorMessage(error);
-    if (/ログインセッションの期限が切れました/.test(message)) setAiSessionExpiredStatus();
-    else if (error instanceof db.ApiRequestError && error.status === 429) {
-      setAiStatus(`候補を作り直すには${error.retryAfter ? `約${error.retryAfter}秒` : "少し"}待ってください。`, "warn");
-    } else setAiStatus(message || "候補を作れませんでした", "warn");
+    showAiError(error, "candidates");
   } finally {
     setAiBusy(false);
   }
@@ -1460,21 +1530,13 @@ async function runAiDraft(): Promise<void> {
     // 完了カードだけで十分なので、成功ログは残さない。保存失敗だけは操作が必要なため表示する。
     setAiStatus(saved ? "" : "行程を作成しましたが保存できませんでした。", saved ? undefined : "warn");
   } catch (error) {
-    const message = errorMessage(error);
-    if (/ログインセッションの期限が切れました/.test(message)) {
-      setAiStage("preferences");
-      setAiSessionExpiredStatus();
-    } else if (error instanceof db.ApiRequestError && error.code === "invalid_ai_input") {
+    if (error instanceof db.ApiRequestError && error.code === "invalid_ai_input") {
       aiConsultation.reset();
       setAiStage("idle");
-      setAiStatus(message || "条件が変わりました。候補選びからやり直してください。", "warn");
-    } else if (error instanceof db.ApiRequestError && error.status === 429) {
-      setAiStage("preferences");
-      setAiStatus(`続けて利用できません。${error.retryAfter ? `約${error.retryAfter}秒後に` : "少し待ってから"}もう一度お試しください。`, "warn");
     } else {
       setAiStage("preferences");
-      setAiStatus(message || "作れませんでした", "warn");
     }
+    showAiError(error, "itinerary");
   } finally {
     setAiBusy(false);
   }
@@ -2575,9 +2637,38 @@ function renderMembers(): void {
 }
 
 /**
- * 途中合流/離脱の入力。合流日・離脱日を空欄にすると全日程参加。
+ * メンバーごとの参加期間。デフォルトは全員が全日程参加（内部では null 端＝無制限）。
+ * 全員が全日程のうちは1行のサマリに畳み、「途中合流/離脱を設定」で展開する。
  * 保存済み計画で、旅行期間が決まっていて、管理者のときだけ出す。
  */
+let memberPeriodsOpen = false;
+
+function memberPeriodLabel(dates: { from: string | null; to: string | null }): string {
+  if (!dates.from && !dates.to) return "全日程";
+  if (dates.from && dates.to) return `${mdLabel(dates.from)}〜${mdLabel(dates.to)}`;
+  return dates.from ? `${mdLabel(dates.from)} 合流` : `${mdLabel(dates.to || "")} 離脱`;
+}
+
+/** 旅行期間の中でどこに在籍しているかを示すミニバー。期間がパースできないときは出さない。 */
+function memberPeriodBar(dates: { from: string | null; to: string | null }, start: string, end: string): string {
+  const startD = parseISO(start);
+  const endD = parseISO(end);
+  if (!startD || !endD) return "";
+  const total = Math.round((endD.getTime() - startD.getTime()) / 86400000) + 1;
+  if (total <= 0) return "";
+  const dayIndex = (iso: string | null, fallback: number): number => {
+    const d = iso ? parseISO(iso) : null;
+    if (!d) return fallback;
+    return Math.min(Math.max(Math.round((d.getTime() - startD.getTime()) / 86400000), 0), total - 1);
+  };
+  let fromIdx = dayIndex(dates.from, 0);
+  let toIdx = dayIndex(dates.to, total - 1);
+  if (toIdx < fromIdx) { fromIdx = 0; toIdx = total - 1; }
+  const left = (fromIdx / total) * 100;
+  const width = ((toIdx - fromIdx + 1) / total) * 100;
+  return `<span class="pe-mperiod-bar" aria-hidden="true"><span style="left:${left}%;width:${width}%"></span></span>`;
+}
+
 function memberPeriodsHtml(): string {
   const meta = slug ? TripPlans.get(slug) : null;
   if (!meta?.id || !canManagePlan(meta)) return "";
@@ -2586,19 +2677,46 @@ function memberPeriodsHtml(): string {
   if (!ids.length) return "";
   const start = model.startDate;
   const end = model.endDate;
+  const isFull = (id: string): boolean => {
+    const dates = model.memberDates[id];
+    return !dates || (!dates.from && !dates.to);
+  };
+  const allFull = ids.every(isFull);
+  if (allFull && !memberPeriodsOpen) {
+    return (
+      `<div class="pe-mperiods is-collapsed">` +
+      `<p class="pe-mperiods-head">${icon("calendarDays")}参加期間</p>` +
+      `<div class="pe-mperiods-summary">` +
+      `<span>全員が全日程（${mdLabel(start)}〜${mdLabel(end)}）に参加</span>` +
+      `<button class="pe-mperiods-toggle" type="button" data-mperiods-toggle>途中合流/離脱を設定</button>` +
+      `</div>` +
+      `</div>`
+    );
+  }
   const row = (id: string): string => {
     const dates = model.memberDates[id] || { from: null, to: null };
+    const full = isFull(id);
     return (
-      `<div class="pe-mperiod">` +
+      `<div class="pe-mperiod${full ? "" : " is-partial"}">` +
       `<span class="pe-mperiod-name">${escapeHtml(db.nameOf(id))}</span>` +
-      `<label class="pe-mperiod-field">合流<input type="date" data-member-from="${escapeHtml(id)}" value="${dates.from || ""}" min="${start}" max="${end}"></label>` +
-      `<label class="pe-mperiod-field">離脱<input type="date" data-member-to="${escapeHtml(id)}" value="${dates.to || ""}" min="${start}" max="${end}"></label>` +
+      memberPeriodBar(dates, start, end) +
+      `<span class="pe-mperiod-badge${full ? " is-full" : ""}">${escapeHtml(memberPeriodLabel(dates))}</span>` +
+      `<span class="pe-mperiod-fields">` +
+      `<label class="pe-mperiod-field">合流<input type="date" data-member-from="${escapeHtml(id)}" value="${dates.from || start}" min="${start}" max="${end}"></label>` +
+      `<label class="pe-mperiod-field">離脱<input type="date" data-member-to="${escapeHtml(id)}" value="${dates.to || end}" min="${start}" max="${end}"></label>` +
+      (full
+        ? ""
+        : `<button class="pe-mperiod-reset" type="button" data-member-reset="${escapeHtml(id)}" title="全日程参加に戻す">全日程に戻す</button>`) +
+      `</span>` +
       `</div>`
     );
   };
   return (
     `<div class="pe-mperiods">` +
-    `<p class="pe-mperiods-head">${icon("calendarDays")}参加期間（途中合流/離脱・空欄＝全日程）</p>` +
+    `<p class="pe-mperiods-head">${icon("calendarDays")}参加期間` +
+    (allFull ? `<button class="pe-mperiods-toggle" type="button" data-mperiods-toggle>閉じる</button>` : "") +
+    `</p>` +
+    `<p class="pe-mperiods-desc">初期設定は全員が全日程参加です。途中合流/離脱する人だけ日付を変えてください。</p>` +
     ids.map(row).join("") +
     `<p class="pe-mperiods-note">その日の費用は「全員で等分」でも、在籍していた人だけで割ります。</p>` +
     `</div>`
@@ -2695,6 +2813,18 @@ membersMount.addEventListener("click", (event) => {
     void transferOwnership(transfer.dataset.transferOwner || "", transfer.dataset.transferName || "");
     return;
   }
+  const periodsToggle = t.closest<HTMLElement>("[data-mperiods-toggle]");
+  if (periodsToggle) { memberPeriodsOpen = !memberPeriodsOpen; renderMembers(); return; }
+  const periodReset = t.closest<HTMLElement>("[data-member-reset]");
+  if (periodReset) {
+    const id = periodReset.dataset.memberReset || "";
+    if (id) {
+      model.memberDates[id] = { from: null, to: null };
+      persistMemberDates();
+      renderMembers();
+    }
+    return;
+  }
   const inv = t.closest<HTMLElement>("[data-invite]");
   if (inv) { void shareInvite(inv.dataset.invite || "", inv.dataset.inviteUser || ""); }
 });
@@ -2712,6 +2842,10 @@ membersMount.addEventListener("change", (event) => {
   const current = model.memberDates[id] || { from: null, to: null };
   const value = input.value || null;
   const next = fromId ? { from: value, to: current.to } : { from: current.from, to: value };
+  // 旅行の開始日/終了日と同じ（か外側）なら全日程扱いの null に正規化する。
+  // null 端は無制限なので、あとから旅行期間を広げてもその人は全日程のまま追従する。
+  if (next.from && model.startDate && next.from <= model.startDate) next.from = null;
+  if (next.to && model.endDate && next.to >= model.endDate) next.to = null;
   // 合流が離脱より後なら矛盾。両方クリアして全日程に倒す（サーバ側も同様に無効化）。
   if (next.from && next.to && next.from > next.to) { next.from = null; next.to = null; }
   model.memberDates[id] = next;

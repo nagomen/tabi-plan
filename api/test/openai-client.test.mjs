@@ -76,5 +76,82 @@ test("refusalと不完全応答を通常のJSONとして扱わない", async () 
       status: "incomplete", incomplete_details: { reason: "max_output_tokens" }, output: [],
     }), { status: 200 }),
     sleep: async () => {},
-  }), /途中で終了/);
+  }), (error) => error.code === "ai_output_too_long" && error.retryable === false && error.action === "revise_input");
+});
+
+test("認証・課金・content filterは再試行せず管理者/入力対応として分類する", async () => {
+  let calls = 0;
+  await assert.rejects(() => structuredResponse({
+    schemaName: "test_schema", schema, system: "system", user: "user",
+    fetchImpl: async () => {
+      calls += 1;
+      return new Response(JSON.stringify({ error: { code: "invalid_api_key" } }), { status: 401 });
+    },
+    sleep: async () => {},
+  }), (error) => error.code === "ai_authentication_failed" && error.retryable === false && error.action === "contact_support");
+  assert.equal(calls, 1);
+
+  calls = 0;
+  await assert.rejects(() => structuredResponse({
+    schemaName: "test_schema", schema, system: "system", user: "user",
+    fetchImpl: async () => {
+      calls += 1;
+      return new Response(JSON.stringify({ error: { code: "insufficient_quota" } }), { status: 429 });
+    },
+    sleep: async () => {},
+  }), (error) => error.code === "ai_quota_exceeded" && error.retryable === false && error.action === "contact_support");
+  assert.equal(calls, 1, "課金枯渇の429は一時的な429と区別して再試行しない");
+
+  await assert.rejects(() => structuredResponse({
+    schemaName: "test_schema", schema, system: "system", user: "user",
+    fetchImpl: async () => new Response(JSON.stringify({
+      status: "incomplete", incomplete_details: { reason: "content_filter" }, output: [],
+    }), { status: 200 }),
+    sleep: async () => {},
+  }), (error) => error.code === "ai_content_filtered" && error.retryable === false && error.action === "revise_input");
+});
+
+test("解消しない429はRetry-Afterと問い合わせIDを利用者向け契約へ引き継ぐ", async () => {
+  let calls = 0;
+  await assert.rejects(() => structuredResponse({
+    schemaName: "test_schema", schema, system: "system", user: "user",
+    fetchImpl: async () => {
+      calls += 1;
+      return new Response(JSON.stringify({ error: { code: "rate_limit_exceeded" } }), {
+        status: 429, headers: { "retry-after": "42", "x-request-id": "req_rate" },
+      });
+    },
+    sleep: async () => {},
+  }), (error) => error.code === "ai_rate_limited" && error.retryable === true &&
+    error.retryAfter === 42 && error.requestId === "req_rate" && error.action === "retry_later");
+  assert.equal(calls, 3, "初回 + OPENAI_MAX_RETRIES(2) 回で打ち切る");
+});
+
+test("接続不能は再試行後にネットワーク障害として分類する", async () => {
+  let calls = 0;
+  await assert.rejects(() => structuredResponse({
+    schemaName: "test_schema", schema, system: "system", user: "user",
+    fetchImpl: async () => {
+      calls += 1;
+      throw new TypeError("fetch failed");
+    },
+    sleep: async () => {},
+  }), (error) => error.code === "ai_network_failed" && error.retryable === true);
+  assert.equal(calls, 3);
+});
+
+test("モデル不在と空応答を区別して分類する", async () => {
+  await assert.rejects(() => structuredResponse({
+    schemaName: "test_schema", schema, system: "system", user: "user",
+    fetchImpl: async () => new Response(JSON.stringify({ error: { code: "model_not_found" } }), { status: 404 }),
+    sleep: async () => {},
+  }), (error) => error.code === "ai_model_unavailable" && error.retryable === false);
+
+  await assert.rejects(() => structuredResponse({
+    schemaName: "test_schema", schema, system: "system", user: "user",
+    fetchImpl: async () => new Response(JSON.stringify({ status: "completed", output: [] }), {
+      status: 200, headers: { "x-request-id": "req_empty" },
+    }),
+    sleep: async () => {},
+  }), (error) => error.code === "ai_empty_response" && error.retryable === true && error.requestId === "req_empty");
 });
