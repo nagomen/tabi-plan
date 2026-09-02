@@ -193,6 +193,41 @@ jobs:
             rm -f "$tmp"
             echo "OPENAI_KEY を書き込みました（値は出力しません）"
 
+      # VPS の配置先は git clone ではないため、Actions からソースを同期する。
+      # API 専用 workflow と同じ方式に揃え、VPS にリポジトリ認証情報を置かない。
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Send source to VPS
+        env:
+          SSH_KEY: ${{ secrets.PRODUCTION_SSH_KEY }}
+          SSH_HOST: ${{ secrets.PRODUCTION_SSH_HOST }}
+          SSH_USER: ${{ secrets.PRODUCTION_SSH_USER }}
+          SSH_PORT: ${{ secrets.PRODUCTION_SSH_PORT || 22 }}
+          SSH_KNOWN_HOSTS: ${{ secrets.PRODUCTION_SSH_KNOWN_HOSTS }}
+          APP_DIR: ${{ vars.PRODUCTION_APP_DIR }}
+        run: |
+          set -euo pipefail
+          umask 077
+          key="$(mktemp)"
+          printf '%s\n' "$SSH_KEY" > "$key"
+          known="$(mktemp)"
+          if [ -n "${SSH_KNOWN_HOSTS:-}" ]; then
+            printf '%s\n' "$SSH_KNOWN_HOSTS" > "$known"
+            strict="-o StrictHostKeyChecking=yes"
+          else
+            echo "::warning::PRODUCTION_SSH_KNOWN_HOSTS が未設定です。ホスト鍵を検証せず初回接続を受理します。"
+            strict="-o StrictHostKeyChecking=accept-new"
+          fi
+          rsync -az --delete \
+            --exclude '.git/' --exclude 'node_modules/' --exclude 'dist/' \
+            --exclude 'data/store/' \
+            -e "ssh -i $key -p $SSH_PORT $strict -o UserKnownHostsFile=$known" \
+            ./ "$SSH_USER@$SSH_HOST:$APP_DIR/"
+          rm -f "$key" "$known"
+
       - name: Deploy API on VPS
         uses: appleboy/ssh-action@7eaf76671a0d7eec5d98ee897acda4f968735a17 # v1.2.0
         env:
@@ -214,9 +249,6 @@ jobs:
               exit 1
             fi
             cd "$APP_DIR"
-            git fetch origin "$REPO_BRANCH"
-            git checkout "$REPO_BRANCH"
-            git pull --ff-only origin "$REPO_BRANCH"
             args="--skip-git"
             if [ "$INSTALL_NGINX" = "1" ]; then
               if [ -z "$API_DOMAIN" ]; then
