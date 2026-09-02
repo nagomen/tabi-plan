@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
 
 process.env.API_TOKEN ||= "test-public-api-token";
 process.env.SESSION_SECRET ||= "test-session-secret-that-is-longer-than-32-characters";
@@ -252,6 +253,50 @@ test("選択候補を採用にも未採用一覧にも入れない結果を拒�
     transitions: [],
     omitted_selected_places: [],
   }, ["2026-08-01"], ["東京スカイツリー"]), /選択候補/);
+});
+
+test("選択候補は翻訳後の名称ではなく署名済みIDで採用・未採用を照合する", () => {
+  const draft = finalizeItineraryDraft({
+    cities: [{ name: "香港", from_date: "2026-08-01", to_date: "2026-08-01" }],
+    days: [{ date: "2026-08-01", area: "香港", items: [emptyItem({
+      city: "香港",
+      title: "ビクトリア・ピーク観光",
+      place: "山頂広場",
+      selected_candidate_ids: ["ai-place-1"],
+    })] }],
+    transitions: [],
+    omitted_selected_candidate_ids: ["ai-place-2"],
+  }, ["2026-08-01"], [
+    { id: "ai-place-1", name: "The Peak / Peak Tram", area: "香港" },
+    { id: "ai-place-2", name: "海辺のローカル海鮮・夜市", area: "香港" },
+  ]);
+
+  assert.deepEqual(draft.omitted_selected_places, ["海辺のローカル海鮮・夜市"]);
+  assert.equal("selected_candidate_ids" in draft.days[0].items[0], false);
+});
+
+test("選択候補IDの欠落・重複・未知IDを拒否する", () => {
+  const selected = [
+    { id: "ai-place-1", name: "The Peak / Peak Tram", area: "香港" },
+    { id: "ai-place-2", name: "Gulangyu（鼓浪嶼）", area: "香港" },
+  ];
+  const raw = (ids, omitted = []) => ({
+    cities: [{ name: "香港", from_date: "2026-08-01", to_date: "2026-08-01" }],
+    days: [{ date: "2026-08-01", area: "香港", items: [emptyItem({
+      city: "香港", selected_candidate_ids: ids,
+    })] }],
+    transitions: [],
+    omitted_selected_candidate_ids: omitted,
+  });
+  assert.throws(() => finalizeItineraryDraft(raw(["ai-place-1"]), ["2026-08-01"], selected), /採用・未採用/);
+  assert.throws(() => finalizeItineraryDraft(raw(["ai-place-1"], ["ai-place-1", "ai-place-2"]), ["2026-08-01"], selected), /重複/);
+  assert.throws(() => finalizeItineraryDraft(raw(["ai-place-1", "unknown"], ["ai-place-2"]), ["2026-08-01"], selected), /不明な選択候補ID/);
+});
+
+test("都市間移動時刻は構造化出力でも空欄を許可しない", () => {
+  const source = fs.readFileSync(new URL("../src/ai-itinerary.ts", import.meta.url), "utf8");
+  assert.match(source, /transitions:[\s\S]*pattern: "\^\(\?:\[01\]\[0-9\]\|2\[0-3\]\):\[0-5\]\[0-9\]\$"/);
+  assert.match(source, /transitions\.time[\s\S]*空文字にはしない/);
 });
 
 test("Web検索で確認した住所と座標を地図登録用に保持する", () => {

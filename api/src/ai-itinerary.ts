@@ -24,6 +24,8 @@ export interface ItineraryInput {
   note?: string;
   people?: number;
   selectedPlaces?: string[];
+  /** 署名済み候補。最終生成では表示名ではなくidで採用・未採用を照合する。 */
+  selectedCandidates?: Pick<ItineraryCandidate, "id" | "name" | "area">[];
   selectedCandidateIds?: string[];
   consultationToken?: string;
   preferences?: {
@@ -45,7 +47,13 @@ const CITY_TRANSPORT_MODES = ["電車", "新幹線", "飛行機", "車", "バス
 const OPTION_CATEGORIES = ["定番", "文化", "自然", "グルメ", "体験", "買い物", "絶景", "その他"] as const;
 const MAX_OPTION_CANDIDATES = 18;
 
-interface GeneratedItineraryDraft extends ItineraryDraft {
+type GeneratedItineraryItem = ItineraryDraft["days"][number]["items"][number] & {
+  selected_candidate_ids?: string[];
+};
+
+interface GeneratedItineraryDraft {
+  cities: ItineraryDraft["cities"];
+  days: { date: string; area: string; items: GeneratedItineraryItem[] }[];
   transitions: {
     date: string;
     time: string;
@@ -63,12 +71,15 @@ interface GeneratedItineraryDraft extends ItineraryDraft {
     duration_minutes: number;
     note: string;
   }[];
+  omitted_selected_candidate_ids?: string[];
+  /** 旧形式のテストと段階的移行用。本番の構造化出力では使わない。 */
+  omitted_selected_places?: string[];
 }
 
 const SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["cities", "days", "transitions", "omitted_selected_places"],
+  required: ["cities", "days", "transitions", "omitted_selected_candidate_ids"],
   properties: {
     cities: {
       type: "array",
@@ -106,11 +117,15 @@ const SCHEMA = {
               additionalProperties: false,
               required: [
                 "kind", "time", "city", "title", "place", "address", "latitude", "longitude", "note",
-                "from_place", "to_place", "transport", "duration_minutes",
+                "from_place", "to_place", "transport", "duration_minutes", "selected_candidate_ids",
               ],
               properties: {
                 kind: { type: "string", enum: ITEM_KINDS },
-                time: { type: "string", description: "開始時刻 HH:MM。stayだけは空文字でもよい" },
+                time: {
+                  type: "string",
+                  pattern: "^(?:$|(?:[01][0-9]|2[0-3]):[0-5][0-9])$",
+                  description: "開始時刻 HH:MM。stayだけは空文字でもよい",
+                },
                 city: {
                   type: "string",
                   description: "この予定を実施する都市。citiesのnameを一字一句変えずに使う。moveは到着都市",
@@ -146,6 +161,12 @@ const SCHEMA = {
                   maximum: 1440,
                   description: "move の概算所要分数。move 以外は0",
                 },
+                selected_candidate_ids: {
+                  type: "array",
+                  maxItems: 3,
+                  description: "この予定で採用した選択候補のID。該当しない予定は空配列",
+                  items: { type: "string" },
+                },
               },
             },
           },
@@ -166,7 +187,11 @@ const SCHEMA = {
         ],
         properties: {
           date: { type: "string", description: "移動日 YYYY-MM-DD。原則として到着都市の from_date" },
-          time: { type: "string", description: "出発時刻 HH:MM。特定できないときは空文字" },
+          time: {
+            type: "string",
+            pattern: "^(?:[01][0-9]|2[0-3]):[0-5][0-9]$",
+            description: "行程上の出発時刻 HH:MM。必ず設定する",
+          },
           from_city: { type: "string", description: "出発都市。cities の直前の都市名と同じ値" },
           to_city: { type: "string", description: "到着都市。cities の直後の都市名と同じ値" },
           from_place: { type: "string", description: "具体的な出発駅・空港・港・バスターミナル" },
@@ -183,10 +208,10 @@ const SCHEMA = {
         },
       },
     },
-    omitted_selected_places: {
+    omitted_selected_candidate_ids: {
       type: "array",
       maxItems: MAX_OPTION_CANDIDATES,
-      description: "利用者が選んだが日数や移動効率のため行程へ入れなかった候補名。すべて入れた場合は空配列。",
+      description: "利用者が選んだが日数や移動効率のため行程へ入れなかった候補ID。すべて入れた場合は空配列。",
       items: { type: "string" },
     },
   },
@@ -274,11 +299,18 @@ function optionsPrompt(input: ItineraryInput, dates: string[]): string {
 }
 
 function prompt(input: ItineraryInput, dates: string[]): string {
-  const selected = (input.selectedPlaces || []).map((place) => String(place).trim()).filter(Boolean).slice(0, 24);
+  const selectedCandidates = (input.selectedCandidates || []).slice(0, 24);
+  const selected = selectedCandidates.length
+    ? selectedCandidates
+    : (input.selectedPlaces || []).map((name, index) => ({
+      id: `selected-${index + 1}`, name: String(name).trim(), area: "",
+    })).filter((candidate) => candidate.name).slice(0, 24);
   const preferences = input.preferences;
   return [
     ...tripContextLines(input, dates),
-    selected.length ? `利用者が選んだ行きたい場所（可能な限りすべて行程に含める）:\n${selected.map((place) => `  - ${place}`).join("\n")}` : "",
+    selected.length ? `利用者が選んだ行きたい場所（可能な限りすべて行程に含める）:\n${selected.map((candidate) =>
+      `  - [${candidate.id}] ${candidate.name}${candidate.area ? `（${candidate.area}）` : ""}`
+    ).join("\n")}` : "",
     preferences ? [
       "利用者が指定した組み方:",
       `  - ペース: ${preferences.pace || "標準"}`,
@@ -301,6 +333,7 @@ function prompt(input: ItineraryInput, dates: string[]): string {
     "- 都市間の距離、地理、乗換回数、ドアツードアの所要時間、公共交通の使いやすさを比較し、通常の旅行者に最も合理的な手段を1つ選ぶ。単に最安だけを優先しない。",
     "- 近距離は電車・バス・徒歩、中長距離は新幹線・飛行機、離島は飛行機・フェリーを比較する。車は公共交通が不便な区間で選ぶ。利用者の希望があれば希望を優先する。",
     "- transitions の from_place / to_place は実在する具体的な駅・空港・港などにし、transport と概算 duration_minutes、選定理由 note を必ず入れる。",
+    "- transitions.time は時刻表の断定ではなく、行程を組むための現実的な出発予定時刻を必ずHH:MMで入れる。空文字にはしない。",
     "- days.items で move を作る場合も from_place / to_place / transport / duration_minutes をすべて入れる。move 以外ではこれらを空文字・0にする。",
     "- place は地図で引ける具体名にする（市区町村名まで入れる）。曖昧な「市内観光」は使わない。",
     "- 各都市・予定・都市間移動地点はWeb検索で実在と所在地を確認し、address と latitude / longitude を返す。地区の場合も地区中心を地図表示できる表記と座標にする。確認できない座標だけnullにし、推測値を作らない。",
@@ -308,7 +341,8 @@ function prompt(input: ItineraryInput, dates: string[]): string {
     "- cities は滞在順に並べ、from_date と to_date で滞在期間を示す。",
     "- 文章は日本語。営業時間や料金など、変わりやすい情報は書かない。",
     "- 選択された場所が日数に対して多すぎる場合は、移動効率と利用者の興味を優先して絞り、無理に詰め込まない。",
-    "- 利用者が選んだ場所を行程へ入れなかった場合、その候補名を入力どおり omitted_selected_places に入れる。採用または未採用のどちらかを必ず明示する。",
+    "- 選択候補を採用した予定には対応するIDをselected_candidate_idsへ入れる。場所名を翻訳・短縮してもIDは変更しない。",
+    "- 採用しない選択候補のIDはomitted_selected_candidate_idsへ入れる。全IDを、予定側か未採用側のどちらか一方へ必ず1回だけ入れる。",
   ].filter(Boolean).join("\n");
 }
 
@@ -565,8 +599,15 @@ function arrangeDayItems(
 export function finalizeItineraryDraft(
   raw: GeneratedItineraryDraft,
   dates: string[],
-  selectedPlaceNames: string[] = [],
+  selectedPlaces: (string | Pick<ItineraryCandidate, "id" | "name" | "area">)[] = [],
 ): ItineraryDraft {
+  const selectedCandidates = selectedPlaces.flatMap((selected) => {
+    if (typeof selected === "string") return [];
+    const id = String(selected.id || "").trim();
+    const name = String(selected.name || "").trim();
+    return id && name ? [{ id, name, area: String(selected.area || "").trim() }] : [];
+  });
+  const legacySelectedNames = selectedPlaces.filter((selected): selected is string => typeof selected === "string");
   const allowed = new Set(dates);
   const cities = (raw.cities || [])
     .filter((city) => city.name && city.name.trim())
@@ -581,9 +622,40 @@ export function finalizeItineraryDraft(
     throw new AiOutputError(`AIの都市間移動が不足しています（必要 ${expectedTransitions} 件、結果 ${transitions.length} 件）`);
   }
 
-  const days = (raw.days || [])
-    .filter((day) => allowed.has(day.date))
-    .map((day) => ({ ...day, items: (day.items || []).map(normalizeDraftItemGeo) }));
+  const generatedDays = (raw.days || []).filter((day) => allowed.has(day.date));
+  if (selectedCandidates.length) {
+    const expectedIds = new Set(selectedCandidates.map((candidate) => candidate.id));
+    const adoptedIds: string[] = [];
+    for (const day of generatedDays) {
+      for (const item of day.items || []) {
+        const ids = Array.isArray(item.selected_candidate_ids) ? item.selected_candidate_ids : [];
+        if (ids.length && ["move", "stay"].includes(item.kind)) {
+          throw new AiOutputError(`移動・宿泊予定に選択候補IDが付いています: ${ids.join("、")}`);
+        }
+        adoptedIds.push(...ids.map((id) => String(id).trim()).filter(Boolean));
+      }
+    }
+    const omittedIds = Array.isArray(raw.omitted_selected_candidate_ids)
+      ? raw.omitted_selected_candidate_ids.map((id) => String(id).trim()).filter(Boolean)
+      : [];
+    const reportedIds = [...adoptedIds, ...omittedIds];
+    const unknown = reportedIds.filter((id) => !expectedIds.has(id));
+    if (unknown.length) throw new AiOutputError(`AIが不明な選択候補IDを返しました: ${[...new Set(unknown)].join("、")}`);
+    const duplicated = reportedIds.filter((id, index) => reportedIds.indexOf(id) !== index);
+    if (duplicated.length) throw new AiOutputError(`AIが選択候補を重複して扱いました: ${[...new Set(duplicated)].join("、")}`);
+    const missing = selectedCandidates.filter((candidate) => !reportedIds.includes(candidate.id));
+    if (missing.length) {
+      throw new AiOutputError(`AIが選択候補の採用・未採用を回答しませんでした: ${missing.map((candidate) => candidate.name).join("、")}`);
+    }
+  }
+
+  const days = generatedDays.map((day) => ({
+      ...day,
+      items: (day.items || []).map((generated) => {
+        const { selected_candidate_ids: _selectedCandidateIds, ...item } = generated;
+        return normalizeDraftItemGeo(item);
+      }),
+    }));
   const returnedDates = days.map((day) => day.date);
   if (days.length !== dates.length || new Set(returnedDates).size !== dates.length ||
       dates.some((date) => !returnedDates.includes(date))) {
@@ -661,18 +733,24 @@ export function finalizeItineraryDraft(
   }
 
   const omittedRaw = Array.isArray(raw.omitted_selected_places) ? raw.omitted_selected_places : [];
-  const omitted = selectedPlaceNames.filter((selected) =>
-    omittedRaw.some((name) => normalizedName(name) === normalizedName(selected))
-  );
-  const searchableItems = days.flatMap((day) => day.items)
-    .map((item) => normalizedName(`${item.title} ${item.place}`));
-  const unaccounted = selectedPlaceNames.filter((selected) => {
-    const key = normalizedName(selected);
-    return !omitted.some((name) => normalizedName(name) === key) &&
-      !searchableItems.some((item) => item.includes(key));
-  });
-  if (unaccounted.length) {
-    throw new AiOutputError(`AIが選択候補を行程にも未採用一覧にも含めませんでした: ${unaccounted.join("、")}`);
+  const omitted = selectedCandidates.length
+    ? selectedCandidates
+      .filter((candidate) => (raw.omitted_selected_candidate_ids || []).includes(candidate.id))
+      .map((candidate) => candidate.name)
+    : legacySelectedNames.filter((selected) =>
+      omittedRaw.some((name) => normalizedName(name) === normalizedName(selected))
+    );
+  if (legacySelectedNames.length) {
+    const searchableItems = days.flatMap((day) => day.items)
+      .map((item) => normalizedName(`${item.title} ${item.place}`));
+    const unaccounted = legacySelectedNames.filter((selected) => {
+      const key = normalizedName(selected);
+      return !omitted.some((name) => normalizedName(name) === key) &&
+        !searchableItems.some((item) => item.includes(key));
+    });
+    if (unaccounted.length) {
+      throw new AiOutputError(`AIが選択候補を行程にも未採用一覧にも含めませんでした: ${unaccounted.join("、")}`);
+    }
   }
   return { cities, days, omitted_selected_places: omitted };
 }
@@ -763,8 +841,6 @@ export async function generateItinerary(userId: string, input: ItineraryInput): 
     },
     selectedIds: input.selectedCandidateIds || [],
   });
-  const selectedPlaceNames = selected.map((candidate) => candidate.name);
-
   const draft = await generateValidated<GeneratedItineraryDraft, ItineraryDraft>({
     userId,
     schemaName: "itinerary",
@@ -777,6 +853,7 @@ export async function generateItinerary(userId: string, input: ItineraryInput): 
       // 未採用候補との照合に使うため、候補名へ都市名などの装飾を足さない。
       // 都市との対応は署名済み候補と登録ルートで既に確定している。
       selectedPlaces: selected.map((candidate) => candidate.name),
+      selectedCandidates: selected,
     }, dates),
     validate: (value) => {
       if (cities.length) {
@@ -790,7 +867,7 @@ export async function generateItinerary(userId: string, input: ItineraryInput): 
           longitude: value.cities?.[index]?.longitude ?? null,
         }));
       }
-      return finalizeItineraryDraft(value, dates, selectedPlaceNames);
+      return finalizeItineraryDraft(value, dates, selected);
     },
   });
   return draft;

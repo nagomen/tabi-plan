@@ -29,6 +29,7 @@ test("AI route distinguishes an expired login session from missing plan permissi
   assert.match(routes, /access\.canEditWorkspace[\s\S]*refineItinerary/);
   assert.match(routes, /reserveAi\(actorUserId, "options"\)/);
   assert.match(routes, /reserveAi\(actorUserId, "itinerary"\)/);
+  assert.match(routes, /error instanceof AiOutputError[\s\S]*status: 422/);
   assert.doesNotMatch(routes, /causeDetail[^\n]*body/);
 });
 

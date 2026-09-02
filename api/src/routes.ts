@@ -205,7 +205,10 @@ function aiFailure(error: unknown): Handled {
   }
   if (error instanceof AiOutputError) {
     return {
-      status: 502,
+      // AI自体への接続は成功しており、返された内容を旅行として受理できない状態。
+      // 502にするとCloudflareが上流障害ページへ差し替え、CORSとJSON契約が
+      // ブラウザへ届かないことがあるため、意味どおり422で返す。
+      status: 422,
       body: {
         error: error.code,
         message: "AIの行程が不完全だったため適用しませんでした。もう一度お試しください。",
