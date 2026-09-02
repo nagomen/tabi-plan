@@ -1,0 +1,27 @@
+[Unit]
+Description=Tabi Plan MySQL backup (local generations and Cloudflare R2)
+Documentation=https://github.com/nagomen/tabi-plan
+After=network-online.target mysql.service
+Wants=network-online.target mysql.service
+
+[Service]
+Type=oneshot
+User=__APP_USER__
+WorkingDirectory=__APP_DIR__
+EnvironmentFile=__ENV_FILE__
+Environment=BACKUP_DIR=__APP_HOME__/travel_data/backups
+Environment=RCLONE_CONFIG=__APP_HOME__/.config/rclone/rclone.conf
+Environment=RCLONE_REMOTE=r2:vote-backups/tabi-plan
+Environment=LOCAL_RETENTION_DAYS=7
+Environment=REMOTE_RETENTION_DAYS=30
+ExecStart=/bin/bash __APP_DIR__/infra/backup-mysql.sh
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=travel-mysql-backup
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=__APP_HOME__/travel_data/backups
+

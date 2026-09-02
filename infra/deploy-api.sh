@@ -27,11 +27,16 @@ API_DOMAIN="${API_DOMAIN:-}"
 ENV_FILE="${ENV_FILE:-$HOME/secure_env/travel-api.env}"
 SERVICE_NAME="travel-api.service"
 SERVICE_PATH="/etc/systemd/system/$SERVICE_NAME"
+BACKUP_SERVICE_NAME="travel-mysql-backup.service"
+BACKUP_TIMER_NAME="travel-mysql-backup.timer"
+BACKUP_SERVICE_PATH="/etc/systemd/system/$BACKUP_SERVICE_NAME"
+BACKUP_TIMER_PATH="/etc/systemd/system/$BACKUP_TIMER_NAME"
 NGINX_CONF="${NGINX_CONF:-/etc/nginx/conf.d/travel-api.conf}"
 # TLS は Cloudflare Origin Certificate を流用する（*.vote-jt.com を含むため certbot 不要）
 SSL_CERT="${SSL_CERT:-/etc/ssl/cloudflare/vote-jt.com.pem}"
 SSL_KEY="${SSL_KEY:-/etc/ssl/cloudflare/vote-jt.com.key}"
 APP_USER="${APP_USER:-$(id -un)}"
+APP_HOME="$(getent passwd "$APP_USER" | cut -d: -f6)"
 SKIP_GIT="${SKIP_GIT:-0}"
 INSTALL_NGINX="${INSTALL_NGINX:-0}"
 
@@ -98,6 +103,33 @@ install_service() {
   }
 }
 
+install_backup_timer() {
+  if [[ -z "$APP_HOME" ]]; then
+    echo "[deploy-api] $APP_USER のホームディレクトリを確認できません。" >&2
+    exit 1
+  fi
+  local backup_dir="$APP_HOME/travel_data/backups"
+  sudo install -d -m 0700 -o "$APP_USER" -g "$APP_USER" "$backup_dir"
+
+  local service_tmp timer_tmp
+  service_tmp="$(mktemp)"
+  timer_tmp="$(mktemp)"
+  sed -e "s|__APP_USER__|$APP_USER|g" \
+      -e "s|__APP_HOME__|$APP_HOME|g" \
+      -e "s|__APP_DIR__|$APP_DIR|g" \
+      -e "s|__ENV_FILE__|$ENV_FILE|g" \
+      "$APP_DIR/infra/travel-mysql-backup.service" > "$service_tmp"
+  cp "$APP_DIR/infra/travel-mysql-backup.timer" "$timer_tmp"
+  sudo install -m 0644 "$service_tmp" "$BACKUP_SERVICE_PATH"
+  sudo install -m 0644 "$timer_tmp" "$BACKUP_TIMER_PATH"
+  rm -f "$service_tmp" "$timer_tmp"
+
+  sudo systemctl daemon-reload
+  sudo systemctl enable --now "$BACKUP_TIMER_NAME"
+  sudo systemctl is-enabled --quiet "$BACKUP_TIMER_NAME"
+  sudo systemctl is-active --quiet "$BACKUP_TIMER_NAME"
+}
+
 install_nginx() {
   if [[ -z "$API_DOMAIN" ]]; then
     echo "[deploy-api] --install-nginx には API_DOMAIN が必要です。" >&2
@@ -143,6 +175,7 @@ health_check() {
 main() {
   build_api
   install_service
+  install_backup_timer
   health_check
   if [[ "$INSTALL_NGINX" == "1" ]]; then
     install_nginx

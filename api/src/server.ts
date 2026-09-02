@@ -8,7 +8,7 @@
 //   GET    /api/bootstrap          → 関係テーブルの全データ（routes.ts）
 //   その他 /api/users|plans|expenses|friendships …（routes.ts）
 //
-// API_TOKEN はアプリ配信元からの基本ゲート。ユーザー権限はサーバー発行の
+// 公開計画は匿名で読める。非公開データと書き込み権限はサーバー発行の
 // X-Travel-Session を検証して判定し、ブラウザ側の userId は信頼しない。
 
 import http from "node:http";
@@ -83,18 +83,6 @@ function send(
     ...extra,
   });
   res.end(json);
-}
-
-function authorized(req: http.IncomingMessage): boolean {
-  const header = req.headers.authorization || "";
-  const bearer = header.startsWith("Bearer ") ? header.slice(7) : "";
-  const custom = req.headers["x-travel-token"];
-  const token = bearer || (typeof custom === "string" ? custom : "");
-  if (token.length !== config.apiToken.length) return false;
-  // 定数時間比較
-  let diff = 0;
-  for (let i = 0; i < token.length; i += 1) diff |= token.charCodeAt(i) ^ config.apiToken.charCodeAt(i);
-  return diff === 0;
 }
 
 function readBody(req: http.IncomingMessage): Promise<string> {
@@ -239,11 +227,6 @@ const server = http.createServer(async (req, res) => {
         : "LINEログインを完了できませんでした。時間をおいてもう一度お試しください";
       redirect(res, loginErrorUrl(peekReturnTo(query.get("state") || ""), message));
     }
-    return;
-  }
-
-  if (!authorized(req)) {
-    send(res, 401, { error: "unauthorized" }, cors);
     return;
   }
 
