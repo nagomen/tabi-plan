@@ -29,6 +29,8 @@ export interface ItineraryItem {
   originLng?: number;
   destinationLat?: number;
   destinationLng?: number;
+  /** この予定の対象メンバー（user_id）。未指定/空 = その日の在籍メンバー全員。途中合流の個人移動などに使う。 */
+  members?: string[];
 }
 
 export interface TripInfo {

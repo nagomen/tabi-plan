@@ -259,6 +259,8 @@ CREATE TABLE itinerary_items (
   to_lng      DECIMAL(9,6) NULL,
   transport   VARCHAR(60) NULL,
   duration_minutes SMALLINT UNSIGNED NULL,
+  -- この項目の対象メンバー（user_id の JSON 配列）。NULL = その日の在籍メンバー全員。
+  member_ids  TEXT        NULL,
   created_at  TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at  TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (id),

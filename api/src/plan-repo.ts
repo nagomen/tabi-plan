@@ -163,6 +163,12 @@ export async function replacePlanContent(planId: string, body: {
         const n = Number(v);
         return Number.isFinite(n) && n >= min && n <= max ? n : null;
       };
+      // 対象メンバー。user_id の配列だけ受け付け、それ以外や空は NULL（＝全員）に落とす。
+      const memberIdsOrNull = (v: unknown): string | null => {
+        if (!Array.isArray(v)) return null;
+        const ids = [...new Set(v.filter((x) => typeof x === "string" && x && x.length <= 64))].slice(0, 50);
+        return ids.length ? JSON.stringify(ids) : null;
+      };
       const rows = body.itinerary.map((it, i) => [
         newId("itm"), planId, dateOrNull(it.item_date), numOrNull(it.day_index, 0, 1000), i,
         it.kind || "sight", timeOrNull(it.start_time), String(it.title || "").slice(0, 200),
@@ -171,12 +177,13 @@ export async function replacePlanContent(planId: string, body: {
         it.from_place || null, numOrNull(it.from_lat, -90, 90), numOrNull(it.from_lng, -180, 180),
         it.to_place || null, numOrNull(it.to_lat, -90, 90), numOrNull(it.to_lng, -180, 180),
         it.transport || null, numOrNull(it.duration_minutes, 0, 100_000),
+        memberIdsOrNull(it.member_ids),
       ]);
       if (rows.length) {
         await conn.query(
           `INSERT INTO itinerary_items (id, plan_id, item_date, day_index, sort_order, kind, start_time,
              title, place, area, note, map_query, lat, lng, from_place, from_lat, from_lng,
-             to_place, to_lat, to_lng, transport, duration_minutes)
+             to_place, to_lat, to_lng, transport, duration_minutes, member_ids)
            VALUES ?`, [rows]);
       }
     }

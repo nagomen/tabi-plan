@@ -67,6 +67,8 @@ export interface ItineraryRow {
   to_lng: number | null;
   transport: string | null;
   duration_minutes: number | null;
+  /** この項目の対象メンバー（user_id）。null/空 = その日の在籍メンバー全員。途中合流の個人移動などに使う。 */
+  member_ids: string[] | null;
 }
 
 // ---- AI旅行相談の通信DTO -----------------------------------------------

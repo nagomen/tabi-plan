@@ -22,3 +22,15 @@ export function isMemberPresentOn(
 export function presentMemberIds(periods: MemberPeriod[], date: string): string[] {
   return periods.filter((period) => isMemberPresentOn(period, date)).map((period) => period.user_id);
 }
+
+/** date に「途中合流」する user_id。旅行初日から居る人（＝合流ではない）は含めない。 */
+export function joinersOn(periods: MemberPeriod[], date: string, tripStart: string): string[] {
+  if (!date || date === tripStart) return [];
+  return periods.filter((period) => period.from_date === date).map((period) => period.user_id);
+}
+
+/** date を最後に「離脱」する user_id。旅行最終日まで居る人（＝離脱ではない）は含めない。 */
+export function leaversOn(periods: MemberPeriod[], date: string, tripEnd: string): string[] {
+  if (!date || date === tripEnd) return [];
+  return periods.filter((period) => period.to_date === date).map((period) => period.user_id);
+}

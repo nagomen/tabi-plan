@@ -201,6 +201,17 @@ async function migrate009() {
   }
 }
 
+async function migrate010() {
+  // 行程項目の対象メンバー（user_id の JSON 配列）。NULL = その日の在籍メンバー全員。
+  // 途中合流の個人移動（例: たかしだけ東京→大阪）を共有行程の中に置けるようにする。
+  if (!(await exists(
+    "SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'itinerary_items' AND COLUMN_NAME = 'member_ids'",
+    [database],
+  ))) {
+    await conn.query("ALTER TABLE itinerary_items ADD COLUMN member_ids TEXT NULL AFTER duration_minutes");
+  }
+}
+
 async function main() {
   await conn.query(`CREATE TABLE IF NOT EXISTS schema_migrations (
     id VARCHAR(64) NOT NULL PRIMARY KEY,
@@ -214,6 +225,7 @@ async function main() {
   await applyMigration("007_remove_external_plan_sources", migrate007);
   await applyMigration("008_placeholder_plan_members", migrate008);
   await applyMigration("009_member_participation_dates", migrate009);
+  await applyMigration("010_itinerary_item_members", migrate010);
 }
 
 // 同時デプロイが同じDDLを並走させないよう、DB側の advisory lock で直列化する。

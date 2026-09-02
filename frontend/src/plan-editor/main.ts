@@ -82,6 +82,8 @@ interface Item {
   duration: string;
   /** 宿泊専用：この夜から連泊する泊数（既定 1） */
   nights: number;
+  /** この予定の対象メンバー（user_id）。空 = その日の在籍メンバー全員。途中合流の個人移動などに使う。 */
+  members: string[];
 }
 
 interface Day {
@@ -450,6 +452,7 @@ function newItem(kind: ItemKind, seed?: Partial<Item>): Item {
     to: seed?.to ?? "", toLat: seed?.toLat ?? "", toLng: seed?.toLng ?? "",
     transport: seed?.transport ?? "", duration: seed?.duration ?? "",
     nights: seed?.nights ?? 1,
+    members: seed?.members ? [...seed.members] : [],
   };
 }
 
@@ -1658,6 +1661,13 @@ function dayHeader(day: Day, index: number): string {
   );
 }
 
+/** 一部メンバーだけの予定に出す名前バッジ。全員（空）のときは何も出さない。 */
+function rowMembersBadge(item: Item): string {
+  if (!item.members.length) return "";
+  const names = item.members.map((id) => db.nameOf(id)).filter(Boolean);
+  return `<span class="pe-row-members" title="この予定の対象メンバー">${escapeHtml(names.join("・") || "一部メンバー")}</span>`;
+}
+
 function rowSummary(item: Item): string {
   const k = KINDS[item.kind];
   if (item.kind === "move") {
@@ -1679,6 +1689,7 @@ function rowSummary(item: Item): string {
       dur +
       `<span class="arr">${icon("arrowLongRight")}</span>` +
       `<span class="ep">${escapeHtml(to)}</span></span>` +
+      rowMembersBadge(item) +
       `<span class="pe-row-caret">${icon("chevronDown")}</span>`
     );
   }
@@ -1690,6 +1701,7 @@ function rowSummary(item: Item): string {
     `<span class="pe-chip" data-kind="${item.kind}">${icon(k.icon)}${k.label}</span>` +
     `<span class="pe-row-time">${escapeHtml(item.time)}</span>` +
     `<span class="pe-row-title${titleCls}">${escapeHtml(titleText)}${sub}</span>` +
+    rowMembersBadge(item) +
     `<span class="pe-row-caret">${icon("chevronDown")}</span>`
   );
 }
@@ -1743,6 +1755,28 @@ function placeBlock(item: Item, target: GeoTarget, label: string, ph: string): s
   );
 }
 
+/**
+ * 予定ごとの対象メンバー選択チップ。空選択＝その日の在籍メンバー全員（既定）。
+ * 途中合流の個人移動（例: たかしだけ東京→大阪）を共有行程の中に置くための例外指定。
+ */
+function memberPickerBlock(item: Item): string {
+  const ids = model.memberIds.filter((id) => id && db.nameOf(id));
+  if (ids.length < 2) return "";
+  const all = !item.members.length;
+  return (
+    `<div class="pe-field c4 pe-item-members"><span>対象メンバー <em>任意</em></span>` +
+    `<div class="pe-item-members-chips">` +
+    `<button class="pe-mchip${all ? " is-on" : ""}" type="button" data-act="members-all" data-item="${item.id}">全員</button>` +
+    ids.map((id) => {
+      const on = item.members.includes(id);
+      return `<button class="pe-mchip${on ? " is-on" : ""}" type="button" data-act="member-toggle" data-item="${item.id}" data-member="${escapeHtml(id)}">${escapeHtml(db.nameOf(id))}</button>`;
+    }).join("") +
+    `</div>` +
+    `<p class="pe-item-members-note">一部の人だけの予定（途中合流の移動など）はここで選ぶ。未選択＝全員。</p>` +
+    `</div>`
+  );
+}
+
 function editForm(item: Item): string {
   const g = `<div class="pe-edit-grid">`;
   const end = `</div><div class="pe-edit-actions"><button class="pe-mini" type="button" data-act="close">${icon("check")}<span>完了</span></button></div>`;
@@ -1758,6 +1792,7 @@ function editForm(item: Item): string {
       `<label class="pe-field"><span>所要時間</span>${fieldInput(item, "duration", "例: 1h40m")}</label>` +
       `<label class="pe-field"><span>時刻 <em>任意</em></span>${fieldInput(item, "time", "例: 13:00 発")}</label>` +
       `<label class="pe-field c4"><span>メモ <em>任意</em></span>${fieldInput(item, "note", "予約番号など")}</label>` +
+      memberPickerBlock(item) +
       end
     );
   }
@@ -1776,6 +1811,7 @@ function editForm(item: Item): string {
     nightsSelect +
     placeBlock(item, "place", "場所", "例: 平泉 / 中尊寺") +
     `<label class="pe-field c4"><span>メモ <em>任意</em></span>${fieldInput(item, "note", "当日見たい情報だけ")}</label>` +
+    memberPickerBlock(item) +
     end
   );
 }
@@ -2329,6 +2365,28 @@ daysEl.addEventListener("click", (event) => {
     else day.items.push(it);
     openItemId = it.id;
     markDirty(); renderDays(); refreshMap(false); focusOpenItem();
+    return;
+  }
+  if (act === "members-all") {
+    const found = findItem(itemId);
+    if (found && found.item.members.length) {
+      found.item.members = [];
+      markDirty(); renderDays();
+    }
+    return;
+  }
+  if (act === "member-toggle") {
+    const found = findItem(itemId);
+    const uid = actEl.dataset.member || "";
+    if (found && uid) {
+      const set = new Set(found.item.members);
+      if (set.has(uid)) set.delete(uid);
+      else set.add(uid);
+      // 全員を選んだ状態は「全員（空）」と同じ意味なので空へ正規化する
+      const ids = model.memberIds.filter((id) => id && db.nameOf(id));
+      found.item.members = ids.length && ids.every((id) => set.has(id)) ? [] : [...set];
+      markDirty(); renderDays();
+    }
     return;
   }
   if (act === "copy-prev") {
@@ -3393,6 +3451,7 @@ function buildData(): LocalPlanData {
         if (typeof tn === "number") base.destinationLng = tn;
         if (typeof tl === "number" && typeof tn === "number") { base.lat = tl; base.lng = tn; }
       }
+      if (it.members.length) base.members = [...it.members];
       itinerary.push(base);
     };
     day.items.forEach(flush);
@@ -3463,6 +3522,7 @@ function loadExisting(): boolean {
       fromLat: row.originLat != null ? String(row.originLat) : "", fromLng: row.originLng != null ? String(row.originLng) : "",
       toLat: row.destinationLat != null ? String(row.destinationLat) : "", toLng: row.destinationLng != null ? String(row.destinationLng) : "",
       transport: String(row.transport || ""), duration: String(row.duration || ""),
+      members: Array.isArray(row.members) ? row.members.filter((x): x is string => typeof x === "string" && Boolean(x)) : [],
     });
     if (kind === "stay") day.stay = it;
     else day.items.push(it);

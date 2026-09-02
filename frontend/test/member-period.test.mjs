@@ -16,7 +16,7 @@ function load(relativePath) {
   return module.exports;
 }
 
-const { isMemberPresentOn, presentMemberIds } = load("src/shared/member-period.ts");
+const { isMemberPresentOn, presentMemberIds, joinersOn, leaversOn } = load("src/shared/member-period.ts");
 
 test("null endpoints mean the member is present for the whole trip", () => {
   const full = { from_date: null, to_date: null };
@@ -49,6 +49,29 @@ test("presentMemberIds keeps only members whose window covers the expense date",
   assert.deepEqual(presentMemberIds(periods, "2026-08-05"), ["a", "b"]);
   // 日付未指定なら全員（従来どおり）。
   assert.deepEqual(presentMemberIds(periods, ""), ["a", "b", "c"]);
+});
+
+test("joinersOn lists only mid-trip joiners for that exact day", () => {
+  const periods = [
+    { user_id: "a", from_date: null, to_date: null },          // 全日程
+    { user_id: "b", from_date: "2026-08-03", to_date: null },  // 8/3 合流
+    { user_id: "c", from_date: "2026-08-01", to_date: null },  // 初日から（合流ではない）
+  ];
+  // load() は VM 上で実行するため、戻り値の配列は別 realm。spread で比較する。
+  assert.deepEqual([...joinersOn(periods, "2026-08-03", "2026-08-01")], ["b"]);
+  assert.deepEqual([...joinersOn(periods, "2026-08-02", "2026-08-01")], []);
+  // 旅行初日は「合流」と呼ばない（from_date が初日でもバッジは出さない）。
+  assert.deepEqual([...joinersOn(periods, "2026-08-01", "2026-08-01")], []);
+});
+
+test("leaversOn lists only mid-trip leavers for that exact day", () => {
+  const periods = [
+    { user_id: "a", from_date: null, to_date: null },
+    { user_id: "b", from_date: null, to_date: "2026-08-04" },  // 8/4 まで
+    { user_id: "c", from_date: null, to_date: "2026-08-05" },  // 最終日まで（離脱ではない）
+  ];
+  assert.deepEqual([...leaversOn(periods, "2026-08-04", "2026-08-05")], ["b"]);
+  assert.deepEqual([...leaversOn(periods, "2026-08-05", "2026-08-05")], []);
 });
 
 test("an equal split over the present members excludes those who were away", () => {

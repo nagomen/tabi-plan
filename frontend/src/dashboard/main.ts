@@ -21,6 +21,7 @@ import * as TripPlans from "../shared/plans-store";
 import { isPublished } from "../shared/plans-store";
 import { getUser } from "../shared/user-store";
 import { canEditPlan, canManagePlan, canViewPlan, isMemberOf, planHasOwner } from "../shared/membership";
+import { joinersOn, leaversOn } from "../shared/member-period";
 import { currentAccount } from "../shared/account-store";
 import { currentUserId, adoptLegacyIdentity, identifyByName } from "../shared/identity";
 import * as db from "../shared/db";
@@ -1937,7 +1938,7 @@ function flashLabel(btn: HTMLButtonElement, labelSel: string, msg: string): void
 /** 旅行の全日程を LINE で送れるテキストにして共有／コピーする。 */
 async function shareSchedule(): Promise<void> {
   const btn = root.querySelector<HTMLButtonElement>("[data-copy-schedule]");
-  const text = buildItineraryShareText(state.data.trip, state.days);
+  const text = buildItineraryShareText(state.data.trip, state.days, (id) => db.nameOf(id));
   if (!text.trim()) {
     if (btn) flashLabel(btn, "[data-copy-schedule-label]", "日程がありません");
     return;
@@ -2107,12 +2108,23 @@ function stayHtmlForDay(idx: number): string {
 function timelineHtmlForDay(idx: number): string {
   const day = state.days[idx];
   if (!day) return "";
+  const you = currentUserId();
   return day.items.filter((i) => String(i.type) !== "stay").map((item) => {
     const type = String(item.type || "todo");
     const placeText = item.place && item.place !== item.title ? `場所: ${item.place}` : "";
     const moveText = type === "move" ? [item.transport, item.duration].filter(Boolean).join("・") : "";
     const metaText = [moveText || placeText, item.note].filter(Boolean).join(" / ");
     const label = `<span class="tl-kind ${escapeHtml(type)}">${escapeHtml(item.typeLabel || item.type || "予定")}</span>`;
+
+    // 一部メンバーだけの予定（途中合流の個人移動など）は名前チップを出し、
+    // 自分が含まれない予定はさらに淡くして「自分の行程」が目で追えるようにする。
+    const subsetIds = Array.isArray(item.members) ? item.members.filter(Boolean) : [];
+    const subsetNames = subsetIds.map((id) => db.nameOf(id)).filter(Boolean);
+    const notYou = subsetIds.length > 0 && Boolean(you) && !subsetIds.includes(you);
+    const itemCls = subsetIds.length ? (notYou ? " is-subset is-not-you" : " is-subset") : "";
+    const membersChip = subsetIds.length
+      ? `<span class="tl-item-members" title="この予定の対象メンバー">${icon("users")}${escapeHtml(subsetNames.join("・") || "一部メンバー")}${notYou ? `<i>あなたは別行動</i>` : ""}</span>`
+      : "";
 
     let segA = item.origin || "";
     let segB = item.destination || "";
@@ -2125,11 +2137,12 @@ function timelineHtmlForDay(idx: number): string {
       ? `<div class="tl-seg"><span>${escapeHtml(segA || "出発")}</span><span class="tl-seg-arr">${icon("arrowLongRight")}</span><span>${escapeHtml(segB || "到着")}</span></div>`
       : `<h3>${escapeHtml(item.title || "")}</h3>`;
 
-    return `<article class="tl-item" data-kind="${escapeHtml(type)}">
+    return `<article class="tl-item${itemCls}" data-kind="${escapeHtml(type)}">
       <time class="tl-time">${escapeHtml(item.time || "")}</time>
       <span class="tl-rail"><span class="tl-dot ${escapeHtml(type)}">${kindIcon(type)}</span></span>
       <div class="tl-plan">
         <div class="tl-plan-line">${label}${title}</div>
+        ${membersChip}
         ${item.needed ? `<p class="tl-needed">${escapeHtml(item.needed)}</p>` : ""}
         <p class="tl-meta">${metaText ? `<span class="tl-meta-text">${escapeHtml(metaText)}</span>` : ""}<a class="tl-maplink" href="${mapsSearchUrl(item.mapQuery || item.place || item.title)}" target="_blank" rel="noopener">地図 ${icon("arrowTopRightOnSquare")}</a></p>
       </div>
@@ -2162,6 +2175,22 @@ function hydrateWeather(fromIdx: number, toIdx: number): void {
   }
 }
 
+/** その日の途中合流/離脱バッジ。参加期間（plan_members の from/to_date）から導出する。 */
+function presenceBadgesHtml(day: DayGroup): string {
+  const id = planId();
+  if (!id || !/^\d{4}-\d{2}-\d{2}$/.test(day.date)) return "";
+  const periods = TripPlans.memberPeriods(id);
+  if (!periods.length) return "";
+  const first = state.days[0]?.date || "";
+  const last = state.days[state.days.length - 1]?.date || "";
+  const joins = joinersOn(periods, day.date, first).map((uid) => db.nameOf(uid)).filter(Boolean);
+  const leaves = leaversOn(periods, day.date, last).map((uid) => db.nameOf(uid)).filter(Boolean);
+  const parts: string[] = [];
+  if (joins.length) parts.push(`<span class="tl-day-presence is-join">${icon("users")}${escapeHtml(joins.join("・"))} 合流</span>`);
+  if (leaves.length) parts.push(`<span class="tl-day-presence is-leave">${escapeHtml(leaves.join("・"))} この日まで</span>`);
+  return parts.join("");
+}
+
 function dayBlockHtml(idx: number): string {
   const day = state.days[idx];
   if (!day) return "";
@@ -2170,7 +2199,7 @@ function dayBlockHtml(idx: number): string {
   const weather = `<span class="tl-dayblock-weather" data-weather-for="${escapeHtml(day.date)}">${day.weather ? "☀ " + escapeHtml(day.weather) : ""}</span>`;
   const items = timelineHtmlForDay(idx);
   return `<section class="tl-dayblock" data-day-block="${idx}">
-    <div class="tl-dayblock-head"><span>${escapeHtml(head)}</span>${weather}</div>
+    <div class="tl-dayblock-head"><span class="tl-dayblock-lead"><span>${escapeHtml(head)}</span>${presenceBadgesHtml(day)}</span>${weather}</div>
     ${stayHtmlForDay(idx)}
     ${items || `<p class="tl-dayblock-empty">予定はまだありません</p>`}
   </section>`;
@@ -2490,6 +2519,33 @@ function itineraryFromAi(items: db.ItineraryRefineItem[]): ItineraryItem[] {
   });
 }
 
+/**
+ * AI提案で行程を丸ごと置き換えるとき、対象メンバー指定（一部の人だけの予定）を
+ * 旧行程から引き継ぐ。AIのDTOは member 情報を持たないため、同じ予定
+ * （日付+種別+タイトル、移動は日付+区間）を探して移し替える。
+ */
+function carryOverItemMembers(next: ItineraryItem[]): ItineraryItem[] {
+  const tagged = (state.data.itinerary || []).filter((it) => Array.isArray(it.members) && it.members.length);
+  if (!tagged.length) return next;
+  const norm = (v: unknown): string => String(v || "").trim();
+  const remaining = [...tagged];
+  const take = (match: (it: ItineraryItem) => boolean): string[] | undefined => {
+    const i = remaining.findIndex(match);
+    if (i < 0) return undefined;
+    const [hit] = remaining.splice(i, 1);
+    return hit.members ? [...hit.members] : undefined;
+  };
+  return next.map((item) => {
+    const members =
+      take((it) => norm(it.date) === norm(item.date) && norm(it.type) === norm(item.type) && norm(it.title) === norm(item.title)) ||
+      (String(item.type) === "move"
+        ? take((it) => String(it.type) === "move" && norm(it.date) === norm(item.date) &&
+            norm(it.origin) === norm(item.origin) && norm(it.destination) === norm(item.destination))
+        : undefined);
+    return members ? { ...item, members } : item;
+  });
+}
+
 function updateAiChatContext(): void {
   const context = root.querySelector<HTMLElement>("[data-ai-chat-context]");
   const day = state.days[state.active];
@@ -2521,7 +2577,7 @@ async function applyAiProposal(index: number): Promise<void> {
   if (!entry?.proposal || entry.applied || aiChatBusy) return;
   const status = root.querySelector<HTMLElement>("[data-ai-chat-status]");
   const checkpoint = db.mutationCheckpoint();
-  state.data.itinerary = itineraryFromAi(entry.proposal.itinerary);
+  state.data.itinerary = carryOverItemMembers(itineraryFromAi(entry.proposal.itinerary));
   const saved = TripPlans.saveData(CONFIG.tripSlug, state.data as TripPlans.LocalPlanData);
   if (!saved) {
     if (status) status.textContent = "行程を保存できませんでした。";

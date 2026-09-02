@@ -51,7 +51,7 @@ export async function bootstrapForUser(userId = ""): Promise<Bootstrap> {
     ? await Promise.all([
       all<Bootstrap["itinerary"][number]>(`SELECT id, plan_id, item_date, day_index, sort_order, kind, start_time, title, place,
            area, note, map_query, lat, lng, from_place, from_lat, from_lng,
-           to_place, to_lat, to_lng, transport, duration_minutes
+           to_place, to_lat, to_lng, transport, duration_minutes, member_ids
          FROM itinerary_items
          WHERE plan_id IN (${visibleIn.sql})
          ORDER BY plan_id, item_date, sort_order`, visibleIn.params),
@@ -63,6 +63,18 @@ export async function bootstrapForUser(userId = ""): Promise<Bootstrap> {
          GROUP BY plan_id`, visibleIn.params),
     ])
     : [[], [], []];
+
+  // member_ids は TEXT に JSON で保存している。応答では配列へ戻す（壊れた値は全員扱いの null）。
+  for (const row of itinerary as { member_ids?: unknown }[]) {
+    const raw = row.member_ids;
+    if (typeof raw !== "string" || !raw) { row.member_ids = null; continue; }
+    try {
+      const parsed: unknown = JSON.parse(raw);
+      row.member_ids = Array.isArray(parsed) && parsed.length
+        ? parsed.filter((x): x is string => typeof x === "string")
+        : null;
+    } catch { row.member_ids = null; }
+  }
 
   const workspaceIn = inClause(workspacePlanIds);
   const [members, memberPlaceholders, checklist, candidates, expenses, expenseShares, settlements] = workspacePlanIds.length

@@ -198,6 +198,7 @@ export function getData(slug: string): LocalPlanData | null {
       destinationLng: it.to_lng == null ? undefined : Number(it.to_lng),
       transport: it.transport || "",
       duration: it.duration_minutes != null ? formatDurationMinutes(it.duration_minutes) : "",
+      members: it.member_ids && it.member_ids.length ? it.member_ids : undefined,
     })) as unknown as ItineraryItem[],
     links: db.links().filter((l) => l.plan_id === row.id).map((l) => ({
       key: l.link_key, label: l.label, url: l.url, caption: l.caption || "", icon: "",
@@ -388,6 +389,9 @@ export function saveLocalPlan(slug: string, data: LocalPlanData, memberIds?: str
         to_lng: num(item.destinationLng),
         transport: (item.transport as string) || null,
         duration_minutes: parseDurationMinutes(item.duration),
+        member_ids: Array.isArray(item.members) && item.members.length
+          ? (item.members as unknown[]).filter((x): x is string => typeof x === "string" && Boolean(x))
+          : null,
       };
     }),
     cities: areas.map((name) => ({ name })),
