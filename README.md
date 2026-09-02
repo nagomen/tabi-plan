@@ -76,7 +76,9 @@ Responses APIの構造化出力を使用し、既定ではWeb検索で観光地�
 Web検索を利用できないモデル・環境では`OPENAI_WEB_SEARCH_ENABLED=false`にできますが、候補や移動情報の
 根拠が弱くなるため本番では有効を推奨します。
 
-行程生成は`OPENAI_TIMEOUT_MS`（既定60秒）まで応答にかかります。APIの前段に置くリバースプロキシの
+行程生成は`OPENAI_TIMEOUT_MS`（既定80秒）まで応答にかかります。長い行程を最後まで構造化出力できるよう
+`OPENAI_MAX_OUTPUT_TOKENS`は既定30,000で、機械用JSONの推論量は`OPENAI_REASONING_EFFORT=none`を既定とします。
+APIの前段に置くリバースプロキシの
 読み取りタイムアウトはこれより長くしてください（`infra/nginx/travel-api.conf.template`は90秒）。
 短いとプロキシが先に切断し、CORSヘッダの無いエラーになるため、ブラウザでは「AIサーバーへ接続
 できませんでした」と表示されます。Cloudflare経由の場合は同社のプロキシ上限（約100秒）未満に収めます。

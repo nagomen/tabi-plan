@@ -28,6 +28,14 @@ function integer(name: string, fallback: string, min: number, max: number): numb
   return value;
 }
 
+function oneOf<const T extends readonly string[]>(name: string, fallback: T[number], values: T): T[number] {
+  const value = optional(name, fallback);
+  if (!values.includes(value as T[number])) {
+    throw new Error(`環境変数 ${name} は ${values.join(" / ")} のいずれかで指定してください`);
+  }
+  return value as T[number];
+}
+
 const apiToken = required("API_TOKEN");
 const sessionSecret = required("SESSION_SECRET");
 if (sessionSecret.length < 32) {
@@ -107,8 +115,10 @@ export const config = {
   ai: {
     apiKey: optional("OPENAI_KEY", ""),
     model: optional("OPENAI_MODEL", "gpt-5.4-mini"),
-    timeoutMs: integer("OPENAI_TIMEOUT_MS", "60000", 1000, 300_000),
-    maxOutputTokens: integer("OPENAI_MAX_OUTPUT_TOKENS", "12000", 512, 100_000),
+    timeoutMs: integer("OPENAI_TIMEOUT_MS", "80000", 1000, 300_000),
+    // 長い行程のJSONへ出力枠を回す。推論量は機械的な構造化タスク向けに抑える。
+    reasoningEffort: oneOf("OPENAI_REASONING_EFFORT", "none", ["none", "low", "medium", "high", "xhigh"] as const),
+    maxOutputTokens: integer("OPENAI_MAX_OUTPUT_TOKENS", "30000", 512, 100_000),
     maxRetries: integer("OPENAI_MAX_RETRIES", "2", 0, 5),
     webSearchEnabled: optional("OPENAI_WEB_SEARCH_ENABLED", "true") === "true",
     dailyRequestsPerUser: integer("AI_DAILY_REQUESTS_PER_USER", "40", 1, 10_000),

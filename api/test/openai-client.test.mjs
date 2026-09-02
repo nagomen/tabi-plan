@@ -36,8 +36,10 @@ test("Responses APIへ保存無効・構造化出力・Web検索・出力上限�
   assert.deepEqual(result.value, { ok: true });
   assert.equal(requestBody.store, false);
   assert.equal(requestBody.text.format.type, "json_schema");
+  assert.equal(requestBody.text.verbosity, "low");
+  assert.equal(requestBody.reasoning.effort, "none");
   assert.equal(requestBody.tools[0].type, "web_search");
-  assert.ok(requestBody.max_output_tokens > 0);
+  assert.equal(requestBody.max_output_tokens, 30000);
   assert.equal(result.meta.requestId, "req_test");
 });
 

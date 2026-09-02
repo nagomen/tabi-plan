@@ -230,7 +230,10 @@ export async function structuredResponse<T>(args: StructuredResponseArgs): Promi
           instructions: args.system,
           input: [{ role: "user", content: [{ type: "input_text", text: args.user }] }],
           ...(args.webSearch ? { tools: [{ type: "web_search" }] } : {}),
+          reasoning: { effort: config.ai.reasoningEffort },
           text: {
+            // JSONフィールドの冗長な文章を抑え、長い旅行でも全日程を書き切らせる。
+            verbosity: "low",
             format: { type: "json_schema", name: args.schemaName, strict: true, schema: args.schema },
           },
           max_output_tokens: config.ai.maxOutputTokens,
