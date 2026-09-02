@@ -13,6 +13,7 @@ const {
 const emptyItem = (overrides = {}) => ({
   kind: "sight",
   time: "10:00",
+  city: "ニューヨーク",
   title: "観光",
   place: "ニューヨーク",
   note: "",
@@ -21,6 +22,77 @@ const emptyItem = (overrides = {}) => ({
   transport: "",
   duration_minutes: 0,
   ...overrides,
+});
+
+test("同日複数都市では観光と都市間移動を現在地と時刻の順に交互配置する", () => {
+  const draft = finalizeItineraryDraft({
+    cities: [
+      { name: "深圳", from_date: "2026-10-13", to_date: "2026-10-13" },
+      { name: "廈門", from_date: "2026-10-13", to_date: "2026-10-13" },
+      { name: "金門島", from_date: "2026-10-13", to_date: "2026-10-13" },
+    ],
+    days: [{
+      date: "2026-10-13", area: "深圳", items: [
+        emptyItem({ city: "金門島", time: "17:00", title: "金門島観光", place: "莒光楼" }),
+        emptyItem({ city: "深圳", time: "08:00", title: "深圳観光", place: "深圳博物館" }),
+        emptyItem({ city: "廈門", time: "13:00", title: "廈門観光", place: "鼓浪嶼" }),
+      ],
+    }],
+    transitions: [
+      {
+        date: "2026-10-13", time: "15:30", from_city: "廈門", to_city: "金門島",
+        from_place: "五通客運碼頭", to_place: "水頭碼頭", transport: "フェリー",
+        duration_minutes: 30, note: "海路が合理的",
+      },
+      {
+        date: "2026-10-13", time: "10:00", from_city: "深圳", to_city: "廈門",
+        from_place: "深圳北駅", to_place: "厦門北駅", transport: "電車",
+        duration_minutes: 120, note: "鉄道が合理的",
+      },
+    ],
+    omitted_selected_places: [],
+  }, ["2026-10-13"]);
+
+  assert.deepEqual(draft.days[0].items.map((item) => item.title), [
+    "深圳観光", "深圳 → 廈門", "廈門観光", "廈門 → 金門島", "金門島観光",
+  ]);
+  assert.equal(draft.days[0].area, "深圳");
+});
+
+test("都市を出発した後に同じ都市へ戻る予定を拒否する", () => {
+  assert.throws(() => finalizeItineraryDraft({
+    cities: [
+      { name: "深圳", from_date: "2026-10-13", to_date: "2026-10-13" },
+      { name: "廈門", from_date: "2026-10-13", to_date: "2026-10-13" },
+    ],
+    days: [{ date: "2026-10-13", area: "深圳", items: [
+      emptyItem({ city: "深圳", time: "14:00", title: "深圳観光", place: "大芬油画村" }),
+    ] }],
+    transitions: [{
+      date: "2026-10-13", time: "10:00", from_city: "深圳", to_city: "廈門",
+      from_place: "深圳北駅", to_place: "厦門北駅", transport: "電車",
+      duration_minutes: 120, note: "鉄道が合理的",
+    }],
+    omitted_selected_places: [],
+  }, ["2026-10-13"]), /廈門滞在中.*深圳/);
+});
+
+test("到着見込み時刻より前に到着都市の予定を置いた結果を拒否する", () => {
+  assert.throws(() => finalizeItineraryDraft({
+    cities: [
+      { name: "深圳", from_date: "2026-10-13", to_date: "2026-10-13" },
+      { name: "廈門", from_date: "2026-10-13", to_date: "2026-10-13" },
+    ],
+    days: [{ date: "2026-10-13", area: "深圳", items: [
+      emptyItem({ city: "廈門", time: "11:00", title: "廈門観光", place: "鼓浪嶼" }),
+    ] }],
+    transitions: [{
+      date: "2026-10-13", time: "10:00", from_city: "深圳", to_city: "廈門",
+      from_place: "深圳北駅", to_place: "厦門北駅", transport: "電車",
+      duration_minutes: 120, note: "鉄道が合理的",
+    }],
+    omitted_selected_places: [],
+  }, ["2026-10-13"]), /到着前/);
 });
 
 test("順不同・行政区分付きの必要区間だけを正しい到着日の行程へ挿入する", () => {
@@ -149,7 +221,7 @@ test("登録都市の重複と旅行期間外の日付を拒否する", () => {
 test("日別行程の欠落と重複を拒否して既存行程へ適用させない", () => {
   assert.throws(() => finalizeItineraryDraft({
     cities: [{ name: "東京", from_date: "2026-08-01", to_date: "2026-08-02" }],
-    days: [{ date: "2026-08-01", area: "東京", items: [emptyItem({ place: "浅草寺" })] }],
+    days: [{ date: "2026-08-01", area: "東京", items: [emptyItem({ city: "東京", place: "浅草寺" })] }],
     transitions: [],
     omitted_selected_places: [],
   }, ["2026-08-01", "2026-08-02"]), /欠落または重複/);
@@ -176,7 +248,7 @@ test("都市間移動の始終点が登録ルートと違う結果を拒否す�
 test("選択候補を採用にも未採用一覧にも入れない結果を拒否する", () => {
   assert.throws(() => finalizeItineraryDraft({
     cities: [{ name: "東京", from_date: "2026-08-01", to_date: "2026-08-01" }],
-    days: [{ date: "2026-08-01", area: "東京", items: [emptyItem({ place: "浅草寺" })] }],
+    days: [{ date: "2026-08-01", area: "東京", items: [emptyItem({ city: "東京", place: "浅草寺" })] }],
     transitions: [],
     omitted_selected_places: [],
   }, ["2026-08-01"], ["東京スカイツリー"]), /選択候補/);
@@ -190,7 +262,7 @@ test("Web検索で確認した住所と座標を地図登録用に保持する",
     }],
     days: [{
       date: "2026-08-01", area: "香港", items: [emptyItem({
-        title: "中環周辺の散策", place: "Central, Hong Kong",
+        city: "香港", title: "中環周辺の散策", place: "Central, Hong Kong",
         address: "Central, Hong Kong", latitude: 22.2819, longitude: 114.1589,
       })],
     }],
@@ -209,7 +281,7 @@ test("片方でも不正な座標は地図へ登録しない", () => {
     cities: [{ name: "香港", from_date: "2026-08-01", to_date: "2026-08-01" }],
     days: [{
       date: "2026-08-01", area: "香港",
-      items: [emptyItem({ address: "Central, Hong Kong", latitude: 999, longitude: 114.1589 })],
+      items: [emptyItem({ city: "香港", address: "Central, Hong Kong", latitude: 999, longitude: 114.1589 })],
     }],
     transitions: [],
     omitted_selected_places: [],

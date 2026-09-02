@@ -105,12 +105,16 @@ const SCHEMA = {
               type: "object",
               additionalProperties: false,
               required: [
-                "kind", "time", "title", "place", "address", "latitude", "longitude", "note",
+                "kind", "time", "city", "title", "place", "address", "latitude", "longitude", "note",
                 "from_place", "to_place", "transport", "duration_minutes",
               ],
               properties: {
                 kind: { type: "string", enum: ITEM_KINDS },
-                time: { type: "string", description: "HH:MM。決めないときは空文字" },
+                time: { type: "string", description: "開始時刻 HH:MM。stayだけは空文字でもよい" },
+                city: {
+                  type: "string",
+                  description: "この予定を実施する都市。citiesのnameを一字一句変えずに使う。moveは到着都市",
+                },
                 title: { type: "string", description: "予定の名前。日本語" },
                 place: {
                   type: "string",
@@ -290,6 +294,10 @@ function prompt(input: ItineraryInput, dates: string[]): string {
     "- 昼と夜に food を1件ずつ入れる。最終日以外は宿泊(stay)を1日1件、最後に置く。",
     "- transitions は cities の隣り合う都市ごとに必ず1件、合計 cities.length - 1 件を同じ順で作る。",
     "- 都市間移動は days.items と重複させず transitions にだけ入れる。サーバー側で行程へ挿入する。",
+    "- days.items の city は、その予定を実施する登録都市の cities.name を一字一句変えずに入れる。都市間移動以外の move も同様。",
+    "- days.items は実行する時刻順に並べ、stay以外は必ずHH:MMの開始時刻を入れる。同じ日の予定同士で開始時刻を重ねない。",
+    "- 都市を移る日は、出発都市の予定 → その都市からのtransition → 到着都市の予定、の順にする。出発後に出発都市の予定を置かず、到着都市の予定は移動の到着見込み時刻より後に置く。",
+    "- 同じ日にA→B→Cと移る場合は、Aの予定 → A→B → Bの予定 → B→C → Cの予定と交互に組む。都市間移動だけを日の先頭や末尾へまとめない。食事もその時点で滞在している都市に置く。",
     "- 都市間の距離、地理、乗換回数、ドアツードアの所要時間、公共交通の使いやすさを比較し、通常の旅行者に最も合理的な手段を1つ選ぶ。単に最安だけを優先しない。",
     "- 近距離は電車・バス・徒歩、中長距離は新幹線・飛行機、離島は飛行機・フェリーを比較する。車は公共交通が不便な区間で選ぶ。利用者の希望があれば希望を優先する。",
     "- transitions の from_place / to_place は実在する具体的な駅・空港・港などにし、transport と概算 duration_minutes、選定理由 note を必ず入れる。",
@@ -429,9 +437,125 @@ function normalizeDraftItemGeo(
 ): ItineraryDraft["days"][number]["items"][number] {
   return {
     ...item,
+    city: String(item.city || "").trim(),
     address: String(item.address || item.place || "").trim(),
     ...geoCoordinates(item.latitude, item.longitude),
   };
+}
+
+type DraftCity = ItineraryDraft["cities"][number];
+type DraftItem = ItineraryDraft["days"][number]["items"][number];
+
+interface ScheduledTransition {
+  item: DraftItem;
+  fromCity: DraftCity;
+  toCity: DraftCity;
+  routeIndex: number;
+}
+
+function strictTimeMinutes(value: string): number | null {
+  const match = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(String(value || "").trim());
+  return match ? Number(match[1]) * 60 + Number(match[2]) : null;
+}
+
+function canonicalItemCity(item: DraftItem, cities: DraftCity[]): DraftCity {
+  const city = cities.find((candidate) => cityNamesEquivalent(item.city, candidate.name));
+  if (!city) {
+    throw new AiOutputError(`「${item.title || item.place || "名称未設定の予定"}」の実施都市が登録ルートと一致しません`);
+  }
+  item.city = city.name;
+  return city;
+}
+
+/** AIの配列順に依存せず時刻順へ直し、都市間移動日の現在地が連続することを検証する。 */
+function arrangeDayItems(
+  day: ItineraryDraft["days"][number],
+  cities: DraftCity[],
+  transitions: ScheduledTransition[],
+): void {
+  const stays = day.items.filter((item) => item.kind === "stay");
+  const scheduled = day.items.filter((item) => item.kind !== "stay");
+  const activeCities = cities.filter((city) =>
+    city.from_date && city.to_date && city.from_date <= day.date && day.date <= city.to_date
+  );
+
+  for (const item of day.items) {
+    const itemCity = canonicalItemCity(item, cities);
+    if (!transitions.length && activeCities.length &&
+        !activeCities.some((city) => cityNamesEquivalent(city.name, itemCity.name))) {
+      throw new AiOutputError(`「${item.title || item.place}」が${day.date}の滞在都市にありません`);
+    }
+  }
+
+  if (!transitions.length) {
+    day.items = scheduled
+      .map((item, order) => ({ item, order, minutes: strictTimeMinutes(item.time) }))
+      .sort((left, right) => (left.minutes ?? 1440) - (right.minutes ?? 1440) || left.order - right.order)
+      .map(({ item }) => item)
+      .concat(stays);
+    return;
+  }
+
+  const events = [
+    ...scheduled.map((item, order) => ({
+      item,
+      order,
+      minutes: strictTimeMinutes(item.time),
+      transition: undefined as ScheduledTransition | undefined,
+    })),
+    ...transitions.map((transition, order) => ({
+      item: transition.item,
+      order: scheduled.length + order,
+      minutes: strictTimeMinutes(transition.item.time),
+      transition,
+    })),
+  ];
+  const missingTime = events.find((event) => event.minutes === null);
+  if (missingTime) {
+    throw new AiOutputError(`都市を移る日の「${missingTime.item.title || missingTime.item.place}」に有効な開始時刻がありません`);
+  }
+  events.sort((left, right) => left.minutes! - right.minutes! || left.order - right.order);
+  for (let index = 1; index < events.length; index += 1) {
+    if (events[index - 1].minutes === events[index].minutes) {
+      throw new AiOutputError(`${day.date}に同じ開始時刻の予定があります。移動を含め、実行順が分かる別々の時刻にしてください`);
+    }
+  }
+
+  const routeOrdered = [...transitions].sort((left, right) => left.routeIndex - right.routeIndex);
+  let currentCity = routeOrdered[0].fromCity;
+  let nextTransition = 0;
+  let unavailableUntil = 0;
+  for (const event of events) {
+    const minutes = event.minutes!;
+    if (minutes < unavailableUntil) {
+      throw new AiOutputError(`${day.date}の「${event.item.title || event.item.place}」が直前の都市間移動の到着前に始まります`);
+    }
+    if (event.transition) {
+      const expected = routeOrdered[nextTransition];
+      if (event.transition !== expected || !cityNamesEquivalent(currentCity.name, event.transition.fromCity.name)) {
+        throw new AiOutputError(`${day.date}の都市間移動が訪問順どおりの時刻になっていません`);
+      }
+      currentCity = event.transition.toCity;
+      unavailableUntil = minutes + Number(event.item.duration_minutes || 0);
+      nextTransition += 1;
+      continue;
+    }
+    const itemCity = canonicalItemCity(event.item, cities);
+    if (!cityNamesEquivalent(itemCity.name, currentCity.name)) {
+      throw new AiOutputError(`${day.date}の「${event.item.title || event.item.place}」は${currentCity.name}滞在中の時刻ですが、${itemCity.name}の予定になっています`);
+    }
+  }
+  if (nextTransition !== routeOrdered.length) {
+    throw new AiOutputError(`${day.date}の都市間移動を時刻順に配置できません`);
+  }
+  for (const stay of stays) {
+    const stayCity = canonicalItemCity(stay, cities);
+    if (!cityNamesEquivalent(stayCity.name, currentCity.name)) {
+      throw new AiOutputError(`${day.date}の宿泊先が最終到着都市${currentCity.name}にありません`);
+    }
+  }
+  day.area = routeOrdered[0].fromCity.name;
+  day.items = events.map((event) => event.item).concat(stays);
 }
 
 /**
@@ -477,7 +601,7 @@ export function finalizeItineraryDraft(
   // 件数の完全一致ではなく、登録ルートに必要な隣接区間がすべて存在することを正にする。
   // 登録ルートに一致しない余剰区間は行程へ混ぜない。
   const unusedTransitionIndexes = new Set(transitions.map((_, index) => index));
-  const movesByDate = new Map<string, ItineraryDraft["days"][number]["items"]>();
+  const movesByDate = new Map<string, ScheduledTransition[]>();
   for (let index = 0; index < expectedTransitions; index += 1) {
     const fromCity = cities[index];
     const toCity = cities[index + 1];
@@ -509,9 +633,10 @@ export function finalizeItineraryDraft(
     const moves = movesByDate.get(transitionDate) || [];
     const fromGeo = geoCoordinates(transition.from_latitude, transition.from_longitude);
     const toGeo = geoCoordinates(transition.to_latitude, transition.to_longitude);
-    moves.push({
+    const move: DraftItem = {
       kind: "move",
       time: transition.time || "",
+      city: toCity.name,
       title: `${fromCity.name} → ${toCity.name}`,
       place: transition.to_place.trim(),
       address: String(transition.to_address || transition.to_place).trim(),
@@ -527,12 +652,12 @@ export function finalizeItineraryDraft(
       to_longitude: toGeo.longitude,
       transport,
       duration_minutes: duration,
-    });
+    };
+    moves.push({ item: move, fromCity, toCity, routeIndex: index });
     movesByDate.set(transitionDate, moves);
   }
-  for (const [date, moves] of movesByDate) {
-    const day = byDate.get(date);
-    if (day) day.items = [...moves, ...day.items];
+  for (const day of days) {
+    arrangeDayItems(day, cities, movesByDate.get(day.date) || []);
   }
 
   const omittedRaw = Array.isArray(raw.omitted_selected_places) ? raw.omitted_selected_places : [];

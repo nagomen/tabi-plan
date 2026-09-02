@@ -127,6 +127,8 @@ export interface ItineraryOptions {
 export interface ItineraryDraftItem {
   kind: string;
   time: string;
+  /** この予定を実施する登録都市。都市間移動は到着都市。 */
+  city: string;
   title: string;
   place: string;
   /** 地図検索用の確認済み住所または具体的な地域表記。 */
