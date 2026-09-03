@@ -516,6 +516,17 @@ async function requestIdentityIfNeeded(): Promise<void> {
     }
     return;
   }
+  // MySQL/API 版の本人確認はアカウントのセッションが正であり、端末ごとの
+  // 表示名選択を使わない。招待された人の「誰として参加するか」は、署名付き
+  // 招待リンクを開いた plans 画面で選択・承諾する。
+  if (db.isEnabled()) {
+    const back = "index.html?plan=" + encodeURIComponent(CONFIG.tripSlug);
+    navigateWithPageTransition(
+      "login.html?returnTo=" + encodeURIComponent(back),
+      { replace: true },
+    );
+    return;
+  }
   await showIdentityModal(true);
 }
 
@@ -2693,7 +2704,9 @@ async function init(): Promise<void> {
   registerServiceWorker();
   await Backend.preload();
   // 関係テーブル（MySQL）を読み込む。費用・精算はこちらが正。
-  await db.load();
+  // 権限と本人の判定に古いキャッシュを使うと、LINEログイン後に未ログイン扱いの
+  // 画面が一瞬復元される。ダッシュボードは必ず最新の viewer / membership で開く。
+  await db.load({ fresh: db.isEnabled(), strict: db.isEnabled() });
   adoptLegacyIdentity();
   // CONFIG はモジュール読み込み時に決まるが、そのとき計画の情報はまだ無い。
   // 読み終えた時点で、開いている計画の実体に合わせて上書きする。

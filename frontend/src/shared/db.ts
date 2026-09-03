@@ -293,6 +293,23 @@ function sessionTokenForRequest(): string {
   return "";
 }
 
+/**
+ * LINE から戻った直後は、URL で受け取った token だけが保存され、userId は
+ * bootstrap の viewer を読むまで空になっている。この状態で以前のキャッシュを
+ * 表示すると、ログイン済みなのに本人が未確定となり、古い端末用の本人選択が
+ * 開いてしまうため、必ずサーバーから viewer を解決する。
+ */
+function sessionRequiresViewerResolution(): boolean {
+  try {
+    const session = localStorage.getItem(SESSION_STORAGE_KEY);
+    if (!session) return false;
+    const parsed = JSON.parse(session) as { token?: string; userId?: string };
+    return Boolean(parsed.token && !parsed.userId);
+  } catch {
+    return false;
+  }
+}
+
 function expireBrowserSession(): void {
   try {
     localStorage.removeItem(SESSION_STORAGE_KEY);
@@ -731,7 +748,9 @@ export async function load(options: { fresh?: boolean; strict?: boolean } = {}):
     loaded = true;
     return;
   }
-  if (!options.fresh) {
+  // LINEログインから戻った直後はキャッシュを使わない。viewer が未解決のまま
+  // 招待承諾後の画面へ進むと、本人選択候補が空に見えるため。
+  if (!options.fresh && !sessionRequiresViewerResolution()) {
     const cached = readCache();
     if (cached) {
       snap = cached;
