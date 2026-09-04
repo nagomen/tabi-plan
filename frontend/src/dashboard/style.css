@@ -1467,28 +1467,47 @@
   .tl-day-presence.is-join { background: var(--green-soft); color: var(--green); }
   .tl-day-presence.is-leave { background: var(--amber-soft); color: var(--amber); }
 
-  /* 一部メンバーだけの予定：名前チップを出し、自分が対象外なら淡く */
-  .tl-item-members {
+  /* 参加者で行程が分かれる日：セクション横幅いっぱいの帯（セグメント）で班を切り替える。
+     予定ごとに名前は書かず、名前はこの帯のタブにだけ出す。 */
+  .tl-day-tabs {
+    display: flex;
+    width: 100%;
+    gap: 3px;
+    margin: 0 0 13px;
+    padding: 3px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--wash);
+  }
+  .tl-day-tab {
+    flex: 1 1 0;
+    min-width: 0;
     display: inline-flex;
     align-items: center;
-    gap: 4px;
-    margin: 2px 0 0;
-    padding: 1px 9px;
-    border-radius: 999px;
-    background: var(--amber-soft);
-    color: var(--amber);
-    font-size: 11px;
+    justify-content: center;
+    gap: 5px;
+    padding: 7px 10px;
+    border: 0;
+    border-radius: 9px;
+    background: transparent;
+    color: var(--muted);
+    font-size: 12.5px;
     font-weight: 700;
-    width: fit-content;
-    max-width: 100%;
+    font-family: inherit;
+    cursor: pointer;
   }
-  .tl-item-members svg, .tl-item-members .hi { width: 12px; height: 12px; }
-  .tl-item-members i { font-style: normal; font-weight: 600; opacity: .8; }
-  .tl-item-members i::before { content: "・"; }
-  .tl-item.is-not-you .tl-plan h3,
-  .tl-item.is-not-you .tl-seg,
-  .tl-item.is-not-you .tl-meta,
-  .tl-item.is-not-you .tl-time { opacity: .55; }
+  .tl-day-tab svg, .tl-day-tab .hi { width: 13px; height: 13px; flex: none; }
+  .tl-day-tab-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .tl-day-tab[aria-selected="true"] {
+    background: var(--paper);
+    color: var(--green);
+    box-shadow: 0 1px 2px rgba(17, 25, 22, .14);
+  }
 
   /* 旅行中の「いま / 次の予定」— 箱で囲わず、小見出し＋罫線で構成する */
   .tl-now { margin: 0 0 6px; }

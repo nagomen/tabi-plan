@@ -217,8 +217,21 @@ try {
     console.warn("[dev:full] DBマイグレーションをスキップします。");
   }
 
-  const tscPath = resolve(rootDir, "node_modules/.bin/tsc");
-  const vitePath = resolve(rootDir, "node_modules/.bin/vite");
+  // npm workspaces は通常ルートへ hoist するが、workspace 配下で個別 install すると
+  // そちらにだけ実体が置かれることがある。どちらでも起動できるようにする。
+  const workspaceBin = (name, workspace) => {
+    const candidates = [
+      resolve(rootDir, "node_modules/.bin", name),
+      workspace ? resolve(rootDir, workspace, "node_modules/.bin", name) : "",
+    ].filter(Boolean);
+    const found = candidates.find((path) => existsSync(path));
+    if (!found) {
+      throw new Error(`${name} が見つかりません（npm install を実行してください）: ${candidates.join(", ")}`);
+    }
+    return found;
+  };
+  const tscPath = workspaceBin("tsc", "api");
+  const vitePath = workspaceBin("vite", "frontend");
   // watcherの初回コンパイルで起動直後のAPIが再起動し、Vite proxyが一瞬
   // ECONNREFUSEDになるのを避ける。buildとwatchで同じincremental情報を共有する。
   const incrementalArgs = ["--incremental", "--tsBuildInfoFile", "api/dist/.tsbuildinfo"];

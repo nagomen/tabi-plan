@@ -22,6 +22,7 @@ import { isPublished } from "../shared/plans-store";
 import { getUser } from "../shared/user-store";
 import { canEditPlan, canManagePlan, canViewPlan, isMemberOf, planHasOwner } from "../shared/membership";
 import { joinersOn, leaversOn } from "../shared/member-period";
+import { dayTracks, pickTrack, isItemInTrack, type DayTrack } from "../shared/day-tracks";
 import { currentAccount } from "../shared/account-store";
 import { currentUserId, adoptLegacyIdentity, identifyByName } from "../shared/identity";
 import * as db from "../shared/db";
@@ -2143,26 +2144,78 @@ function stayHtmlForDay(idx: number): string {
   return rows.join("");
 }
 
+// ---- 参加者で行程が分かれる日のタブ切替 ----------------------------------
+
+/** 日付 → 選択中の班キー。タブ切替の記憶（フィード再描画をまたいで保持する）。 */
+const dayTrackChoice = new Map<string, string>();
+
+/** その日の班。一部メンバーだけの予定が無い日（＝分かれない日）は空配列。 */
+function tracksOf(day: DayGroup): DayTrack[] {
+  const id = planId();
+  const present = id ? TripPlans.memberIdsPresentOn(id, day.date) : [];
+  return dayTracks(day.items.map((item) => item.members), present);
+}
+
+function selectedTrack(day: DayGroup): DayTrack | null {
+  return pickTrack(tracksOf(day), dayTrackChoice.get(day.date), currentUserId() || "");
+}
+
+/** 班タブがある日は、全員対象の予定＋選択中の班の予定だけに絞る。 */
+function trackItems(day: DayGroup, track: DayTrack | null): ItineraryItem[] {
+  if (!track) return day.items;
+  return day.items.filter((item) => isItemInTrack(item.members, track));
+}
+
+/**
+ * 班タブに実名を出してよいか。名前が見えるのは計画の参加者（plan_members）だけ。
+ * 観覧のみの人（公開計画のゲストなど）には個人名を出さない。
+ */
+function canSeeTrackMemberNames(): boolean {
+  const meta = TripPlans.get(CONFIG.tripSlug);
+  return Boolean(meta && isMemberOf(meta));
+}
+
+/** 班タブの表示名。参加者には名前（本人は「あなた」）、観覧のみの人には匿名のグループ名。 */
+function trackLabel(track: DayTrack, index: number, withNames: boolean): string {
+  if (!withNames) return `${String.fromCharCode(65 + (index % 26))}グループ`;
+  const you = currentUserId() || "";
+  const names: string[] = [];
+  if (you && track.memberIds.includes(you)) names.push("あなた");
+  for (const id of track.memberIds) {
+    if (id === you) continue;
+    const name = db.nameOf(id);
+    if (name) names.push(name);
+  }
+  if (!names.length) return "そのほか";
+  return names.slice(0, 3).join("・") + (names.length > 3 ? ` 他${names.length - 3}人` : "");
+}
+
+function dayTrackTabsHtml(day: DayGroup): string {
+  const tracks = tracksOf(day);
+  if (!tracks.length) return "";
+  const selected = selectedTrack(day);
+  const withNames = canSeeTrackMemberNames();
+  return `<div class="tl-day-tabs" role="tablist" aria-label="班ごとの行程">` +
+    tracks.map((track, index) =>
+      `<button class="tl-day-tab" type="button" role="tab" aria-selected="${track.key === selected?.key}"` +
+      ` data-track-day="${escapeHtml(day.date)}" data-track-key="${escapeHtml(track.key)}">` +
+      `${icon("users")}<span class="tl-day-tab-label">${escapeHtml(trackLabel(track, index, withNames))}</span></button>`
+    ).join("") +
+    `</div>`;
+}
+
 function timelineHtmlForDay(idx: number): string {
   const day = state.days[idx];
   if (!day) return "";
-  const you = currentUserId();
-  return day.items.filter((i) => String(i.type) !== "stay").map((item) => {
+  // 予定ごとに対象メンバー名は書かない。行程が班に分かれる日は
+  // dayTrackTabsHtml の帯タブで切り替え、名前はタブにだけ出す。
+  const track = selectedTrack(day);
+  return trackItems(day, track).filter((i) => String(i.type) !== "stay").map((item) => {
     const type = String(item.type || "todo");
     const placeText = item.place && item.place !== item.title ? `場所: ${item.place}` : "";
     const moveText = type === "move" ? [item.transport, item.duration].filter(Boolean).join("・") : "";
     const metaText = [moveText || placeText, item.note].filter(Boolean).join(" / ");
     const label = `<span class="tl-kind ${escapeHtml(type)}">${escapeHtml(item.typeLabel || item.type || "予定")}</span>`;
-
-    // 一部メンバーだけの予定（途中合流の個人移動など）は名前チップを出し、
-    // 自分が含まれない予定はさらに淡くして「自分の行程」が目で追えるようにする。
-    const subsetIds = Array.isArray(item.members) ? item.members.filter(Boolean) : [];
-    const subsetNames = subsetIds.map((id) => db.nameOf(id)).filter(Boolean);
-    const notYou = subsetIds.length > 0 && Boolean(you) && !subsetIds.includes(you);
-    const itemCls = subsetIds.length ? (notYou ? " is-subset is-not-you" : " is-subset") : "";
-    const membersChip = subsetIds.length
-      ? `<span class="tl-item-members" title="この予定の対象メンバー">${icon("users")}${escapeHtml(subsetNames.join("・") || "一部メンバー")}${notYou ? `<i>あなたは別行動</i>` : ""}</span>`
-      : "";
 
     let segA = item.origin || "";
     let segB = item.destination || "";
@@ -2175,12 +2228,11 @@ function timelineHtmlForDay(idx: number): string {
       ? `<div class="tl-seg"><span>${escapeHtml(segA || "出発")}</span><span class="tl-seg-arr">${icon("arrowLongRight")}</span><span>${escapeHtml(segB || "到着")}</span></div>`
       : `<h3>${escapeHtml(item.title || "")}</h3>`;
 
-    return `<article class="tl-item${itemCls}" data-kind="${escapeHtml(type)}">
+    return `<article class="tl-item" data-kind="${escapeHtml(type)}">
       <time class="tl-time">${escapeHtml(item.time || "")}</time>
       <span class="tl-rail"><span class="tl-dot ${escapeHtml(type)}">${kindIcon(type)}</span></span>
       <div class="tl-plan">
         <div class="tl-plan-line">${label}${title}</div>
-        ${membersChip}
         ${item.needed ? `<p class="tl-needed">${escapeHtml(item.needed)}</p>` : ""}
         <p class="tl-meta">${metaText ? `<span class="tl-meta-text">${escapeHtml(metaText)}</span>` : ""}<a class="tl-maplink" href="${mapsSearchUrl(item.mapQuery || item.place || item.title)}" target="_blank" rel="noopener">地図 ${icon("arrowTopRightOnSquare")}</a></p>
       </div>
@@ -2238,6 +2290,7 @@ function dayBlockHtml(idx: number): string {
   const items = timelineHtmlForDay(idx);
   return `<section class="tl-dayblock" data-day-block="${idx}">
     <div class="tl-dayblock-head"><span class="tl-dayblock-lead"><span>${escapeHtml(head)}</span>${presenceBadgesHtml(day)}</span>${weather}</div>
+    ${dayTrackTabsHtml(day)}
     ${stayHtmlForDay(idx)}
     ${items || `<p class="tl-dayblock-empty">予定はまだありません</p>`}
   </section>`;
@@ -2247,7 +2300,7 @@ function dayBlockHtml(idx: number): string {
 function nowNextHtml(day: DayGroup): string {
   if (day.date !== todayISO()) return "";
   const cur = nowMinutes();
-  const timed = day.items
+  const timed = trackItems(day, selectedTrack(day))
     .filter((i) => String(i.type) !== "stay")
     .map((i) => ({ i, m: timeToMinutes(i.time) }))
     .filter((x): x is { i: ItineraryItem; m: number } => x.m != null)
@@ -2285,7 +2338,8 @@ function renderActive(): void {
   setHtml("[data-day-title]", `<span>${escapeHtml(titleMain)}</span>`);
   updateAiChatContext();
 
-  const activePlaces = projectPlaces(day.items);
+  // 地図も選択中の班の行程に合わせる（班タブが無い日は全予定のまま）。
+  const activePlaces = projectPlaces(trackItems(day, selectedTrack(day)));
   const placeNames = activePlaces.map((place) => place.place || place.title).filter(Boolean);
   setText("[data-location-caption]", `現在地: ${day.area || placeNames[0] || "-"} / 次: ${placeNames[1] || placeNames[0] || "-"}`);
   qs<HTMLAnchorElement>("[data-directions]").href = mapsDir(activePlaces);
@@ -2332,6 +2386,10 @@ function renderActive(): void {
   };
   qsa<HTMLElement>("[data-more-index]").forEach((b) => b.addEventListener("click", () => expand(Number(b.dataset.moreIndex))));
   qsa<HTMLElement>("[data-more-all]").forEach((b) => b.addEventListener("click", () => expand(Number(b.dataset.moreAll))));
+  qsa<HTMLElement>("[data-track-key]").forEach((b) => b.addEventListener("click", () => {
+    dayTrackChoice.set(b.dataset.trackDay || "", b.dataset.trackKey || "");
+    renderActive();
+  }));
 }
 
 // ---- 地図描画 -----------------------------------------------------------
