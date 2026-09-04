@@ -16,7 +16,7 @@ function load(relativePath) {
   return module.exports;
 }
 
-const { memberSetKey, dayTracks, pickTrack, isItemInTrack, REST_TRACK_KEY } = load("src/shared/day-tracks.ts");
+const { memberSetKey, dayTracks, pickTrack, isItemInTrack, everyoneIds, REST_TRACK_KEY } = load("src/shared/day-tracks.ts");
 
 test("memberSetKey normalizes order/duplicates and treats empty as everyone", () => {
   assert.equal(memberSetKey(["b", "a", "b"]), "a,b");
@@ -69,6 +69,21 @@ test("items tagged with everyone present create no extra tab and appear in every
   assert.equal(isItemInTrack(everyone, tracks[1], present), true);
   // 一部メンバーの予定は自分の班にだけ表示する。
   assert.equal(isItemInTrack(["h", "y"], tracks[1], present), false);
+});
+
+test("guests without member data still get no everyone-tab (union of tagged members)", () => {
+  // 観覧のみの人には plan_members が同期されず presentIds が空。
+  // その場合も、予定に登場する全メンバーの合併＝全員とみなして班を作らない。
+  const itemMembers = [["a", "b"], ["c", "d"], ["a", "b", "c", "d"], undefined];
+  const tracks = dayTracks(itemMembers, []);
+  assert.equal(tracks.length, 2);
+  assert.deepEqual([...tracks.map((t) => t.key)], ["a,b", "c,d"]);
+  const everyone = everyoneIds(itemMembers, []);
+  assert.deepEqual([...everyone].sort(), ["a", "b", "c", "d"]);
+  // 全員入りの予定はどちらの班でも表示する。
+  assert.equal(isItemInTrack(["a", "b", "c", "d"], tracks[0], everyone), true);
+  assert.equal(isItemInTrack(["a", "b", "c", "d"], tracks[1], everyone), true);
+  assert.equal(isItemInTrack(["a", "b"], tracks[1], everyone), false);
 });
 
 test("isItemInTrack shows everyone-items in every track and subset-items only in theirs", () => {

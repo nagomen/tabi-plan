@@ -22,7 +22,7 @@ import { isPublished } from "../shared/plans-store";
 import { getUser } from "../shared/user-store";
 import { canEditPlan, canManagePlan, canViewPlan, isMemberOf, planHasOwner } from "../shared/membership";
 import { joinersOn, leaversOn } from "../shared/member-period";
-import { dayTracks, pickTrack, isItemInTrack, type DayTrack } from "../shared/day-tracks";
+import { dayTracks, pickTrack, isItemInTrack, everyoneIds, type DayTrack } from "../shared/day-tracks";
 import { currentAccount } from "../shared/account-store";
 import { currentUserId, adoptLegacyIdentity, identifyByName } from "../shared/identity";
 import * as db from "../shared/db";
@@ -2167,8 +2167,8 @@ function selectedTrack(day: DayGroup): DayTrack | null {
 /** 班タブがある日は、全員の予定（members 空か全員入り）＋選択中の班の予定だけに絞る。 */
 function trackItems(day: DayGroup, track: DayTrack | null): ItineraryItem[] {
   if (!track) return day.items;
-  const present = presentIdsOf(day);
-  return day.items.filter((item) => isItemInTrack(item.members, track, present));
+  const everyone = everyoneIds(day.items.map((item) => item.members), presentIdsOf(day));
+  return day.items.filter((item) => isItemInTrack(item.members, track, everyone));
 }
 
 /**
