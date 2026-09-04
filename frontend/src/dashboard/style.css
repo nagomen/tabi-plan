@@ -796,6 +796,14 @@
   }
 
   /* 見出し右側のアクション/メタ（Google My Maps へ 等） */
+  .tl-sec-actions {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 14px;
+    min-width: 0;
+  }
   .tl-sec-link,
   .tl-sec-meta {
     margin-left: auto;
@@ -811,6 +819,15 @@
     align-items: center;
     gap: 6px;
     color: var(--green);
+  }
+  .tl-sec-actions .tl-sec-link { margin-left: 0; }
+  .tl-sec-button {
+    appearance: none;
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+    font: inherit;
+    padding: 0;
   }
   .tl-sec-link:hover,
   .tl-sec-link:focus-visible { text-decoration: underline; outline: none; }

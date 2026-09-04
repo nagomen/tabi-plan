@@ -46,7 +46,7 @@ import * as Backend from "../shared/backend";
 import { bindExpenseSplitForm, expenseCurrencyCodes, expenseParticipantNames } from "../shared/expense-form";
 import { setTripDocumentTitle } from "../shared/page-meta";
 import { localDateISO, parseISO, toISO, mdLabel } from "../shared/date";
-import { mapsSearchUrl } from "../shared/maps";
+import { buildGoogleMyMapsKml, googleMyMapsKmlFilename, mapsSearchUrl } from "../shared/maps";
 import { formatDurationMinutes, parseDurationMinutes } from "../shared/travel-duration";
 import type {
   TripData,
@@ -285,6 +285,18 @@ interface AiChatEntry {
 
 const aiChatEntries: AiChatEntry[] = [];
 let aiChatBusy = false;
+
+function downloadTextFile(filename: string, content: string, mimeType: string): void {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
 
 function activeDayCoverMeta(): HeaderCoverMeta {
   const configuredCover = "cover" in coverMeta ? coverMeta.cover : "";
@@ -1754,6 +1766,17 @@ function renderBase(): void {
   if (workspaceView) renderMembers(data);
 
   qs<HTMLAnchorElement>("[data-my-maps]").href = linkByKey("maps").url || "#";
+  const kmlButton = root.querySelector<HTMLButtonElement>("[data-google-maps-kml]");
+  if (kmlButton && !kmlButton.dataset.bound) {
+    kmlButton.dataset.bound = "true";
+    kmlButton.addEventListener("click", () => {
+      downloadTextFile(
+        googleMyMapsKmlFilename(state.data.trip?.title),
+        buildGoogleMyMapsKml(state.data),
+        "application/vnd.google-earth.kml+xml;charset=utf-8",
+      );
+    });
+  }
 
   if (workspaceView) {
     data.settlement = { ...data.settlement, ...localSettlement() };
