@@ -1467,17 +1467,14 @@
   .tl-day-presence.is-join { background: var(--green-soft); color: var(--green); }
   .tl-day-presence.is-leave { background: var(--amber-soft); color: var(--amber); }
 
-  /* 参加者で行程が分かれる日：セクション横幅いっぱいの帯（セグメント）で班を切り替える。
+  /* 参加者で行程が分かれる日：セクション横幅いっぱいのフラットな帯で班を切り替える。
+     カードにはせず、タブ同士は仕切り線で分け、選択中はグレー地に白文字。
      予定ごとに名前は書かず、名前はこの帯のタブにだけ出す。 */
   .tl-day-tabs {
     display: flex;
     width: 100%;
-    gap: 3px;
     margin: 0 0 13px;
-    padding: 3px;
-    border: 1px solid var(--line);
-    border-radius: 12px;
-    background: var(--wash);
+    border-block: 1px solid var(--line);
   }
   .tl-day-tab {
     flex: 1 1 0;
@@ -1486,9 +1483,8 @@
     align-items: center;
     justify-content: center;
     gap: 5px;
-    padding: 7px 10px;
+    padding: 9px 10px;
     border: 0;
-    border-radius: 9px;
     background: transparent;
     color: var(--muted);
     font-size: 12.5px;
@@ -1496,6 +1492,7 @@
     font-family: inherit;
     cursor: pointer;
   }
+  .tl-day-tab + .tl-day-tab { border-left: 1px solid var(--line); }
   .tl-day-tab svg, .tl-day-tab .hi { width: 13px; height: 13px; flex: none; }
   .tl-day-tab-label {
     min-width: 0;
@@ -1504,9 +1501,8 @@
     white-space: nowrap;
   }
   .tl-day-tab[aria-selected="true"] {
-    background: var(--paper);
-    color: var(--green);
-    box-shadow: 0 1px 2px rgba(17, 25, 22, .14);
+    background: var(--muted);
+    color: #fff;
   }
 
   /* 旅行中の「いま / 次の予定」— 箱で囲わず、小見出し＋罫線で構成する */

@@ -57,6 +57,20 @@ test("pickTrack prefers the chosen key, then your own track, then the first", ()
   assert.equal(pickTrack([], "x", "a"), null);
 });
 
+test("items tagged with everyone present create no extra tab and appear in every track", () => {
+  // 「4人で朝食」のように全員（h,y,me,k）を明示指定した予定は班にしない。
+  const present = ["h", "y", "me", "k"];
+  const tracks = dayTracks([["h", "y"], ["me", "k", "h", "y"]], present);
+  assert.equal(tracks.length, 2);
+  assert.deepEqual([...tracks.map((t) => t.key)], ["h,y", REST_TRACK_KEY]);
+  // 全員入りの予定はどちらの班でも表示する。
+  const everyone = ["me", "k", "h", "y"];
+  assert.equal(isItemInTrack(everyone, tracks[0], present), true);
+  assert.equal(isItemInTrack(everyone, tracks[1], present), true);
+  // 一部メンバーの予定は自分の班にだけ表示する。
+  assert.equal(isItemInTrack(["h", "y"], tracks[1], present), false);
+});
+
 test("isItemInTrack shows everyone-items in every track and subset-items only in theirs", () => {
   const tracks = dayTracks([["a", "b"]], ["a", "b", "c"]);
   const groupAB = tracks[0];

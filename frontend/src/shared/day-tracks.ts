@@ -16,9 +16,19 @@ export function memberSetKey(members: readonly string[] | undefined): string | n
   return ids.length ? ids.join(",") : null;
 }
 
+/** members が在籍メンバー全員を含むか（＝実質「全員の予定」）。在籍が不明なら false。 */
+function coversEveryone(memberIds: readonly string[], presentIds: readonly string[]): boolean {
+  const present = presentIds.filter(Boolean);
+  if (!present.length) return false;
+  const ids = new Set(memberIds);
+  return present.every((id) => ids.has(id));
+}
+
 /**
  * その日の班。一部メンバーだけの予定があるとき、対象メンバー集合ごとに1班と、
  * どの班にも入らない在籍メンバー（presentIds の残り）の班に割る。
+ * 在籍メンバー全員が入っている予定は「全員の予定」なので班を作らない
+ * （どの班のタブにも共通の予定として表示する）。
  * 班が2つ以上に分かれない日は空配列（＝タブは出さず従来表示）。
  */
 export function dayTracks(
@@ -28,7 +38,10 @@ export function dayTracks(
   const subsets = new Map<string, string[]>();
   for (const members of itemMembers) {
     const key = memberSetKey(members);
-    if (key && !subsets.has(key)) subsets.set(key, key.split(","));
+    if (!key || subsets.has(key)) continue;
+    const ids = key.split(",");
+    if (coversEveryone(ids, presentIds)) continue;
+    subsets.set(key, ids);
   }
   if (!subsets.size) return [];
   const covered = new Set([...subsets.values()].flat());
@@ -50,8 +63,17 @@ export function pickTrack(
     || tracks[0];
 }
 
-/** この予定を track の班で表示するか。全員対象（members 空）はどの班でも表示する。 */
-export function isItemInTrack(members: readonly string[] | undefined, track: DayTrack): boolean {
+/**
+ * この予定を track の班で表示するか。
+ * members 空、または在籍メンバー全員入りの予定は「全員の予定」としてどの班でも表示する。
+ */
+export function isItemInTrack(
+  members: readonly string[] | undefined,
+  track: DayTrack,
+  presentIds: readonly string[] = [],
+): boolean {
   const key = memberSetKey(members);
-  return !key || key === track.key;
+  if (!key) return true;
+  if (coversEveryone(key.split(","), presentIds)) return true;
+  return key === track.key;
 }

@@ -2149,21 +2149,26 @@ function stayHtmlForDay(idx: number): string {
 /** 日付 → 選択中の班キー。タブ切替の記憶（フィード再描画をまたいで保持する）。 */
 const dayTrackChoice = new Map<string, string>();
 
+/** その日に旅行へ在籍しているメンバーID（途中合流/離脱を反映）。 */
+function presentIdsOf(day: DayGroup): string[] {
+  const id = planId();
+  return id ? TripPlans.memberIdsPresentOn(id, day.date) : [];
+}
+
 /** その日の班。一部メンバーだけの予定が無い日（＝分かれない日）は空配列。 */
 function tracksOf(day: DayGroup): DayTrack[] {
-  const id = planId();
-  const present = id ? TripPlans.memberIdsPresentOn(id, day.date) : [];
-  return dayTracks(day.items.map((item) => item.members), present);
+  return dayTracks(day.items.map((item) => item.members), presentIdsOf(day));
 }
 
 function selectedTrack(day: DayGroup): DayTrack | null {
   return pickTrack(tracksOf(day), dayTrackChoice.get(day.date), currentUserId() || "");
 }
 
-/** 班タブがある日は、全員対象の予定＋選択中の班の予定だけに絞る。 */
+/** 班タブがある日は、全員の予定（members 空か全員入り）＋選択中の班の予定だけに絞る。 */
 function trackItems(day: DayGroup, track: DayTrack | null): ItineraryItem[] {
   if (!track) return day.items;
-  return day.items.filter((item) => isItemInTrack(item.members, track));
+  const present = presentIdsOf(day);
+  return day.items.filter((item) => isItemInTrack(item.members, track, present));
 }
 
 /**
