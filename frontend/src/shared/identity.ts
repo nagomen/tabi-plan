@@ -79,8 +79,8 @@ export function clearCurrentUser(): void {
 }
 
 /**
- * 表示名から利用者を確定する。users に居なければ作る
- * （招待前でも実体を持たせる方針。名前を入れるだけで参加できる）。
+ * 表示名から利用者を確定する。API利用時は既存ユーザーだけを解決し、
+ * 未登録参加者は旅行の招待画面でplaceholderを選んでアカウントへ紐付ける。
  */
 export async function identifyByName(displayName: string): Promise<db.UserRow | null> {
   const name = String(displayName || "").trim();

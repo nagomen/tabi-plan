@@ -1,7 +1,6 @@
 // 関係テーブル用のルーティング。server.ts から呼ばれる。
 //
 //   GET    /api/bootstrap                    起動時に全データを1往復で取得
-//   POST   /api/users                        { display_name } / { display_name, ensure:true }
 //   PATCH  /api/users/<id>                   { display_name }
 //   POST   /api/auth/signup                  { email, password, display_name } → server.ts
 //   POST   /api/auth/login                   { email, password } → server.ts
@@ -263,12 +262,6 @@ export async function route(method: string, path: string, body: Body, actorUserI
   }
 
   // ---- ユーザー ----
-  if (method === "POST" && path === "/api/users") {
-    if (!actorUserId) return { status: 403, body: { error: "forbidden" } };
-    const name = str(body.display_name);
-    const user = body.ensure ? await userRepo.ensureUserByName(name) : await userRepo.createUser(name, str(body.id) || undefined);
-    return { status: 200, body: user };
-  }
   if (method === "POST" && path === "/api/users/search") {
     if (!actorUserId) return { status: 403, body: { error: "forbidden" } };
     return { status: 200, body: { users: await userRepo.searchUsers(str(body.query), actorUserId) } };

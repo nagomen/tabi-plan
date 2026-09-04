@@ -7,27 +7,6 @@ import { identityKey } from "./identity.js";
 
 // ---- ユーザー -----------------------------------------------------------
 
-export async function createUser(displayName: string, id?: string): Promise<{ id: string; display_name: string }> {
-  const name = String(displayName || "").trim().slice(0, 64);
-  if (!name) throw new BadRequest("display_name が必要です");
-  const userId = id || newId("usr");
-  await pool.query("INSERT INTO users (id, display_name, name_key) VALUES (?, ?, ?)", [userId, name, identityKey(name)]);
-  return { id: userId, display_name: name };
-}
-
-
-/** 表示名から既存ユーザーを引き、無ければ作る（招待前でも実体を持たせる方針）。 */
-export async function ensureUserByName(displayName: string): Promise<{ id: string; display_name: string }> {
-  const name = String(displayName || "").trim().slice(0, 64);
-  if (!name) throw new BadRequest("display_name が必要です");
-  const found = await all<{ id: string; display_name: string }>(
-    "SELECT id, display_name FROM users WHERE name_key = ? ORDER BY created_at LIMIT 1",
-    [identityKey(name)],
-  );
-  if (found[0]) return found[0];
-  return createUser(name);
-}
-
 export async function renameUser(userId: string, displayName: string): Promise<void> {
   const name = String(displayName || "").trim().slice(0, 64);
   if (!name) throw new BadRequest("display_name が必要です");

@@ -69,6 +69,14 @@ test("友達以外を名前で追加し、保存後に未登録メンバーと�
   assert.match(editor, /undoPlaceholderClaim/);
 });
 
+test("API利用時は表示名だけでグローバルユーザーを自動作成しない", () => {
+  const database = fs.readFileSync(new URL("src/shared/db.ts", root), "utf8");
+  const plans = fs.readFileSync(new URL("src/shared/plans-store.ts", root), "utf8");
+  assert.doesNotMatch(database, /send\("POST", "\/api\/users"/);
+  assert.match(database, /if \(isEnabled\(\)\) throw new Error\("登録済みの旅行メンバーから選択してください"\)/);
+  assert.match(plans, /!db\.isEnabled\(\) \? db\.ensureUserLocal\(name\) : undefined/);
+});
+
 test("LINEログインでも招待tokenを外部へ送らずブラウザ内で選択状態を復元する", () => {
   const database = fs.readFileSync(new URL("src/shared/db.ts", root), "utf8");
   assert.match(database, /LINE_RETURN_HASH_KEY/);

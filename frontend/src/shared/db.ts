@@ -914,18 +914,15 @@ function localId(prefix: string): string {
 }
 
 /**
- * 表示名からユーザーを確保する。まだ居なければ作る
- * （招待前でも実体を持たせる方針。画面側は名前を入力するだけでよい）。
+ * 表示名からユーザーを解決する。
+ * API利用時の未登録者は旅行専用placeholderで追加するため、ここでは作らない。
+ * backend無しのローカル表示だけは、従来どおりメモリ上の利用者を作る。
  */
 export async function ensureUser(displayName: string): Promise<UserRow> {
   const existing = findUserByName(displayName);
   if (existing) return existing;
-  const created = await request<UserRow>("POST", "/api/users", {
-    display_name: displayName,
-    ensure: true,
-  });
-  if (!snap.users.some((u) => u.id === created.id)) snap.users.push(created);
-  return created;
+  if (isEnabled()) throw new Error("登録済みの旅行メンバーから選択してください");
+  return ensureUserLocal(displayName);
 }
 
 export async function searchUsers(query: string): Promise<{ id: string; display_name: string; email: string }[]> {
@@ -942,18 +939,17 @@ export async function searchUsers(query: string): Promise<{ id: string; display_
 }
 
 /**
- * 同期版。id をこちら側で決めてキャッシュへ入れ、登録は非同期で追いかける。
- * 呼び出し側（計画の保存など）を同期のまま保つために使う。
- * id を渡して作るので、サーバー側と食い違うことはない。
+ * backend無しのローカル表示専用。API利用時に表示名だけのグローバル
+ * ユーザーを作ると、同名の別人を区別できずログイン手段も持てないため拒否する。
  */
 export function ensureUserLocal(displayName: string): UserRow {
   const name = String(displayName || "").trim().slice(0, 64);
   if (!name) throw new Error("表示名が空です");
   const existing = findUserByName(name);
   if (existing) return existing;
+  if (isEnabled()) throw new Error("登録済みの旅行メンバーから選択してください");
   const row: UserRow = { id: localId("usr"), display_name: name };
   snap.users.push(row);
-  send("POST", "/api/users", { id: row.id, display_name: name });
   return row;
 }
 

@@ -35,6 +35,7 @@ test("AI route distinguishes an expired login session from missing plan permissi
 
 test("unregistered trip members are explicit placeholders, not auto-created friends", () => {
   const routes = source("routes.ts");
+  const users = source("user-repo.ts");
   const members = source("plan-member-repo.ts");
   const invites = source("plan-invite-repo.ts");
   const references = source("plan-member-reference-repo.ts");
@@ -59,6 +60,8 @@ test("unregistered trip members are explicit placeholders, not auto-created frie
   assert.match(members, /owner_user_id !== actorUserId/);
   assert.match(members, /費用・負担・精算に使われているメンバーは削除できません/);
   assert.doesNotMatch(members + invites, /ensurePlanMembersAreFriends/);
+  assert.doesNotMatch(routes, /path === "\/api\/users"/);
+  assert.doesNotMatch(users, /INSERT INTO users/);
 });
 
 test("mutable repositories recheck current membership inside their transactions", () => {

@@ -40,3 +40,10 @@ test("公開共同編集者は旅行名・期間などのメタデータを変�
   }, "usr_collaborator");
   assert.deepEqual(result, { status: 403, body: { error: "forbidden" } });
 });
+
+test("表示名だけのグローバルユーザー作成APIは存在しない", async () => {
+  const result = await route("POST", "/api/users", {
+    display_name: "未登録の旅行メンバー",
+  }, "usr_actor");
+  assert.equal(result, null);
+});

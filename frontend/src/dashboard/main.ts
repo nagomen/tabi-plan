@@ -489,7 +489,7 @@ function showIdentityModal(required: boolean): Promise<boolean> {
         return;
       }
       saveProfile(name);
-      // 表示名から利用者を確定する（users に無ければ作る）。
+      // API利用時は既存の旅行メンバーだけを確定する。未登録者は招待で紐付ける。
       void identifyByName(name).then(() => {
         renderBase();
         renderActive();
@@ -1515,7 +1515,12 @@ function setupExpenseEntryHandlers(form: HTMLFormElement, participants: string[]
     setStatus("保存中...", "");
     try {
       // フォームは表示名と日本語ラベルを持つので、user_id と列挙へ変換して保存する。
-      const idOf = (name: string): string => db.ensureUserLocal(name).id;
+      const idOf = (name: string): string => {
+        const user = db.findUserByName(name)
+          || (!db.isEnabled() ? db.ensureUserLocal(name) : undefined);
+        if (!user) throw new Error("旅行メンバー情報を再読み込みしてください");
+        return user.id;
+      };
       const custom: Record<string, number> = {};
       for (const [name, value] of Object.entries(individual)) custom[idOf(name)] = value;
       const paidOn = (field("paidDate") as HTMLInputElement).value || "";

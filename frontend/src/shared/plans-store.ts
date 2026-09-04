@@ -224,7 +224,7 @@ export function getData(slug: string): LocalPlanData | null {
 
 // ---- 書き込み -----------------------------------------------------------
 
-/** 表示名の並びを user_id へ解決する（未登録の名前は users に作る）。 */
+/** 表示名の並びを既存 user_id へ解決する（未登録者は専用の仮メンバーAPIで作る）。 */
 function resolveMemberIds(members: string | undefined): string[] {
   const names = String(members || "")
     .split(/[、,／/]|\s*\/\s*|\s*･\s*/)
@@ -232,7 +232,9 @@ function resolveMemberIds(members: string | undefined): string[] {
     .filter(Boolean);
   const ids: string[] = [];
   for (const name of names) {
-    const user = db.ensureUserLocal(name);
+    const user = db.findUserByName(name)
+      || (!db.isEnabled() ? db.ensureUserLocal(name) : undefined);
+    if (!user) continue;
     if (!ids.includes(user.id)) ids.push(user.id);
   }
   return ids;
