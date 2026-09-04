@@ -1,12 +1,17 @@
 // 費用・負担割・精算・監査ログの永続化。
 import mysql from "mysql2/promise";
-import { all, firstRow, pool, type Row, withTransaction } from "./db.js";
+import { all, firstRow, type Row, withTransaction } from "./db.js";
 import { BadRequest } from "./errors.js";
 import { newId } from "./ids.js";
 import { activeMemberSet, assertMember, safeUrl } from "./repo-helpers.js";
 
 export async function planIdForExpense(expenseId: string): Promise<string | null> {
   const rows = await all<{ plan_id: string }>("SELECT plan_id FROM expenses WHERE id = ? LIMIT 1", [expenseId]);
+  return rows[0]?.plan_id || null;
+}
+
+export async function planIdForSettlement(settlementId: string): Promise<string | null> {
+  const rows = await all<{ plan_id: string }>("SELECT plan_id FROM settlements WHERE id = ? LIMIT 1", [settlementId]);
   return rows[0]?.plan_id || null;
 }
 
@@ -32,6 +37,20 @@ export interface ExpenseInput {
 const CATEGORIES = new Set(["food", "transport", "lodging", "sightseeing", "communication", "other"]);
 const SPLIT = new Set(["equal_all", "equal_selected", "custom", "none"]);
 const PAY = new Set(["card", "cash", "transfer", "other"]);
+
+/** ルート判定後の権限変更競合を防ぎ、書き込みtransaction内でも編集権限を確認する。 */
+async function assertWorkspaceEditor(conn: mysql.PoolConnection, planId: string, actorUserId: string): Promise<void> {
+  const access = await firstRow<{ role: string; source: string }>(
+    conn,
+    `SELECT pm.role, p.source FROM plans p
+       JOIN plan_members pm ON pm.plan_id = p.id AND pm.user_id = ? AND pm.status = 'active'
+      WHERE p.id = ? AND p.deleted_at IS NULL LIMIT 1 FOR UPDATE`,
+    [actorUserId, planId],
+  );
+  if (!access || access.source === "sample" || !["owner", "editor"].includes(access.role)) {
+    throw new BadRequest("費用・精算を変更する権限がありません");
+  }
+}
 
 /** 支払額・レート・base_currency 換算額を検証つきで求める。create/update で共有する。 */
 export function computeAmounts(input: ExpenseInput): { amount: number; rate: number; base: number } {
@@ -99,6 +118,7 @@ export async function createExpense(planId: string, input: ExpenseInput, actorUs
   const id = input.id && /^[\w-]{1,32}$/.test(input.id) ? input.id : newId("exp");
   const { amount, rate, base } = computeAmounts(input);
   await withTransaction(async (conn) => {
+    await assertWorkspaceEditor(conn, planId, actorUserId);
     const { splitMethod, shares } = validateShares(input, base, await activeMemberSet(planId, conn));
     await conn.query(
       `INSERT INTO expenses (id, plan_id, paid_on, payer_user_id, category, title, amount_minor,
@@ -192,9 +212,14 @@ export async function updateExpense(id: string, input: ExpenseInput, actorUserId
   const { amount, rate, base } = computeAmounts(input);
   await withTransaction(async (conn) => {
     const planId = (await firstRow<{ plan_id: string }>(
-      conn, "SELECT plan_id FROM expenses WHERE id = ? FOR UPDATE", [id],
+      conn, "SELECT plan_id FROM expenses WHERE id = ?", [id],
     ))?.plan_id;
     if (!planId) throw new BadRequest("費用が見つかりません");
+    await assertWorkspaceEditor(conn, planId, actorUserId);
+    const locked = await firstRow<{ id: string }>(
+      conn, "SELECT id FROM expenses WHERE id = ? AND plan_id = ? LIMIT 1 FOR UPDATE", [id, planId],
+    );
+    if (!locked) throw new BadRequest("費用が見つかりません");
     const before = await expenseSnapshot(conn, id);
     const { splitMethod, shares } = validateShares(input, base, await activeMemberSet(planId, conn));
     await conn.query(
@@ -236,9 +261,14 @@ export async function restoreExpense(id: string, actorUserId: string): Promise<v
 async function setExpenseDeleted(id: string, actorUserId: string, deleted: boolean): Promise<void> {
   await withTransaction(async (conn) => {
     const planId = (await firstRow<{ plan_id: string }>(
-      conn, "SELECT plan_id FROM expenses WHERE id = ? FOR UPDATE", [id],
+      conn, "SELECT plan_id FROM expenses WHERE id = ?", [id],
     ))?.plan_id;
     if (!planId) throw new BadRequest("費用が見つかりません");
+    await assertWorkspaceEditor(conn, planId, actorUserId);
+    const locked = await firstRow<{ id: string }>(
+      conn, "SELECT id FROM expenses WHERE id = ? AND plan_id = ? LIMIT 1 FOR UPDATE", [id, planId],
+    );
+    if (!locked) throw new BadRequest("費用が見つかりません");
     const before = await expenseSnapshot(conn, id);
     await conn.query(
       deleted
@@ -263,15 +293,42 @@ export async function createSettlement(planId: string, input: {
   const amount = Math.round(Number(input.amount_base_minor) || 0);
   if (amount <= 0) throw new BadRequest("精算額は1以上にしてください");
   if (input.from_user_id === input.to_user_id) throw new BadRequest("送金元と送金先は別の参加者にしてください");
-  const memberIds = await activeMemberSet(planId);
-  assertMember(memberIds, String(input.from_user_id || ""), "送金元");
-  assertMember(memberIds, String(input.to_user_id || ""), "送金先");
-  assertMember(memberIds, actorUserId, "記録者");
   const id = newId("stl");
-  await pool.query(
-    `INSERT INTO settlements (id, plan_id, from_user_id, to_user_id, amount_base_minor, note, created_by_id)
-     VALUES (?,?,?,?,?,?,?)`,
-    [id, planId, input.from_user_id, input.to_user_id, amount, input.note || null, actorUserId],
-  );
+  await withTransaction(async (conn) => {
+    await assertWorkspaceEditor(conn, planId, actorUserId);
+    const memberIds = await activeMemberSet(planId, conn);
+    assertMember(memberIds, String(input.from_user_id || ""), "送金元");
+    assertMember(memberIds, String(input.to_user_id || ""), "送金先");
+    assertMember(memberIds, actorUserId, "記録者");
+    await conn.query(
+      `INSERT INTO settlements (id, plan_id, from_user_id, to_user_id, amount_base_minor, note, created_by_id)
+       VALUES (?,?,?,?,?,?,?)`,
+      [id, planId, input.from_user_id, input.to_user_id, amount, input.note || null, actorUserId],
+    );
+  });
   return { id };
+}
+
+/** 誤って付けた精算完了を取り消す。行は監査・復旧用に論理削除で残す。 */
+export async function deleteSettlement(id: string, actorUserId: string): Promise<void> {
+  await withTransaction(async (conn) => {
+    const settlement = await firstRow<{ plan_id: string }>(
+      conn, "SELECT plan_id FROM settlements WHERE id = ? AND deleted_at IS NULL LIMIT 1", [id],
+    );
+    if (!settlement) throw new BadRequest("取消できる精算記録が見つかりません");
+    await assertWorkspaceEditor(conn, settlement.plan_id, actorUserId);
+    const locked = await firstRow<{ id: string }>(
+      conn,
+      "SELECT id FROM settlements WHERE id = ? AND plan_id = ? AND deleted_at IS NULL LIMIT 1 FOR UPDATE",
+      [id, settlement.plan_id],
+    );
+    if (!locked) throw new BadRequest("取消できる精算記録が見つかりません");
+    const [result] = await conn.query<mysql.ResultSetHeader>(
+      `UPDATE settlements SET deleted_at = CURRENT_TIMESTAMP, deleted_by_id = ?
+        WHERE id = ? AND deleted_at IS NULL`,
+      [actorUserId, id],
+    );
+    if (result.affectedRows !== 1) throw new BadRequest("取消できる精算記録が見つかりません");
+  });
+  console.info("[travel-api] settlement deleted", JSON.stringify({ id, actor_user_id: actorUserId }));
 }

@@ -46,6 +46,38 @@ test("unregistered trip members are explicit placeholders, not auto-created frie
   assert.match(invites, /UPDATE expenses SET payer_user_id/);
   assert.match(invites, /INSERT INTO expense_shares/);
   assert.match(invites, /UPDATE settlements SET from_user_id/);
+  assert.match(invites, /requestedPlaceholder !== invitedPlaceholder\.user_id/);
+  assert.match(invites, /旅行メンバーの中から自分を選択してください/);
+  assert.match(invites, /invite\.role/);
+  assert.match(invites, /SELECT id, member_ids FROM itinerary_items/);
+  assert.match(invites, /SELECT owner_user_id FROM plans[\s\S]*FOR UPDATE/);
   assert.match(invites, /UPDATE plan_member_placeholders[\s\S]*status = 'claimed'/);
+  assert.match(members, /未登録メンバーへ所有権は移譲できません/);
+  assert.match(members, /owner_user_id !== actorUserId/);
+  assert.match(members, /費用・負担・精算に使われているメンバーは削除できません/);
   assert.doesNotMatch(members + invites, /ensurePlanMembersAreFriends/);
+});
+
+test("mutable repositories recheck current membership inside their transactions", () => {
+  const plans = source("plan-repo.ts");
+  const members = source("plan-member-repo.ts");
+  const invites = source("plan-invite-repo.ts");
+  const expenses = source("expense-repo.ts");
+  assert.match(plans, /SELECT role FROM plan_members[\s\S]*FOR UPDATE/);
+  assert.match(plans, /source === "sample"/);
+  assert.match(members, /SELECT owner_user_id, version FROM plans[\s\S]*FOR UPDATE/);
+  assert.match(invites, /招待を作成できるのは現在のownerだけです/);
+  assert.match(expenses, /async function assertWorkspaceEditor/);
+  assert.match(expenses, /await assertWorkspaceEditor\(conn, planId, actorUserId\)/);
+});
+
+test("account recovery stores only a keyed hash and revokes every active session", () => {
+  const auth = source("auth-repo.ts");
+  const server = source("server.ts");
+  assert.match(auth, /hmac\(`recovery:\$\{code\}`\)/);
+  assert.match(auth, /recovery_code_hash/);
+  assert.match(auth, /UPDATE user_sessions SET revoked_at = CURRENT_TIMESTAMP WHERE user_id/);
+  assert.match(server, /path === "\/api\/auth\/recover"/);
+  assert.match(server, /path === "\/api\/auth\/recovery-code"/);
+  assert.doesNotMatch(auth, /recovery_code\s+VARCHAR/);
 });

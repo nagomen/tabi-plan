@@ -44,6 +44,26 @@
     <button class="lg-submit" type="submit" data-submit><span data-submit-label>ログイン</span></button>
   </form>
 
+  <button class="lg-recover-open" type="button" data-recover-open>パスワードを忘れた方</button>
+  <form class="lg-recover" data-recover-form hidden novalidate>
+    <h2>復旧コードで再設定</h2>
+    <p>新規登録時またはマイページで保存した復旧コードを使います。</p>
+    <div class="lg-field">
+      <label class="lg-label" for="lg-recover-email">メールアドレス</label>
+      <input class="lg-input" id="lg-recover-email" name="recover-email" type="email" autocomplete="email" required>
+    </div>
+    <div class="lg-field">
+      <label class="lg-label" for="lg-recovery-code">復旧コード</label>
+      <input class="lg-input" id="lg-recovery-code" name="recovery-code" type="text" autocomplete="off" autocapitalize="none" spellcheck="false" required>
+    </div>
+    <div class="lg-field">
+      <label class="lg-label" for="lg-new-password">新しいパスワード</label>
+      <input class="lg-input" id="lg-new-password" name="new-password" type="password" autocomplete="new-password" placeholder="8文字以上" required>
+    </div>
+    <p class="lg-error" data-recover-error aria-live="polite"></p>
+    <button class="lg-submit" type="submit" data-recover-submit>再設定する</button>
+  </form>
+
   <div class="lg-or" data-line-block hidden><span>または</span></div>
   <button class="lg-line" type="button" data-line hidden>
     <span class="lg-line-mark" aria-hidden="true">LINE</span>
@@ -55,7 +75,7 @@
 
   <p class="lg-foot"><a href="plans.html" data-skip>ログインせずに使う</a></p>
 
-  <p class="lg-note">※ 現在は試作のため、アカウント情報はこの端末/開発用 JSON に保存されます（パスワードはハッシュ化）。本物のサーバー認証は将来 DB 接続時に導入します。</p>
+  <p class="lg-note">メールアドレスはログインIDとしてのみ使い、他の利用者には公開しません。復旧コードはサーバーに平文保存されないため、必ず安全な場所へ控えてください。</p>
 </main>
 
 <script src="./trip-config.js"></script>

@@ -187,6 +187,10 @@ export function addSettlement(planId: string, input: {
   });
 }
 
+export function removeSettlement(settlementId: string): Promise<void> {
+  return db.removeSettlement(settlementId);
+}
+
 // ---- 金額表示ヘルパー ---------------------------------------------------
 
 function formatYen(value: number): string {

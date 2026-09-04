@@ -49,6 +49,7 @@ export async function updatePlan(
   input: Record<string, unknown>,
   scope: "collaborate" | "edit" | "manage" = "edit",
   expectedVersion?: number,
+  actorUserId = "",
 ): Promise<number> {
   const fieldError = planFieldError(input);
   if (fieldError) throw new BadRequest(fieldError);
@@ -89,8 +90,18 @@ export async function updatePlan(
     sets.push(`${k} = ?`);
     vals.push(v === "" ? null : v);
   }
+  const accessSql = scope === "manage"
+    ? "owner_user_id = ?"
+    : scope === "edit"
+      ? `EXISTS (SELECT 1 FROM plan_members pm
+          WHERE pm.plan_id = plans.id AND pm.user_id = ? AND pm.status = 'active' AND pm.role IN ('owner','editor'))`
+      : "? <> '' AND open_editing = 1 AND visibility = 'public' AND status = 'published'";
   if (!sets.length) {
-    const rows = await all<{ version: number }>("SELECT version FROM plans WHERE id = ? LIMIT 1", [id]);
+    const rows = await all<{ version: number }>(
+      `SELECT version FROM plans WHERE id = ? AND deleted_at IS NULL AND source <> 'sample' AND (${accessSql}) LIMIT 1`,
+      [id, actorUserId],
+    );
+    if (!rows.length) throw new BadRequest("この計画を変更する権限がありません");
     const currentVersion = Number(rows[0]?.version || 0);
     // 変更対象が無くても、期待版がずれていれば衝突として伝える（黙って成功にしない）。
     if (expectedVersion !== undefined && currentVersion !== expectedVersion) {
@@ -100,7 +111,9 @@ export async function updatePlan(
   }
   sets.push("version = version + 1");
   vals.push(id);
-  let sql = `UPDATE plans SET ${sets.join(", ")} WHERE id = ? AND deleted_at IS NULL`;
+  vals.push(actorUserId);
+  let sql = `UPDATE plans SET ${sets.join(", ")} WHERE id = ? AND deleted_at IS NULL
+    AND source <> 'sample' AND (${accessSql})`;
   if (expectedVersion !== undefined) {
     sql += " AND version = ?";
     vals.push(expectedVersion);
@@ -119,8 +132,13 @@ export async function updatePlan(
   return expectedVersion !== undefined ? expectedVersion + 1 : 0;
 }
 
-export async function deletePlan(id: string): Promise<void> {
-  await pool.query("UPDATE plans SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?", [id]);
+export async function deletePlan(id: string, actorUserId: string): Promise<void> {
+  const [result] = await pool.query<mysql.ResultSetHeader>(
+    `UPDATE plans SET deleted_at = CURRENT_TIMESTAMP, version = version + 1
+      WHERE id = ? AND deleted_at IS NULL AND source <> 'sample' AND owner_user_id = ?`,
+    [id, actorUserId],
+  );
+  if (result.affectedRows !== 1) throw new BadRequest("削除できる計画が見つからないか、ownerではありません");
 }
 
 /** 計画本文（行程・都市・リンク・チェックリスト・候補）を一括置換する。 */
@@ -130,15 +148,30 @@ export async function replacePlanContent(planId: string, body: {
   links?: Record<string, unknown>[];
   checklist?: { label: string; status?: string }[];
   candidates?: { id?: string; title: string; place?: string | null; proposed_by_id?: string | null; adopted?: boolean; votes?: string[] }[];
-}, expectedVersion?: number): Promise<number> {
+}, expectedVersion?: number, actorUserId = ""): Promise<number> {
   return withTransaction(async (conn) => {
-    const planRow = await firstRow<{ version: number }>(
+    const planRow = await firstRow<{
+      version: number; source: string; visibility: string; status: string; open_editing: number;
+    }>(
       conn,
-      "SELECT version FROM plans WHERE id = ? AND deleted_at IS NULL LIMIT 1 FOR UPDATE",
+      `SELECT version, source, visibility, status, open_editing
+         FROM plans WHERE id = ? AND deleted_at IS NULL LIMIT 1 FOR UPDATE`,
       [planId],
     );
-    const currentVersion = Number(planRow?.version || 0);
-    if (!currentVersion) throw new BadRequest("計画が見つかりません");
+    if (!planRow) throw new BadRequest("計画が見つかりません");
+    const currentVersion = Number(planRow.version || 0);
+    const actorMember = actorUserId ? await firstRow<{ role: string }>(
+      conn,
+      `SELECT role FROM plan_members
+        WHERE plan_id = ? AND user_id = ? AND status = 'active' LIMIT 1 FOR UPDATE`,
+      [planId, actorUserId],
+    ) : null;
+    const workspaceEditor = actorMember?.role === "owner" || actorMember?.role === "editor";
+    const publicCollaborator = Boolean(actorUserId && planRow.source !== "sample" && planRow.open_editing &&
+      planRow.visibility === "public" && planRow.status === "published");
+    if (planRow.source === "sample" || (!workspaceEditor && !publicCollaborator)) {
+      throw new BadRequest("この計画を変更する権限がありません");
+    }
     if (expectedVersion !== undefined && currentVersion !== expectedVersion) {
       throw new VersionConflict("計画が別の端末で更新されています", currentVersion);
     }
@@ -216,14 +249,47 @@ export async function replacePlanContent(planId: string, body: {
     }
 
     if (body.candidates) {
+      if (!actorUserId) throw new BadRequest("候補を保存するにはログインが必要です");
+      const [memberRows] = await conn.query<mysql.RowDataPacket[]>(
+        "SELECT user_id FROM plan_members WHERE plan_id = ? AND status = 'active' FOR UPDATE",
+        [planId],
+      );
+      if (!(memberRows as unknown as { user_id: string }[]).some((row) => row.user_id === actorUserId)) {
+        throw new BadRequest("旅行メンバーだけが候補を保存できます");
+      }
+      const [oldCandidateRows] = await conn.query<mysql.RowDataPacket[]>(
+        "SELECT id, proposed_by_id FROM plan_candidates WHERE plan_id = ? FOR UPDATE",
+        [planId],
+      );
+      const oldCandidates = new Map(
+        (oldCandidateRows as unknown as { id: string; proposed_by_id: string | null }[])
+          .map((row) => [row.id, row]),
+      );
+      const [oldVoteRows] = await conn.query<mysql.RowDataPacket[]>(
+        `SELECT v.candidate_id, v.user_id FROM plan_candidate_votes v
+          JOIN plan_candidates c ON c.id = v.candidate_id
+         WHERE c.plan_id = ? FOR UPDATE`,
+        [planId],
+      );
+      const oldVotes = new Map<string, Set<string>>();
+      for (const row of oldVoteRows as unknown as { candidate_id: string; user_id: string }[]) {
+        const voters = oldVotes.get(row.candidate_id) || new Set<string>();
+        voters.add(row.user_id);
+        oldVotes.set(row.candidate_id, voters);
+      }
       await conn.query("DELETE FROM plan_candidates WHERE plan_id = ?", [planId]); // votes は CASCADE
       const candRows: unknown[][] = [];
       const voteRows: unknown[][] = [];
       for (const c of body.candidates) {
         if (!c || !c.title) continue;
         const cid = c.id && /^[\w-]{1,32}$/.test(c.id) ? c.id : newId("cnd");
-        candRows.push([cid, planId, String(c.title).slice(0, 200), c.place || null, c.proposed_by_id || null, c.adopted ? new Date() : null]);
-        for (const uid of new Set(c.votes || [])) voteRows.push([cid, uid]);
+        const old = oldCandidates.get(cid);
+        const proposerId = old?.proposed_by_id || actorUserId;
+        candRows.push([cid, planId, String(c.title).slice(0, 200), c.place || null, proposerId, c.adopted ? new Date() : null]);
+        // 他人の票は現在値を保存し、操作本人の票だけを入力から反映する。
+        const voters = new Set([...(oldVotes.get(cid) || [])].filter((uid) => uid !== actorUserId));
+        if (new Set(c.votes || []).has(actorUserId)) voters.add(actorUserId);
+        for (const uid of voters) voteRows.push([cid, uid]);
       }
       if (candRows.length) {
         await conn.query("INSERT INTO plan_candidates (id, plan_id, title, place, proposed_by_id, adopted_at) VALUES ?", [candRows]);

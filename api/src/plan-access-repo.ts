@@ -8,6 +8,7 @@ import {
 } from "./policy.js";
 
 interface PlanAccessRow {
+  source: "local" | "sample";
   visibility: "public" | "invite";
   status: "draft" | "published";
   open_editing: 0 | 1;
@@ -27,7 +28,7 @@ export interface PlanAccess {
 /** 計画情報と参加者ロールを一度だけ読み、同一リクエスト内の認可判定へ再利用する。 */
 export async function getPlanAccess(planId: string, userId: string): Promise<PlanAccess> {
   const rows = await all<PlanAccessRow>(
-    `SELECT p.visibility, p.status, p.open_editing, p.owner_user_id, pm.role
+    `SELECT p.source, p.visibility, p.status, p.open_editing, p.owner_user_id, pm.role
        FROM plans p
        LEFT JOIN plan_members pm
          ON pm.plan_id = p.id AND pm.user_id = ? AND pm.status = 'active'
@@ -58,12 +59,13 @@ export async function getPlanAccess(planId: string, userId: string): Promise<Pla
     status: plan.status,
     openEditing: Boolean(plan.open_editing),
   };
+  const mutable = plan.source !== "sample";
   return {
     exists: true,
     role,
-    canManage: canManagePlanRole(role),
-    canEditWorkspace: canEditWorkspaceRole(role),
-    canEdit: canEditPlanPolicy(context),
+    canManage: mutable && canManagePlanRole(role),
+    canEditWorkspace: mutable && canEditWorkspaceRole(role),
+    canEdit: mutable && canEditPlanPolicy(context),
     canView: canViewPlanPolicy(context),
   };
 }

@@ -1,4 +1,4 @@
-// 旅行履歴の公開設定（メンバー名 → 公開する/しない）。
+// 旅行履歴の公開設定（user_id → 公開する/しない）。
 // 人のアイコンから開ける「旅行履歴」ページを、本人以外に見せてよいかの設定。
 // 送金リンク（payment-links）と同様、計画ではなく端末（backend 経由）に名前キーで保存する。
 // 既定は「公開」。マイページで本人が自分の名前についてオフにできる。
@@ -16,11 +16,9 @@ type PrivacyMap = Record<string, boolean>;
 
 function readAll(): PrivacyMap {
   if (db.isEnabled() && db.isLoaded()) {
-    const users = new Map(db.users().map((user) => [user.id, user.display_name]));
     return Object.fromEntries(
       db.userSettings()
-        .filter((row) => users.has(row.user_id))
-        .map((row) => [users.get(row.user_id) as string, Boolean(row.history_public)]),
+        .map((row) => [row.user_id, Boolean(row.history_public)]),
     );
   }
   const parsed = Backend.getJSON<PrivacyMap>(KEY, {});
@@ -32,20 +30,24 @@ function writeAll(map: PrivacyMap): void {
 }
 
 /** その名前の旅行履歴を他人に公開してよいか。未設定は既定で公開（true）。 */
-export function isHistoryPublic(name: string): boolean {
-  const key = String(name || "").trim();
+export function isHistoryPublic(userIdOrLegacyName: string): boolean {
+  const key = String(userIdOrLegacyName || "").trim();
   if (!key) return true;
+  if (db.isEnabled() && db.isLoaded() && !db.userById(key)) {
+    const matches = db.users().filter((user) => user.display_name.trim() === key);
+    if (matches.length !== 1) return false;
+    return isHistoryPublic(matches[0].id);
+  }
   const map = readAll();
   return key in map ? Boolean(map[key]) : true;
 }
 
 /** 公開する/しないを設定する。 */
-export function setHistoryPublic(name: string, isPublic: boolean): void {
-  const key = String(name || "").trim();
+export function setHistoryPublic(userIdOrLegacyName: string, isPublic: boolean): void {
+  const key = String(userIdOrLegacyName || "").trim();
   if (!key) return;
   if (db.isEnabled() && db.isLoaded()) {
-    const user = db.findUserByName(key);
-    if (user) db.setHistoryPublic(user.id, isPublic);
+    if (db.userById(key)) db.setHistoryPublic(key, isPublic);
     return;
   }
   const map = readAll();

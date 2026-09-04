@@ -19,7 +19,7 @@ import {
 } from "./line-auth.js";
 import {
   signUp, logIn, createSession, resolveSession, revokeSession,
-  revokeOtherSessions, changePassword, addCredentials,
+  revokeOtherSessions, changePassword, addCredentials, recoverPassword, rotateRecoveryCode,
 } from "./auth-repo.js";
 import { describeError } from "./errors.js";
 import { route } from "./routes.js";
@@ -231,8 +231,9 @@ const server = http.createServer(async (req, res) => {
   }
 
   const authPaths = [
-    "/api/auth/signup", "/api/auth/login",
+    "/api/auth/signup", "/api/auth/login", "/api/auth/recover",
     "/api/auth/password", "/api/auth/credentials",
+    "/api/auth/recovery-code",
     // 招待トークンは総当たりの対象になるため、認証と同じ厳しい制限を当てる。
     "/api/invites/accept", "/api/invites/inspect",
   ];
@@ -269,6 +270,15 @@ const server = http.createServer(async (req, res) => {
       send(res, 200, { ...result, session: await sessionForUser(result.user.id) }, cors);
       return;
     }
+    if (path === "/api/auth/recover" && req.method === "POST") {
+      const result = await recoverPassword({
+        email: typeof body.email === "string" ? body.email : "",
+        recoveryCode: typeof body.recovery_code === "string" ? body.recovery_code : "",
+        newPassword: typeof body.new_password === "string" ? body.new_password : "",
+      });
+      send(res, 200, { ok: true, ...result }, cors);
+      return;
+    }
     const sessionToken = typeof req.headers["x-travel-session"] === "string"
       ? req.headers["x-travel-session"]
       : "";
@@ -301,14 +311,13 @@ const server = http.createServer(async (req, res) => {
         send(res, 401, { error: "session_required" }, cors);
         return;
       }
-      await changePassword({
+      const changed = await changePassword({
         userId: actorUserId,
         currentPassword: typeof body.current_password === "string" ? body.current_password : "",
         newPassword: typeof body.new_password === "string" ? body.new_password : "",
+        keepToken: sessionToken,
       });
-      // 変えた意味を持たせるため、他の端末のセッションは切る。
-      const revoked = await revokeOtherSessions(actorUserId, sessionToken);
-      send(res, 200, { ok: true, revoked }, cors);
+      send(res, 200, { ok: true, ...changed }, cors);
       return;
     }
     if (path === "/api/auth/credentials" && req.method === "POST") {
@@ -322,6 +331,14 @@ const server = http.createServer(async (req, res) => {
         password: typeof body.password === "string" ? body.password : "",
       });
       send(res, 200, { ok: true, ...added }, cors);
+      return;
+    }
+    if (path === "/api/auth/recovery-code" && req.method === "POST") {
+      if (!actorUserId) {
+        send(res, 401, { error: "session_required" }, cors);
+        return;
+      }
+      send(res, 200, { ok: true, ...await rotateRecoveryCode(actorUserId) }, cors);
       return;
     }
     if (path === "/api/auth/sessions/revoke-others" && req.method === "POST") {

@@ -213,7 +213,9 @@ export function getData(slug: string): LocalPlanData | null {
       title: c.title,
       place: c.place || "",
       proposer: db.nameOf(c.proposed_by_id) || undefined,
+      proposerId: c.proposed_by_id || undefined,
       adopted: Boolean(c.adopted_at),
+      voteIds: votes.filter((v) => v.candidate_id === c.id).map((v) => v.user_id),
       votes: votes.filter((v) => v.candidate_id === c.id).map((v) => db.nameOf(v.user_id)).filter(Boolean),
       createdAt: "",
     })) as unknown as Candidate[],
@@ -406,9 +408,9 @@ export function saveLocalPlan(slug: string, data: LocalPlanData, memberIds?: str
       id: c.id,
       title: c.title,
       place: c.place || null,
-      proposed_by_id: c.proposer ? db.ensureUserLocal(c.proposer).id : null,
+      proposed_by_id: c.proposerId || null,
       adopted: Boolean(c.adopted),
-      votes: [...new Set((c.votes || []).map((n) => db.ensureUserLocal(n).id))],
+      votes: [...new Set(c.voteIds || [])],
     })),
   };
   db.replacePlanContent(row.id, canEditWorkspace

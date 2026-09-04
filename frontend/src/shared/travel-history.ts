@@ -125,12 +125,12 @@ function destinationsOf(itinerary: ItineraryItem[], cities: RouteCity[]): { plac
 /**
  * その名前が参加している旅行の履歴を、新しい順（期間の開始が新しいものが先、日付不明は末尾）で返す。
  */
-export function personTrips(name: string): PersonTrip[] {
+export function personTrips(name: string, userId = ""): PersonTrip[] {
   const target = String(name || "").trim();
   if (!target) return [];
 
   const trips: PersonTrip[] = TripPlans.list()
-    .filter((plan) => splitNames(plan.members).includes(target))
+    .filter((plan) => userId ? Boolean(plan.memberIds?.includes(userId)) : splitNames(plan.members).includes(target))
     .map((plan) => {
       const data = TripPlans.getData(plan.slug);
       const itinerary = (data?.itinerary || []) as ItineraryItem[];

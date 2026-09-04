@@ -31,6 +31,8 @@ export interface Account {
   email: string;
   name: string;
   createdAt: string;
+  /** 新規登録直後だけ返る。永続保存せず、本人に一度表示する。 */
+  recoveryCode?: string;
 }
 
 interface Session {
@@ -176,6 +178,7 @@ export async function signUp(email: string, password: string, name: string): Pro
       display_name: (name || "").trim() || mail.split("@")[0],
     });
     const account = credentialToAccount(result.user);
+    account.recoveryCode = result.recovery_code;
     startSession(account, result.session);
     return account;
   }

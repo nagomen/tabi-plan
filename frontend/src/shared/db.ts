@@ -456,8 +456,8 @@ export async function authSignUp(input: {
   email: string;
   password: string;
   display_name: string;
-}): Promise<{ user: { id: string; display_name: string; email: string }; session: string }> {
-  const result = await request<{ user: { id: string; display_name: string; email: string }; session: string }>(
+}): Promise<{ user: { id: string; display_name: string; email: string }; session: string; recovery_code: string }> {
+  const result = await request<{ user: { id: string; display_name: string; email: string }; session: string; recovery_code: string }>(
     "POST", "/api/auth/signup", input,
   );
   rememberAuthenticatedUser(result.user);
@@ -483,18 +483,35 @@ export async function authLogOut(): Promise<void> {
 export async function changePassword(input: {
   current_password: string;
   new_password: string;
-}): Promise<{ revoked: number }> {
-  const result = await request<{ revoked?: number }>("POST", "/api/auth/password", input);
-  return { revoked: Number(result.revoked) || 0 };
+}): Promise<{ revoked: number; recovery_code: string }> {
+  const result = await request<{ revoked?: number; recovery_code?: string }>("POST", "/api/auth/password", input);
+  return { revoked: Number(result.revoked) || 0, recovery_code: result.recovery_code || "" };
 }
 
 /**
  * LINE だけで作ったアカウントに、メールアドレスとパスワードを足す。
  * LINE を使えなくなったときの入り口になる。
  */
-export async function addCredentials(input: { email: string; password: string }): Promise<void> {
-  const result = await request<{ email?: string }>("POST", "/api/auth/credentials", input);
+export async function addCredentials(input: { email: string; password: string }): Promise<{ recovery_code: string }> {
+  const result = await request<{ email?: string; recovery_code?: string }>("POST", "/api/auth/credentials", input);
   if (result.email) snap.credentials = [...snap.credentials, { user_id: snap.viewer?.id || "", email: result.email }];
+  return { recovery_code: result.recovery_code || "" };
+}
+
+/** ログインできない端末から、保存済みの復旧コードでパスワードを再設定する。 */
+export async function recoverPassword(input: {
+  email: string;
+  recovery_code: string;
+  new_password: string;
+}): Promise<{ recovery_code: string }> {
+  const result = await request<{ recovery_code?: string }>("POST", "/api/auth/recover", input);
+  return { recovery_code: result.recovery_code || "" };
+}
+
+/** 現在の復旧コードを無効にして、新しいコードを一度だけ表示する。 */
+export async function rotateRecoveryCode(): Promise<string> {
+  const result = await request<{ recovery_code?: string }>("POST", "/api/auth/recovery-code", {});
+  return result.recovery_code || "";
 }
 
 /** 他の端末のログインを切る（端末を失くしたとき用）。 */
@@ -699,18 +716,28 @@ function checkViewer(fresh: Snapshot): void {
  * 表示に関わる行の数と、最後の更新時刻だけを見る。
  */
 function renderFingerprint(value: Snapshot): string {
-  const counts = [
-    value.plans, value.members, value.itinerary, value.cities, value.links,
-    value.checklist, value.candidates, value.candidateVotes, value.expenses,
-    value.expenseShares, value.settlements, value.users, value.paymentLinks,
-    value.userSettings, value.friendships, value.pendingInvites,
-  ].map((rows) => (Array.isArray(rows) ? rows.length : 0)).join(",");
-  let latest = "";
-  for (const plan of value.plans || []) {
-    const at = plan.updated_at || "";
-    if (at > latest) latest = at;
-  }
-  return counts + "|" + latest;
+  // 閲覧数だけは除外し、権限・参加期間・設定など同じ件数内の変更も検知する。
+  return JSON.stringify({
+    viewer: value.viewer,
+    identities: value.identities,
+    plans: value.plans,
+    members: value.members,
+    memberPlaceholders: value.memberPlaceholders,
+    itinerary: value.itinerary,
+    cities: value.cities,
+    links: value.links,
+    checklist: value.checklist,
+    candidates: value.candidates,
+    candidateVotes: value.candidateVotes,
+    expenses: value.expenses,
+    expenseShares: value.expenseShares,
+    settlements: value.settlements,
+    users: value.users,
+    paymentLinks: value.paymentLinks,
+    userSettings: value.userSettings,
+    friendships: value.friendships,
+    pendingInvites: value.pendingInvites,
+  });
 }
 
 async function revalidate(): Promise<void> {
@@ -964,11 +991,32 @@ export async function createInvite(planId: string, input: {
   });
 }
 
+export interface PlanInviteRow {
+  id: string;
+  role: "editor" | "viewer";
+  status: "pending" | "accepted" | "revoked" | "expired";
+  invited_name: string | null;
+  invited_user_id: string | null;
+  accepted_by_id: string | null;
+  expires_at: string | null;
+  created_at: string;
+}
+
+export async function listInvites(planId: string): Promise<PlanInviteRow[]> {
+  const result = await request<{ invites: PlanInviteRow[] }>("GET", `/api/plans/${encodeURIComponent(planId)}/invites`);
+  return result.invites || [];
+}
+
+export async function revokeInvite(planId: string, inviteId: string): Promise<void> {
+  await request("DELETE", `/api/plans/${encodeURIComponent(planId)}/invites/${encodeURIComponent(inviteId)}`);
+}
+
 export async function createPlaceholderMember(planId: string, displayName: string): Promise<{
   user: UserRow;
   member: PlanMemberRow;
+  version: number;
 }> {
-  const result = await request<{ user: UserRow; member: PlanMemberRow }>(
+  const result = await request<{ user: UserRow; member: PlanMemberRow; version: number }>(
     "POST",
     `/api/plans/${encodeURIComponent(planId)}/placeholder-members`,
     { display_name: displayName },
@@ -984,6 +1032,11 @@ export async function createPlaceholderMember(planId: string, displayName: strin
     claimed_by_user_id: null,
     claimed_at: null,
   });
+  const plan = planById(planId);
+  if (plan && Number.isFinite(result.version)) {
+    plan.version = result.version;
+    plan.updated_at = new Date().toISOString();
+  }
   writeCache(snap);
   return result;
 }
@@ -1005,6 +1058,20 @@ export function isPlaceholderMember(planId: string, userId: string): boolean {
   return memberPlaceholders().some((row) =>
     row.plan_id === planId && row.user_id === userId && row.status === "unclaimed"
   );
+}
+
+export function claimedPlaceholderFor(planId: string, userId: string): PlanMemberPlaceholderRow | undefined {
+  return memberPlaceholders().find((row) =>
+    row.plan_id === planId && row.claimed_by_user_id === userId && row.status === "claimed"
+  );
+}
+
+export async function undoPlaceholderClaim(planId: string, placeholderUserId: string): Promise<void> {
+  await request(
+    "POST",
+    `/api/plans/${encodeURIComponent(planId)}/placeholder-members/${encodeURIComponent(placeholderUserId)}/unclaim`,
+  );
+  await reload();
 }
 
 export async function leavePlan(planId: string): Promise<void> {
@@ -1052,13 +1119,21 @@ export async function deletePlan(planId: string): Promise<void> {
 export function replaceMembers(planId: string, list: {
   user_id: string; role?: PlanMemberRow["role"]; from_date?: string | null; to_date?: string | null;
 }[]): void {
+  const plan = planById(planId);
+  if (!plan) return;
+  const expectedVersion = plan.version;
   snap.members = snap.members.filter((m) => m.plan_id !== planId).concat(
     list.filter((m) => m.user_id).map((m) => ({
       plan_id: planId, user_id: m.user_id, role: m.role || "editor", status: "active" as const,
       from_date: m.from_date ?? null, to_date: m.to_date ?? null,
     })),
   );
-  send("PUT", `/api/plans/${encodeURIComponent(planId)}/members`, { members: list });
+  plan.version = expectedVersion + 1;
+  plan.updated_at = new Date().toISOString();
+  send("PUT", `/api/plans/${encodeURIComponent(planId)}/members`, {
+    members: list,
+    expected_version: expectedVersion,
+  });
 }
 
 export interface PlanContent {
@@ -1206,6 +1281,11 @@ export async function addSettlement(planId: string, input: {
   });
 }
 
+export async function removeSettlement(settlementId: string): Promise<void> {
+  await request("DELETE", `/api/settlements/${encodeURIComponent(settlementId)}`);
+  snap.settlements = snap.settlements.filter((row) => row.id !== settlementId);
+}
+
 export async function saveFriendship(input: { a: string; b: string; requested_by_id: string; status?: string }): Promise<void> {
   const res = await request<{ id: string }>("POST", "/api/friendships", input);
   const [low, high] = input.a < input.b ? [input.a, input.b] : [input.b, input.a];
@@ -1230,4 +1310,21 @@ export function onDbSync(handler: () => void): void {
     const detail = (event as CustomEvent<{ refreshed?: boolean; changed?: boolean }>).detail;
     if (detail?.refreshed && detail.changed) handler();
   });
+}
+
+function clearPrivateSnapshot(): void {
+  snap = emptySnapshot();
+  loaded = false;
+  loading = null;
+  emit({ ok: true, path: "/api/bootstrap", refreshed: true, changed: true });
+}
+
+if (typeof window !== "undefined") {
+  // 別タブでログアウト・アカウント変更された瞬間に、以前の非公開snapshotを破棄する。
+  window.addEventListener("storage", (event) => {
+    if (event.key !== SESSION_STORAGE_KEY) return;
+    clearPrivateSnapshot();
+    if (isEnabled()) void load({ fresh: true }).catch(() => undefined);
+  });
+  window.addEventListener("trip-account-logout", clearPrivateSnapshot);
 }

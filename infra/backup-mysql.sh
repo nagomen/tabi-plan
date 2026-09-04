@@ -13,6 +13,7 @@ BACKUP_DIR="${BACKUP_DIR:?BACKUP_DIR is required}"
 RCLONE_REMOTE="${RCLONE_REMOTE:?RCLONE_REMOTE is required}"
 LOCAL_RETENTION_DAYS="${LOCAL_RETENTION_DAYS:-7}"
 REMOTE_RETENTION_DAYS="${REMOTE_RETENTION_DAYS:-30}"
+BACKUP_LOCAL_ONLY="${BACKUP_LOCAL_ONLY:-0}"
 HEALTHCHECK_URL_START="${BACKUP_HEALTHCHECK_URL_START:-}"
 HEALTHCHECK_URL_OK="${BACKUP_HEALTHCHECK_URL_OK:-}"
 HEALTHCHECK_URL_FAIL="${BACKUP_HEALTHCHECK_URL_FAIL:-}"
@@ -37,16 +38,20 @@ on_exit() {
 }
 trap on_exit EXIT
 
-for command_name in mysqldump gzip sha256sum rclone; do
+required_commands=(mysqldump gzip sha256sum)
+if [[ "$BACKUP_LOCAL_ONLY" != "1" ]]; then required_commands+=(rclone); fi
+for command_name in "${required_commands[@]}"; do
   command -v "$command_name" >/dev/null || {
     echo "[travel-backup] missing command: $command_name" >&2
     exit 1
   }
 done
-rclone listremotes | grep -q "^${RCLONE_REMOTE%%:*}:$" || {
-  echo "[travel-backup] rclone remote is not configured: ${RCLONE_REMOTE%%:*}:" >&2
-  exit 1
-}
+if [[ "$BACKUP_LOCAL_ONLY" != "1" ]]; then
+  rclone listremotes | grep -q "^${RCLONE_REMOTE%%:*}:$" || {
+    echo "[travel-backup] rclone remote is not configured: ${RCLONE_REMOTE%%:*}:" >&2
+    exit 1
+  }
+fi
 
 ping_healthcheck "$HEALTHCHECK_URL_START"
 mkdir -p "$BACKUP_DIR"
@@ -84,18 +89,21 @@ tmp_dump=""
   sha256sum "$base_name" > "$base_name.sha256"
 )
 
-echo "[travel-backup] uploading $base_name"
-rclone copyto --no-traverse "$dump_file" "$RCLONE_REMOTE/$base_name" \
-  --transfers 1 --checkers 1 --retries 3 --low-level-retries 10
-rclone copyto --no-traverse "$checksum_file" "$RCLONE_REMOTE/$base_name.sha256" \
-  --transfers 1 --checkers 1 --retries 3 --low-level-retries 10
+if [[ "$BACKUP_LOCAL_ONLY" != "1" ]]; then
+  echo "[travel-backup] uploading $base_name"
+  rclone copyto --no-traverse "$dump_file" "$RCLONE_REMOTE/$base_name" \
+    --transfers 1 --checkers 1 --retries 3 --low-level-retries 10
+  rclone copyto --no-traverse "$checksum_file" "$RCLONE_REMOTE/$base_name.sha256" \
+    --transfers 1 --checkers 1 --retries 3 --low-level-retries 10
+fi
 
 find "$BACKUP_DIR" -type f \
   \( -name "${DB_NAME}_*.sql.gz" -o -name "${DB_NAME}_*.sql.gz.sha256" \) \
   -mtime "+$LOCAL_RETENTION_DAYS" -delete
-rclone delete "$RCLONE_REMOTE/" --min-age "${REMOTE_RETENTION_DAYS}d" \
-  --include "${DB_NAME}_*.sql.gz" --include "${DB_NAME}_*.sql.gz.sha256"
+if [[ "$BACKUP_LOCAL_ONLY" != "1" ]]; then
+  rclone delete "$RCLONE_REMOTE/" --min-age "${REMOTE_RETENTION_DAYS}d" \
+    --include "${DB_NAME}_*.sql.gz" --include "${DB_NAME}_*.sql.gz.sha256"
+fi
 
 echo "[travel-backup] OK: $base_name ($dump_bytes bytes)"
 ping_healthcheck "$HEALTHCHECK_URL_OK"
-

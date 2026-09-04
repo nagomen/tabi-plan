@@ -212,6 +212,104 @@ async function migrate010() {
   }
 }
 
+async function migrate011() {
+  await conn.beginTransaction();
+  try {
+  // 旧移行データのうち、ownerロールが一意ならplans側へ反映する。
+  await conn.query(`UPDATE plans p
+    JOIN (
+      SELECT plan_id, MAX(user_id) AS owner_id
+        FROM plan_members WHERE status = 'active' AND role = 'owner'
+       GROUP BY plan_id HAVING COUNT(*) = 1
+    ) x ON x.plan_id = p.id
+     SET p.owner_user_id = x.owner_id
+   WHERE p.owner_user_id IS NULL`);
+
+  // owner不在またはログイン不能で、ログイン可能な参加者が1人だけなら、その人を復旧ownerにする。
+  await conn.query(`UPDATE plans p
+    JOIN (
+      SELECT pm.plan_id, MAX(pm.user_id) AS owner_id
+        FROM plan_members pm
+       WHERE pm.status = 'active'
+         AND (EXISTS (SELECT 1 FROM user_credentials c WHERE c.user_id = pm.user_id)
+           OR EXISTS (SELECT 1 FROM user_identities i WHERE i.user_id = pm.user_id))
+       GROUP BY pm.plan_id HAVING COUNT(DISTINCT pm.user_id) = 1
+    ) x ON x.plan_id = p.id
+     SET p.owner_user_id = x.owner_id
+   WHERE p.owner_user_id IS NULL OR NOT (
+     EXISTS (SELECT 1 FROM user_credentials c WHERE c.user_id = p.owner_user_id)
+     OR EXISTS (SELECT 1 FROM user_identities i WHERE i.user_id = p.owner_user_id)
+   )`);
+  // 所有者を安全に確定できない旧計画と、ログイン不能ownerの計画は閲覧専用sampleにする。
+  await conn.query(`UPDATE plans p SET p.source = 'sample', p.open_editing = 0
+   WHERE p.owner_user_id IS NULL OR NOT (
+     EXISTS (SELECT 1 FROM user_credentials c WHERE c.user_id = p.owner_user_id)
+     OR EXISTS (SELECT 1 FROM user_identities i WHERE i.user_id = p.owner_user_id)
+   )`);
+
+  // 有効な費用・精算から参照される旧メンバーはactiveへ戻し、孤立参照を解消する。
+  await conn.query(`UPDATE plan_members pm SET pm.status = 'active'
+   WHERE EXISTS (SELECT 1 FROM expenses e
+                  WHERE e.plan_id = pm.plan_id AND e.deleted_at IS NULL AND e.payer_user_id = pm.user_id)
+      OR EXISTS (SELECT 1 FROM expense_shares s JOIN expenses e ON e.id = s.expense_id
+                  WHERE e.plan_id = pm.plan_id AND e.deleted_at IS NULL AND s.user_id = pm.user_id)
+      OR EXISTS (SELECT 1 FROM settlements s
+                  WHERE s.plan_id = pm.plan_id AND s.deleted_at IS NULL
+                    AND (s.from_user_id = pm.user_id OR s.to_user_id = pm.user_id))`);
+
+  // 再有効化した行も含め、確定したownerだけを昇格する。viewer/editorの既存権限は保つ。
+  await conn.query(`UPDATE plan_members pm JOIN plans p ON p.id = pm.plan_id
+     SET pm.role = 'owner'
+   WHERE pm.status = 'active' AND pm.user_id = p.owner_user_id AND pm.role <> 'owner'`);
+  // 古いowner行が複数残る場合だけ、余分なownerをeditorへ戻す。
+  await conn.query(`UPDATE plan_members pm JOIN plans p ON p.id = pm.plan_id
+     SET pm.role = 'editor'
+   WHERE pm.status = 'active' AND pm.role = 'owner' AND pm.user_id <> p.owner_user_id`);
+
+  // 編集可能な通常計画の旧「名前だけメンバー」を、本人がclaimできるplaceholderへ移す。
+  await conn.query(`INSERT IGNORE INTO plan_member_placeholders
+      (plan_id, user_id, original_name, status, created_by_id)
+    SELECT pm.plan_id, pm.user_id, u.display_name, 'unclaimed', p.owner_user_id
+      FROM plan_members pm
+      JOIN plans p ON p.id = pm.plan_id AND p.source = 'local' AND p.owner_user_id IS NOT NULL
+      JOIN users u ON u.id = pm.user_id
+     WHERE pm.status = 'active' AND pm.role <> 'owner'
+       AND NOT EXISTS (SELECT 1 FROM user_credentials c WHERE c.user_id = pm.user_id)
+       AND NOT EXISTS (SELECT 1 FROM user_identities i WHERE i.user_id = pm.user_id)`);
+    await conn.commit();
+  } catch (error) {
+    await conn.rollback();
+    throw error;
+  }
+}
+
+async function migrate012() {
+  if (!(await exists(
+    "SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'user_credentials' AND COLUMN_NAME = 'recovery_code_hash'",
+    [database],
+  ))) {
+    await conn.query("ALTER TABLE user_credentials ADD COLUMN recovery_code_hash VARBINARY(32) NULL AFTER iterations");
+  }
+  if (!(await exists(
+    "SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'user_credentials' AND COLUMN_NAME = 'recovery_code_created_at'",
+    [database],
+  ))) {
+    await conn.query("ALTER TABLE user_credentials ADD COLUMN recovery_code_created_at TIMESTAMP NULL DEFAULT NULL AFTER recovery_code_hash");
+  }
+  if (!(await exists(
+    "SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'settlements' AND COLUMN_NAME = 'deleted_by_id'",
+    [database],
+  ))) {
+    await conn.query("ALTER TABLE settlements ADD COLUMN deleted_by_id VARCHAR(32) NULL AFTER created_by_id");
+  }
+  if (!(await exists(
+    "SELECT 1 FROM information_schema.TABLE_CONSTRAINTS WHERE CONSTRAINT_SCHEMA = ? AND TABLE_NAME = 'settlements' AND CONSTRAINT_NAME = 'fk_settlements_deleter'",
+    [database],
+  ))) {
+    await conn.query("ALTER TABLE settlements ADD CONSTRAINT fk_settlements_deleter FOREIGN KEY (deleted_by_id) REFERENCES users (id) ON DELETE SET NULL");
+  }
+}
+
 async function main() {
   await conn.query(`CREATE TABLE IF NOT EXISTS schema_migrations (
     id VARCHAR(64) NOT NULL PRIMARY KEY,
@@ -226,6 +324,8 @@ async function main() {
   await applyMigration("008_placeholder_plan_members", migrate008);
   await applyMigration("009_member_participation_dates", migrate009);
   await applyMigration("010_itinerary_item_members", migrate010);
+  await applyMigration("011_membership_integrity", migrate011);
+  await applyMigration("012_account_recovery_and_settlement_audit", migrate012);
 }
 
 // 同時デプロイが同じDDLを並走させないよう、DB側の advisory lock で直列化する。

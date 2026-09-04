@@ -80,6 +80,13 @@ build_api() {
   # shellcheck disable=SC1090
   . "$ENV_FILE"
   set +a
+  # DB移行の直前状態をVPS内へ保存する。外部送信はせず、移行失敗時の即時復元用。
+  echo "[deploy-api] pre-migration local backup"
+  BACKUP_DIR="${BACKUP_DIR:-$APP_HOME/travel_data/backups}" \
+    RCLONE_REMOTE="${RCLONE_REMOTE:-unused:}" \
+    BACKUP_LOCAL_ONLY=1 \
+    LOCAL_RETENTION_DAYS="${LOCAL_RETENTION_DAYS:-7}" \
+    bash infra/backup-mysql.sh
   npm run migrate -w api
 }
 

@@ -21,3 +21,14 @@ test("account state and AI UI react to an expired API session", () => {
   assert.match(guidance, /別タブで再ログイン/);
   assert.match(editor, /login\.html\?returnTo=/);
 });
+
+test("復旧コードはURLへ出さず、一度表示して再設定後に全セッションを失効する契約になっている", () => {
+  const database = source("shared/db.ts");
+  const login = source("login/main.ts");
+  const html = fs.readFileSync(new URL("../login.html", import.meta.url), "utf8");
+  assert.match(database, /"POST", "\/api\/auth\/recover"/);
+  assert.match(database, /"POST", "\/api\/auth\/recovery-code"/);
+  assert.match(login, /showRecoveryCode\(account\.recoveryCode/);
+  assert.match(html, /data-recover-form[\s\S]*id="lg-recovery-code"/);
+  assert.doesNotMatch(login + html, /[?&]recovery_code=/);
+});

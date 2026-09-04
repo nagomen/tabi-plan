@@ -159,7 +159,7 @@ export interface RouteCity {
 
 /**
  * 「行きたい候補」（行程に入れる前のたたき台）。
- * メンバーが出し合い、votes（投票者名の配列）で人気を測る。
+ * メンバーが出し合い、voteIds（投票者IDの配列）を正として人気を測る。
  * 招待リンクの再共有時に votes は和集合でマージされる。
  */
 export interface Candidate {
@@ -173,8 +173,12 @@ export interface Candidate {
   type?: ItemType | string;
   /** 提案者の表示名 */
   proposer?: string;
+  /** 提案者のユーザーID（永続化はこちらを使う） */
+  proposerId?: string;
   /** 投票したメンバーの表示名（重複なし） */
   votes: string[];
+  /** 投票したメンバーのユーザーID（永続化はこちらを使う） */
+  voteIds?: string[];
   /** 行程へ採用済みなら true（ボード上で薄く表示） */
   adopted?: boolean;
   createdAt?: string;

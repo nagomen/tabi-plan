@@ -40,22 +40,21 @@ export async function searchUsers(query: string, actorUserId: string): Promise<
   if (!actorUserId) throw new BadRequest("ログインが必要です");
   const q = String(query || "").trim().slice(0, 64);
   if (!q) return [];
-  // 名前キーもメールも同じ正規化規則。完全一致のときだけメールを返す。
+  // メールは未検証のログインIDなので他人の検索・本人特定には使わない。
   const key = identityKey(q);
-  const rows = await all<{ id: string; display_name: string; email: string | null }>(
-    `SELECT u.id, u.display_name, CASE WHEN c.email = ? THEN c.email ELSE '' END AS email
+  const rows = await all<{ id: string; display_name: string }>(
+    `SELECT u.id, u.display_name
        FROM users u
-      LEFT JOIN user_credentials c ON c.user_id = u.id
       WHERE u.id <> ?
         AND NOT EXISTS (
           SELECT 1 FROM plan_member_placeholders pmp WHERE pmp.user_id = u.id
         )
-        AND (u.name_key LIKE ? OR c.email = ?)
+        AND u.name_key LIKE ?
       ORDER BY u.created_at DESC
       LIMIT 20`,
-    [key, actorUserId, `%${key}%`, key],
+    [actorUserId, `%${key}%`],
   );
-  return rows.map((row) => ({ id: row.id, display_name: row.display_name, email: row.email || "" }));
+  return rows.map((row) => ({ id: row.id, display_name: row.display_name, email: "" }));
 }
 
 export async function setPaymentLink(userId: string, handle: string): Promise<void> {
@@ -99,14 +98,27 @@ export async function upsertFriendship(input: {
     "SELECT id FROM friendships WHERE user_low_id = ? AND user_high_id = ? LIMIT 1", [low, high],
   );
   if (existing[0]) {
-    await pool.query(
+    const targetStatus = input.status || "pending";
+    const [updated] = await pool.query<import("mysql2/promise").ResultSetHeader>(
       `UPDATE friendships
           SET status = ?,
               requested_by_id = CASE WHEN ? = 'pending' THEN ? ELSE requested_by_id END,
               responded_at = CASE WHEN ? = 'pending' THEN NULL ELSE CURRENT_TIMESTAMP END
-        WHERE id = ?`,
-      [input.status || "pending", input.status || "pending", input.requested_by_id, input.status || "pending", existing[0].id],
+        WHERE id = ? AND (
+          (? = 'pending' AND (status IN ('declined','canceled','removed') OR (status = 'pending' AND requested_by_id = ?))) OR
+          (? IN ('accepted','declined') AND status = 'pending' AND requested_by_id <> ?) OR
+          (? = 'canceled' AND status = 'pending' AND requested_by_id = ?) OR
+          (? = 'removed' AND status = 'accepted')
+        )`,
+      [
+        targetStatus, targetStatus, input.requested_by_id, targetStatus, existing[0].id,
+        targetStatus, input.requested_by_id,
+        targetStatus, input.requested_by_id,
+        targetStatus, input.requested_by_id,
+        targetStatus,
+      ],
     );
+    if (updated.affectedRows !== 1) throw new BadRequest("友達関係が別の端末で変更されました。読み込み直してください");
     return existing[0];
   }
   const id = newId("frd");

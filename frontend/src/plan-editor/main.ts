@@ -2609,6 +2609,7 @@ const memberAddBtn = qs<HTMLButtonElement>(root, "[data-member-add]");
 const memberNameInput = qs<HTMLInputElement>(root, "[data-member-name]");
 const memberNameAddBtn = qs<HTMLButtonElement>(root, "[data-member-name-add]");
 const memberHint = qs<HTMLElement>(root, "[data-member-hint]");
+const activeInvitesMount = qs<HTMLElement>(root, "[data-active-invites]");
 
 function hasMemberAccount(): boolean {
   return Boolean(currentAccount());
@@ -2698,6 +2699,7 @@ function renderMembers(): void {
     .map((member) => {
       const self = account?.id ? member.id === account.id : Boolean(me) && member.name === me;
       const placeholder = Boolean(member.id && planId && db.isPlaceholderMember(planId, member.id));
+      const claimedPlaceholder = member.id && planId ? db.claimedPlaceholderFor(planId, member.id) : undefined;
       return (
         `<span class="pe-chip-m${self ? " is-self" : ""}">` +
         `<span>${escapeHtml(member.name)}</span>` +
@@ -2705,6 +2707,7 @@ function renderMembers(): void {
         (member.id === ownerId ? `<span class="pe-chip-self">Owner</span>` : "") +
         (member.pendingKey ? `<span class="pe-chip-pending">保存前</span>` : "") +
         (placeholder ? `<span class="pe-chip-pending">未登録</span>` : "") +
+        (claimedPlaceholder ? `<span class="pe-chip-pending">本人紐付済み</span>` : "") +
         (meta && canManagePlan(meta) && member.id && !placeholder && !self && member.id !== ownerId
           ? `<button class="pe-chip-ic" type="button" data-transfer-owner="${escapeHtml(member.id)}" data-transfer-name="${escapeHtml(member.name)}" title="所有権を移譲" aria-label="${escapeHtml(member.name)}へ所有権を移譲">${icon("arrowsRightLeft")}</button>`
           : "") +
@@ -2716,12 +2719,51 @@ function renderMembers(): void {
           : member.id && member.id !== ownerId
           ? `<button class="pe-chip-ic del" type="button" data-rm="${escapeHtml(member.id)}" title="削除" aria-label="${escapeHtml(member.name)}を削除">${icon("xMark")}</button>`
           : "") +
+        (claimedPlaceholder && meta && canManagePlan(meta) && member.id !== ownerId
+          ? `<button class="pe-chip-ic del" type="button" data-unclaim="${escapeHtml(claimedPlaceholder.user_id)}" title="本人紐付けを取り消す" aria-label="${escapeHtml(member.name)}の本人紐付けを取り消す">${icon("arrowPath")}</button>`
+          : "") +
         `</span>`
       );
     })
     .join("");
   membersMount.innerHTML = memberChips + memberPeriodsHtml();
+  void renderActiveInvites();
 }
+
+let inviteListLoading = false;
+async function renderActiveInvites(): Promise<void> {
+  const meta = slug ? TripPlans.get(slug) : null;
+  if (!meta?.id || !canManagePlan(meta)) {
+    activeInvitesMount.innerHTML = "";
+    return;
+  }
+  if (inviteListLoading) return;
+  inviteListLoading = true;
+  try {
+    const pending = (await db.listInvites(meta.id)).filter((invite) => invite.status === "pending");
+    activeInvitesMount.innerHTML = pending.length
+      ? `<p class="pe-member-hint">有効な招待 ${pending.length}件</p>` + pending.map((invite) =>
+        `<span class="pe-chip-m"><span>${escapeHtml(invite.invited_name || "共通招待")}</span>` +
+        `<span class="pe-chip-pending">${invite.role === "viewer" ? "閲覧" : "編集"}</span>` +
+        `<button class="pe-chip-ic del" type="button" data-revoke-invite="${escapeHtml(invite.id)}" aria-label="招待を取り消す">${icon("xMark")}</button></span>`,
+      ).join("")
+      : "";
+  } catch {
+    activeInvitesMount.innerHTML = `<p class="pe-member-hint">有効な招待を取得できませんでした</p>`;
+  } finally {
+    inviteListLoading = false;
+  }
+}
+
+activeInvitesMount.addEventListener("click", (event) => {
+  const button = event.target instanceof Element ? event.target.closest<HTMLElement>("[data-revoke-invite]") : null;
+  const meta = slug ? TripPlans.get(slug) : null;
+  if (!button || !meta?.id) return;
+  button.setAttribute("disabled", "true");
+  void db.revokeInvite(meta.id, button.dataset.revokeInvite || "")
+    .then(() => renderActiveInvites())
+    .catch((error) => { toast(errorMessage(error) || "招待を取り消せませんでした"); button.removeAttribute("disabled"); });
+});
 
 /**
  * メンバーごとの参加期間。デフォルトは全員が全日程参加（内部では null 端＝無制限）。
@@ -2898,6 +2940,15 @@ membersMount.addEventListener("click", (event) => {
   if (!(t instanceof Element)) return;
   const rm = t.closest<HTMLElement>("[data-rm]");
   if (rm) { removeMember(rm.dataset.rm || ""); return; }
+  const unclaim = t.closest<HTMLElement>("[data-unclaim]");
+  if (unclaim) {
+    const meta = slug ? TripPlans.get(slug) : null;
+    if (!meta?.id || !window.confirm("本人紐付けを取り消し、費用・精算・投票を元の未登録メンバーへ戻しますか？")) return;
+    void db.undoPlaceholderClaim(meta.id, unclaim.dataset.unclaim || "")
+      .then(() => { toast("本人紐付けを取り消しました"); location.reload(); })
+      .catch((error) => toast(errorMessage(error) || "本人紐付けを取り消せませんでした"));
+    return;
+  }
   const pending = t.closest<HTMLElement>("[data-rm-pending]");
   if (pending) { removePendingMember(pending.dataset.rmPending || ""); return; }
   const transfer = t.closest<HTMLElement>("[data-transfer-owner]");
@@ -3002,7 +3053,7 @@ function candId(): string {
 function sortedCandidates(): Candidate[] {
   return model.candidates
     .map((c, i) => ({ c, i }))
-    .sort((a, b) => (b.c.votes?.length || 0) - (a.c.votes?.length || 0) || a.i - b.i)
+    .sort((a, b) => (b.c.voteIds?.length ?? b.c.votes?.length ?? 0) - (a.c.voteIds?.length ?? a.c.votes?.length ?? 0) || a.i - b.i)
     .map((x) => x.c);
 }
 
@@ -3021,6 +3072,7 @@ function candidateDayOptions(): string {
 
 function renderCandidates(): void {
   const me = getUser().name.trim();
+  const meId = currentAccount()?.id || "";
   const list = sortedCandidates();
   candCountEl.textContent = list.length ? `${list.length}件` : "";
   if (!list.length) {
@@ -3030,8 +3082,8 @@ function renderCandidates(): void {
   const canAdopt = model.days.length > 0;
   candMount.innerHTML = list
     .map((c) => {
-      const voted = Boolean(me) && (c.votes || []).includes(me);
-      const n = (c.votes || []).length;
+      const voted = meId ? Boolean(c.voteIds?.includes(meId)) : Boolean(me) && (c.votes || []).includes(me);
+      const n = c.voteIds?.length ?? (c.votes || []).length;
       const sub = [c.place, c.proposer ? `提案: ${c.proposer}` : ""].filter(Boolean).join(" ・ ");
       const adoptControls = canAdopt
         ? `<label class="pe-cand-day"><span>追加先</span><select data-cand-day="${escapeHtml(c.id)}">${candidateDayOptions()}</select></label>` +
@@ -3055,11 +3107,14 @@ function addCandidate(title: string): void {
   const t = title.trim();
   if (!t) return;
   const me = getUser().name.trim();
+  const meId = currentAccount()?.id || "";
   model.candidates.push({
     id: candId(),
     title: t,
     votes: me ? [me] : [],
+    voteIds: meId ? [meId] : [],
     proposer: me || undefined,
+    proposerId: meId || undefined,
     createdAt: new Date().toISOString(),
   });
   markDirty();
@@ -3068,12 +3123,18 @@ function addCandidate(title: string): void {
 
 function toggleVote(id: string): void {
   const me = getUser().name.trim();
-  if (!me) {
-    toast("マイページで名前を登録すると投票できます");
+  const meId = currentAccount()?.id || "";
+  if (!meId) {
+    toast("投票するにはログインしてください");
     return;
   }
   const c = model.candidates.find((x) => x.id === id);
   if (!c) return;
+  c.voteIds = c.voteIds || [];
+  const idIndex = c.voteIds.indexOf(meId);
+  if (idIndex >= 0) c.voteIds.splice(idIndex, 1);
+  else c.voteIds.push(meId);
+  // 表示用の名前配列も更新するが、保存には使用しない。
   c.votes = c.votes || [];
   const i = c.votes.indexOf(me);
   if (i >= 0) c.votes.splice(i, 1);
@@ -3166,10 +3227,12 @@ async function shareInvite(name: string, userId = ""): Promise<void> {
   const planId = TripPlans.planIdOf(slug);
   if (!planId) { toast("保存してから招待してください"); return; }
   let link = "";
+  let createdInviteId = "";
   try {
     const invite = await db.createInvite(planId, {
       invited_name: name, invited_user_id: userId || undefined, role: "editor",
     });
+    createdInviteId = invite.id;
     link = await buildInviteLink({
       v: 1,
       meta: {
@@ -3196,10 +3259,18 @@ async function shareInvite(name: string, userId = ""): Promise<void> {
   };
   if (navigator.share) {
     try { await navigator.share(shareData); return; }
-    catch { return; /* キャンセル */ }
+    catch {
+      if (createdInviteId) await db.revokeInvite(planId, createdInviteId).catch(() => undefined);
+      void renderActiveInvites();
+      return;
+    }
   }
   try { await navigator.clipboard.writeText(link); toast("招待リンクをコピーしました"); }
-  catch { window.prompt("招待リンクをコピーしてください", link); }
+  catch {
+    const copied = window.prompt("招待リンクをコピーしてください", link);
+    if (copied === null && createdInviteId) await db.revokeInvite(planId, createdInviteId).catch(() => undefined);
+  }
+  void renderActiveInvites();
 }
 
 // ---- カレンダー連携（Google テンプレート / .ics） ----------------------

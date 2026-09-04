@@ -824,11 +824,13 @@ function renderTransfers(settlement: Settlement): void {
           <span>${escapeHtml(mdLabel(item.date || ""))}</span>
           <b>${escapeHtml(item.from)} → ${escapeHtml(item.to)}</b>
           <strong>${escapeHtml(item.amountLabel)}</strong>
+          ${isEditableLocalPlan() && item.id ? `<button type="button" class="tl-icon-action" data-settlement-delete="${escapeHtml(item.id)}" aria-label="この精算記録を取り消す" title="精算記録を取り消す">${icon("xMark")}</button>` : ""}
         </div>
       `).join("")}
     </div>` : "";
   if (!transfers.length) {
     mount.innerHTML = `${subhead("banknotes", "精算する金額")}<div class="tl-transfer-row"><span>現時点で精算する支払いはありません</span><b>¥0</b></div>${historyHtml}<div class="tl-expense-status" data-settlement-status aria-live="polite"></div>`;
+    setupSettlementCompleteHandlers(mount);
     return;
   }
   mount.innerHTML = subhead("banknotes", "精算する金額", `${transfers.length}件`) + transfers.map((transfer: SettlementTransfer & { completedLabel?: string }) =>
@@ -836,7 +838,7 @@ function renderTransfers(settlement: Settlement): void {
       <span>${escapeHtml(transfer.from)} → ${escapeHtml(transfer.to)}</span>
       <div class="tl-transfer-act">
         <b>${escapeHtml(transfer.amountLabel || "")}</b>
-        <button type="button" class="tl-icon-action tl-paypay" data-paypay data-to="${escapeHtml(transfer.to)}" data-amount="${Number(transfer.amount || 0)}" aria-label="${escapeHtml(transfer.to)}へPayPayで送る" title="PayPayで送る">${icon("paperAirplane")}</button>
+        <button type="button" class="tl-icon-action tl-paypay" data-paypay data-to="${escapeHtml(transfer.to)}" data-to-id="${escapeHtml(transfer.toId || "")}" data-amount="${Number(transfer.amount || 0)}" aria-label="${escapeHtml(transfer.to)}へPayPayで送る" title="PayPayで送る">${icon("paperAirplane")}</button>
         <button type="button" class="tl-icon-action" data-settlement-complete data-from="${escapeHtml(transfer.from)}" data-to="${escapeHtml(transfer.to)}" data-from-id="${escapeHtml(transfer.fromId || "")}" data-to-id="${escapeHtml(transfer.toId || "")}" data-amount="${Number(transfer.amount || 0)}" aria-label="${escapeHtml(transfer.from)}から${escapeHtml(transfer.to)}への精算を完了" title="精算完了">${icon("checkCircle")}</button>
       </div>
       ${transfer.completedLabel ? `<small>完了済み ${escapeHtml(transfer.completedLabel)} を差し引き済み</small>` : ""}
@@ -919,8 +921,8 @@ function confirmTransferAction(options: {
 }
 
 /** PayPay 受取リンクを開き、金額をクリップボードへコピーして送金を補助する。 */
-async function payViaPayPay(to: string, amount: number, status: HTMLElement | null): Promise<void> {
-  const link = getPayLink(to);
+async function payViaPayPay(to: string, toId: string, amount: number, status: HTMLElement | null): Promise<void> {
+  const link = getPayLink(toId);
   let copied = false;
   try {
     await navigator.clipboard.writeText(String(Math.round(amount)));
@@ -951,8 +953,9 @@ function setupSettlementCompleteHandlers(mount: HTMLElement): void {
   mount.querySelectorAll<HTMLButtonElement>("[data-paypay]").forEach((button) => {
     button.addEventListener("click", async () => {
       const to = button.dataset.to || "";
+      const toId = button.dataset.toId || "";
       const amount = Number(button.dataset.amount || 0);
-      if (!to || !amount) return;
+      if (!to || !toId || !amount) return;
       const ok = await confirmTransferAction({
         tone: "paypay",
         iconName: "paperAirplane",
@@ -961,7 +964,7 @@ function setupSettlementCompleteHandlers(mount: HTMLElement): void {
         confirmLabel: "PayPayを開く",
       });
       if (!ok) return;
-      void payViaPayPay(to, amount, status);
+      void payViaPayPay(to, toId, amount, status);
     });
   });
   mount.querySelectorAll<HTMLButtonElement>("[data-settlement-complete]").forEach((button) => {
@@ -1004,6 +1007,21 @@ function setupSettlementCompleteHandlers(mount: HTMLElement): void {
           status.classList.add("is-error");
         }
       } finally {
+        button.disabled = false;
+      }
+    });
+  });
+  mount.querySelectorAll<HTMLButtonElement>("[data-settlement-delete]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const id = button.dataset.settlementDelete || "";
+      if (!id || !window.confirm("この精算完了記録を取り消しますか？")) return;
+      button.disabled = true;
+      try {
+        await ExpenseStore.removeSettlement(id);
+        renderBase();
+        renderActive();
+      } catch (error) {
+        window.alert(errorMessage(error) || "精算記録を取り消せませんでした");
         button.disabled = false;
       }
     });
@@ -1872,23 +1890,27 @@ function renderMembers(data: TripData): void {
   // （連携元のメンバー表には載らないため、ここで補って「参加している」状態に見せる）。
   const openEditingVisitor = isOpenEditingVisitor();
   const myName = getUser().name.trim() || (openEditingVisitor ? (readProfile()?.name || "").trim() : "");
-  const names = splitNames(membersStr);
-  if (openEditingVisitor && myName && !names.includes(myName)) names.unshift(myName);
+  const people = meta?.memberIds?.length
+    ? meta.memberIds.map((id) => ({ id, name: db.nameOf(id) })).filter((person) => person.name)
+    : splitNames(membersStr).map((name) => ({ id: "", name }));
+  if (openEditingVisitor && myName && !people.some((person) => person.name === myName)) {
+    people.unshift({ id: currentUserId(), name: myName });
+  }
 
   const countEl = root.querySelector<HTMLElement>("[data-members-count]");
-  if (countEl) countEl.textContent = names.length ? `${names.length}人` : "";
+  if (countEl) countEl.textContent = people.length ? `${people.length}人` : "";
 
   const listEl = root.querySelector<HTMLElement>("[data-members-list]");
   if (listEl) {
-    listEl.innerHTML = names.length
-      ? names
-          .map((n) => {
-            const self = Boolean(myName) && n === myName;
+    listEl.innerHTML = people.length
+      ? people
+          .map(({ id, name }) => {
+            const self = id ? id === currentUserId() : Boolean(myName) && name === myName;
             // アイコン/名前をタップするとその人の旅行履歴ページへ。
             return (
-              `<a class="tl-member-row${self ? " is-self" : ""}" href="person.html?name=${encodeURIComponent(n)}" title="${escapeHtml(n)}さんの旅行履歴を見る">` +
-              `<span class="tl-member-avatar">${escapeHtml(n.slice(0, 1) || "?")}</span>` +
-              `<span class="tl-member-name">${escapeHtml(n)}</span>` +
+              `<a class="tl-member-row${self ? " is-self" : ""}" href="person.html?name=${encodeURIComponent(name)}${id ? `&user=${encodeURIComponent(id)}` : ""}" title="${escapeHtml(name)}さんの旅行履歴を見る">` +
+              `<span class="tl-member-avatar">${escapeHtml(name.slice(0, 1) || "?")}</span>` +
+              `<span class="tl-member-name">${escapeHtml(name)}</span>` +
               (self ? `<span class="tl-member-self-badge">自分</span>` : "") +
               `<span class="tl-member-go">${icon("chevronRight")}</span>` +
               "</a>"

@@ -56,8 +56,8 @@ export const config = {
   /** ログインセッション署名用。ブラウザへ公開しない。 */
   sessionSecret,
 
-  /** ログインセッションの保持日数。漏えい時の影響を抑えるため既定は30日。 */
-  sessionTtlDays: integer("SESSION_TTL_DAYS", "30", 1, 365),
+  /** ログインセッションの保持日数。漏えい時の影響を抑えるため既定は7日。 */
+  sessionTtlDays: integer("SESSION_TTL_DAYS", "7", 1, 365),
 
   /**
    * この時刻（Unix ms）より前に発行されたセッションを全失効する。

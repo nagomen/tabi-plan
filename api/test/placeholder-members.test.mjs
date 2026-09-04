@@ -23,6 +23,9 @@ test("同名でも旅行専用の仮メンバーを別IDで作成する", async 
     release: () => {},
     query: async (sql, params) => {
       statements.push({ sql, params });
+      if (sql.includes("SELECT owner_user_id, version FROM plans")) {
+        return [[{ owner_user_id: "usr_owner", version: 1 }]];
+      }
       return result();
     },
   };
@@ -46,13 +49,7 @@ test("ログイン前の招待確認で未登録メンバー候補を返す", as
         invited_user_id: "gst_1", expires_at: "2099-01-01 00:00:00", slug: "summer", title: "夏旅行",
       }]];
     }
-    if (sql.includes("FROM plan_member_placeholders WHERE")) return [[{ user_id: "gst_1" }]];
-    if (sql.includes("FROM plan_member_placeholders pmp")) {
-      return [[
-        { user_id: "gst_1", display_name: "たかし" },
-        { user_id: "gst_2", display_name: "たかし" },
-      ]];
-    }
+    if (sql.includes("pmp.user_id = ?")) return [[{ user_id: "gst_1", display_name: "たかし" }]];
     return [[]];
   };
   t.after(() => { pool.query = originalQuery; });
@@ -62,12 +59,12 @@ test("ログイン前の招待確認で未登録メンバー候補を返す", as
   assert.equal(inspected.requiresMemberSelection, true);
   assert.deepEqual(inspected.memberOptions, [
     { userId: "gst_1", displayName: "たかし" },
-    { userId: "gst_2", displayName: "たかし" },
   ]);
 });
 
 test("招待承諾は仮メンバーの旅行内データをアカウントへ一括移行する", async (t) => {
   const originalGetConnection = pool.getConnection;
+  const originalQuery = pool.query;
   const statements = [];
   const connection = {
     beginTransaction: async () => { statements.push({ sql: "BEGIN", params: [] }); },
@@ -86,11 +83,18 @@ test("招待承諾は仮メンバーの旅行内データをアカウントへ�
       if (sql.includes("FROM plan_member_placeholders WHERE")) return [[{ user_id: "gst_1" }]];
       if (sql.includes("JOIN plan_members pm")) return [[{ user_id: "gst_1", role: "editor" }]];
       if (sql.includes("SELECT user_id FROM plan_members")) return [[]];
+      if (sql.includes("SELECT id, member_ids FROM itinerary_items")) {
+        return [[{ id: "iti_1", member_ids: JSON.stringify(["gst_1", "usr_other"]) }]];
+      }
       return result();
     },
   };
+  pool.query = async () => result();
   pool.getConnection = async () => connection;
-  t.after(() => { pool.getConnection = originalGetConnection; });
+  t.after(() => {
+    pool.query = originalQuery;
+    pool.getConnection = originalGetConnection;
+  });
 
   const accepted = await acceptInvite("secret-token", "usr_takashi", "gst_1");
   assert.deepEqual(accepted, { planSlug: "summer" });
@@ -101,7 +105,69 @@ test("招待承諾は仮メンバーの旅行内データをアカウントへ�
   assert.match(sql, /UPDATE settlements SET to_user_id/);
   assert.match(sql, /UPDATE plan_candidates SET proposed_by_id/);
   assert.match(sql, /INSERT IGNORE INTO plan_candidate_votes/);
+  const itineraryUpdate = statements.find(({ sql: statement }) => statement.includes("UPDATE itinerary_items SET member_ids"));
+  assert.deepEqual(JSON.parse(itineraryUpdate.params[0]), ["usr_takashi", "usr_other"]);
   assert.match(sql, /SET status = 'claimed'/);
   assert.match(sql, /COMMIT/);
   assert.doesNotMatch(sql, /INSERT INTO friendships/);
+});
+
+test("個人宛て招待では別の仮メンバーを選べない", async (t) => {
+  const originalGetConnection = pool.getConnection;
+  const originalQuery = pool.query;
+  const statements = [];
+  const connection = {
+    beginTransaction: async () => {},
+    commit: async () => {},
+    rollback: async () => { statements.push("ROLLBACK"); },
+    release: () => {},
+    query: async (sql) => {
+      if (sql.includes("FROM plan_invites i")) return [[{
+        id: "inv_target", plan_id: "pln_1", role: "editor", status: "pending",
+        created_by_id: "usr_owner", invited_user_id: "gst_takashi", accepted_by_id: null,
+        expires_at: "2099-01-01 00:00:00", slug: "summer",
+      }]];
+      if (sql.includes("FROM plan_member_placeholders WHERE")) return [[{ user_id: "gst_takashi" }]];
+      return result();
+    },
+  };
+  pool.query = async () => result();
+  pool.getConnection = async () => connection;
+  t.after(() => { pool.query = originalQuery; pool.getConnection = originalGetConnection; });
+
+  await assert.rejects(
+    acceptInvite("secret-token", "usr_account", "gst_someone_else"),
+    /選択したメンバー宛てではありません/,
+  );
+  assert.deepEqual(statements, ["ROLLBACK"]);
+});
+
+test("共通招待は未登録メンバー候補があるとき本人選択を必須にする", async (t) => {
+  const originalGetConnection = pool.getConnection;
+  const originalQuery = pool.query;
+  const statements = [];
+  const connection = {
+    beginTransaction: async () => {},
+    commit: async () => {},
+    rollback: async () => { statements.push("ROLLBACK"); },
+    release: () => {},
+    query: async (sql) => {
+      if (sql.includes("FROM plan_invites i")) return [[{
+        id: "inv_shared", plan_id: "pln_1", role: "viewer", status: "pending",
+        created_by_id: "usr_owner", invited_user_id: null, accepted_by_id: null,
+        expires_at: "2099-01-01 00:00:00", slug: "summer",
+      }]];
+      if (sql.includes("FROM plan_member_placeholders pmp")) return [[{ user_id: "gst_takashi" }]];
+      return result();
+    },
+  };
+  pool.query = async () => result();
+  pool.getConnection = async () => connection;
+  t.after(() => { pool.query = originalQuery; pool.getConnection = originalGetConnection; });
+
+  await assert.rejects(
+    acceptInvite("secret-token", "usr_account"),
+    /旅行メンバーの中から自分を選択してください/,
+  );
+  assert.deepEqual(statements, ["ROLLBACK"]);
 });

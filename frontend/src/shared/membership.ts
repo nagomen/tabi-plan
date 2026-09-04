@@ -60,9 +60,10 @@ export function planHasOwner(plan: PlanMeta): boolean {
 
 export function canEditPlan(plan: PlanMeta): boolean {
   const planId = plan.id || db.planBySlug(plan.slug)?.id;
+  const stored = planId ? db.planById(planId) : undefined;
+  if (stored?.source === "sample") return false;
   const row = memberRow(plan);
   if (row) return row.role === "owner" || row.role === "editor";
-  const stored = planId ? db.planById(planId) : undefined;
   return Boolean(
     currentUserId() && stored?.open_editing && stored.visibility === "public" && stored.status === "published"
   );
@@ -70,6 +71,8 @@ export function canEditPlan(plan: PlanMeta): boolean {
 
 /** 公開範囲・参加者・外部連携を管理できるのは owner だけ。 */
 export function canManagePlan(plan: PlanMeta): boolean {
+  const planId = plan.id || db.planBySlug(plan.slug)?.id;
+  if (planId && db.planById(planId)?.source === "sample") return false;
   return memberRow(plan)?.role === "owner";
 }
 

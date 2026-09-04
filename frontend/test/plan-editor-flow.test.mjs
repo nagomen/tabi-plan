@@ -64,6 +64,9 @@ test("友達以外を名前で追加し、保存後に未登録メンバーと�
   assert.match(plans, /旅行メンバーの中で、あなたは誰ですか/);
   assert.match(plans, /db\.inspectInvite/);
   assert.match(plans, /db\.acceptInvite\(payload\.token, selectedMemberId\)/);
+  assert.match(editor, /data-revoke-invite/);
+  assert.match(editor, /navigator\.share[\s\S]*db\.revokeInvite/);
+  assert.match(editor, /undoPlaceholderClaim/);
 });
 
 test("LINEログインでも招待tokenを外部へ送らずブラウザ内で選択状態を復元する", () => {

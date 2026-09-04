@@ -34,6 +34,7 @@ initPageTransitions();
 
 const params = new URLSearchParams(location.search);
 const personName = (params.get("name") || "").trim();
+const personId = (params.get("user") || "").trim();
 
 mountAppHeader({
   kicker: "Travel History",
@@ -75,7 +76,7 @@ document.querySelectorAll<HTMLElement>("[data-stat-icon]").forEach((stat) => {
 });
 
 const me = getUser().name.trim();
-const isSelf = Boolean(me) && me === personName;
+const isSelf = personId ? currentAccount()?.id === personId : Boolean(me) && me === personName;
 
 if (nameEl) {
   nameEl.innerHTML =
@@ -88,7 +89,7 @@ if (avatarEl) {
 document.title = `${personName || "旅行履歴"} | 旅行計画`;
 
 function canViewHistory(): boolean {
-  return Boolean(personName) && (isSelf || isHistoryPublic(personName));
+  return Boolean(personName) && (isSelf || isHistoryPublic(personId || personName));
 }
 
 async function exactPersonAccounts(): Promise<Account[]> {
@@ -184,7 +185,7 @@ function tripDays(trip: PersonTrip): number {
 }
 
 function renderHistory(): void {
-  const trips = personTrips(personName);
+  const trips = personTrips(personName, personId);
   allSlugs = trips.map((t) => t.plan.slug);
   allPins = historyPins(trips);
   const countries = countriesFromPins(allPins);

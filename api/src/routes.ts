@@ -262,6 +262,12 @@ async function requireExpenseEdit(expenseId: string, actorUserId: string): Promi
   return forbiddenUnless(accessRepo.canEditPlanWorkspace(planId, actorUserId));
 }
 
+async function requireSettlementEdit(settlementId: string, actorUserId: string): Promise<Handled | null> {
+  const planId = await expenseRepo.planIdForSettlement(settlementId);
+  if (!planId) return { status: 404, body: { error: "not found" } };
+  return forbiddenUnless(accessRepo.canEditPlanWorkspace(planId, actorUserId));
+}
+
 export async function route(method: string, path: string, body: Body, actorUserId = ""): Promise<Handled | null> {
   // ---- 起動時の一括取得 ----
   if (method === "GET" && path === "/api/bootstrap") {
@@ -313,6 +319,13 @@ export async function route(method: string, path: string, body: Body, actorUserI
       body: await memberRepo.createPlaceholderMember(m[1], str(body.display_name), actorUserId),
     };
   }
+  m = /^\/api\/plans\/([\w-]{1,32})\/placeholder-members\/([\w-]{1,32})\/unclaim$/.exec(path);
+  if (m && method === "POST") {
+    const denied = await forbiddenUnless(accessRepo.canManagePlan(m[1], actorUserId));
+    if (denied) return denied;
+    await memberRepo.undoPlaceholderClaim(m[1], m[2], actorUserId);
+    return { status: 200, body: { ok: true } };
+  }
 
   // ---- 計画 ----
   if (method === "POST" && path === "/api/plans") {
@@ -339,26 +352,31 @@ export async function route(method: string, path: string, body: Body, actorUserI
     const denied = await forbiddenUnless(managesPlan ? access.canManage : memberEditor || access.canEdit);
     if (denied) return denied;
     const version = await repo.updatePlan(
-      m[1], patch, managesPlan ? "manage" : memberEditor ? "edit" : "collaborate", requestedVersion,
+      m[1], patch, managesPlan ? "manage" : memberEditor ? "edit" : "collaborate", requestedVersion, actorUserId,
     );
     return { status: 200, body: { ok: true, version } };
   }
   if (m && method === "DELETE") {
     const denied = await forbiddenUnless(accessRepo.canManagePlan(m[1], actorUserId));
     if (denied) return denied;
-    await repo.deletePlan(m[1]);
+    await repo.deletePlan(m[1], actorUserId);
     return { status: 200, body: { ok: true } };
   }
   m = /^\/api\/plans\/([\w-]{1,32})\/members$/.exec(path);
   if (m && method === "PUT") {
+    const requestedVersion = expectedVersion(body);
+    if (requestedVersion === null) {
+      return { status: 400, body: { error: "expected_version が必要です" } };
+    }
     const denied = await forbiddenUnless(accessRepo.canManagePlan(m[1], actorUserId));
     if (denied) return denied;
-    await memberRepo.replaceMembers(
+    const version = await memberRepo.replaceMembers(
       m[1],
       arr(body.members) as { user_id: string; role?: string; from_date?: string | null; to_date?: string | null }[],
       actorUserId,
+      requestedVersion,
     );
-    return { status: 200, body: { ok: true } };
+    return { status: 200, body: { ok: true, version } };
   }
   m = /^\/api\/plans\/([\w-]{1,32})\/members\/me$/.exec(path);
   if (m && method === "DELETE") {
@@ -401,7 +419,7 @@ export async function route(method: string, path: string, body: Body, actorUserI
       ? normalizedContent
       : { itinerary: normalizedContent.itinerary, cities: normalizedContent.cities };
     const version = await repo.replacePlanContent(
-      m[1], content as Parameters<typeof repo.replacePlanContent>[1], requestedVersion,
+      m[1], content as Parameters<typeof repo.replacePlanContent>[1], requestedVersion, actorUserId,
     );
     return { status: 200, body: { ok: true, version } };
   }
@@ -436,7 +454,7 @@ export async function route(method: string, path: string, body: Body, actorUserI
   if (m && method === "DELETE") {
     const denied = await forbiddenUnless(accessRepo.canManagePlan(m[1], actorUserId));
     if (denied) return denied;
-    await inviteRepo.revokeInvite(m[1], m[2]);
+    await inviteRepo.revokeInvite(m[1], m[2], actorUserId);
     return { status: 200, body: { ok: true } };
   }
   if (method === "POST" && path === "/api/invites/accept") {
@@ -471,6 +489,14 @@ export async function route(method: string, path: string, body: Body, actorUserI
         from_user_id: string; to_user_id: string; amount_base_minor: number;
       }, actorUserId),
     };
+  }
+
+  m = /^\/api\/settlements\/([\w-]{1,32})$/.exec(path);
+  if (m && method === "DELETE") {
+    const denied = await requireSettlementEdit(m[1], actorUserId);
+    if (denied) return denied;
+    await expenseRepo.deleteSettlement(m[1], actorUserId);
+    return { status: 200, body: { ok: true } };
   }
 
   // ---- 費用 ----
@@ -561,6 +587,9 @@ export async function route(method: string, path: string, body: Body, actorUserI
     const existing = await userRepo.friendshipBetween(a, b);
     if (status === "pending") {
       if (requestedBy !== actorUserId) return { status: 403, body: { error: "forbidden" } };
+      if (existing?.status === "accepted") {
+        return { status: 400, body: { error: "already_friends", message: "既に友達です" } };
+      }
     } else if (status === "accepted" || status === "declined") {
       if (!existing || existing.status !== "pending" || existing.requested_by_id === actorUserId) {
         return { status: 403, body: { error: "forbidden" } };

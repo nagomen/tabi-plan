@@ -16,6 +16,7 @@ import { mdLabel } from "../shared/date";
 import { mapsSearchUrl } from "../shared/maps";
 import { planDashboardHref } from "../shared/plan-url";
 import { registerServiceWorker } from "../shared/pwa";
+import { rememberInviteReturn } from "../shared/invite-resume";
 import { icon, type IconName } from "../shared/icons";
 import { mountAppHeader } from "../shared/app-header";
 import { getViews } from "../shared/views-store";
@@ -308,16 +309,17 @@ function creatorName(meta: PlanMeta): string {
   return ownerNameOf(meta) || splitNames(meta.members)[0] || "作成者不明";
 }
 
-function personHref(name: string): string {
-  return "person.html?name=" + encodeURIComponent(name);
+function personHref(name: string, userId = ""): string {
+  return "person.html?name=" + encodeURIComponent(name) + (userId ? "&user=" + encodeURIComponent(userId) : "");
 }
 
 function creatorLinkHtml(meta: PlanMeta, className: string): string {
   const name = creatorName(meta);
+  const ownerId = db.planBySlug(meta.slug)?.owner_user_id || "";
   const isUnknown = name === "作成者不明";
   const linkAttrs = isUnknown
     ? ""
-    : ' role="link" tabindex="0" data-author-link="' + escapeHtml(personHref(name)) + '" aria-label="' + escapeHtml(name + "の人物ページを開く") + '"';
+    : ' role="link" tabindex="0" data-author-link="' + escapeHtml(personHref(name, ownerId)) + '" aria-label="' + escapeHtml(name + "の人物ページを開く") + '"';
   return (
     '<span class="' + className + (isUnknown ? " is-unknown" : "") + '"' + linkAttrs + ">" +
     icon("user") +
@@ -1209,7 +1211,8 @@ async function handleJoinLink(): Promise<boolean> {
     if (!isIdentified()) {
       const memberPart = selectedMemberId ? `&member=${encodeURIComponent(selectedMemberId)}` : "";
       const returnTo = `${location.pathname}${location.search}#join=${encodeURIComponent(m[1])}${memberPart}`;
-      navigateWithPageTransition("login.html?returnTo=" + encodeURIComponent(returnTo), { replace: true });
+      if (!rememberInviteReturn(returnTo)) throw new Error("招待情報をこの端末に保存できませんでした");
+      navigateWithPageTransition("login.html?resumeInvite=1&returnTo=plans.html", { replace: true });
       return true;
     }
     try {

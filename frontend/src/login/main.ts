@@ -17,6 +17,7 @@ import {
   isValidEmail,
   isWeakPassword,
 } from "../shared/account-store";
+import { readInviteReturn } from "../shared/invite-resume";
 
 initPageTransitions();
 
@@ -32,6 +33,9 @@ const subEl = qs<HTMLElement>("[data-sub]");
 const errorEl = qs<HTMLElement>("[data-error]");
 const submitLabel = qs<HTMLElement>("[data-submit-label]");
 const submitBtn = qs<HTMLButtonElement>("[data-submit]");
+const recoveryOpen = qs<HTMLButtonElement>("[data-recover-open]");
+const recoveryForm = qs<HTMLFormElement>("[data-recover-form]");
+const recoveryError = qs<HTMLElement>("[data-recover-error]");
 const loggedBox = qs<HTMLElement>("[data-logged]");
 const loggedText = qs<HTMLElement>("[data-logged-text]");
 function safeReturnTo(value: string | null): string {
@@ -40,6 +44,9 @@ function safeReturnTo(value: string | null): string {
 }
 
 const returnTo = safeReturnTo(new URLSearchParams(location.search).get("returnTo"));
+const resumeInvite = new URLSearchParams(location.search).get("resumeInvite") === "1";
+const destination = (consume = false): string =>
+  (resumeInvite ? readInviteReturn(consume) : "") || returnTo || "plans.html";
 
 const emailInput = form.elements.namedItem("email") as HTMLInputElement;
 const passwordInput = form.elements.namedItem("password") as HTMLInputElement;
@@ -55,6 +62,14 @@ function showError(message: string): void {
 function clearError(): void {
   errorEl.textContent = "";
   errorEl.classList.remove("is-shown");
+}
+
+function showRecoveryCode(code: string): void {
+  if (!code) return;
+  window.prompt(
+    "この復旧コードは再表示できません。パスワード管理アプリなど安全な場所へコピーしてください。",
+    code,
+  );
 }
 
 function applyMode(next: "login" | "signup"): void {
@@ -119,14 +134,55 @@ form.addEventListener("submit", async (event) => {
   submitBtn.disabled = true;
   submitLabel.textContent = mode === "signup" ? "登録中…" : "ログイン中…";
   try {
-    if (mode === "signup") await signUp(email, password, name);
-    else await logIn(email, password);
+    if (mode === "signup") {
+      const account = await signUp(email, password, name);
+      showRecoveryCode(account.recoveryCode || "");
+    } else await logIn(email, password);
     // 成功 → 招待経由なら元の招待URLへ戻る。通常は計画一覧へ。
-    navigateWithPageTransition(returnTo || "plans.html");
+    navigateWithPageTransition(destination(true));
   } catch (err) {
     showError(errorMessage(err) || "失敗しました");
     submitBtn.disabled = false;
     submitLabel.textContent = mode === "signup" ? "登録する" : "ログイン";
+  }
+});
+
+recoveryOpen.addEventListener("click", () => {
+  recoveryForm.hidden = !recoveryForm.hidden;
+  recoveryOpen.textContent = recoveryForm.hidden ? "パスワードを忘れた方" : "再設定を閉じる";
+  recoveryError.textContent = "";
+  recoveryError.classList.remove("is-shown");
+  if (!recoveryForm.hidden) recoveryForm.querySelector<HTMLInputElement>("input")?.focus();
+});
+
+recoveryForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const email = (recoveryForm.elements.namedItem("recover-email") as HTMLInputElement).value.trim();
+  const code = (recoveryForm.elements.namedItem("recovery-code") as HTMLInputElement).value.trim();
+  const next = (recoveryForm.elements.namedItem("new-password") as HTMLInputElement).value;
+  const button = recoveryForm.querySelector<HTMLButtonElement>("[data-recover-submit]");
+  recoveryError.textContent = "";
+  recoveryError.classList.remove("is-shown");
+  if (!isValidEmail(email) || !code || isWeakPassword(next)) {
+    recoveryError.textContent = "メールアドレス・復旧コード・8文字以上の新しいパスワードを確認してください。";
+    recoveryError.classList.add("is-shown");
+    return;
+  }
+  if (button) button.disabled = true;
+  try {
+    const result = await db.recoverPassword({ email, recovery_code: code, new_password: next });
+    showRecoveryCode(result.recovery_code);
+    recoveryForm.reset();
+    recoveryForm.hidden = true;
+    recoveryOpen.textContent = "パスワードを忘れた方";
+    applyMode("login");
+    emailInput.value = email;
+    window.alert("パスワードを再設定し、すべての端末からログアウトしました。新しいパスワードでログインしてください。");
+  } catch (error) {
+    recoveryError.textContent = errorMessage(error) || "再設定できませんでした";
+    recoveryError.classList.add("is-shown");
+  } finally {
+    if (button) button.disabled = false;
   }
 });
 
@@ -143,7 +199,8 @@ function setupLineLogin(): void {
   lineBtn.hidden = false;
   lineBtn.addEventListener("click", () => {
     // 戻り先は「ログイン後に行きたい画面」。許可オリジンの外はサーバーが弾く。
-    const back = new URL(returnTo || "plans.html", location.href).toString();
+    // LINEからはいったんこのログイン画面へ戻り、sessionStorageの招待情報を復元する。
+    const back = new URL(resumeInvite ? location.pathname + location.search : destination(), location.href).toString();
     lineBtn.disabled = true;
     // URL はサーバーに作らせる（この端末の印を state に入れてもらうため）。
     void db.lineAuthorizeUrl(back)
@@ -164,7 +221,7 @@ async function init(): Promise<void> {
   const adopted = db.adoptSessionFromUrl();
   if (adopted.error) showError(adopted.error);
   if (adopted.ok) {
-    navigateWithPageTransition(returnTo || "plans.html", { replace: true });
+    navigateWithPageTransition(destination(true), { replace: true });
     return;
   }
   setupLineLogin();

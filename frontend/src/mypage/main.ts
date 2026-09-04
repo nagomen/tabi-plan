@@ -16,7 +16,6 @@ import type { PlanMeta } from "../shared/plans-store";
 import { getUser, setUserName } from "../shared/user-store";
 import { currentUserId } from "../shared/identity";
 import { isMemberOf } from "../shared/membership";
-import { friendCandidates } from "../shared/friend-store";
 import { getPayLink, setPayLink } from "../shared/payment-links";
 import { currentAccount, logOut, updateName, isLoggedIn, searchAccounts, searchAccountsRemote, type Account } from "../shared/account-store";
 import * as Friendships from "../shared/friendship-store";
@@ -119,16 +118,18 @@ const historyToggle = qs<HTMLInputElement>("[data-history-public]");
 const historyNote = qs<HTMLElement>("[data-history-note]");
 function renderHistorySetting(): void {
   const name = getUser().name.trim();
+  const userId = currentUserId();
   historyToggle.disabled = !name;
-  historyToggle.checked = name ? isHistoryPublic(name) : false;
+  historyToggle.checked = name && userId ? isHistoryPublic(userId) : false;
   historyNote.textContent = name
     ? "他の人があなたのアイコンから、行った場所やカレンダーを見られます"
     : "名前を設定すると、旅行履歴の公開/非公開を選べます";
 }
 historyToggle.addEventListener("change", () => {
   const name = getUser().name.trim();
-  if (!name) return;
-  setHistoryPublic(name, historyToggle.checked);
+  const userId = currentUserId();
+  if (!name || !userId) return;
+  setHistoryPublic(userId, historyToggle.checked);
 });
 
 function renderAccount(): void {
@@ -154,7 +155,7 @@ function renderAccount(): void {
       navigateWithPageTransition("plans.html", { replace: true });
     });
   } else {
-    accountEl.innerHTML = `<a href="login.html">ログイン / 新規登録</a><span>すると別端末でも同じ名前で使えます（試作）</span>`;
+    accountEl.innerHTML = `<a href="login.html">ログイン / 新規登録</a><span>すると別端末でも同じ旅行計画を使えます</span>`;
   }
 }
 
@@ -329,12 +330,12 @@ qs<HTMLButtonElement>("[data-cal-next]").addEventListener("click", () => { stepM
 const payMount = qs<HTMLElement>("[data-paylinks]");
 const payCount = qs<HTMLElement>("[data-pay-count]");
 
-/** 自分の名前＋全計画のメンバーを重複なく集めて、登録対象の名前一覧にする。 */
-function payNames(): string[] {
-  const me = getUser().name.trim();
-  const all = friendCandidates(me ? [me] : []);
-  const names = me ? [me, ...all] : all;
-  return Array.from(new Set(names.filter(Boolean)));
+/** 自分＋表示可能な計画のメンバーをuser_id単位で集める。 */
+function payPeople(): { id: string; name: string }[] {
+  const ids = new Set(db.members().filter((member) => member.status === "active").map((member) => member.user_id));
+  const me = currentUserId();
+  if (me) ids.add(me);
+  return [...ids].map((id) => ({ id, name: db.nameOf(id) })).filter((person) => person.name);
 }
 
 // ---- ログイン方法（メール / LINE） --------------------------------------
@@ -380,7 +381,8 @@ function renderLoginMethods(): void {
   const mailRow = '<div class="mp-login-row"><span class="mp-login-mark is-mail">メール</span>' +
     (hasMail
       ? `<span class="mp-login-state">${escapeHtml(mail.email)}</span>` +
-        '<button class="mp-login-act" type="button" data-pw-open>パスワードを変更</button>'
+        '<button class="mp-login-act" type="button" data-pw-open>パスワードを変更</button>' +
+        '<button class="mp-login-act" type="button" data-recovery-code>復旧コードを再発行</button>'
       : '<span class="mp-login-state">未登録</span>' +
         '<button class="mp-login-act is-primary" type="button" data-mail-open>登録する</button>') +
     (loginFormShown && ((hasMail && openLoginForm === "password") || (!hasMail && openLoginForm === "email"))
@@ -416,6 +418,14 @@ function loginMsg(text: string, kind: "" | "error" | "done" = ""): void {
   el.classList.toggle("is-done", kind === "done");
 }
 
+function showRecoveryCode(code: string): void {
+  if (!code) return;
+  window.prompt(
+    "この復旧コードは再表示できません。パスワード管理アプリなど安全な場所へコピーしてください。",
+    code,
+  );
+}
+
 loginMethodsEl?.addEventListener("click", (event) => {
   const target = event.target;
   if (!(target instanceof Element)) return;
@@ -442,6 +452,7 @@ loginMethodsEl?.addEventListener("click", (event) => {
       .then((result) => {
         loginFormShown = false;
         renderLoginMethods();
+        showRecoveryCode(result.recovery_code);
         const tail = result.revoked ? `他の端末（${result.revoked}件）のログインも切りました。` : "";
         window.alert("パスワードを変更しました。" + tail);
       })
@@ -463,15 +474,27 @@ loginMethodsEl?.addEventListener("click", (event) => {
     if (button) button.disabled = true;
     loginMsg("登録しています…");
     void db.addCredentials({ email, password })
-      .then(() => {
+      .then((result) => {
         loginFormShown = false;
         renderLoginMethods();
+        showRecoveryCode(result.recovery_code);
         window.alert("メールアドレスとパスワードを登録しました。次回はどちらでもログインできます。");
       })
       .catch((error) => {
         if (button) button.disabled = false;
         loginMsg(errorMessage(error) || "登録できませんでした", "error");
       });
+    return;
+  }
+
+  if (target.closest("[data-recovery-code]")) {
+    if (!window.confirm("古い復旧コードを無効にして、新しいコードを発行します。よろしいですか。")) return;
+    const button = target.closest<HTMLButtonElement>("[data-recovery-code]");
+    if (button) button.disabled = true;
+    void db.rotateRecoveryCode()
+      .then((code) => showRecoveryCode(code))
+      .catch((error) => window.alert(errorMessage(error) || "復旧コードを発行できませんでした"))
+      .finally(() => { if (button) button.disabled = false; });
     return;
   }
 
@@ -509,21 +532,21 @@ loginMethodsEl?.addEventListener("click", (event) => {
 });
 
 function renderPayLinks(): void {
-  const me = getUser().name.trim();
-  const names = payNames();
-  payCount.textContent = names.length ? `${names.length}人` : "";
-  if (!names.length) {
+  const meId = currentUserId();
+  const people = payPeople();
+  payCount.textContent = people.length ? `${people.length}人` : "";
+  if (!people.length) {
     payMount.innerHTML = `<div class="mp-empty"><b>メンバーがいません</b><span>計画にメンバーを追加すると、ここで送金リンクを登録できます</span></div>`;
     return;
   }
-  payMount.innerHTML = names
-    .map((name) => {
-      const link = getPayLink(name);
-      const self = Boolean(me) && name === me;
+  payMount.innerHTML = people
+    .map(({ id, name }) => {
+      const link = getPayLink(id);
+      const self = Boolean(meId) && id === meId;
       return (
         `<div class="mp-pay-row">` +
         `<span class="mp-pay-name">${self ? icon("user") : ""}${escapeHtml(name)}${self ? `<span class="mp-badge">自分</span>` : ""}</span>` +
-        `<input type="text" inputmode="url" data-pay-name="${escapeHtml(name)}" value="${escapeHtml(link?.paypay || "")}" placeholder="https://qr.paypay.ne.jp/… または ID" aria-label="${escapeHtml(name)}の送金リンク">` +
+        `<input type="text" inputmode="url" data-pay-user="${escapeHtml(id)}" value="${escapeHtml(link?.paypay || "")}" placeholder="${self ? "https://qr.paypay.ne.jp/… または ID" : "本人が登録すると表示されます"}" aria-label="${escapeHtml(name)}の送金リンク"${self ? "" : " disabled"}>` +
         `</div>`
       );
     })
@@ -534,11 +557,11 @@ let payTimer = 0;
 payMount.addEventListener("input", (event) => {
   const input = event.target;
   if (!(input instanceof HTMLInputElement)) return;
-  const name = input.dataset.payName || "";
-  if (!name) return;
+  const userId = input.dataset.payUser || "";
+  if (!userId || userId !== currentUserId()) return;
   window.clearTimeout(payTimer);
   const value = input.value;
-  payTimer = window.setTimeout(() => setPayLink(name, value), 400);
+  payTimer = window.setTimeout(() => setPayLink(userId, value), 400);
 });
 
 // ---- 友達（アカウント単位） ----------------------------------------------

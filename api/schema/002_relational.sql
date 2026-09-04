@@ -51,6 +51,8 @@ CREATE TABLE user_credentials (
   password_hash  VARBINARY(64) NOT NULL,
   algorithm      VARCHAR(32)  NOT NULL DEFAULT 'pbkdf2-sha256',
   iterations     INT UNSIGNED NOT NULL DEFAULT 600000,
+  recovery_code_hash VARBINARY(32) NULL,
+  recovery_code_created_at TIMESTAMP NULL DEFAULT NULL,
   created_at     TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at     TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (user_id),
@@ -423,12 +425,14 @@ CREATE TABLE settlements (
   note          TEXT        NULL,
   settled_at    TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP,
   created_by_id VARCHAR(32) NULL,
+  deleted_by_id VARCHAR(32) NULL,
   deleted_at    TIMESTAMP   NULL DEFAULT NULL,
   PRIMARY KEY (id),
   KEY idx_settlements_plan (plan_id, deleted_at),
   CONSTRAINT fk_settlements_plan FOREIGN KEY (plan_id) REFERENCES plans (id) ON DELETE CASCADE,
   CONSTRAINT fk_settlements_from FOREIGN KEY (from_user_id) REFERENCES users (id),
   CONSTRAINT fk_settlements_to   FOREIGN KEY (to_user_id) REFERENCES users (id),
+  CONSTRAINT fk_settlements_deleter FOREIGN KEY (deleted_by_id) REFERENCES users (id) ON DELETE SET NULL,
   CONSTRAINT chk_settlements_parties CHECK (from_user_id <> to_user_id),
   CONSTRAINT chk_settlements_amount CHECK (amount_base_minor > 0)
 ) ENGINE=InnoDB;
