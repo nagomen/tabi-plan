@@ -21,7 +21,7 @@ function load(relativePath, stubs = {}) {
   return module.exports;
 }
 
-const { coverImageForLocation, planCoverImageForLocation } = load("src/shared/cover.ts", {
+const { coverImageForLocation, coverImageForCoord, planCoverImageForLocation } = load("src/shared/cover.ts", {
   "./plans-store": { getData: () => null },
 });
 
@@ -50,6 +50,30 @@ test("short country/state codes no longer match inside other words", () => {
   assert.equal(coverImageForLocation("Fukuoka"), "./images/cover_fukuoka.webp"); // uk に誤一致しない
   assert.equal(coverImageForLocation("タイムズスクエア"), "./images/cover_newyork.webp"); // タイに誤一致しない
   assert.equal(coverImageForLocation("uk"), "./images/cover_uk.webp"); // 単独の略称は従来どおり
+});
+
+test("stored coordinates resolve the region without trip-specific keywords", () => {
+  assert.equal(coverImageForCoord(22.3193, 114.1694), "./images/cover_hongkong.webp"); // 香港
+  assert.equal(coverImageForCoord(22.1449, 113.5589), "./images/cover_china.webp");    // マカオ(コタイ)
+  assert.equal(coverImageForCoord(24.4441, 118.3736), "./images/cover_taiwan.webp");   // 金門島
+  assert.equal(coverImageForCoord(22.5431, 114.0579), "./images/cover_china.webp");    // 深圳
+  assert.equal(coverImageForCoord("25.033", "121.5654"), "./images/cover_taiwan.webp"); // 文字列座標(台北)
+  assert.equal(coverImageForCoord(0, 0), null);        // 未設定座標は使わない
+  assert.equal(coverImageForCoord(null, 114), null);   // 片方欠けも不可
+});
+
+test("a place resolves by name first, then by its stored coordinates", () => {
+  const meta = { slug: "x", route: "", title: "", cover: "" };
+  // 名前が辞書に無くても、DB保存の座標で決まる。
+  assert.equal(
+    planCoverImageForLocation(meta, [{ name: "路氹城エリア", lat: 22.1449, lng: 113.5589 }]),
+    "./images/cover_china.webp",
+  );
+  // 名前が判定できるときは名前が優先（座標は補助）。
+  assert.equal(
+    planCoverImageForLocation(meta, [{ name: "京都", lat: 22.3193, lng: 114.1694 }]),
+    "./images/cover_kyoto.webp",
+  );
 });
 
 test("planCoverImageForLocation tries candidates in order and falls back to the plan", () => {

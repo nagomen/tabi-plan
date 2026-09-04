@@ -27,7 +27,7 @@ import { currentAccount } from "../shared/account-store";
 import { currentUserId, adoptLegacyIdentity, identifyByName } from "../shared/identity";
 import * as db from "../shared/db";
 import { incrementView } from "../shared/views-store";
-import { planCoverImage, planCoverImageForLocation } from "../shared/cover";
+import { planCoverImage, planCoverImageForLocation, type CoverPlace } from "../shared/cover";
 import { splitNames } from "../shared/friend-store";
 import { buildInviteLink } from "../shared/invite";
 import * as ExpenseStore from "../shared/expense-store";
@@ -52,6 +52,7 @@ import type {
   TripData,
   TripLink,
   ItineraryItem,
+  RouteCity,
   Settlement,
   SettlementTransfer,
   ExpenseDetail,
@@ -301,29 +302,39 @@ function activeDayCoverMeta(): HeaderCoverMeta {
  * 例: 台北 10/1〜10/3・東京 10/3〜10/5 なら、10/3 は台北（その後東京へ移動）。
  * ※ cityNameForDate は逆に「最後に到着した都市」を選ぶ（日ラベル用）。
  */
-function firstCityOnDate(data: TripData, date: string): string {
-  let name = "";
+function firstCityOnDate(data: TripData, date: string): RouteCity | null {
+  let best: RouteCity | null = null;
   let bestFrom = "";
   for (const city of data.cities || []) {
     const from = normalizeDate(city.fromDate);
     const to = normalizeDate(city.toDate);
     if (!city.name || !from || !to || date < from || to < date) continue;
-    if (!name || from < bestFrom) {
-      name = city.name.trim();
+    if (!best || from < bestFrom) {
+      best = city;
       bestFrom = from;
     }
   }
-  return name;
+  return best;
 }
 
-/** ヘッダー画像の地名候補：その日に最初にいる都市 → 日のエリア名。 */
-function dayCoverLocations(day: DayGroup): string[] {
-  return [firstCityOnDate(state.data, day.date), day.area || ""].filter(Boolean);
+/**
+ * ヘッダー画像の場所候補：その日に最初にいる都市（DBの都市メタデータ。座標付き）
+ * → 日のエリア名 → その日の代表座標。すべて計画データ由来なので、
+ * リモートで旅行内容を変えてもコードに触らず表示が追従する。
+ */
+function dayCoverPlaces(day: DayGroup): CoverPlace[] {
+  const places: CoverPlace[] = [];
+  const city = firstCityOnDate(state.data, day.date);
+  if (city) places.push({ name: city.name.trim(), lat: city.lat, lng: city.lng });
+  if (day.area) places.push({ name: day.area });
+  const coord = dayCoord(day);
+  if (coord) places.push(coord);
+  return places;
 }
 
 function updateHeaderHero(day: DayGroup): void {
   const meta = activeDayCoverMeta();
-  setAppHeaderHero(appHeaderEl, planCoverImageForLocation(meta, dayCoverLocations(day)));
+  setAppHeaderHero(appHeaderEl, planCoverImageForLocation(meta, dayCoverPlaces(day)));
 }
 
 // フォームは日本語ラベルを value に持つ。列挙へ寄せる変換をここに集約する。
