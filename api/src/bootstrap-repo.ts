@@ -52,7 +52,7 @@ export async function bootstrapForUser(userId = ""): Promise<Bootstrap> {
          FROM itinerary_items
          WHERE plan_id IN (${visibleIn.sql})
          ORDER BY plan_id, item_date, sort_order`, visibleIn.params),
-      all<Bootstrap["cities"][number]>(`SELECT id, plan_id, name, sort_order FROM plan_cities
+      all<Bootstrap["cities"][number]>(`SELECT id, plan_id, name, from_date, to_date, lat, lng, sort_order FROM plan_cities
          WHERE plan_id IN (${visibleIn.sql})
          ORDER BY plan_id, sort_order`, visibleIn.params),
       all<Bootstrap["views"][number]>(`SELECT plan_id, CAST(SUM(view_count) AS SIGNED) AS view_count FROM plan_view_daily

@@ -310,6 +310,47 @@ async function migrate012() {
   }
 }
 
+async function migrate013() {
+  // 計画編集画面が持つ都市別の滞在日・座標を、都市名と一緒に永続化する。
+  // 以前は plan_cities が name しか持たず、編集画面を開き直すたびに消えていた。
+  const columns = [
+    ["from_date", "DATE NULL AFTER name"],
+    ["to_date", "DATE NULL AFTER from_date"],
+    ["lat", "DECIMAL(9,6) NULL AFTER to_date"],
+    ["lng", "DECIMAL(9,6) NULL AFTER lat"],
+  ];
+  for (const [column, definition] of columns) {
+    if (!(await exists(
+      "SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'plan_cities' AND COLUMN_NAME = ?",
+      [database, column],
+    ))) {
+      await conn.query(`ALTER TABLE plan_cities ADD COLUMN \`${column}\` ${definition}`);
+    }
+  }
+
+  // 既存データは行程の日付・エリア・座標から可能な範囲で復旧する。
+  await conn.query(`UPDATE plans p
+    JOIN (
+      SELECT plan_id, MIN(item_date) AS first_date, MAX(item_date) AS last_date
+        FROM itinerary_items WHERE item_date IS NOT NULL GROUP BY plan_id
+    ) x ON x.plan_id = p.id
+     SET p.start_date = COALESCE(p.start_date, x.first_date),
+         p.end_date = COALESCE(p.end_date, x.last_date)
+   WHERE p.start_date IS NULL OR p.end_date IS NULL`);
+  await conn.query(`UPDATE plan_cities c
+    JOIN (
+      SELECT plan_id, area, MIN(item_date) AS first_date, MAX(item_date) AS last_date,
+             MAX(lat) AS sample_lat, MAX(lng) AS sample_lng
+        FROM itinerary_items
+       WHERE area IS NOT NULL AND area <> ''
+       GROUP BY plan_id, area
+    ) x ON x.plan_id = c.plan_id AND x.area = c.name
+     SET c.from_date = COALESCE(c.from_date, x.first_date),
+         c.to_date = COALESCE(c.to_date, x.last_date),
+         c.lat = COALESCE(c.lat, x.sample_lat),
+         c.lng = COALESCE(c.lng, x.sample_lng)`);
+}
+
 async function main() {
   await conn.query(`CREATE TABLE IF NOT EXISTS schema_migrations (
     id VARCHAR(64) NOT NULL PRIMARY KEY,
@@ -326,6 +367,7 @@ async function main() {
   await applyMigration("010_itinerary_item_members", migrate010);
   await applyMigration("011_membership_integrity", migrate011);
   await applyMigration("012_account_recovery_and_settlement_audit", migrate012);
+  await applyMigration("013_plan_city_details", migrate013);
 }
 
 // 同時デプロイが同じDDLを並走させないよう、DB側の advisory lock で直列化する。

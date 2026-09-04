@@ -32,7 +32,7 @@ import { gcalUrl, buildIcs, type CalEvent } from "../shared/calendar";
 import { mountAppHeader } from "../shared/app-header";
 import { currentAccount } from "../shared/account-store";
 import { listFriends } from "../shared/friendship-store";
-import { canEditPlan, canManagePlan, planHasOwner } from "../shared/membership";
+import { canEditPlan, canEditPlanMetadata, canManagePlan, planHasOwner } from "../shared/membership";
 import { addBaseLayer } from "../shared/map-tiles";
 import { validatePublishPlan } from "./validation";
 import { formatDurationMinutes } from "../shared/travel-duration";
@@ -390,6 +390,7 @@ let armed: { itemId: number; target: GeoTarget } | null = null;
 // 地図クリックで訪問地の位置を決めるときの対象（都市の id）
 let armedCity: number | null = null;
 let editorLocked = false;
+let metadataLocked = false;
 
 function lockEditor(message: string): false {
   editorLocked = true;
@@ -406,6 +407,16 @@ function applyEditorLock(): void {
   ).forEach((control) => {
     control.disabled = true;
   });
+}
+
+/** 公開共同編集者には、サーバーが許可する行程・都市だけを編集させる。 */
+function applyMetadataLock(): void {
+  root.classList.add("is-metadata-readonly");
+  root.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement | HTMLButtonElement>(
+    '[data-f="title"], [data-range-trigger], [data-f="note"], [data-member-field] input, ' +
+    '[data-member-field] select, [data-member-field] button, [data-cover-input], [data-cover-clear]',
+  ).forEach((control) => { control.disabled = true; });
+  savebarNoteEl.textContent = "公開共同編集では、行程と訪問地だけを編集できます。旅行名・期間・画像は正式メンバーが変更できます。";
 }
 
 // 期間レンジピッカー（flatpickr・カレンダーで開始日→終了日を一括選択）
@@ -3531,7 +3542,11 @@ function buildData(): LocalPlanData {
     if (cover) flush(cover.stay);
   });
   return {
-    trip: { title: model.title || "無題の旅行", dates: datesString(), members: model.members || "", note: model.note || "", cover: model.cover || "" },
+    trip: {
+      title: model.title || "無題の旅行", dates: datesString(),
+      startDate: model.startDate, endDate: model.endDate,
+      members: model.members || "", note: model.note || "", cover: model.cover || "",
+    },
     itinerary,
     links: [],
     checklist: [],
@@ -3573,8 +3588,8 @@ function loadExisting(): boolean {
   model.candidates = Array.isArray(data.candidates) ? data.candidates : [];
   model.visibility = meta?.visibility;
   const parts = String(trip.dates || "").split(/\s+-\s+/);
-  model.startDate = normalizeToISO(parts[0]);
-  model.endDate = normalizeToISO(parts[1] || parts[0]);
+  model.startDate = normalizeToISO(trip.startDate) || normalizeToISO(parts[0]);
+  model.endDate = normalizeToISO(trip.endDate) || normalizeToISO(parts[1] || parts[0]);
 
   const byDate: Record<string, Day> = {};
   const cityNames = new Set<string>();
@@ -3598,6 +3613,10 @@ function loadExisting(): boolean {
     if (kind === "stay") day.stay = it;
     else day.items.push(it);
   });
+  // 古い計画でplans側の期間が欠けていても、保存済み行程の日付から復旧する。
+  const itineraryDates = Object.keys(byDate).sort();
+  if (!model.startDate) model.startDate = itineraryDates[0] || "";
+  if (!model.endDate) model.endDate = itineraryDates[itineraryDates.length - 1] || model.startDate;
   model.days = Object.keys(byDate).sort().map((d) => byDate[d]);
   // 同名の宿が連日なら連泊として1つにまとめる（後ろから前へ畳む）
   for (let i = model.days.length - 1; i >= 1; i--) {
@@ -3610,11 +3629,22 @@ function loadExisting(): boolean {
   }
   if (data.cities && data.cities.length) {
     // 保存済みの都市（期間つき）を復元
-    model.cities = data.cities.map((c) => ({
-      id: seq++, name: c.name || "",
-      fromDate: c.fromDate || "", toDate: c.toDate || "",
-      lat: c.lat != null ? String(c.lat) : "", lng: c.lng != null ? String(c.lng) : "",
-    }));
+    model.cities = data.cities.map((c) => {
+      const itineraryPoint = (data.itinerary || []).find((item) =>
+        item.area === c.name && String(item.lat ?? "").trim() !== "" && String(item.lng ?? "").trim() !== "" &&
+        Number.isFinite(Number(item.lat)) && Number.isFinite(Number(item.lng)),
+      );
+      const known = TripPlans.coordsFor(c.name || "");
+      return {
+        id: seq++, name: c.name || "",
+        fromDate: c.fromDate || itineraryDates.find((date) => byDate[date]?.area === c.name) || "",
+        toDate: c.toDate || [...itineraryDates].reverse().find((date) => byDate[date]?.area === c.name) || "",
+        lat: c.lat != null && String(c.lat) !== ""
+          ? String(c.lat) : itineraryPoint ? String(itineraryPoint.lat) : known ? String(known.lat) : "",
+        lng: c.lng != null && String(c.lng) !== ""
+          ? String(c.lng) : itineraryPoint ? String(itineraryPoint.lng) : known ? String(known.lng) : "",
+      };
+    });
   } else {
     // 旧データ：行程の area から都市名だけ拾う（期間は空）
     model.cities = Array.from(cityNames).map((name) => {
@@ -3959,8 +3989,10 @@ function bootstrapEditor(): void {
   if (!root.classList.contains("map-collapsed")) ensureMap();
   statusEl.textContent = isNew ? "下書き（自動保存・未保存）" : editable ? "読み込み完了" : statusEl.textContent;
   const meta = slug ? TripPlans.get(slug) : null;
+  metadataLocked = Boolean(meta && canEditPlan(meta) && !canEditPlanMetadata(meta));
   publishBtn.hidden = Boolean(meta && !canManagePlan(meta));
   if (!editable || editorLocked) applyEditorLock();
+  else if (metadataLocked) applyMetadataLock();
   // ダッシュボードの「AIサポート」から来たとき（?ai=1）は、AI相談ブロックへ案内する。
   if (params.get("ai") === "1" && editable && !editorLocked) {
     const aiBlock = root.querySelector<HTMLElement>("[data-ai-block]");

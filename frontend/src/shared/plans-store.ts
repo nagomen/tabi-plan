@@ -87,10 +87,11 @@ function parseDatesLabel(label: string): { start: string | null; end: string | n
   };
   const s = String(label || "").trim();
   if (!s) return { start: null, end: null, label: null };
-  const parts = s.split(/\s*[-–~～]\s*/);
-  if (parts.length === 2) {
-    const a = one(parts[0]);
-    const b = one(parts[1]);
+  // ISO日付内の「-」を区切りと誤認しないよう、範囲全体を先に照合する。
+  const range = /^(\d{4}[/-]\d{1,2}[/-]\d{1,2})\s*(?:-|–|—|~|〜|～)\s*(\d{4}[/-]\d{1,2}[/-]\d{1,2})$/.exec(s);
+  if (range) {
+    const a = one(range[1]);
+    const b = one(range[2]);
     if (a && b) return { start: a, end: b, label: null };
   }
   const single = one(s);
@@ -174,6 +175,8 @@ export function getData(slug: string): LocalPlanData | null {
     trip: {
       title: row.title,
       dates: datesLabel(row),
+      startDate: row.start_date || "",
+      endDate: row.end_date || row.start_date || "",
       members: memberIdsOf(row.id).map((id) => db.nameOf(id)).filter(Boolean).join("、"),
       note: row.note || "",
       cover: row.cover_url || "",
@@ -207,7 +210,13 @@ export function getData(slug: string): LocalPlanData | null {
       label: c.label, done: c.status === "done", status: c.status,
     })) as unknown as ChecklistItem[],
     localInfo: [],
-    cities: db.cities().filter((c) => c.plan_id === row.id).map((c) => ({ name: c.name })) as unknown as RouteCity[],
+    cities: db.cities().filter((c) => c.plan_id === row.id).map((c) => ({
+      name: c.name,
+      fromDate: c.from_date || "",
+      toDate: c.to_date || "",
+      lat: c.lat == null ? "" : Number(c.lat),
+      lng: c.lng == null ? "" : Number(c.lng),
+    })) as unknown as RouteCity[],
     candidates: db.candidates().filter((c) => c.plan_id === row.id).map((c) => ({
       id: c.id,
       title: c.title,
@@ -249,7 +258,13 @@ export function upsert(meta: Partial<PlanMeta> & { slug: string }): PlanMeta | n
   const me = currentUserId();
   if (!existing && db.isEnabled() && !me) return null;
   const dates = meta.dates !== undefined ? parseDatesLabel(meta.dates) : null;
-  const patch: Partial<db.PlanRow> = {
+  const canEditMetadata = !existing || Boolean(me && (
+    existing.owner_user_id === me || db.members().some((member) =>
+      member.plan_id === existing.id && member.user_id === me &&
+      (member.role === "owner" || member.role === "editor") && member.status === "active"
+    )
+  ));
+  const requestedPatch: Partial<db.PlanRow> = {
     ...(meta.title !== undefined ? { title: meta.title } : {}),
     ...(meta.note !== undefined ? { note: meta.note } : {}),
     ...(meta.cover !== undefined ? { cover_url: meta.cover || null } : {}),
@@ -258,9 +273,12 @@ export function upsert(meta: Partial<PlanMeta> & { slug: string }): PlanMeta | n
     ...(meta.visibility !== undefined ? { visibility: meta.visibility } : {}),
     ...(meta.published !== undefined ? { status: meta.published ? "published" : "draft" } : {}),
   };
+  // 公開共同編集者は本文の行程・都市だけを編集できる。ここでメタPATCHを
+  // 送ると403になり、その次の本文PUTまでversion conflictにしてしまう。
+  const patch = canEditMetadata ? requestedPatch : {};
 
   if (existing) {
-    db.updatePlan(existing.id, patch);
+    if (Object.keys(patch).length) db.updatePlan(existing.id, patch);
   } else {
     db.createPlanLocal({
       slug,
@@ -398,7 +416,15 @@ export function saveLocalPlan(slug: string, data: LocalPlanData, memberIds?: str
           : null,
       };
     }),
-    cities: areas.map((name) => ({ name })),
+    cities: (data.cities?.length ? data.cities : areas.map((name): RouteCity => ({ name, fromDate: "", toDate: "" })))
+      .filter((city) => city.name)
+      .map((city) => ({
+        name: city.name,
+        from_date: city.fromDate || null,
+        to_date: city.toDate || null,
+        lat: num(city.lat),
+        lng: num(city.lng),
+      })),
     links: (data.links || []).filter((l) => l.url).map((l) => ({
       link_key: l.key || "", label: l.label || l.key || "", url: l.url, caption: l.caption || null,
     })),

@@ -12,6 +12,7 @@ import type { PlanMeta } from "./plans-store";
 import type { ItineraryItem, RouteCity, LatLng } from "./types";
 import { splitNames } from "./friend-store";
 import { countryOf } from "./country";
+import { parseFlexibleDate } from "./date";
 
 export interface TripPoint extends LatLng {
   label: string;
@@ -32,12 +33,6 @@ export interface PersonTrip {
 
 // ---- 小さなユーティリティ ----------------------------------------------
 
-function toDate(value: string | undefined): Date | null {
-  const m = /(\d{4})[-/](\d{1,2})[-/](\d{1,2})/.exec(String(value || ""));
-  if (!m) return null;
-  return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
-}
-
 function num(value: number | string | undefined): number {
   const n = typeof value === "number" ? value : Number(String(value ?? "").trim());
   return Number.isFinite(n) ? n : NaN;
@@ -46,20 +41,20 @@ function num(value: number | string | undefined): number {
 /** 計画の期間を返す。行程の日付があれば最小〜最大、無ければ meta.dates、無ければ都市の日付。 */
 function rangeOf(meta: PlanMeta, itinerary: ItineraryItem[], cities: RouteCity[]): { start: Date | null; end: Date | null } {
   const dates = itinerary
-    .map((it) => toDate(it.date))
+    .map((it) => parseFlexibleDate(it.date))
     .filter((d): d is Date => Boolean(d))
     .sort((a, b) => a.getTime() - b.getTime());
   if (dates.length) return { start: dates[0], end: dates[dates.length - 1] };
 
   const parts = String(meta.dates || "")
     .split(/[-–—〜~]/)
-    .map((s) => toDate(s.trim()))
+    .map((s) => parseFlexibleDate(s.trim()))
     .filter((d): d is Date => Boolean(d))
     .sort((a, b) => a.getTime() - b.getTime());
   if (parts.length) return { start: parts[0], end: parts[parts.length - 1] };
 
   const cityDates = cities
-    .flatMap((c) => [toDate(c.fromDate), toDate(c.toDate)])
+    .flatMap((c) => [parseFlexibleDate(c.fromDate), parseFlexibleDate(c.toDate)])
     .filter((d): d is Date => Boolean(d))
     .sort((a, b) => a.getTime() - b.getTime());
   if (cityDates.length) return { start: cityDates[0], end: cityDates[cityDates.length - 1] };
@@ -112,11 +107,11 @@ function destinationsOf(itinerary: ItineraryItem[], cities: RouteCity[]): { plac
 
   // 行程の全アイテム（具体的な場所名 place、無ければ area）。
   for (const it of itinerary) {
-    consider(it.place || it.area, num(it.lat), num(it.lng), toDate(it.date), it.area);
+    consider(it.place || it.area, num(it.lat), num(it.lng), parseFlexibleDate(it.date), it.area);
   }
   // 行程に現れない都市があれば補う。
   for (const c of cities) {
-    consider(c.name, num(c.lat), num(c.lng), toDate(c.fromDate));
+    consider(c.name, num(c.lat), num(c.lng), parseFlexibleDate(c.fromDate));
   }
 
   return { places, points };

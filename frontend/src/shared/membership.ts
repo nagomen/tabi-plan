@@ -16,11 +16,19 @@ function memberRow(plan: PlanMeta): db.PlanMemberRow | undefined {
   if (!me) return undefined;
   const planId = plan.id || db.planBySlug(plan.slug)?.id;
   if (!planId) return undefined;
-  return db.members().find((m) => m.plan_id === planId && m.user_id === me);
+  return db.members().find((m) => m.plan_id === planId && m.user_id === me && m.status === "active");
+}
+
+function effectiveRole(plan: PlanMeta): db.PlanMemberRow["role"] | null {
+  const row = memberRow(plan);
+  if (row) return row.role;
+  const planId = plan.id || db.planBySlug(plan.slug)?.id;
+  const stored = planId ? db.planById(planId) : undefined;
+  return stored?.owner_user_id && stored.owner_user_id === currentUserId() ? "owner" : null;
 }
 
 export function roleOf(plan: PlanMeta): db.PlanMemberRow["role"] | null {
-  return memberRow(plan)?.role || null;
+  return effectiveRole(plan);
 }
 
 export function roleLabel(role: db.PlanMemberRow["role"] | null): string {
@@ -41,7 +49,7 @@ export function ownerNameOf(plan: PlanMeta): string {
 
 /** 自分がこの計画の参加者か。利用者が未確定なら false。 */
 export function isMemberOf(plan: PlanMeta): boolean {
-  return Boolean(memberRow(plan));
+  return Boolean(effectiveRole(plan));
 }
 
 /**
@@ -62,18 +70,26 @@ export function canEditPlan(plan: PlanMeta): boolean {
   const planId = plan.id || db.planBySlug(plan.slug)?.id;
   const stored = planId ? db.planById(planId) : undefined;
   if (stored?.source === "sample") return false;
-  const row = memberRow(plan);
-  if (row) return row.role === "owner" || row.role === "editor";
+  const role = effectiveRole(plan);
+  if (role) return role === "owner" || role === "editor";
   return Boolean(
     currentUserId() && stored?.open_editing && stored.visibility === "public" && stored.status === "published"
   );
+}
+
+/** 旅行名・期間・画像など、計画メタ情報を変更できる正式な編集メンバーか。 */
+export function canEditPlanMetadata(plan: PlanMeta): boolean {
+  const planId = plan.id || db.planBySlug(plan.slug)?.id;
+  if (planId && db.planById(planId)?.source === "sample") return false;
+  const role = effectiveRole(plan);
+  return role === "owner" || role === "editor";
 }
 
 /** 公開範囲・参加者・外部連携を管理できるのは owner だけ。 */
 export function canManagePlan(plan: PlanMeta): boolean {
   const planId = plan.id || db.planBySlug(plan.slug)?.id;
   if (planId && db.planById(planId)?.source === "sample") return false;
-  return memberRow(plan)?.role === "owner";
+  return effectiveRole(plan) === "owner";
 }
 
 export function canViewPlan(plan: PlanMeta): boolean {

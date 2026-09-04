@@ -41,7 +41,9 @@ test("招待作成・参加期間・友達申請の失敗が利用者に見え�
   const dashboard = read("src/dashboard/main.ts");
   assert.match(dashboard, /errorMessage\(error\) \|\| "作成できませんでした"/);
   const friendship = read("src/shared/friendship-store.ts");
-  assert.match(friendship, /友達申請を送信できませんでした/);
+  const mypage = read("src/mypage/main.ts");
+  assert.match(friendship, /await db\.saveFriendship/);
+  assert.match(mypage, /await run\(\)/);
 });
 
 test("ページ初期化の失敗が白画面・空表示のままにならない", () => {
@@ -51,7 +53,8 @@ test("ページ初期化の失敗が白画面・空表示のままにならな�
 
 test("Service Workerは1件の取得失敗でオフライン対応を失わない", () => {
   const sw = read("public/sw.js");
-  assert.match(sw, /Promise\.allSettled\(\s*APP_SHELL\.map/);
+  assert.match(sw, /Promise\.allSettled\(/);
+  assert.match(sw, /\.\.\.APP_SHELL, \.\.\.generatedAssets/);
   assert.match(sw, /statusText: "offline"/);
 });
 
@@ -59,7 +62,8 @@ test("固定名の設定と画像は再検証し、内容ハッシュ付きasset
   const sw = read("public/sw.js");
   assert.match(sw, /cache: "no-cache"/);
   assert.match(sw, /hashedAsset \? cacheFirst\(request\) : networkFirst\(request, false\)/);
-  assert.match(sw, /travel-dashboard-v18/);
+  assert.match(sw, /travel-dashboard-v19/);
+  assert.match(sw, /asset-manifest\.json/);
   const pwa = read("src/shared/pwa.ts");
   assert.match(pwa, /updateViaCache: "none"/);
   assert.match(pwa, /registration\.update\(\)/);

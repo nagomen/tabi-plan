@@ -12,7 +12,7 @@ import "leaflet/dist/leaflet.css";
 import type { LocalPlanData, PlanMeta, PlanSource } from "../shared/plans-store";
 import { readGlobalTripConfig } from "../shared/config";
 import { escapeHtml, errorMessage, makeScopedQuery } from "../shared/dom";
-import { mdLabel } from "../shared/date";
+import { mdLabel, updatedTimestamp } from "../shared/date";
 import { mapsSearchUrl } from "../shared/maps";
 import { planDashboardHref } from "../shared/plan-url";
 import { registerServiceWorker } from "../shared/pwa";
@@ -146,12 +146,6 @@ function planHref(meta: PlanMeta, view = false): string {
   return planDashboardHref(meta.slug, { view });
 }
 
-function timeValue(meta: PlanMeta): number {
-  const value = meta.updatedAt || meta.createdAt || "";
-  const t = value ? Date.parse(value) : 0;
-  return Number.isFinite(t) ? t : 0;
-}
-
 function dayStart(value: Date): number {
   return new Date(value.getFullYear(), value.getMonth(), value.getDate()).getTime();
 }
@@ -192,7 +186,7 @@ function sortMinePlans(plans: PlanMeta[]): PlanMeta[] {
     const tb = planTiming(b);
     if (rank[ta.kind] !== rank[tb.kind]) return rank[ta.kind] - rank[tb.kind];
     if (ta.distance !== tb.distance) return ta.distance - tb.distance;
-    return timeValue(b) - timeValue(a);
+    return updatedTimestamp(b) - updatedTimestamp(a);
   });
 }
 
@@ -341,8 +335,8 @@ function rankingCardLimit(): number {
 function renderRankings(plans: PlanMeta[]): void {
   const limit = rankingCardLimit();
   lastRankingLimit = limit;
-  const latest = [...plans].sort((a, b) => timeValue(b) - timeValue(a)).slice(0, limit);
-  const byViews = [...plans].sort((a, b) => getViews(b.slug) - getViews(a.slug) || timeValue(b) - timeValue(a)).slice(0, limit);
+  const latest = [...plans].sort((a, b) => updatedTimestamp(b) - updatedTimestamp(a)).slice(0, limit);
+  const byViews = [...plans].sort((a, b) => getViews(b.slug) - getViews(a.slug) || updatedTimestamp(b) - updatedTimestamp(a)).slice(0, limit);
   // 新着・ランキングも「自分の計画」と同じカードを使う。
   // 以前は discover-trip-card という別実装で、同じ旅行計画なのに
   // 画像サイズ・文字サイズ・情報の並びが揃っていなかった。

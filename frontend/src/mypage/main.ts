@@ -7,7 +7,7 @@ import "./style.css";
 import { initPageTransitions, navigateWithPageTransition } from "../shared/page-transition";
 import { icon, type IconName } from "../shared/icons";
 import { escapeHtml, makeScopedQuery, errorMessage } from "../shared/dom";
-import { mdOf } from "../shared/date";
+import { mdOf, parseFlexibleDate } from "../shared/date";
 import { planDashboardHref } from "../shared/plan-url";
 import { registerServiceWorker } from "../shared/pwa";
 import * as Backend from "../shared/backend";
@@ -22,6 +22,7 @@ import * as Friendships from "../shared/friendship-store";
 import { isHistoryPublic, setHistoryPublic } from "../shared/history-privacy";
 import { mountAppHeader } from "../shared/app-header";
 import { monthCalendarHtml, bandColor, stepMonth } from "../shared/calendar";
+import { showRecoveryCode } from "../shared/recovery-code";
 
 initPageTransitions();
 
@@ -61,25 +62,19 @@ ICONS.forEach(([sel, name]) => {
 
 // ---- 日付ユーティリティ -------------------------------------------------
 
-function toDate(value: string | undefined): Date | null {
-  const m = /(\d{4})[-/](\d{1,2})[-/](\d{1,2})/.exec(String(value || ""));
-  if (!m) return null;
-  return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
-}
-
 interface PlanRange { start: Date; end: Date }
 
 /** 計画の期間を {start,end} で返す。行程の日付があれば最小〜最大、無ければ meta.dates を解析。 */
 function planRange(plan: PlanMeta): PlanRange | null {
   const data = TripPlans.getData(plan.slug);
   const dates = (data?.itinerary || [])
-    .map((it) => toDate(it.date))
+    .map((it) => parseFlexibleDate(it.date))
     .filter((d): d is Date => Boolean(d))
     .sort((a, b) => a.getTime() - b.getTime());
   if (dates.length) return { start: dates[0], end: dates[dates.length - 1] };
   const parts = String(plan.dates || "")
     .split(/[-–—〜~]/)
-    .map((s) => toDate(s.trim()))
+    .map((s) => parseFlexibleDate(s.trim()))
     .filter((d): d is Date => Boolean(d));
   if (parts.length) return { start: parts[0], end: parts[parts.length - 1] };
   return null;
@@ -122,8 +117,8 @@ function renderHistorySetting(): void {
   historyToggle.disabled = !name;
   historyToggle.checked = name && userId ? isHistoryPublic(userId) : false;
   historyNote.textContent = name
-    ? "他の人があなたのアイコンから、行った場所やカレンダーを見られます"
-    : "名前を設定すると、旅行履歴の公開/非公開を選べます";
+    ? "あなたのアイコンから開くプロフィールに、行った場所やカレンダーを掲載します（共有計画内の参加者表示は変わりません）"
+    : "名前を設定すると、旅行履歴プロフィールへの掲載を選べます";
 }
 historyToggle.addEventListener("change", () => {
   const name = getUser().name.trim();
@@ -418,14 +413,6 @@ function loginMsg(text: string, kind: "" | "error" | "done" = ""): void {
   el.classList.toggle("is-done", kind === "done");
 }
 
-function showRecoveryCode(code: string): void {
-  if (!code) return;
-  window.prompt(
-    "この復旧コードは再表示できません。パスワード管理アプリなど安全な場所へコピーしてください。",
-    code,
-  );
-}
-
 loginMethodsEl?.addEventListener("click", (event) => {
   const target = event.target;
   if (!(target instanceof Element)) return;
@@ -708,9 +695,11 @@ friendSearchForm.addEventListener("submit", async (event) => {
   renderFriendSearchResults(results);
 });
 
-function handleFriendAction(run: () => void): void {
+async function handleFriendAction(run: () => Promise<unknown>): Promise<void> {
+  const controls = Array.from(document.querySelectorAll<HTMLButtonElement>('[data-view="friends"] button'));
+  controls.forEach((button) => { button.disabled = true; });
   try {
-    run();
+    await run();
     friendNote("");
   } catch (err) {
     friendNote(errorMessage(err) || "操作に失敗しました");
@@ -726,31 +715,31 @@ document.addEventListener("click", (event) => {
   const requestBtn = target.closest<HTMLButtonElement>("[data-friend-request]");
   if (requestBtn) {
     const accountId = requestBtn.dataset.friendRequest || "";
-    handleFriendAction(() => Friendships.sendFriendRequest({ accountId }));
+    void handleFriendAction(() => Friendships.sendFriendRequest({ accountId }));
     return;
   }
   const acceptBtn = target.closest<HTMLButtonElement>("[data-friend-accept]");
   if (acceptBtn) {
     const requestId = acceptBtn.dataset.friendAccept || "";
-    handleFriendAction(() => Friendships.acceptFriendRequest(requestId));
+    void handleFriendAction(() => Friendships.acceptFriendRequest(requestId));
     return;
   }
   const declineBtn = target.closest<HTMLButtonElement>("[data-friend-decline]");
   if (declineBtn) {
     const requestId = declineBtn.dataset.friendDecline || "";
-    handleFriendAction(() => Friendships.declineFriendRequest(requestId));
+    void handleFriendAction(() => Friendships.declineFriendRequest(requestId));
     return;
   }
   const cancelBtn = target.closest<HTMLButtonElement>("[data-friend-cancel]");
   if (cancelBtn) {
     const requestId = cancelBtn.dataset.friendCancel || "";
-    handleFriendAction(() => Friendships.cancelFriendRequest(requestId));
+    void handleFriendAction(() => Friendships.cancelFriendRequest(requestId));
     return;
   }
   const removeBtn = target.closest<HTMLButtonElement>("[data-friend-remove]");
   if (removeBtn) {
     const accountId = removeBtn.dataset.friendRemove || "";
-    handleFriendAction(() => Friendships.removeFriend(accountId));
+    void handleFriendAction(() => Friendships.removeFriend(accountId));
   }
 });
 

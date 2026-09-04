@@ -26,7 +26,10 @@ export interface Bootstrap {
   members: PlanMemberRow[];
   memberPlaceholders: PlanMemberPlaceholderRow[];
   itinerary: ItineraryRow[];
-  cities: { id: string; plan_id: string; name: string; sort_order: number }[];
+  cities: {
+    id: string; plan_id: string; name: string; from_date: string | null; to_date: string | null;
+    lat: number | null; lng: number | null; sort_order: number;
+  }[];
   links: { id: string; plan_id: string; link_key: string; label: string; url: string; caption: string | null; sort_order: number }[];
   checklist: { id: string; plan_id: string; label: string; status: "todo" | "doing" | "done"; sort_order: number }[];
   candidates: { id: string; plan_id: string; title: string; place: string | null; proposed_by_id: string | null; adopted_at: string | null }[];

@@ -36,6 +36,9 @@ export interface ItineraryItem {
 export interface TripInfo {
   title: string;
   dates: string;
+  /** 表示文字列とは別に保持する、編集・保存用の正規化済み旅行期間。 */
+  startDate?: string;
+  endDate?: string;
   members: string;
   note: string;
   /** 手動設定のサムネ画像（WebP の data URL）。未設定なら目的地から自動判定/デフォルト。 */

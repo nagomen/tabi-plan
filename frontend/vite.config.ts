@@ -190,6 +190,25 @@ function securityMetaHead(): Plugin {
   };
 }
 
+/** Service Worker が初回install時から、生成されたハッシュ付きJS/CSSを保存できる一覧。 */
+function serviceWorkerAssetManifest(): Plugin {
+  return {
+    name: "service-worker-asset-manifest",
+    apply: "build",
+    generateBundle(_options, bundle) {
+      const assets = Object.keys(bundle)
+        .filter((file) => /\.(?:js|css)$/.test(file))
+        .map((file) => `./${file}`)
+        .sort();
+      this.emitFile({
+        type: "asset",
+        fileName: "asset-manifest.json",
+        source: JSON.stringify({ assets }),
+      });
+    },
+  };
+}
+
 // 複数ページ（ダッシュボード / 計画一覧 / 計画エディタなど）を
 // それぞれ独立した HTML エントリとしてビルドする。
 // GitHub Pages のプロジェクトサイトでも動くよう base は相対パスにする。
@@ -200,6 +219,7 @@ export default defineConfig({
   plugins: [
     securityMetaHead(),
     pageTransitionHead(),
+    serviceWorkerAssetManifest(),
     ...(!localApiProxyTarget ? [devStoreFiles()] : []),
     devApiProxyConfig(),
   ],

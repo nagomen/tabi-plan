@@ -33,7 +33,8 @@ function sameDocumentHash(url: URL): boolean {
 }
 
 function isInternalPage(url: URL): boolean {
-  return url.origin === location.origin && /\.(html)?$/.test(url.pathname) || url.origin === location.origin;
+  if (url.origin !== location.origin) return false;
+  return url.pathname.endsWith("/") || /\.html$/.test(url.pathname);
 }
 
 function shouldSkip(event: MouseEvent, link: HTMLAnchorElement, url: URL): boolean {

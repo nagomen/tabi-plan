@@ -1,5 +1,5 @@
-// 友達関係（アカウント単位）をDBテーブル風JSONで管理する。
-// 旧ローカル互換用に、配列=テーブル、各要素=行、id/外部キー/状態列を明示する。
+// 友達関係（アカウント単位）。APIモードではDBだけを正とし、
+// 旧ローカルモードでだけJSONストアを使う。
 // 承諾済みの行がそのまま「友達エッジ」を表す（片方向フォローではなく、双方向の1本の関係）。
 
 import * as Backend from "./backend";
@@ -99,39 +99,6 @@ function apiRequestToRow(row: db.FriendshipRow, meId: string): FriendRequestRow 
   };
 }
 
-function persistFriendship(input: {
-  a: string;
-  b: string;
-  requested_by_id: string;
-  status: FriendRequestStatus;
-}): void {
-  if (!db.isEnabled()) return;
-  void db.saveFriendship(input).catch((error) => {
-    // 画面はローカル状態で即時反映済みなので、届かなかったことを帯で知らせる。
-    // 黙って捨てると「申請中」のままサーバーには存在しない状態になる。
-    console.error("[friendship] save failed", error);
-    try {
-      window.dispatchEvent(new CustomEvent("trip-sync-error", {
-        detail: { message: "友達申請を送信できませんでした。通信状態を確認して、もう一度お試しください。" },
-      }));
-    } catch { /* ignore */ }
-  });
-}
-
-function dedupeRequests(rows: FriendRequestRow[]): FriendRequestRow[] {
-  const seen = new Set<string>();
-  return rows.filter((row) => {
-    const key = [
-      row.fromAccountId < row.toAccountId ? row.fromAccountId : row.toAccountId,
-      row.fromAccountId < row.toAccountId ? row.toAccountId : row.fromAccountId,
-      row.status,
-    ].join(":");
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
-}
-
 function syntheticAccount(id: string): Account | null {
   const user = db.users().find((row) => row.id === id);
   if (!user) return null;
@@ -147,6 +114,7 @@ export function statusWith(accountId: string): FriendStatus {
   );
   if (apiRow?.status === "accepted") return "friends";
   if (apiRow?.status === "pending") return apiRow.requested_by_id === me.id ? "outgoing_pending" : "incoming_pending";
+  if (db.isEnabled()) return "none";
   const rows = readStore().friendRequests.filter(
     (row) => involvesAccount(row, me.id) && otherAccountId(row, me.id) === accountId,
   );
@@ -157,7 +125,7 @@ export function statusWith(accountId: string): FriendStatus {
 }
 
 /** 友達申請を送る。相手アカウントIDまたはメールアドレスのどちらかを指定する。 */
-export function sendFriendRequest(target: { accountId?: string; email?: string }): FriendRequestRow {
+export async function sendFriendRequest(target: { accountId?: string; email?: string }): Promise<FriendRequestRow> {
   const me = requireAccount();
   const to = target.accountId ? findAccountById(target.accountId) : target.email ? findAccountByEmail(target.email) : null;
   if (!to) throw new Error("宛先のアカウントが見つかりません");
@@ -177,7 +145,13 @@ export function sendFriendRequest(target: { accountId?: string; email?: string }
     status: "pending",
     createdAt: nowISO(),
   };
-  persistFriendship({ a: me.id, b: to.id, requested_by_id: me.id, status: "pending" });
+  if (db.isEnabled()) {
+    await db.saveFriendship({ a: me.id, b: to.id, requested_by_id: me.id, status: "pending" });
+    const saved = apiRowsFor(me.id).find((candidate) =>
+      candidate.user_low_id === to.id || candidate.user_high_id === to.id,
+    );
+    return saved ? apiRequestToRow(saved, me.id) : row;
+  }
   writeStore({ version: 1, friendRequests: readStore().friendRequests.concat(row) });
   return row;
 }
@@ -193,34 +167,37 @@ function updateRequestStatus(
   if (!row || !guard(row, me.id)) return null;
   row.status = nextStatus;
   row.respondedAt = nowISO();
-  persistFriendship({
-    a: row.fromAccountId,
-    b: row.toAccountId,
-    requested_by_id: row.fromAccountId,
-    status: nextStatus,
-  });
   writeStore(store);
   return row;
 }
 
-/** 届いた申請を承諾する（受信者のみ実行可）。 */
-export function acceptFriendRequest(requestId: string): FriendRequestRow | null {
+async function updateApiRequestStatus(
+  requestId: string,
+  guard: (row: db.FriendshipRow, meId: string) => boolean,
+  nextStatus: FriendRequestStatus,
+): Promise<FriendRequestRow | null> {
   const me = requireAccount();
   const apiRow = db.friendships().find((row) => row.id === requestId);
-  if (apiRow && apiRow.status === "pending" && apiRow.requested_by_id !== me.id) {
-    const row = apiRequestToRow(apiRow, me.id);
-    apiRow.status = "accepted";
-    apiRow.responded_at = nowISO();
-    persistFriendship({
-      a: apiRow.user_low_id,
-      b: apiRow.user_high_id,
-      requested_by_id: apiRow.requested_by_id,
-      status: "accepted",
-    });
-    row.status = "accepted";
-    row.respondedAt = nowISO();
-    return row;
-  }
+  if (!apiRow || !guard(apiRow, me.id)) return null;
+  const result = apiRequestToRow(apiRow, me.id);
+  await db.saveFriendship({
+    a: apiRow.user_low_id,
+    b: apiRow.user_high_id,
+    requested_by_id: apiRow.requested_by_id,
+    status: nextStatus,
+  });
+  result.status = nextStatus;
+  result.respondedAt = nowISO();
+  return result;
+}
+
+/** 届いた申請を承諾する（受信者のみ実行可）。 */
+export async function acceptFriendRequest(requestId: string): Promise<FriendRequestRow | null> {
+  if (db.isEnabled()) return updateApiRequestStatus(
+    requestId,
+    (row, meId) => row.status === "pending" && row.requested_by_id !== meId,
+    "accepted",
+  );
   return updateRequestStatus(
     requestId,
     (row, meId) => row.toAccountId === meId && row.status === "pending",
@@ -229,23 +206,12 @@ export function acceptFriendRequest(requestId: string): FriendRequestRow | null 
 }
 
 /** 届いた申請を拒否する（受信者のみ実行可）。 */
-export function declineFriendRequest(requestId: string): FriendRequestRow | null {
-  const me = requireAccount();
-  const apiRow = db.friendships().find((row) => row.id === requestId);
-  if (apiRow && apiRow.status === "pending" && apiRow.requested_by_id !== me.id) {
-    const row = apiRequestToRow(apiRow, me.id);
-    apiRow.status = "declined";
-    apiRow.responded_at = nowISO();
-    persistFriendship({
-      a: apiRow.user_low_id,
-      b: apiRow.user_high_id,
-      requested_by_id: apiRow.requested_by_id,
-      status: "declined",
-    });
-    row.status = "declined";
-    row.respondedAt = nowISO();
-    return row;
-  }
+export async function declineFriendRequest(requestId: string): Promise<FriendRequestRow | null> {
+  if (db.isEnabled()) return updateApiRequestStatus(
+    requestId,
+    (row, meId) => row.status === "pending" && row.requested_by_id !== meId,
+    "declined",
+  );
   return updateRequestStatus(
     requestId,
     (row, meId) => row.toAccountId === meId && row.status === "pending",
@@ -254,23 +220,12 @@ export function declineFriendRequest(requestId: string): FriendRequestRow | null
 }
 
 /** 送った申請を取り消す（送信者のみ実行可）。 */
-export function cancelFriendRequest(requestId: string): FriendRequestRow | null {
-  const me = requireAccount();
-  const apiRow = db.friendships().find((row) => row.id === requestId);
-  if (apiRow && apiRow.status === "pending" && apiRow.requested_by_id === me.id) {
-    const row = apiRequestToRow(apiRow, me.id);
-    apiRow.status = "canceled";
-    apiRow.responded_at = nowISO();
-    persistFriendship({
-      a: apiRow.user_low_id,
-      b: apiRow.user_high_id,
-      requested_by_id: apiRow.requested_by_id,
-      status: "canceled",
-    });
-    row.status = "canceled";
-    row.respondedAt = nowISO();
-    return row;
-  }
+export async function cancelFriendRequest(requestId: string): Promise<FriendRequestRow | null> {
+  if (db.isEnabled()) return updateApiRequestStatus(
+    requestId,
+    (row, meId) => row.status === "pending" && row.requested_by_id === meId,
+    "canceled",
+  );
   return updateRequestStatus(
     requestId,
     (row, meId) => row.fromAccountId === meId && row.status === "pending",
@@ -279,17 +234,13 @@ export function cancelFriendRequest(requestId: string): FriendRequestRow | null 
 }
 
 /** 友達を解除する。 */
-export function removeFriend(accountId: string): void {
+export async function removeFriend(accountId: string): Promise<void> {
   const me = requireAccount();
   const at = nowISO();
-  const apiRow = apiRowsFor(me.id).find((row) =>
-    row.user_low_id === accountId || row.user_high_id === accountId,
-  );
-  if (apiRow) {
-    apiRow.status = "removed";
-    apiRow.responded_at = at;
+  if (db.isEnabled()) {
+    await db.saveFriendship({ a: me.id, b: accountId, requested_by_id: me.id, status: "removed" });
+    return;
   }
-  persistFriendship({ a: me.id, b: accountId, requested_by_id: me.id, status: "removed" });
   const store = readStore();
   let changed = false;
   store.friendRequests.forEach((row) => {
@@ -308,9 +259,9 @@ export function listFriends(): Account[] {
   if (!me) return [];
   const ids = [
     ...apiAcceptedFriendIds(me.id),
-    ...readStore()
+    ...(db.isEnabled() ? [] : readStore()
     .friendRequests.filter((row) => row.status === "accepted" && involvesAccount(row, me.id))
-    .map((row) => otherAccountId(row, me.id)),
+    .map((row) => otherAccountId(row, me.id))),
   ];
   return Array.from(new Set(ids))
     .map((accountId) => findAccountById(accountId) || syntheticAccount(accountId))
@@ -321,22 +272,18 @@ export function listFriends(): Account[] {
 export function incomingRequests(): FriendRequestRow[] {
   const me = currentAccount();
   if (!me) return [];
-  return dedupeRequests([
-    ...apiRowsFor(me.id)
+  if (db.isEnabled()) return apiRowsFor(me.id)
       .filter((row) => row.status === "pending" && row.requested_by_id !== me.id)
-      .map((row) => apiRequestToRow(row, me.id)),
-    ...readStore().friendRequests.filter((row) => row.status === "pending" && row.toAccountId === me.id),
-  ]);
+      .map((row) => apiRequestToRow(row, me.id));
+  return readStore().friendRequests.filter((row) => row.status === "pending" && row.toAccountId === me.id);
 }
 
 /** 自分が送った保留中の申請。 */
 export function outgoingRequests(): FriendRequestRow[] {
   const me = currentAccount();
   if (!me) return [];
-  return dedupeRequests([
-    ...apiRowsFor(me.id)
+  if (db.isEnabled()) return apiRowsFor(me.id)
       .filter((row) => row.status === "pending" && row.requested_by_id === me.id)
-      .map((row) => apiRequestToRow(row, me.id)),
-    ...readStore().friendRequests.filter((row) => row.status === "pending" && row.fromAccountId === me.id),
-  ]);
+      .map((row) => apiRequestToRow(row, me.id));
+  return readStore().friendRequests.filter((row) => row.status === "pending" && row.fromAccountId === me.id);
 }

@@ -140,7 +140,7 @@ export async function deletePlan(id: string, actorUserId: string): Promise<void>
 /** 計画本文（行程・都市・リンク・チェックリスト・候補）を一括置換する。 */
 export async function replacePlanContent(planId: string, body: {
   itinerary?: Record<string, unknown>[];
-  cities?: { name: string }[];
+  cities?: { name: string; from_date?: string | null; to_date?: string | null; lat?: number | null; lng?: number | null }[];
   links?: Record<string, unknown>[];
   checklist?: { label: string; status?: string }[];
   candidates?: { id?: string; title: string; place?: string | null; proposed_by_id?: string | null; adopted?: boolean; votes?: string[] }[];
@@ -179,18 +179,20 @@ export async function replacePlanContent(planId: string, body: {
       }
     }
 
+    // 日付・座標は行程と都市の両方で同じDB契約を使う。
+    const dateOrNull = (v: unknown): string | null =>
+      /^\d{4}-\d{2}-\d{2}$/.test(String(v || "")) ? String(v) : null;
+    const numOrNull = (v: unknown, min: number, max: number): number | null => {
+      if (v === null || v === undefined || v === "") return null;
+      const n = Number(v);
+      return Number.isFinite(n) && n >= min && n <= max ? n : null;
+    };
+
     if (body.itinerary) {
       await conn.query("DELETE FROM itinerary_items WHERE plan_id = ?", [planId]);
       // 日付・時刻・座標・分数は、DBの厳格モードで500になる前に安全な値へ丸める。
-      const dateOrNull = (v: unknown): string | null =>
-        /^\d{4}-\d{2}-\d{2}$/.test(String(v || "")) ? String(v) : null;
       const timeOrNull = (v: unknown): string | null =>
         /^\d{1,2}:\d{2}(:\d{2})?$/.test(String(v || "")) ? String(v) : null;
-      const numOrNull = (v: unknown, min: number, max: number): number | null => {
-        if (v === null || v === undefined || v === "") return null;
-        const n = Number(v);
-        return Number.isFinite(n) && n >= min && n <= max ? n : null;
-      };
       // 対象メンバー。user_id の配列だけ受け付け、それ以外や空は NULL（＝全員）に落とす。
       const memberIdsOrNull = (v: unknown): string | null => {
         if (!Array.isArray(v)) return null;
@@ -218,8 +220,16 @@ export async function replacePlanContent(planId: string, body: {
 
     if (body.cities) {
       await conn.query("DELETE FROM plan_cities WHERE plan_id = ?", [planId]);
-      const rows = body.cities.filter((c) => c && c.name).map((c, i) => [newId("cty"), planId, String(c.name).slice(0, 100), i]);
-      if (rows.length) await conn.query("INSERT INTO plan_cities (id, plan_id, name, sort_order) VALUES ?", [rows]);
+      const rows = body.cities.filter((c) => c && c.name).map((c, i) => [
+        newId("cty"), planId, String(c.name).slice(0, 100), dateOrNull(c.from_date), dateOrNull(c.to_date),
+        numOrNull(c.lat, -90, 90), numOrNull(c.lng, -180, 180), i,
+      ]);
+      if (rows.length) {
+        await conn.query(
+          "INSERT INTO plan_cities (id, plan_id, name, from_date, to_date, lat, lng, sort_order) VALUES ?",
+          [rows],
+        );
+      }
     }
 
     if (body.links) {

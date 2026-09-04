@@ -18,6 +18,7 @@ import {
   isWeakPassword,
 } from "../shared/account-store";
 import { readInviteReturn } from "../shared/invite-resume";
+import { showRecoveryCode } from "../shared/recovery-code";
 
 initPageTransitions();
 
@@ -62,14 +63,6 @@ function showError(message: string): void {
 function clearError(): void {
   errorEl.textContent = "";
   errorEl.classList.remove("is-shown");
-}
-
-function showRecoveryCode(code: string): void {
-  if (!code) return;
-  window.prompt(
-    "この復旧コードは再表示できません。パスワード管理アプリなど安全な場所へコピーしてください。",
-    code,
-  );
 }
 
 function applyMode(next: "login" | "signup"): void {

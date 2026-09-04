@@ -9,7 +9,7 @@ import { initPageTransitions } from "../shared/page-transition";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { escapeHtml } from "../shared/dom";
-import { WEEKDAYS } from "../shared/date";
+import { WEEKDAYS, updatedTimestamp } from "../shared/date";
 import { registerServiceWorker } from "../shared/pwa";
 import { mountAppHeader } from "../shared/app-header";
 import { icon, type IconName } from "../shared/icons";
@@ -144,16 +144,18 @@ async function renderFriendAction(message = ""): Promise<void> {
     (message ? '<span class="pv-friend-message">' + escapeHtml(message) + '</span>' : "");
 }
 
-friendActionEl?.addEventListener("click", (event) => {
+friendActionEl?.addEventListener("click", async (event) => {
   const target = event.target;
   if (!(target instanceof Element)) return;
   const button = target.closest<HTMLButtonElement>("[data-send-friend-request]");
   if (!button) return;
   const accountId = button.dataset.sendFriendRequest || "";
   try {
-    Friendships.sendFriendRequest({ accountId });
-    void renderFriendAction("申請を送信しました");
+    button.disabled = true;
+    await Friendships.sendFriendRequest({ accountId });
+    await renderFriendAction("申請を送信しました");
   } catch (err) {
+    button.disabled = false;
     friendActionEl.innerHTML += '<span class="pv-friend-message is-error">' +
       escapeHtml(err instanceof Error ? err.message : "送信できませんでした") + '</span>';
   }
@@ -244,12 +246,6 @@ function createdPlanLocations(meta: PlanMeta, max = 3): string {
   return Array.from(new Set(names)).slice(0, max).join("、");
 }
 
-function createdPlanSortValue(meta: PlanMeta): number {
-  const value = meta.updatedAt || meta.createdAt || "";
-  const time = value ? Date.parse(value) : 0;
-  return Number.isFinite(time) ? time : 0;
-}
-
 function renderCreatedPlans(): void {
   const mount = $("[data-created-plans]");
   const panel = $("[data-created-panel]");
@@ -258,7 +254,7 @@ function renderCreatedPlans(): void {
 
   const plans = TripPlans.list()
     .filter((meta) => isCreatedByPerson(meta) && canShowCreatedPlan(meta))
-    .sort((a, b) => createdPlanSortValue(b) - createdPlanSortValue(a));
+    .sort((a, b) => updatedTimestamp(b) - updatedTimestamp(a));
 
   if (countEl) countEl.textContent = plans.length ? `${plans.length}件` : "";
   if (!plans.length) {
@@ -333,20 +329,29 @@ function renderMap(): void {
   const filterEl = $<HTMLSelectElement>("[data-map-filter]");
   if (filterEl) {
     filterEl.hidden = !allPins.length;
-    filterEl.addEventListener("change", () => {
-      filterMonths = Number(filterEl.value) || 0;
-      updateMapMarkers();
-    });
+    if (filterEl.dataset.bound !== "true") {
+      filterEl.dataset.bound = "true";
+      filterEl.addEventListener("change", () => {
+        filterMonths = Number(filterEl.value) || 0;
+        updateMapMarkers();
+      });
+    }
   }
 
   if (!allPins.length) {
+    if (personMap) personMap.remove();
+    personMap = null;
+    markersLayer = null;
     mapEl.innerHTML = `<div class="pv-empty"><b>地図データがありません</b><span>行程に場所が登録されると地図に表示されます</span></div>`;
     return;
   }
 
-  personMap = L.map(mapEl, { scrollWheelZoom: false, attributionControl: true });
-  addBaseLayer(L, personMap);
-  markersLayer = L.layerGroup().addTo(personMap);
+  if (!personMap) {
+    mapEl.innerHTML = "";
+    personMap = L.map(mapEl, { scrollWheelZoom: false, attributionControl: true });
+    addBaseLayer(L, personMap);
+    markersLayer = L.layerGroup().addTo(personMap);
+  }
   updateMapMarkers();
 }
 

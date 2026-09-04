@@ -27,7 +27,10 @@ export type {
 
 // ---- 行の型（API と同じ形。snake_case のまま扱う） ---------------------
 
-export interface CityRow { id: string; plan_id: string; name: string; sort_order: number }
+export interface CityRow {
+  id: string; plan_id: string; name: string; from_date: string | null; to_date: string | null;
+  lat: number | null; lng: number | null; sort_order: number;
+}
 export interface LinkRow { id: string; plan_id: string; link_key: string; label: string; url: string; caption: string | null; sort_order: number }
 export interface ChecklistRow { id: string; plan_id: string; label: string; status: "todo" | "doing" | "done"; sort_order: number }
 export interface CandidateRow { id: string; plan_id: string; title: string; place: string | null; proposed_by_id: string | null; adopted_at: string | null }
@@ -769,7 +772,8 @@ function revalidateWhenIdle(): void {
  *   （裏で snap が差し替わると編集中の状態と食い違うため）。
  */
 export async function load(options: { fresh?: boolean; strict?: boolean } = {}): Promise<void> {
-  if (loaded) return;
+  if (loaded && !options.fresh) return;
+  if (loaded && options.fresh) loaded = false;
   if (loading) return loading;
   if (!api()) {
     loaded = true;
@@ -1134,7 +1138,7 @@ export function replaceMembers(planId: string, list: {
 
 export interface PlanContent {
   itinerary?: Omit<ItineraryRow, "id" | "plan_id" | "sort_order">[];
-  cities?: { name: string }[];
+  cities?: { name: string; from_date?: string | null; to_date?: string | null; lat?: number | null; lng?: number | null }[];
   links?: Omit<LinkRow, "id" | "plan_id" | "sort_order">[];
   checklist?: { label: string; status?: ChecklistRow["status"] }[];
   candidates?: { id?: string; title: string; place?: string | null; proposed_by_id?: string | null; adopted?: boolean; votes?: string[] }[];
@@ -1152,7 +1156,11 @@ export function replacePlanContent(planId: string, content: PlanContent): void {
   }
   if (content.cities) {
     snap.cities = snap.cities.filter((c) => c.plan_id !== planId).concat(
-      content.cities.map((c, i) => ({ id: localId("cty"), plan_id: planId, name: c.name, sort_order: i })),
+      content.cities.map((c, i) => ({
+        id: localId("cty"), plan_id: planId, name: c.name,
+        from_date: c.from_date ?? null, to_date: c.to_date ?? null,
+        lat: c.lat ?? null, lng: c.lng ?? null, sort_order: i,
+      })),
     );
   }
   if (content.links) {
@@ -1295,6 +1303,8 @@ export async function saveFriendship(input: { a: string; b: string; requested_by
       status: input.status || "pending", created_at: new Date().toISOString(), responded_at: null,
     });
   }
+  scheduleCacheWrite();
+  emit({ ok: true, path: "/api/friendships" });
 }
 
 /**

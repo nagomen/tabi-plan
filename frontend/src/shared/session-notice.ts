@@ -42,8 +42,17 @@ function build(text: string, link: { href: string; label: string } | null): HTML
   return el;
 }
 
-function showNotice(text: string, link: { href: string; label: string } | null = null): void {
-  if (document.getElementById(NOTICE_ID)) return;
+function showNotice(
+  text: string,
+  link: { href: string; label: string } | null = null,
+  priority: "sync" | "session" = "sync",
+): void {
+  const current = document.getElementById(NOTICE_ID);
+  if (current) {
+    if (priority !== "session") return;
+    current.replaceWith(build(text, link));
+    return;
+  }
   document.body.appendChild(build(text, link));
 }
 
@@ -72,7 +81,7 @@ export function mountSessionNotice(): void {
     const detail = (event as CustomEvent<{ reason?: string }>).detail;
     // 自分でログアウトしたときは出さない（期限切れのときだけ）
     if (detail && detail.reason !== "expired") return;
-    showNotice(EXPIRED_TEXT, { href: loginHref(), label: "ログインし直す" });
+    showNotice(EXPIRED_TEXT, { href: loginHref(), label: "ログインし直す" }, "session");
   };
   window.addEventListener("trip-account-logout", show);
   // account-store を読み込んでいない画面でも拾えるようにしておく
