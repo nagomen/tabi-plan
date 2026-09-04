@@ -14,6 +14,7 @@
     "test": "npm test -w frontend && npm test -w api",
     "test:coverage": "npm run test:coverage -w api",
     "ci": "npm run typecheck && npm test && npm run build",
+    "deploy:production": "node tools/deploy-production.mjs",
     "preview": "npm run preview -w frontend",
     "typecheck": "npm run typecheck -w frontend && npm run typecheck -w api",
     "build:api": "npm run build -w api"

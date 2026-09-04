@@ -295,19 +295,35 @@ function activeDayCoverMeta(): HeaderCoverMeta {
   };
 }
 
-function dayCoverLocation(day: DayGroup): string {
-  const items = day.items || [];
-  for (let i = items.length - 1; i >= 0; i -= 1) {
-    const item = items[i];
-    const loc = item.area || (String(item.type) === "move" ? item.destination : "") || item.place || item.mapQuery || "";
-    if (loc.trim()) return loc.trim();
+/**
+ * その日に「最初に」いる都市。都市メタデータ（cities の滞在期間）から、
+ * 日付をカバーする都市のうち滞在開始が最も早いもの＝その日の朝いる都市を選ぶ。
+ * 例: 台北 10/1〜10/3・東京 10/3〜10/5 なら、10/3 は台北（その後東京へ移動）。
+ * ※ cityNameForDate は逆に「最後に到着した都市」を選ぶ（日ラベル用）。
+ */
+function firstCityOnDate(data: TripData, date: string): string {
+  let name = "";
+  let bestFrom = "";
+  for (const city of data.cities || []) {
+    const from = normalizeDate(city.fromDate);
+    const to = normalizeDate(city.toDate);
+    if (!city.name || !from || !to || date < from || to < date) continue;
+    if (!name || from < bestFrom) {
+      name = city.name.trim();
+      bestFrom = from;
+    }
   }
-  return day.area || "";
+  return name;
+}
+
+/** ヘッダー画像の地名候補：その日に最初にいる都市 → 日のエリア名。 */
+function dayCoverLocations(day: DayGroup): string[] {
+  return [firstCityOnDate(state.data, day.date), day.area || ""].filter(Boolean);
 }
 
 function updateHeaderHero(day: DayGroup): void {
   const meta = activeDayCoverMeta();
-  setAppHeaderHero(appHeaderEl, planCoverImageForLocation(meta, dayCoverLocation(day)));
+  setAppHeaderHero(appHeaderEl, planCoverImageForLocation(meta, dayCoverLocations(day)));
 }
 
 // フォームは日本語ラベルを value に持つ。列挙へ寄せる変換をここに集約する。

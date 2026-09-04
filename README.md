@@ -43,6 +43,7 @@ npm workspaces 構成です。**ルートで `npm install` 1回**で frontend / 
 | `npm run typecheck` | frontend / api をすべて型検査 |
 | `npm test` | frontend / API のテスト |
 | `npm run ci` | 全ワークスペース型検査 + APIテスト + 本番フロントビルド |
+| `npm run deploy:production` | APIとフロントをまとめて本番デプロイし、反映まで検証 |
 | `npm run build:api` | APIを `api/dist` へコンパイル |
 
 個別に動かしたい場合は `npm run <script> -w frontend` / `-w api`、または各ディレクトリに入って実行できます。
@@ -131,6 +132,19 @@ window.TRIP_CONFIG = {
 ```
 
 ## GitHub Actions デプロイ
+
+### ワンコマンドで全てデプロイ
+
+コミット済みの`main`をpushした後、リポジトリのルートで次を実行します。
+
+```bash
+npm run deploy:production
+```
+
+GitHub CLI（`gh`）でログイン済みである必要があります。このコマンドは作業ツリーと
+`origin/main`との一致を確認し、`Deploy API`と`Deploy Frontend`を起動します。両方の完了を待ち、
+公開サイトのコミット識別子とAI APIの疎通まで検証します。コミットやpushは自動では行いません。
+途中でいずれかのデプロイまたは本番確認が失敗した場合は、終了コード1で停止します。
 
 `.github/workflows/deploy-pages.yml` はフロント本番用です。`main` に push された `frontend/` を検査・ビルドし、出力 `frontend/dist` を GitHub Pages にデプロイします。デプロイ後はコミット識別子と主要ファイルを実URLで検証します。
 

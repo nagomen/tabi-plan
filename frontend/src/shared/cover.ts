@@ -26,7 +26,8 @@ export function firstDayLocation(meta: CoverMeta): string {
 export function coverImageForLocation(location: string): string {
   const loc = location.toLowerCase();
   // イギリス
-  if (/イギリス|英国|ロンドン|london|uk|united.*kingdom|イングランド|コッツウォルズ|エディンバラ/.test(loc)) {
+  // ※ uk などの短い略称は \b を付けないと fukuoka 等の単語内に誤一致する
+  if (/イギリス|英国|ロンドン|london|\buk\b|united.*kingdom|イングランド|コッツウォルズ|エディンバラ/.test(loc)) {
     return "./images/cover_uk.webp";
   }
   // フランス
@@ -38,7 +39,7 @@ export function coverImageForLocation(location: string): string {
     return "./images/cover_germany.webp";
   }
   // イタリア
-  if (/イタリア|伊国|ローマ|rome|italy|ミラノ|ヴェネツィア|フィレンツェ|ナポリ/.test(loc)) {
+  if (/イタリア|伊国|ローマ|\brome\b|italy|ミラノ|ヴェネツィア|フィレンツェ|ナポリ/.test(loc)) {
     return "./images/cover_italia.webp";
   }
   // スペイン
@@ -58,25 +59,25 @@ export function coverImageForLocation(location: string): string {
   if (/台湾|台北|九份|高雄|九分|taiwan|taipei|jiufen/.test(loc)) {
     return "./images/cover_taiwan.webp";
   }
-  // タイ
-  if (/タイ|バンコク|プーケット|チェンマイ|アユタヤ|thailand|bangkok|phuket|chiang.*mai/.test(loc)) {
-    return "./images/cover_thailand.webp";
-  }
-  // ベトナム
-  if (/ベトナム|ハノイ|ホーチミン|ダナン|ハロン湾|ホイアン|vietnam|hanoi|ho.*chi.*minh|da.*nang|halong.*bay/.test(loc)) {
-    return "./images/cover_vietnam.webp";
-  }
-  // 香港
-  if (/香港|hong.*kong/.test(loc)) {
+  // 香港（日別ヘッダーはエリア名で判定することが多いので、九龍・尖沙咀なども拾う）
+  if (/香港|hong.*kong|九龍|kowloon|尖沙咀|tsim.*sha.*tsui|旺角|中環|ビクトリアピーク|victoria.*peak/.test(loc)) {
     return "./images/cover_hongkong.webp";
   }
-  // 中国
-  if (/中国|北京|beijing|上海|shanghai|マカオ|広州|深セン|西安|成都|ハルビン|哈爾浜|哈尔滨|harbin|延吉|yanji|長春|changchun|瀋陽|沈阳|shenyang|大連|大连|dalian/.test(loc)) {
+  // 中国（マカオ含む）。「コタイ」を「タイ」に誤判定しないよう、タイより先に置くこと。
+  if (/中国|北京|beijing|上海|shanghai|マカオ|macau|コタイ|cotai|タイパ|広州|深セン|深圳|shenzhen|西安|成都|ハルビン|哈爾浜|哈尔滨|harbin|延吉|yanji|長春|changchun|瀋陽|沈阳|shenyang|大連|大连|dalian/.test(loc)) {
     return "./images/cover_china.webp";
   }
   // 韓国
   if (/韓国|ソウル|seoul|釜山|busan|プサン|済州島|チェジュ/.test(loc)) {
     return "./images/cover_korea.webp";
+  }
+  // タイ（「タイムズスクエア」の「タイ」を拾わないよう除外付き）
+  if (/タイ(?!ムズ)|バンコク|プーケット|チェンマイ|アユタヤ|thailand|bangkok|phuket|chiang.*mai/.test(loc)) {
+    return "./images/cover_thailand.webp";
+  }
+  // ベトナム
+  if (/ベトナム|ハノイ|ホーチミン|ダナン|ハロン湾|ホイアン|vietnam|hanoi|ho.*chi.*minh|da.*nang|halong.*bay/.test(loc)) {
+    return "./images/cover_vietnam.webp";
   }
   // その他アジア
   if (/アジア|シンガポール|マレーシア|クアラルンプール|フィリピン|マニラ|インドネシア|ジャカルタ|バリ|スリランカ|ネパール|モンゴル|カンボジア|アンコールワット|asia/.test(loc)) {
@@ -93,37 +94,37 @@ export function coverImageForLocation(location: string): string {
     return "./images/cover_canada.webp";
   }
   // 中南米
-  if (/中南米|南米|中央アメリカ|ラテンアメリカ|メキシコ|ブラジル|リオデジャネイロ|サンパウロ|ペルー|リマ|マチュピチュ|アルゼンチン|ブエノスアイレス|チリ|サンティアゴ|ボリビア|ウユニ|コロンビア|ボゴタ|キューバ|ハバナ|south.*america|latin.*america|central.*america|mexico|brazil|rio.*de.*janeiro|sao.*paulo|peru|lima|machu.*picchu|argentina|buenos.*aires|chile|santiago|bolivia|uyuni|colombia|bogota|cuba|havana/.test(loc)) {
+  if (/中南米|南米|中央アメリカ|ラテンアメリカ|メキシコ|ブラジル|リオデジャネイロ|サンパウロ|ペルー|リマ|マチュピチュ|アルゼンチン|ブエノスアイレス|チリ|サンティアゴ|ボリビア|ウユニ|コロンビア|ボゴタ|キューバ|ハバナ|south.*america|latin.*america|central.*america|mexico|brazil|rio.*de.*janeiro|sao.*paulo|\bperu\b|\blima\b|machu.*picchu|argentina|buenos.*aires|\bchile\b|santiago|bolivia|uyuni|colombia|bogota|\bcuba\b|havana/.test(loc)) {
     return "./images/cover_middle_south_america.webp";
   }
 
   // アメリカ各州
   // カリフォルニア州
-  if (/カリフォルニア|ロサンゼルス|サンフランシスコ|ヨセミテ|シリコンバレー|ディズニーランド|サンディエゴ|ca|california|los.*angeles|san.*francisco/.test(loc)) {
+  if (/カリフォルニア|ロサンゼルス|サンフランシスコ|ヨセミテ|シリコンバレー|ディズニーランド|サンディエゴ|\bca\b|california|los.*angeles|san.*francisco/.test(loc)) {
     return "./images/cover_california.webp";
   }
   // ネバダ州
-  if (/ネバダ|ラスベガス|リノ|nv|nevada|las.*vegas/.test(loc)) {
+  if (/ネバダ|ラスベガス|リノ|\bnv\b|nevada|las.*vegas/.test(loc)) {
     return "./images/cover_nevada.webp";
   }
   // ハワイ州
-  if (/ハワイ|ホノルル|ワイキキ|マウイ|カウアイ|オアフ|hi|hawaii|honolulu|waikiki/.test(loc)) {
+  if (/ハワイ|ホノルル|ワイキキ|マウイ|カウアイ|オアフ|\bhi\b|hawaii|honolulu|waikiki/.test(loc)) {
     return "./images/cover_hawaii.webp";
   }
   // ニューヨーク州
-  if (/ニューヨーク|マンハッタン|自由の女神|タイムズスクエア|バッファロー|ナイアガラ|ny|new.*york|manhattan/.test(loc)) {
+  if (/ニューヨーク|マンハッタン|自由の女神|タイムズスクエア|バッファロー|ナイアガラ|\bny\b|new.*york|manhattan/.test(loc)) {
     return "./images/cover_newyork.webp";
   }
   // イリノイ州
-  if (/イリノイ|シカゴ|il|illinois|chicago/.test(loc)) {
+  if (/イリノイ|シカゴ|\bil\b|illinois|chicago/.test(loc)) {
     return "./images/cover_illinois.webp";
   }
   // アリゾナ州
-  if (/アリゾナ|セドナ|グランドキャニオン|フェニックス|az|arizona|sedona|grand.*canyon/.test(loc)) {
+  if (/アリゾナ|セドナ|グランドキャニオン|フェニックス|\baz\b|arizona|sedona|grand.*canyon/.test(loc)) {
     return "./images/cover_arizona.webp";
   }
   // それ以外のアメリカ
-  if (/アメリカ|米国|ワシントン|シアトル|ボストン|マイアミ|テキサス|フロリダ|グアム|サイパン|usa|united.*states|america|seattle|boston/.test(loc)) {
+  if (/アメリカ|米国|ワシントン|シアトル|ボストン|マイアミ|テキサス|フロリダ|グアム|サイパン|\busa\b|united.*states|america|seattle|boston/.test(loc)) {
     return "./images/cover_usa.webp";
   }
 
@@ -185,13 +186,15 @@ export function coverImageForLocation(location: string): string {
   }
 
   // それ以外の日本
-  if (/日本|国内|japan|jp|富士山|fuji|箱根|伊勢|金沢|広島|四国|九州|山陰|山陽|北陸|信州|甲信越|中部|中国地方|近畿|関西/.test(loc)) {
+  if (/日本|国内|japan|\bjp\b|富士山|fuji|箱根|伊勢|金沢|広島|四国|九州|山陰|山陽|北陸|信州|甲信越|中部|中国地方|近畿|関西/.test(loc)) {
     return "./images/cover_japan.webp";
   }
 
   // デフォルト
-  return "./images/cover_default.webp";
+  return DEFAULT_COVER;
 }
+
+const DEFAULT_COVER = "./images/cover_default.webp";
 
 /** 計画全体の代表地からカバー画像を返す。手動設定画像があれば最優先。 */
 export function planCoverImage(meta: CoverMeta): string {
@@ -199,11 +202,22 @@ export function planCoverImage(meta: CoverMeta): string {
   return coverImageForLocation(firstDayLocation(meta));
 }
 
-/** 特定の日・都市用のカバー画像を返す。手動設定画像があれば最優先。 */
-export function planCoverImageForLocation(meta: CoverMeta, location: string): string {
+/**
+ * 特定の日・都市用のカバー画像を返す。手動設定画像があれば最優先。
+ * 候補地名を順に試し、地域を特定できた最初の画像を使う。
+ * どの候補でも特定できないとき（「尖沙咀〜佐敦エリア」のような辞書に無い地名だけの日）は、
+ * 汎用デフォルトに落とさず計画全体の代表地（初日の目的地）で決める。
+ */
+export function planCoverImageForLocation(meta: CoverMeta, locations: string | readonly string[]): string {
   if (meta.cover) return meta.cover;
-  const loc = location.trim();
-  return coverImageForLocation(loc || firstDayLocation(meta));
+  const candidates = Array.isArray(locations) ? locations : [locations];
+  for (const candidate of candidates) {
+    const loc = String(candidate || "").trim();
+    if (!loc) continue;
+    const src = coverImageForLocation(loc);
+    if (src !== DEFAULT_COVER) return src;
+  }
+  return coverImageForLocation(firstDayLocation(meta));
 }
 
 /** 一覧カードなど小さく表示する場所では、軽量サムネイル版を使う。 */
