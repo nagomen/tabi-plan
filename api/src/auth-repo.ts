@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import type mysql from "mysql2/promise";
 import { config } from "./config.js";
 import { all, pool, withTransaction } from "./db.js";
 import { BadRequest } from "./errors.js";
@@ -10,6 +11,53 @@ import { hashNewPassword, needsRehash, PASSWORD_ITERATIONS, timingSafeEqual, val
 function newRecoveryCode(): { code: string; hash: Buffer } {
   const code = crypto.randomBytes(18).toString("base64url");
   return { code, hash: hmac(`recovery:${code}`) };
+}
+
+type DbExecutor = mysql.Pool | mysql.PoolConnection;
+
+async function revokeOtherSessionsWith(
+  executor: DbExecutor,
+  userId: string,
+  keepToken: string,
+): Promise<number> {
+  if (!userId) return 0;
+  const [result] = await executor.query<mysql.ResultSetHeader>(
+    `UPDATE user_sessions SET revoked_at = CURRENT_TIMESTAMP
+      WHERE user_id = ? AND revoked_at IS NULL AND token_hash <> ?`,
+    [userId, keepToken ? hmac(keepToken) : Buffer.alloc(32)],
+  );
+  return result.affectedRows || 0;
+}
+
+async function insertCredentials(
+  conn: mysql.PoolConnection,
+  userId: string,
+  email: string,
+  password: string,
+  recoveryHash: Buffer,
+): Promise<void> {
+  const { salt, hash, iterations } = await hashNewPassword(password);
+  await conn.query(
+    `INSERT INTO user_credentials
+       (user_id, email, password_salt, password_hash, iterations, recovery_code_hash, recovery_code_created_at)
+     VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+    [userId, email, salt, hash, iterations, recoveryHash],
+  );
+}
+
+async function replacePasswordAndRecovery(
+  conn: mysql.PoolConnection,
+  userId: string,
+  password: string,
+): Promise<{ code: string }> {
+  const next = await hashNewPassword(password);
+  const recovery = newRecoveryCode();
+  await conn.query(
+    `UPDATE user_credentials SET password_salt = ?, password_hash = ?, iterations = ?,
+       recovery_code_hash = ?, recovery_code_created_at = CURRENT_TIMESTAMP WHERE user_id = ?`,
+    [next.salt, next.hash, next.iterations, recovery.hash, userId],
+  );
+  return recovery;
 }
 
 export async function createSession(userId: string, ttlMs: number): Promise<string> {
@@ -58,13 +106,7 @@ export async function resolveSession(token: string): Promise<string> {
  * いま使っているトークンだけ残すので、操作した端末は開いたままになる。
  */
 export async function revokeOtherSessions(userId: string, keepToken: string): Promise<number> {
-  if (!userId) return 0;
-  const [result] = await pool.query<import("mysql2/promise").ResultSetHeader>(
-    `UPDATE user_sessions SET revoked_at = CURRENT_TIMESTAMP
-      WHERE user_id = ? AND revoked_at IS NULL AND token_hash <> ?`,
-    [userId, keepToken ? hmac(keepToken) : Buffer.alloc(32)],
-  );
-  return result.affectedRows || 0;
+  return revokeOtherSessionsWith(pool, userId, keepToken);
 }
 
 export async function revokeSession(token: string): Promise<void> {
@@ -90,17 +132,11 @@ export async function signUp(input: {
         "SELECT user_id FROM user_credentials WHERE email = ? LIMIT 1", [email],
       );
       if (existing.length) throw new BadRequest("このメールアドレスは既に登録されています");
-      const { salt, hash, iterations } = await hashNewPassword(input.password);
       await conn.query(
         "INSERT INTO users (id, display_name, name_key) VALUES (?, ?, ?)",
         [userId, displayName, identityKey(displayName)],
       );
-      await conn.query(
-        `INSERT INTO user_credentials
-           (user_id, email, password_salt, password_hash, iterations, recovery_code_hash, recovery_code_created_at)
-         VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
-        [userId, email, salt, hash, iterations, recovery.hash],
-      );
+      await insertCredentials(conn, userId, email, input.password, recovery.hash);
     });
   } catch (error) {
     // SELECT→INSERT の間に同じメールで登録が走った場合。事前チェックと同じ文言で返す。
@@ -161,19 +197,9 @@ export async function changePassword(input: {
     const found = rows[0] as { salt: Buffer; hash: Buffer; iterations: number } | undefined;
     if (!found) throw new BadRequest("メールアドレスとパスワードが登録されていません");
     if (!(await verifyPassword(input.currentPassword, found))) throw new BadRequest("いまのパスワードが違います");
-    const { salt, hash, iterations } = await hashNewPassword(next);
-    const recovery = newRecoveryCode();
-    await conn.query(
-      `UPDATE user_credentials SET password_salt = ?, password_hash = ?, iterations = ?,
-         recovery_code_hash = ?, recovery_code_created_at = CURRENT_TIMESTAMP WHERE user_id = ?`,
-      [salt, hash, iterations, recovery.hash, input.userId],
-    );
-    const [revoked] = await conn.query<import("mysql2/promise").ResultSetHeader>(
-      `UPDATE user_sessions SET revoked_at = CURRENT_TIMESTAMP
-        WHERE user_id = ? AND revoked_at IS NULL AND token_hash <> ?`,
-      [input.userId, input.keepToken ? hmac(input.keepToken) : Buffer.alloc(32)],
-    );
-    return { recovery_code: recovery.code, revoked: revoked.affectedRows || 0 };
+    const recovery = await replacePasswordAndRecovery(conn, input.userId, next);
+    const revoked = await revokeOtherSessionsWith(conn, input.userId, input.keepToken);
+    return { recovery_code: recovery.code, revoked };
   });
 }
 
@@ -189,7 +215,6 @@ export async function addCredentials(input: {
   const email = identityKey(input.email);
   if (!isValidEmail(email)) throw new BadRequest("メールアドレスの形式が正しくありません");
   const password = validatePassword(input.password);
-  const { salt, hash, iterations } = await hashNewPassword(password);
   const recovery = newRecoveryCode();
   try {
     await withTransaction(async (conn) => {
@@ -201,12 +226,7 @@ export async function addCredentials(input: {
         "SELECT user_id FROM user_credentials WHERE email = ? LIMIT 1", [email],
       );
       if (taken.length) throw new BadRequest("このメールアドレスは既に登録されています");
-      await conn.query(
-        `INSERT INTO user_credentials
-           (user_id, email, password_salt, password_hash, iterations, recovery_code_hash, recovery_code_created_at)
-         VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
-        [input.userId, email, salt, hash, iterations, recovery.hash],
-      );
+      await insertCredentials(conn, input.userId, email, password, recovery.hash);
     });
   } catch (error) {
     if ((error as { code?: string }).code === "ER_DUP_ENTRY") {
@@ -235,15 +255,7 @@ export async function recoverPassword(input: {
     if (!found || !timingSafeEqual(candidate, stored)) {
       throw new BadRequest("メールアドレスまたは復旧コードが違います");
     }
-    const password = await hashNewPassword(nextPassword);
-    const recovery = newRecoveryCode();
-    await conn.query(
-      `UPDATE user_credentials
-          SET password_salt = ?, password_hash = ?, iterations = ?,
-              recovery_code_hash = ?, recovery_code_created_at = CURRENT_TIMESTAMP
-        WHERE user_id = ?`,
-      [password.salt, password.hash, password.iterations, recovery.hash, found.user_id],
-    );
+    const recovery = await replacePasswordAndRecovery(conn, found.user_id, nextPassword);
     await conn.query(
       "UPDATE user_sessions SET revoked_at = CURRENT_TIMESTAMP WHERE user_id = ? AND revoked_at IS NULL",
       [found.user_id],

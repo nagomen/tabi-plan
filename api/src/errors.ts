@@ -1,5 +1,9 @@
 export class BadRequest extends Error {}
 
+export class Forbidden extends Error {}
+
+export class NotFound extends Error {}
+
 export class VersionConflict extends Error {
   constructor(message: string, readonly currentVersion = 0) {
     super(message);
@@ -29,11 +33,6 @@ const INVALID_INPUT_DB_CODES = new Set([
   "ER_DATA_TOO_LONG", "ER_TRUNCATED_WRONG_VALUE", "ER_TRUNCATED_WRONG_VALUE_FOR_FIELD",
   "ER_WARN_DATA_OUT_OF_RANGE", "ER_BAD_NULL_ERROR", "ER_WRONG_VALUE",
 ]);
-
-export function isTransientDbError(error: unknown): boolean {
-  const code = String((error as { code?: string })?.code || "");
-  return TRANSIENT_DB_CODES.has(code);
-}
 
 /**
  * ルーティング外へ漏れた例外を、内部情報を出さずに利用者契約へ変換する。
@@ -69,6 +68,18 @@ export function describeError(error: unknown, requestId: string): { status: numb
     return {
       status: 400,
       body: { error: "bad_request", message, retryable: false, action: "revise_input" },
+    };
+  }
+  if (error instanceof Forbidden) {
+    return {
+      status: 403,
+      body: { error: "forbidden", message, retryable: false, action: "reload" },
+    };
+  }
+  if (error instanceof NotFound) {
+    return {
+      status: 404,
+      body: { error: "not_found", message, retryable: false, action: "reload" },
     };
   }
   if (error instanceof VersionConflict) {

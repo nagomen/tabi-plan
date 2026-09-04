@@ -1,19 +1,9 @@
 // 費用・負担割・精算・監査ログの永続化。
 import mysql from "mysql2/promise";
 import { all, firstRow, type Row, withTransaction } from "./db.js";
-import { BadRequest } from "./errors.js";
+import { BadRequest, Forbidden, NotFound } from "./errors.js";
 import { newId } from "./ids.js";
 import { activeMemberSet, assertMember, safeUrl } from "./repo-helpers.js";
-
-export async function planIdForExpense(expenseId: string): Promise<string | null> {
-  const rows = await all<{ plan_id: string }>("SELECT plan_id FROM expenses WHERE id = ? LIMIT 1", [expenseId]);
-  return rows[0]?.plan_id || null;
-}
-
-export async function planIdForSettlement(settlementId: string): Promise<string | null> {
-  const rows = await all<{ plan_id: string }>("SELECT plan_id FROM settlements WHERE id = ? LIMIT 1", [settlementId]);
-  return rows[0]?.plan_id || null;
-}
 
 // ---- 費用 ---------------------------------------------------------------
 
@@ -30,7 +20,6 @@ export interface ExpenseInput {
   payment_method?: string | null;
   note?: string | null;
   receipt_url?: string | null;
-  created_by_id?: string | null;
   shares: { user_id: string; amount_base_minor: number }[];
 }
 
@@ -48,7 +37,7 @@ async function assertWorkspaceEditor(conn: mysql.PoolConnection, planId: string,
     [actorUserId, planId],
   );
   if (!access || access.source === "sample" || !["owner", "editor"].includes(access.role)) {
-    throw new BadRequest("費用・精算を変更する権限がありません");
+    throw new Forbidden("費用・精算を変更する権限がありません");
   }
 }
 
@@ -214,12 +203,12 @@ export async function updateExpense(id: string, input: ExpenseInput, actorUserId
     const planId = (await firstRow<{ plan_id: string }>(
       conn, "SELECT plan_id FROM expenses WHERE id = ?", [id],
     ))?.plan_id;
-    if (!planId) throw new BadRequest("費用が見つかりません");
+    if (!planId) throw new NotFound("費用が見つかりません");
     await assertWorkspaceEditor(conn, planId, actorUserId);
     const locked = await firstRow<{ id: string }>(
       conn, "SELECT id FROM expenses WHERE id = ? AND plan_id = ? LIMIT 1 FOR UPDATE", [id, planId],
     );
-    if (!locked) throw new BadRequest("費用が見つかりません");
+    if (!locked) throw new NotFound("費用が見つかりません");
     const before = await expenseSnapshot(conn, id);
     const { splitMethod, shares } = validateShares(input, base, await activeMemberSet(planId, conn));
     await conn.query(
@@ -263,12 +252,12 @@ async function setExpenseDeleted(id: string, actorUserId: string, deleted: boole
     const planId = (await firstRow<{ plan_id: string }>(
       conn, "SELECT plan_id FROM expenses WHERE id = ?", [id],
     ))?.plan_id;
-    if (!planId) throw new BadRequest("費用が見つかりません");
+    if (!planId) throw new NotFound("費用が見つかりません");
     await assertWorkspaceEditor(conn, planId, actorUserId);
     const locked = await firstRow<{ id: string }>(
       conn, "SELECT id FROM expenses WHERE id = ? AND plan_id = ? LIMIT 1 FOR UPDATE", [id, planId],
     );
-    if (!locked) throw new BadRequest("費用が見つかりません");
+    if (!locked) throw new NotFound("費用が見つかりません");
     const before = await expenseSnapshot(conn, id);
     await conn.query(
       deleted
@@ -315,20 +304,20 @@ export async function deleteSettlement(id: string, actorUserId: string): Promise
     const settlement = await firstRow<{ plan_id: string }>(
       conn, "SELECT plan_id FROM settlements WHERE id = ? AND deleted_at IS NULL LIMIT 1", [id],
     );
-    if (!settlement) throw new BadRequest("取消できる精算記録が見つかりません");
+    if (!settlement) throw new NotFound("取消できる精算記録が見つかりません");
     await assertWorkspaceEditor(conn, settlement.plan_id, actorUserId);
     const locked = await firstRow<{ id: string }>(
       conn,
       "SELECT id FROM settlements WHERE id = ? AND plan_id = ? AND deleted_at IS NULL LIMIT 1 FOR UPDATE",
       [id, settlement.plan_id],
     );
-    if (!locked) throw new BadRequest("取消できる精算記録が見つかりません");
+    if (!locked) throw new NotFound("取消できる精算記録が見つかりません");
     const [result] = await conn.query<mysql.ResultSetHeader>(
       `UPDATE settlements SET deleted_at = CURRENT_TIMESTAMP, deleted_by_id = ?
         WHERE id = ? AND deleted_at IS NULL`,
       [actorUserId, id],
     );
-    if (result.affectedRows !== 1) throw new BadRequest("取消できる精算記録が見つかりません");
+    if (result.affectedRows !== 1) throw new NotFound("取消できる精算記録が見つかりません");
   });
   console.info("[travel-api] settlement deleted", JSON.stringify({ id, actor_user_id: actorUserId }));
 }

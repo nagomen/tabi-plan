@@ -8,6 +8,7 @@ import { AiInputError, AiOutputError, AiUnavailableError } from "./ai-errors.js"
 import { daysBetween } from "./ai-itinerary.js";
 import { recordAiTokens } from "./ai-usage-repo.js";
 import { structuredResponse } from "./openai-client.js";
+import { cityNamesEquivalent, strictTimeMinutes, validCoordinate } from "./itinerary-normalization.js";
 
 const KINDS = ["sight", "move", "food", "stay", "todo", "form"] as const;
 const TRANSPORTS = ["", "電車", "新幹線", "飛行機", "車", "バス", "フェリー", "徒歩", "その他"] as const;
@@ -73,24 +74,6 @@ interface RawRefineResult {
   days: { date: string; items: Omit<ItineraryRefineItem, "date">[] }[];
 }
 
-const nameKey = (value: string): string => value.normalize("NFKC").replace(/[\s市区町村島]+$/gu, "").toLowerCase();
-const sameCity = (left: string, right: string): boolean => Boolean(left && right && nameKey(left) === nameKey(right));
-
-function minutes(value: string): number | null {
-  const match = /^(\d{2}):(\d{2})$/.exec(value);
-  if (!match) return null;
-  const hour = Number(match[1]);
-  const minute = Number(match[2]);
-  return hour < 24 && minute < 60 ? hour * 60 + minute : null;
-}
-
-function coordinate(value: unknown, min: number, max: number): number | null {
-  const number = Number(value);
-  return value !== null && value !== "" && Number.isFinite(number) && number >= min && number <= max
-    ? number
-    : null;
-}
-
 function normalizeItem(date: string, item: Omit<ItineraryRefineItem, "date">): ItineraryRefineItem {
   const kind = KINDS.includes(item.kind) ? item.kind : "sight";
   const move = kind === "move";
@@ -103,19 +86,19 @@ function normalizeItem(date: string, item: Omit<ItineraryRefineItem, "date">): I
     title: String(item.title || "").trim(),
     place: String(item.place || "").trim(),
     address: String(item.address || item.place || "").trim(),
-    latitude: coordinate(item.latitude, -90, 90),
-    longitude: coordinate(item.longitude, -180, 180),
+    latitude: validCoordinate(item.latitude, -90, 90),
+    longitude: validCoordinate(item.longitude, -180, 180),
     note: String(item.note || "").trim(),
     from_city: move ? String(item.from_city || "").trim() : "",
     from_place: move ? String(item.from_place || "").trim() : "",
     from_address: move ? String(item.from_address || item.from_place || "").trim() : "",
-    from_latitude: move ? coordinate(item.from_latitude, -90, 90) : null,
-    from_longitude: move ? coordinate(item.from_longitude, -180, 180) : null,
+    from_latitude: move ? validCoordinate(item.from_latitude, -90, 90) : null,
+    from_longitude: move ? validCoordinate(item.from_longitude, -180, 180) : null,
     to_city: move ? String(item.to_city || city).trim() : "",
     to_place: move ? String(item.to_place || item.place || "").trim() : "",
     to_address: move ? String(item.to_address || item.to_place || "").trim() : "",
-    to_latitude: move ? coordinate(item.to_latitude, -90, 90) : null,
-    to_longitude: move ? coordinate(item.to_longitude, -180, 180) : null,
+    to_latitude: move ? validCoordinate(item.to_latitude, -90, 90) : null,
+    to_longitude: move ? validCoordinate(item.to_longitude, -180, 180) : null,
     transport: move && TRANSPORTS.includes(item.transport as typeof TRANSPORTS[number]) ? item.transport : "",
     duration_minutes: move ? Math.round(Number(item.duration_minutes || 0)) : 0,
   };
@@ -140,7 +123,7 @@ export function finalizeRefinedItinerary(raw: RawRefineResult, dates: string[]):
     const scheduled = items.filter((item) => item.kind !== "stay").map((item, order) => ({
       item,
       order,
-      minutes: minutes(item.time),
+      minutes: strictTimeMinutes(item.time),
     }));
     if (scheduled.some((event) => event.minutes === null)) {
       throw new AiOutputError(`${date}に開始時刻が正しくない予定があります`);
@@ -164,18 +147,18 @@ export function finalizeRefinedItinerary(raw: RawRefineResult, dates: string[]):
             !item.transport || item.duration_minutes < 1) {
           throw new AiOutputError(`${date}の都市間移動に必要な情報が不足しています`);
         }
-        if (!sameCity(currentCity, item.from_city)) {
+        if (!cityNamesEquivalent(currentCity, item.from_city)) {
           throw new AiOutputError(`${date}の移動が現在地${currentCity}から始まっていません`);
         }
         currentCity = item.to_city;
         unavailableUntil = event.minutes! + item.duration_minutes;
-      } else if (!sameCity(currentCity, item.city)) {
+      } else if (!cityNamesEquivalent(currentCity, item.city)) {
         throw new AiOutputError(`${date}の「${item.title || item.place}」は${currentCity}滞在中ですが、${item.city}の予定になっています`);
       }
     }
     for (const stay of stays) {
       if (!currentCity) currentCity = stay.city;
-      if (!sameCity(currentCity, stay.city)) {
+      if (!cityNamesEquivalent(currentCity, stay.city)) {
         throw new AiOutputError(`${date}の宿泊先が最終到着都市${currentCity}にありません`);
       }
     }

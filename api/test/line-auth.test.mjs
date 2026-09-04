@@ -8,8 +8,9 @@ process.env.ALLOWED_ORIGINS ||= "https://app.example.com,http://localhost:5173";
 process.env.LINE_CHANNEL_ID ||= "test-channel";
 process.env.LINE_CHANNEL_SECRET ||= "test-secret";
 
-const { safeReturnTo, authorizeUrl, loginErrorUrl, peekReturnTo, handleLineCallback } =
+const { safeReturnTo, authorizeUrl, loginErrorUrl, peekReturnTo, handleLineCallback, resolveLineUser } =
   await import("../dist/line-auth.js");
+const { pool } = await import("../dist/db.js");
 
 const FALLBACK = "https://app.example.com";
 
@@ -50,4 +51,72 @@ test("handleLineCallback rejects a tampered or garbage state before any network 
   const tampered = `${payload}.${signature.slice(0, -2)}xx`;
   await assert.rejects(handleLineCallback({ code: "abc", state: tampered }), /手続き|期限切れ|やり直し/);
   await assert.rejects(handleLineCallback({ code: "abc", state: "garbage" }), /手続き|期限切れ|やり直し/);
+});
+
+test("既存LINE identityを別ユーザーへ付け替えずtransactionをrollbackする", async () => {
+  const originalGetConnection = pool.getConnection.bind(pool);
+  const queries = [];
+  let committed = false;
+  let rolledBack = false;
+  const connection = {
+    query: async (sql) => {
+      queries.push(sql);
+      if (String(sql).includes("FROM user_identities")) return [[{ user_id: "usr_existing" }], []];
+      return [[], []];
+    },
+    beginTransaction: async () => {},
+    commit: async () => { committed = true; },
+    rollback: async () => { rolledBack = true; },
+    release: () => {},
+  };
+  pool.getConnection = async () => connection;
+  try {
+    await assert.rejects(
+      resolveLineUser({ subject: "line-subject", displayName: "LINE名", pictureUrl: "" }, "usr_other"),
+      /別の利用者/,
+    );
+    assert.equal(committed, false);
+    assert.equal(rolledBack, true);
+    assert.equal(queries.some((sql) => String(sql).includes("UPDATE user_identities")), false);
+    assert.equal(queries.some((sql) => String(sql).includes("INSERT INTO users")), false);
+  } finally {
+    pool.getConnection = originalGetConnection;
+  }
+});
+
+test("LINE初回ログインが同時実行されても一意制約に勝ったユーザーへ収束する", async (t) => {
+  const originalGetConnection = pool.getConnection;
+  const originalQuery = pool.query;
+  let rolledBack = false;
+  const connection = {
+    query: async (sql) => {
+      if (String(sql).includes("FROM user_identities")) return [[], []];
+      if (String(sql).includes("INSERT INTO user_identities")) {
+        throw Object.assign(new Error("duplicate"), { code: "ER_DUP_ENTRY" });
+      }
+      return [[], []];
+    },
+    beginTransaction: async () => {},
+    commit: async () => {},
+    rollback: async () => { rolledBack = true; },
+    release: () => {},
+  };
+  pool.getConnection = async () => connection;
+  pool.query = async (sql) => {
+    if (String(sql).startsWith("SELECT user_id FROM user_identities")) {
+      return [[{ user_id: "usr_winner" }], []];
+    }
+    if (String(sql).startsWith("UPDATE user_identities")) return [{ affectedRows: 1 }, []];
+    throw new Error(`unexpected query: ${sql}`);
+  };
+  t.after(() => {
+    pool.getConnection = originalGetConnection;
+    pool.query = originalQuery;
+  });
+
+  const userId = await resolveLineUser({
+    subject: "same-subject", displayName: "LINE名", pictureUrl: "",
+  });
+  assert.equal(userId, "usr_winner");
+  assert.equal(rolledBack, true);
 });

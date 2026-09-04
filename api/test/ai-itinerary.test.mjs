@@ -245,15 +245,6 @@ test("都市間移動の始終点が登録ルートと違う結果を拒否す�
   }, ["2026-08-01", "2026-08-02"]), /移動順が一致しません/);
 });
 
-test("選択候補を採用にも未採用一覧にも入れない結果を拒否する", () => {
-  assert.throws(() => finalizeItineraryDraft({
-    cities: [{ name: "東京", from_date: "2026-08-01", to_date: "2026-08-01" }],
-    days: [{ date: "2026-08-01", area: "東京", items: [emptyItem({ city: "東京", place: "浅草寺" })] }],
-    transitions: [],
-    omitted_selected_places: [],
-  }, ["2026-08-01"], ["東京スカイツリー"]), /選択候補/);
-});
-
 test("選択候補は翻訳後の名称ではなく署名済みIDで採用・未採用を照合する", () => {
   const draft = finalizeItineraryDraft({
     cities: [{ name: "香港", from_date: "2026-08-01", to_date: "2026-08-01" }],

@@ -22,17 +22,6 @@ export function rateLimitCheck(
   return slot.count > limit ? Math.max(1, Math.ceil((slot.resetAt - now) / 1000)) : 0;
 }
 
-/** key の窓を1つ消費する。上限を超えたら true（＝拒否）。 */
-export function rateLimited(
-  buckets: Map<string, RateBucket>,
-  key: string,
-  limit: number,
-  now: number = Date.now(),
-  windowMs = 60_000,
-): boolean {
-  return rateLimitCheck(buckets, key, limit, now, windowMs) > 0;
-}
-
 /** 期限切れの窓を掃除して、溜まりっぱなしを防ぐ。 */
 export function sweepExpired(buckets: Map<string, RateBucket>, now: number = Date.now()): void {
   for (const [key, slot] of buckets) if (now >= slot.resetAt) buckets.delete(key);

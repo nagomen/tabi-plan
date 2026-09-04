@@ -9,7 +9,7 @@ import { all, firstRow, pool, withTransaction } from "./db.js";
 import { BadRequest, VersionConflict } from "./errors.js";
 import { newId } from "./ids.js";
 import {
-  PLAN_COLLABORATE_FIELDS, PLAN_CREATE_FIELDS, PLAN_EDIT_FIELDS, PLAN_MANAGE_FIELDS, planFieldError,
+  PLAN_CREATE_FIELDS, PLAN_EDIT_FIELDS, PLAN_MANAGE_FIELDS, planFieldError,
 } from "./plan-contract.js";
 import { safeUrl } from "./repo-helpers.js";
 
@@ -47,9 +47,9 @@ export async function createPlan(input: Record<string, unknown>): Promise<{ id: 
 export async function updatePlan(
   id: string,
   input: Record<string, unknown>,
-  scope: "collaborate" | "edit" | "manage" = "edit",
-  expectedVersion?: number,
-  actorUserId = "",
+  scope: "edit" | "manage",
+  expectedVersion: number,
+  actorUserId: string,
 ): Promise<number> {
   const fieldError = planFieldError(input);
   if (fieldError) throw new BadRequest(fieldError);
@@ -82,7 +82,7 @@ export async function updatePlan(
   }
   const allowedFields = scope === "manage"
     ? new Set([...PLAN_EDIT_FIELDS, ...PLAN_MANAGE_FIELDS])
-    : scope === "edit" ? PLAN_EDIT_FIELDS : PLAN_COLLABORATE_FIELDS;
+    : PLAN_EDIT_FIELDS;
   const sets: string[] = [];
   const vals: unknown[] = [];
   for (const [k, v] of Object.entries(input)) {
@@ -92,10 +92,8 @@ export async function updatePlan(
   }
   const accessSql = scope === "manage"
     ? "owner_user_id = ?"
-    : scope === "edit"
-      ? `EXISTS (SELECT 1 FROM plan_members pm
-          WHERE pm.plan_id = plans.id AND pm.user_id = ? AND pm.status = 'active' AND pm.role IN ('owner','editor'))`
-      : "? <> '' AND open_editing = 1 AND visibility = 'public' AND status = 'published'";
+    : `EXISTS (SELECT 1 FROM plan_members pm
+        WHERE pm.plan_id = plans.id AND pm.user_id = ? AND pm.status = 'active' AND pm.role IN ('owner','editor'))`;
   if (!sets.length) {
     const rows = await all<{ version: number }>(
       `SELECT version FROM plans WHERE id = ? AND deleted_at IS NULL AND source <> 'sample' AND (${accessSql}) LIMIT 1`,
@@ -104,7 +102,7 @@ export async function updatePlan(
     if (!rows.length) throw new BadRequest("この計画を変更する権限がありません");
     const currentVersion = Number(rows[0]?.version || 0);
     // 変更対象が無くても、期待版がずれていれば衝突として伝える（黙って成功にしない）。
-    if (expectedVersion !== undefined && currentVersion !== expectedVersion) {
+    if (currentVersion !== expectedVersion) {
       throw new VersionConflict("計画が別の端末で更新されています", currentVersion);
     }
     return currentVersion;
@@ -114,10 +112,8 @@ export async function updatePlan(
   vals.push(actorUserId);
   let sql = `UPDATE plans SET ${sets.join(", ")} WHERE id = ? AND deleted_at IS NULL
     AND source <> 'sample' AND (${accessSql})`;
-  if (expectedVersion !== undefined) {
-    sql += " AND version = ?";
-    vals.push(expectedVersion);
-  }
+  sql += " AND version = ?";
+  vals.push(expectedVersion);
   const [result] = await pool.query<mysql.ResultSetHeader>(sql, vals);
   if (result.affectedRows !== 1) {
     // 「消えた計画」と「別端末の更新」を区別する。前者を409にすると、
@@ -129,7 +125,7 @@ export async function updatePlan(
     if (!rows.length) throw new BadRequest("計画が見つかりません");
     throw new VersionConflict("計画が別の端末で更新されています", currentVersion);
   }
-  return expectedVersion !== undefined ? expectedVersion + 1 : 0;
+  return expectedVersion + 1;
 }
 
 export async function deletePlan(id: string, actorUserId: string): Promise<void> {
@@ -148,7 +144,7 @@ export async function replacePlanContent(planId: string, body: {
   links?: Record<string, unknown>[];
   checklist?: { label: string; status?: string }[];
   candidates?: { id?: string; title: string; place?: string | null; proposed_by_id?: string | null; adopted?: boolean; votes?: string[] }[];
-}, expectedVersion?: number, actorUserId = ""): Promise<number> {
+  }, expectedVersion: number, actorUserId: string): Promise<number> {
   return withTransaction(async (conn) => {
     const planRow = await firstRow<{
       version: number; source: string; visibility: string; status: string; open_editing: number;
@@ -172,13 +168,12 @@ export async function replacePlanContent(planId: string, body: {
     if (planRow.source === "sample" || (!workspaceEditor && !publicCollaborator)) {
       throw new BadRequest("この計画を変更する権限がありません");
     }
-    if (expectedVersion !== undefined && currentVersion !== expectedVersion) {
+    if (currentVersion !== expectedVersion) {
       throw new VersionConflict("計画が別の端末で更新されています", currentVersion);
     }
 
     if (body.cities) {
-      const statusRow = await firstRow<{ status: string }>(conn, "SELECT status FROM plans WHERE id = ? LIMIT 1", [planId]);
-      const status = String(statusRow?.status || "draft");
+      const status = String(planRow.status || "draft");
       if (status === "published" && !body.cities.some((city) => String(city?.name || "").trim())) {
         throw new BadRequest("公開中の計画には訪問地が1つ以上必要です。先に下書きへ戻してください");
       }

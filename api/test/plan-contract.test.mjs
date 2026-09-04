@@ -8,4 +8,7 @@ test("plan fields are rejected before violating storage contracts", () => {
   assert.match(planFieldError({ cover_url: "x".repeat(MAX_COVER_VALUE_LENGTH + 1) }), /大きすぎ/);
   assert.match(planFieldError({ cover_url: "data:image/svg+xml;base64,PHN2Zz4=" }), /形式/);
   assert.equal(planFieldError({ cover_url: "data:image/webp;base64,UklGRg==" }), "");
+  assert.equal(planFieldError({ source: "local" }), "");
+  assert.match(planFieldError({ source: "sample" }), /変更できません/);
+  assert.match(planFieldError({ source: null }), /変更できません/);
 });

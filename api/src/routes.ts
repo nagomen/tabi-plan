@@ -256,18 +256,6 @@ async function forbiddenUnless(ok: boolean | Promise<boolean>): Promise<Handled 
   return await ok ? null : { status: 403, body: { error: "forbidden" } };
 }
 
-async function requireExpenseEdit(expenseId: string, actorUserId: string): Promise<Handled | null> {
-  const planId = await expenseRepo.planIdForExpense(expenseId);
-  if (!planId) return { status: 404, body: { error: "not found" } };
-  return forbiddenUnless(accessRepo.canEditPlanWorkspace(planId, actorUserId));
-}
-
-async function requireSettlementEdit(settlementId: string, actorUserId: string): Promise<Handled | null> {
-  const planId = await expenseRepo.planIdForSettlement(settlementId);
-  if (!planId) return { status: 404, body: { error: "not found" } };
-  return forbiddenUnless(accessRepo.canEditPlanWorkspace(planId, actorUserId));
-}
-
 export async function route(method: string, path: string, body: Body, actorUserId = ""): Promise<Handled | null> {
   // ---- 起動時の一括取得 ----
   if (method === "GET" && path === "/api/bootstrap") {
@@ -290,13 +278,6 @@ export async function route(method: string, path: string, body: Body, actorUserI
     if (m[1] !== actorUserId) return { status: 403, body: { error: "forbidden" } };
     await userRepo.renameUser(m[1], str(body.display_name));
     return { status: 200, body: { ok: true } };
-  }
-  m = /^\/api\/users\/([\w-]{1,32})\/credentials$/.exec(path);
-  if (m && method === "PUT") {
-    return { status: 410, body: { error: "credentials are managed by /api/auth" } };
-  }
-  if (method === "POST" && path === "/api/users/credentials/lookup") {
-    return { status: 410, body: { error: "credentials lookup is disabled" } };
   }
   m = /^\/api\/users\/([\w-]{1,32})\/payment-link$/.exec(path);
   if (m && method === "PUT") {
@@ -348,11 +329,10 @@ export async function route(method: string, path: string, body: Body, actorUserI
     }
     const managesPlan = Object.keys(patch).some((key) => PLAN_MANAGE_FIELDS.has(key));
     const access = await accessRepo.getPlanAccess(m[1], actorUserId);
-    const memberEditor = access.canEditWorkspace;
-    const denied = await forbiddenUnless(managesPlan ? access.canManage : memberEditor || access.canEdit);
+    const denied = await forbiddenUnless(managesPlan ? access.canManage : access.canEditWorkspace);
     if (denied) return denied;
     const version = await repo.updatePlan(
-      m[1], patch, managesPlan ? "manage" : memberEditor ? "edit" : "collaborate", requestedVersion, actorUserId,
+      m[1], patch, managesPlan ? "manage" : "edit", requestedVersion, actorUserId,
     );
     return { status: 200, body: { ok: true, version } };
   }
@@ -493,8 +473,6 @@ export async function route(method: string, path: string, body: Body, actorUserI
 
   m = /^\/api\/settlements\/([\w-]{1,32})$/.exec(path);
   if (m && method === "DELETE") {
-    const denied = await requireSettlementEdit(m[1], actorUserId);
-    if (denied) return denied;
     await expenseRepo.deleteSettlement(m[1], actorUserId);
     return { status: 200, body: { ok: true } };
   }
@@ -502,21 +480,15 @@ export async function route(method: string, path: string, body: Body, actorUserI
   // ---- 費用 ----
   m = /^\/api\/expenses\/([\w-]{1,32})$/.exec(path);
   if (m && method === "PATCH") {
-    const denied = await requireExpenseEdit(m[1], actorUserId);
-    if (denied) return denied;
     await expenseRepo.updateExpense(m[1], body as unknown as expenseRepo.ExpenseInput, actorUserId);
     return { status: 200, body: { ok: true } };
   }
   if (m && method === "DELETE") {
-    const denied = await requireExpenseEdit(m[1], actorUserId);
-    if (denied) return denied;
     await expenseRepo.deleteExpense(m[1], actorUserId);
     return { status: 200, body: { ok: true } };
   }
   m = /^\/api\/expenses\/([\w-]{1,32})\/restore$/.exec(path);
   if (m && method === "POST") {
-    const denied = await requireExpenseEdit(m[1], actorUserId);
-    if (denied) return denied;
     await expenseRepo.restoreExpense(m[1], actorUserId);
     return { status: 200, body: { ok: true } };
   }

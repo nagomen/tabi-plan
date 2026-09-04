@@ -11,10 +11,7 @@ export async function bootstrapForUser(userId = ""): Promise<Bootstrap> {
   // open_editing は公開済み計画の本文をログイン利用者が編集するための権限。
   // メンバー・費用・精算を含むワークスペース情報は正式な参加者だけに返す。
   const memberPredicate = userId ? "pm.user_id IS NOT NULL" : "FALSE";
-  const collaborativePredicate = userId
-    ? "(p.open_editing = 1 AND p.visibility = 'public' AND p.status = 'published')"
-    : "FALSE";
-  const visibleWhere = `p.deleted_at IS NULL AND (${publicPredicate} OR ${memberPredicate} OR ${collaborativePredicate})`;
+  const visibleWhere = `p.deleted_at IS NULL AND (${publicPredicate} OR ${memberPredicate})`;
   const workspaceWhere = `p.deleted_at IS NULL AND ${memberPredicate}`;
 
   const [plans, workspaceRows, credentials, friendships, pendingInvites] = await Promise.all([

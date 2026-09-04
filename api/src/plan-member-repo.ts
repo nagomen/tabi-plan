@@ -2,6 +2,7 @@ import { firstRow, inClause, type Row, withTransaction } from "./db.js";
 import { BadRequest, VersionConflict } from "./errors.js";
 import { newId } from "./ids.js";
 import { identityKey } from "./identity.js";
+import { reassignPlanMemberReferences } from "./plan-member-reference-repo.js";
 import { safeDate } from "./repo-helpers.js";
 
 /** 名前だけ分かっている人を、この旅行専用の未登録メンバーとして追加する。 */
@@ -48,8 +49,8 @@ export async function createPlaceholderMember(
 export async function replaceMembers(
   planId: string,
   members: { user_id: string; role?: string; from_date?: string | null; to_date?: string | null }[],
-  actorUserId = "",
-  expectedVersion?: number,
+  actorUserId: string,
+  expectedVersion: number,
 ): Promise<number> {
   const byUserId = new Map<string, {
     user_id: string; role: "owner" | "editor" | "viewer"; from_date: string | null; to_date: string | null;
@@ -67,7 +68,7 @@ export async function replaceMembers(
   const owners = normalized.filter((member) => member.role === "owner");
   const owner = owners[0];
   if (owners.length !== 1) throw new BadRequest("計画には owner が1人だけ必要です");
-  if (actorUserId && !normalized.some((member) => member.user_id === actorUserId && member.role === "owner")) {
+  if (!normalized.some((member) => member.user_id === actorUserId && member.role === "owner")) {
     throw new BadRequest("自分の owner 権限は残してください。所有権の移譲には専用操作が必要です");
   }
 
@@ -80,9 +81,9 @@ export async function replaceMembers(
       [planId],
     );
     if (!plan) throw new BadRequest("計画が見つかりません");
-    if (actorUserId && plan.owner_user_id !== actorUserId) throw new BadRequest("メンバーを変更できるのは現在のownerだけです");
+    if (plan.owner_user_id !== actorUserId) throw new BadRequest("メンバーを変更できるのは現在のownerだけです");
     const currentVersion = Number(plan.version || 0);
-    if (expectedVersion !== undefined && expectedVersion !== currentVersion) {
+    if (expectedVersion !== currentVersion) {
       throw new VersionConflict("メンバーが別の端末で更新されています", currentVersion);
     }
     for (const member of normalized) {
@@ -160,21 +161,13 @@ export async function replaceMembers(
          from_date = VALUES(from_date), to_date = VALUES(to_date)`,
       [rows],
     );
-    const ownerIds = normalized.filter((member) => member.role === "owner").map((member) => member.user_id);
-    const ownerIn = inClause(ownerIds);
-    const preferredOwner = normalized.some((member) => member.user_id === actorUserId && member.role === "owner")
-      ? actorUserId
-      : owner.user_id;
     await conn.query(
       `UPDATE plans
-       SET owner_user_id = CASE
-         WHEN owner_user_id IS NULL OR owner_user_id NOT IN (${ownerIn.sql}) THEN ?
-         ELSE owner_user_id
-       END,
+       SET owner_user_id = ?,
        version = version + 1,
        updated_at = CURRENT_TIMESTAMP
        WHERE id = ?`,
-      [...ownerIn.params, preferredOwner, planId],
+      [owner.user_id, planId],
     );
     return currentVersion + 1;
   });
@@ -285,45 +278,7 @@ export async function undoPlaceholderClaim(
     if (claim.claimed_role === "owner") throw new BadRequest("ownerの本人紐付けは取り消せません。先に所有権を移譲してください");
     const claimedUserId = claim.claimed_by_user_id;
 
-    await conn.query("UPDATE expenses SET payer_user_id = ? WHERE plan_id = ? AND payer_user_id = ?", [placeholderUserId, planId, claimedUserId]);
-    await conn.query(
-      `INSERT INTO expense_shares (expense_id, user_id, amount_base_minor)
-       SELECT s.expense_id, ?, s.amount_base_minor FROM expense_shares s
-       JOIN expenses e ON e.id = s.expense_id WHERE e.plan_id = ? AND s.user_id = ?
-       ON DUPLICATE KEY UPDATE amount_base_minor = amount_base_minor + VALUES(amount_base_minor)`,
-      [placeholderUserId, planId, claimedUserId],
-    );
-    await conn.query(
-      `DELETE s FROM expense_shares s JOIN expenses e ON e.id = s.expense_id
-        WHERE e.plan_id = ? AND s.user_id = ?`,
-      [planId, claimedUserId],
-    );
-    await conn.query("UPDATE settlements SET from_user_id = ? WHERE plan_id = ? AND from_user_id = ?", [placeholderUserId, planId, claimedUserId]);
-    await conn.query("UPDATE settlements SET to_user_id = ? WHERE plan_id = ? AND to_user_id = ?", [placeholderUserId, planId, claimedUserId]);
-    await conn.query("UPDATE plan_candidates SET proposed_by_id = ? WHERE plan_id = ? AND proposed_by_id = ?", [placeholderUserId, planId, claimedUserId]);
-    await conn.query(
-      `INSERT IGNORE INTO plan_candidate_votes (candidate_id, user_id)
-       SELECT v.candidate_id, ? FROM plan_candidate_votes v JOIN plan_candidates c ON c.id = v.candidate_id
-        WHERE c.plan_id = ? AND v.user_id = ?`,
-      [placeholderUserId, planId, claimedUserId],
-    );
-    await conn.query(
-      `DELETE v FROM plan_candidate_votes v JOIN plan_candidates c ON c.id = v.candidate_id
-        WHERE c.plan_id = ? AND v.user_id = ?`,
-      [planId, claimedUserId],
-    );
-    const [itineraryRows] = await conn.query<Row[]>(
-      "SELECT id, member_ids FROM itinerary_items WHERE plan_id = ? AND member_ids IS NOT NULL FOR UPDATE",
-      [planId],
-    );
-    for (const row of itineraryRows as unknown as { id: string; member_ids: string }[]) {
-      try {
-        const parsed = JSON.parse(String(row.member_ids || "")) as unknown;
-        if (!Array.isArray(parsed) || !parsed.includes(claimedUserId)) continue;
-        const next = [...new Set(parsed.map((id) => id === claimedUserId ? placeholderUserId : id))];
-        await conn.query("UPDATE itinerary_items SET member_ids = ? WHERE id = ?", [JSON.stringify(next), row.id]);
-      } catch { /* 壊れた旧JSONは触らない */ }
-    }
+    await reassignPlanMemberReferences(conn, planId, claimedUserId, placeholderUserId);
     await conn.query(
       `UPDATE plan_member_placeholders
           SET status = 'unclaimed', claimed_by_user_id = NULL, claimed_at = NULL

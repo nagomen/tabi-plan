@@ -3,34 +3,28 @@ import mysql from "mysql2/promise";
 import { all, firstRow, pool, withTransaction } from "./db.js";
 import { BadRequest } from "./errors.js";
 import { newId } from "./ids.js";
+import { reassignPlanMemberReferences } from "./plan-member-reference-repo.js";
 
 function tokenHash(token: string): Buffer {
   return crypto.createHash("sha256").update(token, "utf8").digest();
 }
 
 /** 期限切れを業務エラーで返す前に永続化する（例外によるtransaction rollbackを避ける）。 */
-async function markExpiredInvites(token?: string, planId?: string): Promise<void> {
-  if (token) {
+async function markExpiredInvites(filter: { token: string } | { planId: string }): Promise<void> {
+  if ("token" in filter) {
     await pool.query(
       `UPDATE plan_invites SET status = 'expired'
         WHERE token_hash = ? AND status = 'pending'
           AND expires_at IS NOT NULL AND expires_at < CURRENT_TIMESTAMP`,
-      [tokenHash(token)],
-    );
-    return;
-  }
-  if (planId) {
-    await pool.query(
-      `UPDATE plan_invites SET status = 'expired'
-        WHERE plan_id = ? AND status = 'pending'
-          AND expires_at IS NOT NULL AND expires_at < CURRENT_TIMESTAMP`,
-      [planId],
+      [tokenHash(filter.token)],
     );
     return;
   }
   await pool.query(
     `UPDATE plan_invites SET status = 'expired'
-      WHERE status = 'pending' AND expires_at IS NOT NULL AND expires_at < CURRENT_TIMESTAMP`,
+      WHERE plan_id = ? AND status = 'pending'
+        AND expires_at IS NOT NULL AND expires_at < CURRENT_TIMESTAMP`,
+    [filter.planId],
   );
 }
 
@@ -83,7 +77,7 @@ export async function listInvites(planId: string): Promise<{
   id: string; role: "editor" | "viewer"; status: string; invited_name: string | null;
   invited_user_id: string | null; accepted_by_id: string | null; expires_at: string | null; created_at: string;
 }[]> {
-  await markExpiredInvites(undefined, planId);
+  await markExpiredInvites({ planId });
   return all(
     `SELECT id, role, status, invited_name, invited_user_id, accepted_by_id, expires_at, created_at
        FROM plan_invites WHERE plan_id = ? AND status = 'pending' ORDER BY created_at DESC LIMIT 200`,
@@ -123,7 +117,7 @@ export async function inspectInvite(token: string): Promise<{
   memberOptions: InviteMemberOption[];
 }> {
   if (!token) throw new BadRequest("招待リンクが無効です");
-  await markExpiredInvites(token);
+  await markExpiredInvites({ token });
   const invite = await firstRow<{
     id: string; plan_id: string; status: string; invited_name: string | null;
     invited_user_id: string | null; expires_at: string | null; slug: string; title: string;
@@ -222,62 +216,7 @@ async function claimPlaceholder(
        invited_by_id = VALUES(invited_by_id), from_date = VALUES(from_date), to_date = VALUES(to_date)`,
     [invite.plan_id, userId, invite.role, invite.created_by_id, placeholder.from_date, placeholder.to_date],
   );
-  await conn.query(
-    "UPDATE expenses SET payer_user_id = ? WHERE plan_id = ? AND payer_user_id = ?",
-    [userId, invite.plan_id, placeholderUserId],
-  );
-  await conn.query(
-    `INSERT INTO expense_shares (expense_id, user_id, amount_base_minor)
-     SELECT s.expense_id, ?, s.amount_base_minor
-       FROM expense_shares s JOIN expenses e ON e.id = s.expense_id
-      WHERE e.plan_id = ? AND s.user_id = ?
-     ON DUPLICATE KEY UPDATE amount_base_minor = amount_base_minor + VALUES(amount_base_minor)`,
-    [userId, invite.plan_id, placeholderUserId],
-  );
-  await conn.query(
-    `DELETE s FROM expense_shares s JOIN expenses e ON e.id = s.expense_id
-      WHERE e.plan_id = ? AND s.user_id = ?`,
-    [invite.plan_id, placeholderUserId],
-  );
-  await conn.query(
-    "UPDATE settlements SET from_user_id = ? WHERE plan_id = ? AND from_user_id = ?",
-    [userId, invite.plan_id, placeholderUserId],
-  );
-  await conn.query(
-    "UPDATE settlements SET to_user_id = ? WHERE plan_id = ? AND to_user_id = ?",
-    [userId, invite.plan_id, placeholderUserId],
-  );
-  await conn.query(
-    "UPDATE plan_candidates SET proposed_by_id = ? WHERE plan_id = ? AND proposed_by_id = ?",
-    [userId, invite.plan_id, placeholderUserId],
-  );
-  await conn.query(
-    `INSERT IGNORE INTO plan_candidate_votes (candidate_id, user_id)
-     SELECT v.candidate_id, ? FROM plan_candidate_votes v
-     JOIN plan_candidates c ON c.id = v.candidate_id
-     WHERE c.plan_id = ? AND v.user_id = ?`,
-    [userId, invite.plan_id, placeholderUserId],
-  );
-  await conn.query(
-    `DELETE v FROM plan_candidate_votes v JOIN plan_candidates c ON c.id = v.candidate_id
-      WHERE c.plan_id = ? AND v.user_id = ?`,
-    [invite.plan_id, placeholderUserId],
-  );
-  // 行程の対象者はTEXT(JSON配列)なので、同じ旅行の行だけ安全にparseしてIDを置換する。
-  const [itineraryRows] = await conn.query<mysql.RowDataPacket[]>(
-    "SELECT id, member_ids FROM itinerary_items WHERE plan_id = ? AND member_ids IS NOT NULL FOR UPDATE",
-    [invite.plan_id],
-  );
-  for (const row of itineraryRows as unknown as { id: string; member_ids: string }[]) {
-    try {
-      const parsed = JSON.parse(String(row.member_ids || "")) as unknown;
-      if (!Array.isArray(parsed) || !parsed.includes(placeholderUserId)) continue;
-      const next = [...new Set(parsed.map((id) => id === placeholderUserId ? userId : id))];
-      await conn.query("UPDATE itinerary_items SET member_ids = ? WHERE id = ?", [JSON.stringify(next), row.id]);
-    } catch {
-      // 壊れた旧JSONはbootstrapと同じく全員扱い。本人紐付け自体は止めない。
-    }
-  }
+  await reassignPlanMemberReferences(conn, invite.plan_id, placeholderUserId, userId);
   await conn.query(
     `UPDATE plan_member_placeholders
         SET status = 'claimed', claimed_by_user_id = ?, claimed_at = CURRENT_TIMESTAMP
@@ -299,7 +238,7 @@ async function claimPlaceholder(
 
 export async function acceptInvite(token: string, userId: string, selectedMemberUserId = ""): Promise<{ planSlug: string }> {
   if (!userId) throw new BadRequest("ログインが必要です");
-  await markExpiredInvites(token);
+  await markExpiredInvites({ token });
   return withTransaction(async (conn) => {
     const invite = await firstRow<{
       id: string;

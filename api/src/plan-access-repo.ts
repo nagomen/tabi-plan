@@ -70,10 +70,6 @@ export async function getPlanAccess(planId: string, userId: string): Promise<Pla
   };
 }
 
-export async function planRole(planId: string, userId: string): Promise<PlanRole> {
-  return (await getPlanAccess(planId, userId)).role;
-}
-
 export async function canManagePlan(planId: string, userId: string): Promise<boolean> {
   return (await getPlanAccess(planId, userId)).canManage;
 }

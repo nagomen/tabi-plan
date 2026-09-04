@@ -22,7 +22,7 @@ interface OpenAiResponse {
     type?: string;
     content?: { type?: string; text?: string; refusal?: string }[];
   }[];
-  usage?: { input_tokens?: number; output_tokens?: number; total_tokens?: number };
+  usage?: { input_tokens?: number; output_tokens?: number };
 }
 
 export interface OpenAiMeta {

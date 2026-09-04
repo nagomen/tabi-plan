@@ -5,8 +5,8 @@ process.env.SESSION_SECRET ||= "test-session-secret-0123456789-abcdef";
 process.env.DB_USER ||= "test";
 process.env.DB_PASSWORD ||= "test";
 
-const { BadRequest, VersionConflict, describeError } = await import("../dist/errors.js");
-const { rateLimitCheck, rateLimited } = await import("../dist/rate-limit.js");
+const { BadRequest, Forbidden, NotFound, VersionConflict, describeError } = await import("../dist/errors.js");
+const { rateLimitCheck } = await import("../dist/rate-limit.js");
 const { paidOnOrNull, computeAmounts } = await import("../dist/expense-repo.js");
 
 const withCode = (code) => Object.assign(new Error(code), { code });
@@ -27,6 +27,9 @@ test("業務エラーと衝突は利用者向けの契約（message/action）へ
   const dup = describeError(withCode("ER_DUP_ENTRY"), "req1");
   assert.equal(dup.status, 409);
   assert.equal(dup.body.error, "ER_DUP_ENTRY", "slug衝突の自動リトライが使うコードを維持する");
+
+  assert.equal(describeError(new Forbidden("権限がありません"), "req1").status, 403);
+  assert.equal(describeError(new NotFound("見つかりません"), "req1").status, 404);
 });
 
 test("DBの一時障害・接続断は再試行可能な503として返す", () => {
@@ -75,9 +78,9 @@ test("レート制限は拒否時に窓の残り秒数を返す", () => {
   assert.ok(wait >= 1 && wait <= 60, `残り秒数を返す: ${wait}`);
   // 窓が切り替わればまた通る
   assert.equal(rateLimitCheck(buckets, "ip", 2, now + 61_000), 0);
-  // 既存の boolean 版も同じ判定を返す
-  assert.equal(rateLimited(buckets, "ip2", 1, now), false);
-  assert.equal(rateLimited(buckets, "ip2", 1, now + 1), true);
+  // boolean が必要な箇所は待ち秒数が正かで判定できる
+  assert.equal(rateLimitCheck(buckets, "ip2", 1, now), 0);
+  assert.equal(rateLimitCheck(buckets, "ip2", 1, now + 1) > 0, true);
 });
 
 test("支払日と換算レートはDBに届く前に検証される", () => {

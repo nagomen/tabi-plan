@@ -93,7 +93,7 @@ export async function friendshipBetween(a: string, b: string): Promise<{
 export async function upsertFriendship(input: {
   a: string; b: string; requested_by_id: string; status?: string;
 }): Promise<{ id: string }> {
-  const [low, high] = input.a < input.b ? [input.a, input.b] : [input.b, input.a];
+  const [low, high] = friendshipPair(input.a, input.b);
   const existing = await all<{ id: string }>(
     "SELECT id FROM friendships WHERE user_low_id = ? AND user_high_id = ? LIMIT 1", [low, high],
   );

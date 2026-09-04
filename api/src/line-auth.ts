@@ -12,9 +12,10 @@
 
 import crypto from "node:crypto";
 import { config } from "./config.js";
-import { all, pool } from "./db.js";
+import { all, firstRow, pool, withTransaction } from "./db.js";
 import { BadRequest } from "./errors.js";
 import { newId } from "./ids.js";
+import { identityKey } from "./identity.js";
 import { hmac } from "./signing.js";
 
 const AUTHORIZE_URL = "https://access.line.me/oauth2/v2.1/authorize";
@@ -214,10 +215,6 @@ async function exchangeCode(code: string): Promise<LineProfile> {
   };
 }
 
-function nameKey(name: string): string {
-  return name.trim().toLowerCase().slice(0, 64);
-}
-
 /**
  * LINE の本人と users を結び付ける。
  *
@@ -227,51 +224,82 @@ function nameKey(name: string): string {
  * - どちらでもなければ利用者を新しく作る。
  */
 export async function resolveLineUser(profile: LineProfile, linkTo = ""): Promise<string> {
-  const existing = await all<{ user_id: string }>(
-    "SELECT user_id FROM user_identities WHERE provider = 'line' AND subject = ? LIMIT 1",
-    [profile.subject],
-  );
-  if (existing[0]) {
+  try {
+    return await withTransaction(async (conn) => {
+      const existing = await firstRow<{ user_id: string }>(
+        conn,
+        `SELECT user_id FROM user_identities
+          WHERE provider = 'line' AND subject = ? LIMIT 1 FOR UPDATE`,
+        [profile.subject],
+      );
+      if (existing) {
+        if (linkTo && existing.user_id !== linkTo) {
+          throw new LineAuthError("このLINEアカウントは別の利用者に紐付いています");
+        }
+        await conn.query(
+          `UPDATE user_identities SET display_name = ?, picture_url = ?
+            WHERE provider = 'line' AND subject = ?`,
+          [profile.displayName || null, profile.pictureUrl || null, profile.subject],
+        );
+        return existing.user_id;
+      }
+
+      let userId = linkTo;
+      if (userId) {
+        const user = await firstRow<{ id: string }>(
+          conn, "SELECT id FROM users WHERE id = ? LIMIT 1 FOR UPDATE", [userId],
+        );
+        if (!user) throw new LineAuthError("紐付け先の利用者を確認できませんでした。ログインし直してください");
+      } else {
+        const name = profile.displayName || "LINEの利用者";
+        userId = newId("usr");
+        await conn.query(
+          "INSERT INTO users (id, display_name, name_key) VALUES (?, ?, ?)",
+          [userId, name, identityKey(name)],
+        );
+      }
+      // 同じLINE subjectを後勝ちで別userへ付け替えない。
+      await conn.query(
+        `INSERT INTO user_identities (user_id, provider, subject, display_name, picture_url)
+         VALUES (?, 'line', ?, ?, ?)`,
+        [userId, profile.subject, profile.displayName || null, profile.pictureUrl || null],
+      );
+      return userId;
+    });
+  } catch (error) {
+    // 分離レベルや同時実行順によって非存在行のgap lockではなく一意制約競合に
+    // なる場合がある。作成transactionはrollback済みなので、勝ったidentityを採用する。
+    if (String((error as { code?: string })?.code || "") !== "ER_DUP_ENTRY") throw error;
+    const raced = await firstRow<{ user_id: string }>(
+      pool,
+      "SELECT user_id FROM user_identities WHERE provider = 'line' AND subject = ? LIMIT 1",
+      [profile.subject],
+    );
+    if (!raced) throw error;
+    if (linkTo && raced.user_id !== linkTo) {
+      throw new LineAuthError("このLINEアカウントは別の利用者に紐付いています");
+    }
     await pool.query(
       `UPDATE user_identities SET display_name = ?, picture_url = ?
-        WHERE provider = 'line' AND subject = ?`,
-      [profile.displayName || null, profile.pictureUrl || null, profile.subject],
+        WHERE provider = 'line' AND subject = ? AND user_id = ?`,
+      [profile.displayName || null, profile.pictureUrl || null, profile.subject, raced.user_id],
     );
-    return existing[0].user_id;
+    return raced.user_id;
   }
-
-  let userId = linkTo;
-  if (!userId) {
-    const name = profile.displayName || "LINEの利用者";
-    userId = newId("usr");
-    await pool.query(
-      "INSERT INTO users (id, display_name, name_key) VALUES (?, ?, ?)",
-      [userId, name, nameKey(name)],
-    );
-  }
-  await pool.query(
-    `INSERT INTO user_identities (user_id, provider, subject, display_name, picture_url)
-     VALUES (?, 'line', ?, ?, ?)
-     ON DUPLICATE KEY UPDATE user_id = VALUES(user_id), display_name = VALUES(display_name),
-       picture_url = VALUES(picture_url)`,
-    [userId, profile.subject, profile.displayName || null, profile.pictureUrl || null],
-  );
-  return userId;
 }
 
 /** コールバックを処理し、ログインさせる利用者 id と戻り先を返す。 */
 export async function handleLineCallback(input: {
   code: string;
   state: string;
-}): Promise<{ userId: string; returnTo: string; linked: boolean; nonce: string }> {
+}): Promise<{ userId: string; returnTo: string; nonce: string }> {
   const state = readState(input.state);
   if (!state) throw new LineAuthError("ログインの手続きが期限切れです。もう一度お試しください");
   if (!input.code) throw new LineAuthError("LINE から認可コードが返りませんでした");
   const profile = await exchangeCode(input.code);
   const userId = await resolveLineUser(profile, state.linkTo);
   return {
-    userId, returnTo: safeReturnTo(state.returnTo),
-    linked: Boolean(state.linkTo), nonce: state.nonce,
+    userId, returnTo: safeReturnTo(state.returnTo), nonce: state.nonce,
   };
 }
 
