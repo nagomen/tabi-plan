@@ -114,7 +114,7 @@ export const config = {
     maxOutputTokens: integer("OPENAI_MAX_OUTPUT_TOKENS", "30000", 512, 100_000),
     maxRetries: integer("OPENAI_MAX_RETRIES", "2", 0, 5),
     webSearchEnabled: optional("OPENAI_WEB_SEARCH_ENABLED", "true") === "true",
-    dailyRequestsPerUser: integer("AI_DAILY_REQUESTS_PER_USER", "40", 1, 10_000),
+    dailyRequestsPerUser: Math.min(integer("AI_DAILY_REQUESTS_PER_USER", "3", 1, 10_000), 3),
     dailyTokensPerUser: integer("AI_DAILY_TOKENS_PER_USER", "400000", 1_000, 100_000_000),
     cooldownSeconds: integer("AI_COOLDOWN_SECONDS", "20", 0, 3600),
   },

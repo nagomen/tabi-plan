@@ -30,6 +30,14 @@ test("APIのエラー契約(code/action/retry_after/request_id)を画面操作�
   const db = read("src/shared/db.ts");
   assert.match(db, /retryable = parsed\.retryable === true/);
   assert.match(db, /request_id/);
+  assert.match(db, /use_external_ai/);
+  assert.match(db, /AI機能はログインユーザーのみ利用できます/);
   assert.match(db, /AbortSignal\.timeout\(aiPath \? 90_000 : 30_000\)/);
   assert.match(db, /navigator\.onLine === false/);
+  assert.match(guidance, /action: "external_ai"/);
+  assert.match(guidance, /プロンプトをコピーしてChatGPTを開く/);
+  const external = read("src/shared/external-ai.ts");
+  assert.match(external, /buildExternalAiCreatePrompt/);
+  assert.match(external, /buildExternalAiRefinePrompt/);
+  assert.match(external, /clipboard\.writeText/);
 });

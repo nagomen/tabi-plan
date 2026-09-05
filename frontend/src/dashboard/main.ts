@@ -48,6 +48,7 @@ import { setTripDocumentTitle } from "../shared/page-meta";
 import { localDateISO, parseISO, toISO, mdLabel } from "../shared/date";
 import { buildGoogleMyMapsKml, googleMyMapsKmlFilename, mapsSearchUrl } from "../shared/maps";
 import { formatDurationMinutes, parseDurationMinutes } from "../shared/travel-duration";
+import { buildExternalAiRefinePrompt, copyExternalAiPrompt, openExternalAi } from "../shared/external-ai";
 import type {
   TripData,
   TripLink,
@@ -280,6 +281,7 @@ interface AiChatEntry {
   role: "user" | "assistant";
   text: string;
   proposal?: db.ItineraryRefineResult;
+  externalPrompt?: string;
   applied?: boolean;
 }
 
@@ -2695,6 +2697,19 @@ function membersForAiRefinement(): db.ItineraryRefineMember[] {
     .filter((member) => member.user_id);
 }
 
+function externalAiRefinePrompt(instruction: string): string {
+  const dates = tripDateRange(state.data);
+  return buildExternalAiRefinePrompt({
+    title: state.data.trip?.title || CONFIG.tripTitle || "旅行計画",
+    startDate: dates[0] || "",
+    endDate: dates[dates.length - 1] || "",
+    instruction,
+    cities: state.data.cities || [],
+    members: membersForAiRefinement(),
+    currentItinerary: latestAiItinerary(),
+  });
+}
+
 /**
  * AI提案で行程を丸ごと置き換えるとき、対象メンバー指定（一部の人だけの予定）を
  * AI出力から反映する。AIが既存予定のmembersを省略した場合に備えて、同じ予定
@@ -2740,11 +2755,24 @@ function renderAiChat(): void {
     <div class="tl-ai-message is-${entry.role}">
       <span>${escapeHtml(entry.text).replace(/\n/g, "<br>")}</span>
       ${entry.proposal ? `<button type="button" data-ai-apply="${index}" ${entry.applied ? "disabled" : ""}>${entry.applied ? "反映済み" : "この提案を行程に反映"}</button>` : ""}
+      ${entry.externalPrompt ? `<button type="button" data-ai-external="${index}">プロンプトをコピーしてChatGPTを開く</button>` : ""}
     </div>`).join("") + (aiChatBusy ? `
     <div class="tl-ai-message is-assistant is-thinking"><span>全日程を確認して修正案を作っています…</span></div>` : "");
   log.scrollTop = log.scrollHeight;
   log.querySelectorAll<HTMLButtonElement>("[data-ai-apply]").forEach((button) => {
     button.addEventListener("click", () => void applyAiProposal(Number(button.dataset.aiApply)));
+  });
+  log.querySelectorAll<HTMLButtonElement>("[data-ai-external]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const entry = aiChatEntries[Number(button.dataset.aiExternal)];
+      if (!entry?.externalPrompt) return;
+      openExternalAi("chatgpt");
+      const copied = await copyExternalAiPrompt(entry.externalPrompt);
+      const status = root.querySelector<HTMLElement>("[data-ai-chat-status]");
+      if (status) status.textContent = copied
+        ? "外部AI用のプロンプトをコピーしました。開いたChatGPTに貼り付けてください。"
+        : "外部AI用のプロンプトを表示しました。コピーしてChatGPTやGeminiに貼り付けてください。";
+    });
   });
 }
 
@@ -2831,7 +2859,15 @@ function setupAiChat(aiSupport: HTMLButtonElement): void {
       aiChatEntries.push({ role: "assistant", text: proposal.message, proposal });
       status.textContent = "提案を確認して、反映するか選んでください。";
     } catch (error) {
-      aiChatEntries.push({ role: "assistant", text: errorMessage(error) || "修正案を作れませんでした。もう一度お試しください。" });
+      if (error instanceof db.ApiRequestError && (error.code === "ai_daily_limit" || error.action === "use_external_ai")) {
+        aiChatEntries.push({
+          role: "assistant",
+          text: errorMessage(error) || "本日のAI利用上限に達しました。外部AI用のプロンプトを使って続けられます。",
+          externalPrompt: externalAiRefinePrompt(instruction),
+        });
+      } else {
+        aiChatEntries.push({ role: "assistant", text: errorMessage(error) || "修正案を作れませんでした。もう一度お試しください。" });
+      }
       status.textContent = "";
     } finally {
       aiChatBusy = false;

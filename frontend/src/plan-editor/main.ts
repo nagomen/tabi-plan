@@ -39,6 +39,7 @@ import { formatDurationMinutes } from "../shared/travel-duration";
 import { AiConsultationState, type AiStage } from "./ai-consultation-state";
 import { aiErrorGuidance, retryWaitLabel, type AiErrorPhase } from "./ai-error-guidance";
 import { resolveAiMapGeocodeJobs, type AiMapGeocodeSummary } from "./ai-map-geocoding";
+import { buildExternalAiCreatePrompt, copyExternalAiPrompt, openExternalAi } from "../shared/external-ai";
 import {
   automaticGeocodingAvailable,
   cityAliasesFor,
@@ -1081,7 +1082,7 @@ const aiExtra = qs<HTMLTextAreaElement>(root, "[data-ai-extra]");
 type AiPreferences = db.ItineraryAiPreferences;
 const aiConsultation = new AiConsultationState();
 let aiErrorTimer: number | null = null;
-let aiErrorHandler: (() => void) | null = null;
+let aiErrorHandler: (() => void | Promise<void>) | null = null;
 
 aiRunIcon.innerHTML = icon("sparkles");
 
@@ -1141,6 +1142,17 @@ function showAiError(error: unknown, phase: AiErrorPhase): void {
             "noopener",
           );
         }
+        : guidance.action === "external_ai"
+          ? async () => {
+            openExternalAi("chatgpt");
+            const copied = await copyExternalAiPrompt(externalAiCreatePrompt());
+            setAiStatus(
+              copied
+                ? "外部AI用のプロンプトをコピーしました。開いたChatGPTに貼り付けてください。"
+                : "外部AI用のプロンプトを表示しました。コピーしてChatGPTやGeminiに貼り付けてください。",
+              copied ? "ok" : "warn",
+            );
+          }
         : () => {
           clearAiError();
           if (phase === "candidates") aiNote.focus();
@@ -1171,7 +1183,7 @@ aiErrorAction.addEventListener("click", () => {
   if (aiErrorAction.disabled) return;
   const handler = aiErrorHandler;
   clearAiError();
-  handler?.();
+  void handler?.();
 });
 
 function selectedAiCandidates(): db.ItineraryOptions["candidates"] {
@@ -1196,6 +1208,32 @@ function aiPreferences(): AiPreferences {
     transport: aiTransport.value as AiPreferences["transport"],
     extra: aiExtra.value.trim() || undefined,
   };
+}
+
+function aiBaseInputForExternal(): db.ItineraryAiBaseInput | null {
+  const cities = model.cities
+    .filter((city) => city.name.trim())
+    .map((city) => ({ name: city.name.trim(), from_date: city.fromDate, to_date: city.toDate }));
+  const area = aiArea.value.trim() || cities.map((city) => city.name).join("、") || model.title.trim();
+  return area || model.startDate || model.endDate
+    ? {
+      area,
+      start_date: model.startDate,
+      end_date: model.endDate,
+      note: aiNote.value.trim() || undefined,
+      cities,
+    }
+    : null;
+}
+
+function externalAiCreatePrompt(): string {
+  return buildExternalAiCreatePrompt({
+    base: aiBaseInputForExternal(),
+    title: model.title,
+    members: model.members,
+    selectedCandidates: selectedAiCandidates(),
+    preferences: aiConsultation.stage === "preferences" ? aiPreferences() : undefined,
+  });
 }
 
 function aiBubble(role: "assistant" | "user", text: string): string {

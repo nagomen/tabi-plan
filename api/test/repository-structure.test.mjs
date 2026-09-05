@@ -23,12 +23,16 @@ test("plan repository delegates bootstrap, access, invites and membership", () =
 
 test("AI route distinguishes an expired login session from missing plan permission", () => {
   const routes = source("routes.ts");
-  assert.match(routes, /path === "\/api\/ai\/itinerary"[\s\S]*status: 401, body: \{ error: "session_required" \}/);
+  const config = source("config.ts");
+  assert.match(config, /dailyRequestsPerUser: Math\.min\(integer\("AI_DAILY_REQUESTS_PER_USER", "3"[\s\S]*, 3\)/);
+  assert.match(routes, /function aiSessionRequired\(\)[\s\S]*error: "session_required"[\s\S]*action: "sign_in"/);
+  assert.match(routes, /path === "\/api\/ai\/itinerary"[\s\S]*return aiSessionRequired\(\)/);
   assert.match(routes, /path === "\/api\/ai\/itinerary-options"[\s\S]*suggestItineraryOptions/);
   assert.match(routes, /path === "\/api\/ai\/itinerary-refine"[\s\S]*access\.canEditWorkspace/);
   assert.match(routes, /access\.canEditWorkspace[\s\S]*refineItinerary/);
   assert.match(routes, /reserveAi\(actorUserId, "options"\)/);
   assert.match(routes, /reserveAi\(actorUserId, "itinerary"\)/);
+  assert.match(routes, /ai_daily_limit[\s\S]*use_external_ai/);
   assert.match(routes, /error instanceof AiOutputError[\s\S]*status: 422/);
   assert.doesNotMatch(routes, /causeDetail[^\n]*body/);
 });

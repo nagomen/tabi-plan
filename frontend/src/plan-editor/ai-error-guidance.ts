@@ -1,5 +1,5 @@
 export type AiErrorPhase = "candidates" | "itinerary";
-export type AiErrorAction = "retry" | "revise" | "restart" | "sign_in" | "contact_support";
+export type AiErrorAction = "retry" | "revise" | "restart" | "sign_in" | "external_ai" | "contact_support";
 
 export interface AiErrorLike {
   message?: string;
@@ -73,7 +73,17 @@ export function aiErrorGuidance(error: AiErrorLike, phase: AiErrorPhase): AiErro
   const message = fallbackMessage(error);
 
   if (code === "session_required" || error.action === "sign_in") {
-    return { title: "再ログインが必要です", message, action: "sign_in", actionLabel: "別タブで再ログイン", retryAfter: 0, requestId };
+    return { title: "ログインが必要です", message, action: "sign_in", actionLabel: "ログインする", retryAfter: 0, requestId };
+  }
+  if (code === "ai_daily_limit" || error.action === "use_external_ai") {
+    return {
+      title: "本日のAI利用上限に達しました",
+      message,
+      action: "external_ai",
+      actionLabel: "プロンプトをコピーしてChatGPTを開く",
+      retryAfter: 0,
+      requestId,
+    };
   }
   if (code === "invalid_ai_input" || error.action === "restart_consultation") {
     return phase === "itinerary"

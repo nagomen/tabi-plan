@@ -67,6 +67,9 @@ test("旅行詳細では編集メンバーだけが全日程対応のAIチャッ
   assert.match(dashboard, /ItineraryRefineCity/);
   assert.match(dashboard, /ItineraryRefineMember/);
   assert.match(dashboard, /await db\.refineItinerary/);
+  assert.match(dashboard, /buildExternalAiRefinePrompt/);
+  assert.match(dashboard, /data-ai-external/);
+  assert.match(dashboard, /error\.code === "ai_daily_limit"/);
   assert.match(dashboard, /この提案を行程に反映/);
   assert.match(dashboard, /await db\.flushMutations\(checkpoint\)/);
   assert.match(db, /"POST", "\/api\/ai\/itinerary-refine"/);

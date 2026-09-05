@@ -338,6 +338,7 @@ function responseErrorCode(text: string): string {
 export type ApiRecoveryAction =
   | "retry"
   | "retry_later"
+  | "use_external_ai"
   | "revise_input"
   | "restart_consultation"
   | "reload"
@@ -396,9 +397,16 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     const text = await res.text().catch(() => "");
     const code = responseErrorCode(text);
     if (res.status === 401 && code === "session_required") {
-      expireBrowserSession();
+      let message = sessionToken
+        ? "ログインセッションの期限が切れました。再ログインしてください。"
+        : "AI機能はログインユーザーのみ利用できます。ログインしてからお試しください。";
+      try {
+        const parsed = JSON.parse(text) as { message?: unknown };
+        if (typeof parsed.message === "string" && parsed.message) message = parsed.message;
+      } catch { /* ignore */ }
+      if (sessionToken) expireBrowserSession();
       throw new ApiRequestError(
-        "ログインセッションの期限が切れました。再ログインしてください。",
+        message,
         401,
         "session_required",
         0,
@@ -434,7 +442,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
       retryAfter = Math.max(0, Number(parsed.retry_after) || 0);
       retryable = parsed.retryable === true;
       const parsedAction = typeof parsed.action === "string" ? parsed.action : "";
-      if (["retry", "retry_later", "revise_input", "restart_consultation", "reload", "contact_support", "sign_in"].includes(parsedAction)) {
+      if (["retry", "retry_later", "use_external_ai", "revise_input", "restart_consultation", "reload", "contact_support", "sign_in"].includes(parsedAction)) {
         action = parsedAction as ApiRecoveryAction;
       }
       if (typeof parsed.request_id === "string") requestId = parsed.request_id.slice(0, 128);

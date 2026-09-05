@@ -241,6 +241,18 @@ function aiFailure(error: unknown): Handled {
   };
 }
 
+function aiSessionRequired(): Handled {
+  return {
+    status: 401,
+    body: {
+      error: "session_required",
+      message: "AI機能はログインユーザーのみ利用できます。ログインしてからお試しください。",
+      retryable: false,
+      action: "sign_in",
+    },
+  };
+}
+
 async function reserveAi(userId: string, scope: AiScope): Promise<Handled | null> {
   const reservation = await reserveAiRequest(userId, scope);
   return reservation.allowed
@@ -250,11 +262,11 @@ async function reserveAi(userId: string, scope: AiScope): Promise<Handled | null
       body: {
         error: reservation.reason === "daily" ? "ai_daily_limit" : "ai_cooldown",
         message: reservation.reason === "daily"
-          ? "本日のAI利用上限に達しました。翌日以降にもう一度お試しください。"
+          ? "本日のAI利用上限に達しました。外部のChatGPTやGeminiに同じ条件を貼り付けて続けることもできます。"
           : "短時間に続けてAIを利用しています。表示された時間を待ってお試しください。",
         retryable: true,
         retry_after: reservation.retryAfter,
-        action: "retry_later",
+        action: reservation.reason === "daily" ? "use_external_ai" : "retry_later",
       },
     };
 }
@@ -516,7 +528,7 @@ export async function route(method: string, path: string, body: Body, actorUserI
 
   // ---- AI（候補選択 → 旅程確定の2回で終了） ----
   if (method === "POST" && path === "/api/ai/itinerary-options") {
-    if (!actorUserId) return { status: 401, body: { error: "session_required" } };
+    if (!actorUserId) return aiSessionRequired();
     try {
       const input = itineraryInput(body);
       const limited = await reserveAi(actorUserId, "options");
@@ -528,7 +540,7 @@ export async function route(method: string, path: string, body: Body, actorUserI
   }
   if (method === "POST" && path === "/api/ai/itinerary") {
     // キーはサーバーにしか無い。誰でも叩けると費用が伸びるのでログイン必須。
-    if (!actorUserId) return { status: 401, body: { error: "session_required" } };
+    if (!actorUserId) return aiSessionRequired();
     try {
       const input = itineraryInput(body);
       const limited = await reserveAi(actorUserId, "itinerary");
@@ -540,7 +552,7 @@ export async function route(method: string, path: string, body: Body, actorUserI
     }
   }
   if (method === "POST" && path === "/api/ai/itinerary-refine") {
-    if (!actorUserId) return { status: 401, body: { error: "session_required" } };
+    if (!actorUserId) return aiSessionRequired();
     try {
       const input = itineraryRefineInput(body);
       // 閲覧者や公開共同編集者が他人の計画を材料にAI費用を使わないよう、
