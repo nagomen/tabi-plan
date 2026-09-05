@@ -77,7 +77,6 @@
 
           <div class="pe-route" data-step-panel="2">
             <h2 class="pe-sec-title" data-ic-route>ルート（訪問地）</h2>
-            <p class="pe-sec-note">訪問する都市・エリアを順番に。期間を決めると滞在日も指定できます。</p>
             <div class="pe-route-list" data-cities></div>
             <div class="pe-route-add">
               <input data-city-input type="text" autocomplete="off" maxlength="100" placeholder="都市・エリアを入力（例: 盛岡）" aria-label="都市・エリアを入力">
@@ -85,7 +84,11 @@
             </div>
 
             <div class="pe-ai" data-ai-block>
-              <span class="pe-ai-head" data-ic-ai>AI 旅行相談</span>
+              <div class="pe-ai-headrow">
+                <span class="pe-ai-head" data-ic-ai>AI 旅行相談</span>
+                <span class="pe-ai-optional">任意</span>
+              </div>
+              <p class="pe-ai-lead">使わなくても次のステップへ進めます。行き先と希望を書くと、AIが行程の下書きを作ります。</p>
 
               <div data-ai-intro>
                 <div class="pe-ai-form">

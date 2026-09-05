@@ -958,7 +958,7 @@ function renderCities(): void {
   updateSteps();
   cityOptions.innerHTML = model.cities.map((c) => `<option value="${escapeHtml(c.name)}">`).join("");
   if (!model.cities.length) {
-    citiesEl.innerHTML = `<span class="pe-route-empty">訪問地はまだありません。都市やエリアを追加すると地図に表示されます。期間を設定すると、滞在日も指定できます。</span>`;
+    citiesEl.innerHTML = "";
     return;
   }
   const hasDays = model.days.length > 0;

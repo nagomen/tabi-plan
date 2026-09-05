@@ -639,17 +639,9 @@
 
   /* 都市バンド（日のグループ見出し） */
   .pe-route-add { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; max-width: 560px; }
-  .pe-route-add input { flex: 1; min-height: 44px; border: 0; border-bottom: 1px solid var(--line-strong); border-radius: 0; background: transparent; padding: 9px 2px; font: inherit; font-size: 14px; }
-  .pe-route-empty {
-    display: block;
-    padding: 13px 14px;
-    border: 1px dashed var(--line-strong);
-    border-radius: 0;
-    background: #fff;
-    color: var(--muted);
-    font-size: 12.5px;
-    font-weight: 500;
-  }
+  /* 説明文と見分けが付くよう、下線ではなく白地の箱にする */
+  .pe-route-add input { flex: 1; min-height: 44px; border: 1px solid var(--line-strong); border-radius: 0; background: var(--paper); padding: 9px 12px; font: inherit; font-size: 14px; }
+  .pe-route-add input:focus { outline: none; border-color: var(--green); }
 
   /* 行程：日 */
   .pe-days { display: grid; gap: 18px; padding: 8px 22px 8px; }
@@ -1272,7 +1264,7 @@
     .pe-route-add { grid-template-columns: 1fr auto; }
     .pe-route-add input {
       min-height: 40px;
-      padding: 8px 2px;
+      padding: 8px 10px;
       font-size: 13px;
       font-weight: 400;
     }
@@ -1891,13 +1883,6 @@
 }
 .pe-stay.pe-stay-cont { border-bottom-style: dashed; }
 
-/* 空状態：破線の箱 → ただの文 */
-.pe-route-empty {
-  padding: 12px 2px;
-  border: 0;
-  border-bottom: 1px solid var(--line);
-  background: transparent;
-}
 .pe-empty-cta {
   padding: 32px 2px;
   border: 0;
@@ -2139,9 +2124,34 @@
    ルートの下に置く。行き先と期間だけで一通り埋めるための入口なので、
    訪問地の入力欄と紛れないよう、上に区切り線を引いて別のまとまりにする。 */
 .pe-ai {
-  margin-top: 18px;
-  padding-top: 16px;
-  border-top: 1px solid var(--line);
+  /* 次のステップに必須ではない補助機能なので、訪問地の入力と紛れないよう
+     独立したパネル（薄い地＋枠）にして「別のまとまり」だと分かるようにする。 */
+  margin-top: 20px;
+  padding: 14px 16px 16px;
+  border: 1px solid var(--line);
+  background: var(--wash);
+}
+.pe-ai-headrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.pe-ai-optional {
+  padding: 1px 9px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--paper);
+  color: var(--muted);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+.pe-ai-lead {
+  margin: 6px 0 12px;
+  color: var(--muted);
+  font-size: 11.5px;
+  font-weight: 500;
+  line-height: 1.6;
 }
 .pe-ai-head {
   display: inline-flex;
@@ -2170,20 +2180,19 @@
 .pe-ai-form input { flex: 1 1 220px; min-width: 0; }
 .pe-ai-run { flex: none; }
 .pe-ai-form input {
+  /* 説明文と見分けが付くよう、下線ではなく白地の箱にする */
   min-height: 38px;
-  padding: 6px 2px;
-  border: 0;
-  border-bottom: 1px dashed var(--line-strong);
+  padding: 8px 12px;
+  border: 1px solid var(--line-strong);
   border-radius: 0;
-  background: transparent;
+  background: var(--paper);
   font: inherit;
   font-size: 14px;
   font-weight: 500;
 }
 .pe-ai-form input:focus {
   outline: none;
-  border-bottom-style: solid;
-  border-bottom-color: var(--green);
+  border-color: var(--green);
 }
 .pe-ai-status {
   margin: 10px 0 0;
