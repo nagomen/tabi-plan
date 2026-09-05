@@ -25,6 +25,9 @@ test("AI route distinguishes an expired login session from missing plan permissi
   const routes = source("routes.ts");
   const config = source("config.ts");
   assert.match(config, /dailyRequestsPerUser: Math\.min\(integer\("AI_DAILY_REQUESTS_PER_USER", "3"[\s\S]*, 3\)/);
+  assert.match(config, /googleRoutesApiKey: optional\("GOOGLE_ROUTES_API_KEY"/);
+  assert.match(config, /amadeusClientId: optional\("AMADEUS_CLIENT_ID"/);
+  assert.match(routes, /path === "\/api\/transport\/search"[\s\S]*searchTransportOptions\(input\)/);
   assert.match(routes, /function aiSessionRequired\(\)[\s\S]*error: "session_required"[\s\S]*action: "sign_in"/);
   assert.match(routes, /path === "\/api\/ai\/itinerary"[\s\S]*return aiSessionRequired\(\)/);
   assert.match(routes, /path === "\/api\/ai\/itinerary-options"[\s\S]*suggestItineraryOptions/);
@@ -33,6 +36,7 @@ test("AI route distinguishes an expired login session from missing plan permissi
   assert.match(routes, /reserveAi\(actorUserId, "options"\)/);
   assert.match(routes, /reserveAi\(actorUserId, "itinerary"\)/);
   assert.match(routes, /ai_daily_limit[\s\S]*use_external_ai/);
+  assert.match(routes, /transportOptionsForCities\(input\.cities \|\| \[\]/);
   assert.match(routes, /error instanceof AiOutputError[\s\S]*status: 422/);
   assert.doesNotMatch(routes, /causeDetail[^\n]*body/);
 });

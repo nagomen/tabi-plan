@@ -73,6 +73,8 @@ test("旅行詳細では編集メンバーだけが全日程対応のAIチャッ
   assert.match(dashboard, /この提案を行程に反映/);
   assert.match(dashboard, /await db\.flushMutations\(checkpoint\)/);
   assert.match(db, /"POST", "\/api\/ai\/itinerary-refine"/);
+  assert.match(db, /searchTransportOptions/);
+  assert.match(db, /"POST", "\/api\/transport\/search"/);
   assert.match(style, /\.tl-ai-support \{[\s\S]*border-radius: 999px/);
   assert.match(style, /\.tl-ai-chat \{[\s\S]*\.tl-ai-message\.is-user/);
   assert.match(style, /\.tl-day-title \.tl-ai-support \{[\s\S]*grid-column: 3/);

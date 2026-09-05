@@ -108,6 +108,42 @@ export interface ItineraryAiGenerateInput extends ItineraryAiBaseInput {
   consultation_token: string;
   selected_candidate_ids: string[];
   preferences: ItineraryAiPreferences;
+  /** APIで検索済みの移動候補。未指定ならサーバー側で検索できる範囲だけ補完する。 */
+  transport_options?: TransportOption[];
+}
+
+export type TransportSearchMode = "any" | "flight" | "transit" | "drive" | "walk";
+
+export interface TransportSearchInput {
+  from: string;
+  to: string;
+  date: string;
+  time?: string;
+  mode?: TransportSearchMode;
+  people?: number;
+}
+
+export interface TransportOption {
+  id: string;
+  mode: "flight" | "transit" | "drive" | "walk" | "ferry" | "other";
+  provider: "amadeus" | "google_routes" | "manual";
+  from: string;
+  to: string;
+  departure_time: string;
+  arrival_time: string;
+  duration_minutes: number;
+  price_label?: string;
+  carrier?: string;
+  service_name?: string;
+  flight_number?: string;
+  booking_url?: string;
+  confidence: "live_offer" | "estimated" | "manual";
+  note?: string;
+}
+
+export interface TransportSearchResult {
+  options: TransportOption[];
+  warnings: string[];
 }
 
 export interface ItineraryCandidate {
@@ -220,6 +256,8 @@ export interface ItineraryRefineInput {
   cities?: ItineraryRefineCity[];
   /** 参加期間つきメンバー。分岐日程のmembers判定に使う。 */
   members?: ItineraryRefineMember[];
+  /** APIで検索済みの移動候補。AIは候補を優先し、候補外の便名・価格を断定しない。 */
+  transport_options?: TransportOption[];
 }
 
 export interface ItineraryRefineResult {

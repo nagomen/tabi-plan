@@ -6,7 +6,7 @@
 // 返す形は計画エディタのモデルにそのまま流し込めるようにしてある。
 // 構造化出力（json_schema, strict）を使うので、壊れた JSON は返ってこない。
 
-import type { ItineraryCandidate, ItineraryDraft, ItineraryOptions } from "@tabi/contracts";
+import type { ItineraryCandidate, ItineraryDraft, ItineraryOptions, TransportOption } from "@tabi/contracts";
 import { config } from "./config.js";
 import { AiInputError, AiOutputError, AiUnavailableError } from "./ai-errors.js";
 import { createConsultationToken, selectedCandidatesFromToken, type ConsultationContext } from "./ai-consultation-token.js";
@@ -42,6 +42,8 @@ export interface ItineraryInput {
   };
   /** すでに登録されている訪問地。行き先の指定が無いときはこれを使う。 */
   cities?: { name: string; from_date?: string; to_date?: string }[];
+  /** APIで検索済みの移動候補。AIはこの候補を優先する。 */
+  transportOptions?: TransportOption[];
 }
 
 type UnsignedItineraryOptions = Omit<ItineraryOptions, "consultation_token">;
@@ -304,6 +306,7 @@ function optionsPrompt(input: ItineraryInput, dates: string[]): string {
 function prompt(input: ItineraryInput, dates: string[]): string {
   const selected = (input.selectedCandidates || []).slice(0, 24);
   const preferences = input.preferences;
+  const transportOptions = (input.transportOptions || []).slice(0, 16);
   return [
     ...tripContextLines(input, dates),
     selected.length ? `利用者が選んだ行きたい場所（可能な限りすべて行程に含める）:\n${selected.map((candidate) =>
@@ -317,6 +320,7 @@ function prompt(input: ItineraryInput, dates: string[]): string {
       `  - 主な移動: ${preferences.transport || "おまかせ"}`,
       preferences.extra ? `  - 追加条件: ${preferences.extra}` : "",
     ].filter(Boolean).join("\n") : "",
+    transportOptions.length ? `APIで検索済みの移動候補（この候補を優先。候補外の便名・価格は断定しない）:\n${JSON.stringify(transportOptions)}` : "",
     "",
     "この条件で旅行の下書きを作ってください。守ること:",
     "- days は対象の日付ちょうどぶん、同じ順で作る。日付を飛ばさない。",
@@ -329,6 +333,7 @@ function prompt(input: ItineraryInput, dates: string[]): string {
     "- 都市を移る日は、出発都市の予定 → その都市からのtransition → 到着都市の予定、の順にする。出発後に出発都市の予定を置かず、到着都市の予定は移動の到着見込み時刻より後に置く。",
     "- 同じ日にA→B→Cと移る場合は、Aの予定 → A→B → Bの予定 → B→C → Cの予定と交互に組む。都市間移動だけを日の先頭や末尾へまとめない。食事もその時点で滞在している都市に置く。",
     "- 都市間の距離、地理、乗換回数、ドアツードアの所要時間、公共交通の使いやすさを比較し、通常の旅行者に最も合理的な手段を1つ選ぶ。単に最安だけを優先しない。",
+    "- APIで検索済みの移動候補がある区間では、時刻・所要時間・便名・交通機関名・価格はその候補を優先する。候補がない区間だけ概算で組み、noteに要確認と書く。",
     "- 近距離は電車・バス・徒歩、中長距離は新幹線・飛行機、離島は飛行機・フェリーを比較する。車は公共交通が不便な区間で選ぶ。利用者の希望があれば希望を優先する。",
     "- transitions の from_place / to_place は実在する具体的な駅・空港・港などにし、transport と概算 duration_minutes、選定理由 note を必ず入れる。",
     "- transitions.time は時刻表の断定ではなく、行程を組むための現実的な出発予定時刻を必ずHH:MMで入れる。空文字にはしない。",

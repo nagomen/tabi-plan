@@ -25,6 +25,7 @@
 //   POST   /api/plans/<id>/settlements       精算を記録
 //   POST   /api/friendships                  友達申請/承諾
 //   DELETE /api/auth/line/link               LINE の紐付けを外す
+//   POST   /api/transport/search             飛行機・公共交通などの移動候補を検索する
 //   POST   /api/ai/itinerary-options         行き先から選択用の観光候補を作る
 //   POST   /api/ai/itinerary                 選択候補と条件から旅程の下書きを作る
 //   POST   /api/ai/itinerary-refine          既存の全行程をチャットの依頼で修正する
@@ -39,11 +40,12 @@ import * as userRepo from "./user-repo.js";
 import { PLAN_MANAGE_FIELDS, PLAN_PATCH_FIELDS } from "./plan-contract.js";
 import { generateItinerary, MAX_AI_CITIES, suggestItineraryOptions, type ItineraryInput } from "./ai-itinerary.js";
 import { refineItinerary } from "./ai-itinerary-refine.js";
-import type { ItineraryKind, ItineraryRefineInput, ItineraryRefineItem } from "@tabi/contracts";
+import type { ItineraryKind, ItineraryRefineInput, ItineraryRefineItem, TransportOption, TransportSearchInput, TransportSearchMode } from "@tabi/contracts";
 import { AiInputError, AiOutputError, AiUnavailableError, AiUpstreamError } from "./ai-errors.js";
 import { BadRequest } from "./errors.js";
 import { reserveAiRequest, type AiScope } from "./ai-usage-repo.js";
 import { unlinkLine } from "./line-auth.js";
+import { searchTransportOptions, transportOptionsForCities } from "./transport-search.js";
 
 export interface Handled {
   status: number;
@@ -61,6 +63,39 @@ const strArr = (v: unknown): string[] => Array.isArray(v)
   : [];
 const PLAN_CONTENT_FIELDS = new Set(["itinerary", "cities", "links", "checklist", "candidates"]);
 const ITINERARY_KINDS = new Set<ItineraryKind>(["sight", "move", "food", "stay", "todo", "form"]);
+const TRANSPORT_SEARCH_MODES = new Set<TransportSearchMode>(["any", "flight", "transit", "drive", "walk"]);
+
+function transportOptionsInput(value: unknown): TransportOption[] {
+  return arr(value).slice(0, 16).map((option, index) => ({
+    id: str(option.id).slice(0, 80) || `transport-${index + 1}`,
+    mode: (["flight", "transit", "drive", "walk", "ferry", "other"].includes(str(option.mode)) ? str(option.mode) : "other") as TransportOption["mode"],
+    provider: (["amadeus", "google_routes", "manual"].includes(str(option.provider)) ? str(option.provider) : "manual") as TransportOption["provider"],
+    from: str(option.from).slice(0, 160),
+    to: str(option.to).slice(0, 160),
+    departure_time: str(option.departure_time).slice(0, 40),
+    arrival_time: str(option.arrival_time).slice(0, 40),
+    duration_minutes: Math.max(0, Math.min(1440, Math.round(Number(option.duration_minutes) || 0))),
+    price_label: str(option.price_label).slice(0, 80) || undefined,
+    carrier: str(option.carrier).slice(0, 80) || undefined,
+    service_name: str(option.service_name).slice(0, 120) || undefined,
+    flight_number: str(option.flight_number).slice(0, 40) || undefined,
+    booking_url: str(option.booking_url).slice(0, 300) || undefined,
+    confidence: (["live_offer", "estimated", "manual"].includes(str(option.confidence)) ? str(option.confidence) : "manual") as TransportOption["confidence"],
+    note: str(option.note).slice(0, 200) || undefined,
+  })).filter((option) => option.from && option.to && option.duration_minutes > 0);
+}
+
+function transportSearchInput(body: Body): TransportSearchInput {
+  const mode = str(body.mode);
+  return {
+    from: str(body.from).trim().slice(0, 160),
+    to: str(body.to).trim().slice(0, 160),
+    date: str(body.date).slice(0, 10),
+    time: str(body.time).slice(0, 5) || undefined,
+    mode: TRANSPORT_SEARCH_MODES.has(mode as TransportSearchMode) ? mode as TransportSearchMode : "any",
+    people: Math.max(1, Math.min(9, Math.round(Number(body.people) || 1))),
+  };
+}
 
 function itineraryInput(body: Body): ItineraryInput {
   const rawPreferences = isRecord(body.preferences) ? body.preferences : {};
@@ -102,6 +137,7 @@ function itineraryInput(body: Body): ItineraryInput {
       from_date: str(city.from_date),
       to_date: str(city.to_date),
     })),
+    transportOptions: transportOptionsInput(body.transport_options),
   };
 }
 
@@ -163,6 +199,7 @@ function itineraryRefineInput(body: Body): ItineraryRefineInput {
     from_date: str(member.from_date).slice(0, 10) || null,
     to_date: str(member.to_date).slice(0, 10) || null,
   })).filter((member) => member.user_id);
+  const transportOptions = transportOptionsInput(body.transport_options);
   return {
     plan_id: planId,
     start_date: str(body.start_date).slice(0, 10),
@@ -173,6 +210,7 @@ function itineraryRefineInput(body: Body): ItineraryRefineInput {
     current_itinerary: currentItinerary,
     cities,
     members,
+    transport_options: transportOptions,
   };
 }
 
@@ -526,6 +564,41 @@ export async function route(method: string, path: string, body: Body, actorUserI
     }
   }
 
+  // ---- 移動候補検索 ----------------------------------------------------
+  if (method === "POST" && path === "/api/transport/search") {
+    if (!actorUserId) {
+      return {
+        status: 401,
+        body: {
+          error: "session_required",
+          message: "移動候補検索はログインユーザーのみ利用できます。",
+          retryable: false,
+          action: "sign_in",
+        },
+      };
+    }
+    try {
+      const input = transportSearchInput(body);
+      if (!input.from || !input.to || !input.date) {
+        return {
+          status: 400,
+          body: { error: "bad_request", message: "出発地・到着地・日付を指定してください", action: "revise_input" },
+        };
+      }
+      return { status: 200, body: await searchTransportOptions(input) };
+    } catch (error) {
+      return {
+        status: 502,
+        body: {
+          error: "transport_search_failed",
+          message: "移動候補を検索できませんでした。条件を変えてもう一度お試しください。",
+          retryable: true,
+          action: "retry",
+        },
+      };
+    }
+  }
+
   // ---- AI（候補選択 → 旅程確定の2回で終了） ----
   if (method === "POST" && path === "/api/ai/itinerary-options") {
     if (!actorUserId) return aiSessionRequired();
@@ -545,7 +618,14 @@ export async function route(method: string, path: string, body: Body, actorUserI
       const input = itineraryInput(body);
       const limited = await reserveAi(actorUserId, "itinerary");
       if (limited) return limited;
-      const draft = await generateItinerary(actorUserId, input);
+      const searched = await transportOptionsForCities(input.cities || [], input.people).catch((error) => {
+        console.warn("[transport] search for itinerary failed", error);
+        return [];
+      });
+      const draft = await generateItinerary(actorUserId, {
+        ...input,
+        transportOptions: [...(input.transportOptions || []), ...searched],
+      });
       return { status: 200, body: draft };
     } catch (error) {
       return aiFailure(error);
@@ -561,7 +641,14 @@ export async function route(method: string, path: string, body: Body, actorUserI
       if (!access.canEditWorkspace) return { status: 403, body: { error: "forbidden" } };
       const limited = await reserveAi(actorUserId, "itinerary");
       if (limited) return limited;
-      return { status: 200, body: await refineItinerary(actorUserId, input) };
+      const searched = await transportOptionsForCities(input.cities || []).catch((error) => {
+        console.warn("[transport] search for refine failed", error);
+        return [];
+      });
+      return { status: 200, body: await refineItinerary(actorUserId, {
+        ...input,
+        transport_options: [...(input.transport_options || []), ...searched],
+      }) };
     } catch (error) {
       return aiFailure(error);
     }

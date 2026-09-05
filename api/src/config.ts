@@ -118,4 +118,12 @@ export const config = {
     dailyTokensPerUser: integer("AI_DAILY_TOKENS_PER_USER", "400000", 1_000, 100_000_000),
     cooldownSeconds: integer("AI_COOLDOWN_SECONDS", "20", 0, 3600),
   },
+
+  /** 移動候補検索。キー未設定のプロバイダは自動で無効。 */
+  transport: {
+    googleRoutesApiKey: optional("GOOGLE_ROUTES_API_KEY", ""),
+    amadeusClientId: optional("AMADEUS_CLIENT_ID", ""),
+    amadeusClientSecret: optional("AMADEUS_CLIENT_SECRET", ""),
+    amadeusBaseUrl: optional("AMADEUS_BASE_URL", "https://test.api.amadeus.com").replace(/\/+$/, ""),
+  },
 } as const;

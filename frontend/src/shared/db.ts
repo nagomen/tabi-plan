@@ -16,13 +16,15 @@ import type {
   CredentialRow, ExpenseCategory, ExpenseRow, ExpenseShareRow, ItineraryRow,
   ItineraryAiBaseInput, ItineraryAiGenerateInput, ItineraryDraft, ItineraryOptions,
   ItineraryRefineInput, ItineraryRefineResult,
-  PaymentMethod, PlanMemberPlaceholderRow, PlanMemberRow, PlanRow, SettlementRow, SplitMethod, UserRow,
+  PaymentMethod, PlanMemberPlaceholderRow, PlanMemberRow, PlanRow, SettlementRow, SplitMethod,
+  TransportSearchInput, TransportSearchResult, UserRow,
 } from "@tabi/contracts";
 export type {
   CredentialRow, ExpenseCategory, ExpenseRow, ExpenseShareRow, ItineraryKind, ItineraryRow,
   ItineraryAiBaseInput, ItineraryAiGenerateInput, ItineraryAiPreferences, ItineraryDraft, ItineraryOptions,
   ItineraryRefineCity, ItineraryRefineInput, ItineraryRefineItem, ItineraryRefineMember, ItineraryRefineMessage, ItineraryRefineResult,
-  PaymentMethod, PlanMemberPlaceholderRow, PlanMemberRow, PlanRow, SettlementRow, SplitMethod, UserRow,
+  PaymentMethod, PlanMemberPlaceholderRow, PlanMemberRow, PlanRow, SettlementRow, SplitMethod,
+  TransportOption, TransportSearchInput, TransportSearchMode, TransportSearchResult, UserRow,
 } from "@tabi/contracts";
 
 // ---- 行の型（API と同じ形。snake_case のまま扱う） ---------------------
@@ -879,6 +881,10 @@ export async function generateItinerary(input: ItineraryAiGenerateInput): Promis
 /** 旅行詳細のAIチャットから、現在の全行程に対する修正案を作る。 */
 export async function refineItinerary(input: ItineraryRefineInput): Promise<ItineraryRefineResult> {
   return request<ItineraryRefineResult>("POST", "/api/ai/itinerary-refine", input);
+}
+
+export async function searchTransportOptions(input: TransportSearchInput): Promise<TransportSearchResult> {
+  return request<TransportSearchResult>("POST", "/api/transport/search", input);
 }
 
 /** 自分に紐付いている外部ログイン。 */

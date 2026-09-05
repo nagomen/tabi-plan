@@ -86,6 +86,13 @@ Web検索を利用できないモデル・環境では`OPENAI_WEB_SEARCH_ENABLED
 コピーし、開いたChatGPT/Gemini等へ利用者が貼り付ける設計にします。外部AIにJSONを出力させて
 このアプリへ取り込む機能は別機能として実装します。
 
+移動手段の現実性を上げるため、APIサーバーに`/api/transport/search`を用意しています。
+`GOOGLE_ROUTES_API_KEY`があればGoogle Routesで公共交通・車・徒歩の候補を検索し、
+`AMADEUS_CLIENT_ID` / `AMADEUS_CLIENT_SECRET`があればIATAコードへ解決できる都市間の航空券候補を
+Amadeusで検索します。AI行程生成・詳細ページのAI相談では、登録済み訪問地の隣接区間をサーバー側で
+検索し、取得できた`transport_options`をAIへ渡します。候補がない区間は従来どおりAIが概算で組み、
+noteに要確認と書かせます。航空券価格や時刻は変動するため、予約確定情報としては扱いません。
+
 行程生成は`OPENAI_TIMEOUT_MS`（既定80秒）まで応答にかかります。長い行程を最後まで構造化出力できるよう
 `OPENAI_MAX_OUTPUT_TOKENS`は既定30,000で、機械用JSONの推論量は`OPENAI_REASONING_EFFORT=none`を既定とします。
 APIの前段に置くリバースプロキシの
