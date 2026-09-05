@@ -23,7 +23,7 @@ import { getUser } from "../shared/user-store";
 import { canEditPlan, canManagePlan, canViewPlan, isMemberOf, planHasOwner } from "../shared/membership";
 import { joinersOn, leaversOn } from "../shared/member-period";
 import { dayTracks, pickTrack, isItemInTrack, everyoneIds, type DayTrack } from "../shared/day-tracks";
-import { parseFlight, type FlightInfo } from "../shared/flight-info";
+import { parseFlight, parseTrain, type FlightInfo, type TrainInfo } from "../shared/flight-info";
 import { currentAccount } from "../shared/account-store";
 import { currentUserId, adoptLegacyIdentity, identifyByName } from "../shared/identity";
 import * as db from "../shared/db";
@@ -2355,6 +2355,40 @@ function flightTicketHtml(
     `</div>`;
 }
 
+/**
+ * 特急・新幹線・台湾鉄路などの移動を、必要最低限の乗車券カードで見せる。
+ * 座席は「指定席」「自由席」など入力がある場合だけ表示し、個人別の詳細入力は必須にしない。
+ */
+function trainTicketHtml(
+  train: TrainInfo,
+  duration: string | undefined,
+  originName: string,
+  destinationName: string,
+  fallbackTime: string | undefined,
+): string {
+  const depStation = train.dep?.station || originName || "出発駅";
+  const arrStation = train.arr?.station || destinationName || "到着駅";
+  const depTime = train.dep?.time || fallbackTime || "";
+  const arrTime = train.arr?.time || "";
+  const end = (station: string, time: string, arr = false): string =>
+    `<span class="tl-train-end${arr ? " is-arr" : ""}">` +
+    (time ? `<b class="tl-train-time">${escapeHtml(time)}</b>` : "") +
+    `<span class="tl-train-station">${escapeHtml(station)}</span>` +
+    `</span>`;
+
+  return `<div class="tl-train-card">` +
+    `<div class="tl-train-head">` +
+    `<span class="tl-train-service">${icon("ticket")}${escapeHtml(train.serviceName || "Train")}</span>` +
+    (train.seat ? `<span class="tl-train-seat">${escapeHtml(train.seat)}</span>` : "") +
+    `</div>` +
+    `<div class="tl-train-route">` +
+    end(depStation, depTime) +
+    `<span class="tl-train-mid">${icon("arrowLongRight")}${duration ? `<small>${escapeHtml(duration)}</small>` : ""}</span>` +
+    end(arrStation, arrTime, true) +
+    `</div>` +
+    `</div>`;
+}
+
 /** 自分のQRコードを大きく表示する（搭乗ゲートでそのまま見せられるサイズ）。 */
 function openFlightQr(flightNo: string): void {
   const note = myFlightNote(flightNo);
@@ -2514,14 +2548,6 @@ function timelineHtmlForDay(idx: number): string {
   const track = selectedTrack(day);
   return trackItems(day, track).filter((i) => String(i.type) !== "stay").map((item) => {
     const type = String(item.type || "todo");
-    // 飛行機の移動は便名・発着を専用ストリップで見せ、メタ行では繰り返さない。
-    const flight = type === "move" ? parseFlight(item) : null;
-    const placeText = item.place && item.place !== item.title ? `場所: ${item.place}` : "";
-    const moveText = type === "move" && !flight ? [item.transport, item.duration].filter(Boolean).join("・") : "";
-    const noteText = flight ? flight.restNote : item.note;
-    const metaText = [moveText || placeText, noteText].filter(Boolean).join(" / ");
-    const label = `<span class="tl-kind ${escapeHtml(type)}">${escapeHtml(item.typeLabel || item.type || "予定")}</span>`;
-
     let segA = item.origin || "";
     let segB = item.destination || "";
     if (type === "move" && (!segA || !segB) && /→|->/.test(item.title || "")) {
@@ -2529,6 +2555,14 @@ function timelineHtmlForDay(idx: number): string {
       segA = segA || (parts[0] || "").trim();
       segB = segB || (parts[1] || "").trim();
     }
+    // 飛行機・鉄道の移動は専用カードで見せ、メタ行では重複しない。
+    const flight = type === "move" ? parseFlight(item) : null;
+    const train = type === "move" && !flight ? parseTrain({ ...item, origin: segA, destination: segB }) : null;
+    const placeText = item.place && item.place !== item.title ? `場所: ${item.place}` : "";
+    const moveText = type === "move" && !flight && !train ? [item.transport, item.duration].filter(Boolean).join("・") : "";
+    const noteText = flight ? flight.restNote : train ? train.restNote : item.note;
+    const metaText = [moveText || placeText, noteText].filter(Boolean).join(" / ");
+    const label = `<span class="tl-kind ${escapeHtml(type)}">${escapeHtml(item.typeLabel || item.type || "予定")}</span>`;
     const title = type === "move" && (segA || segB)
       ? `<div class="tl-seg"><span>${escapeHtml(segA || "出発")}</span><span class="tl-seg-arr">${icon("arrowLongRight")}</span><span>${escapeHtml(segB || "到着")}</span></div>`
       : `<h3>${escapeHtml(item.title || "")}</h3>`;
@@ -2538,7 +2572,7 @@ function timelineHtmlForDay(idx: number): string {
       <span class="tl-rail"><span class="tl-dot ${escapeHtml(type)}">${kindIcon(type)}</span></span>
       <div class="tl-plan">
         <div class="tl-plan-line">${label}${title}</div>
-        ${flight ? flightTicketHtml(flight, item.duration, segA, segB) : ""}
+        ${flight ? flightTicketHtml(flight, item.duration, segA, segB) : train ? trainTicketHtml(train, item.duration, segA, segB, item.time) : ""}
         ${item.needed ? `<p class="tl-needed">${escapeHtml(item.needed)}</p>` : ""}
         <p class="tl-meta">${metaText ? `<span class="tl-meta-text">${escapeHtml(metaText)}</span>` : ""}<a class="tl-maplink" href="${mapsSearchUrl(item.mapQuery || item.place || item.title)}" target="_blank" rel="noopener">地図 ${icon("arrowTopRightOnSquare")}</a></p>
       </div>

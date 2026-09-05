@@ -16,7 +16,7 @@ function load(relativePath) {
   return module.exports;
 }
 
-const { parseFlight } = load("src/shared/flight-info.ts");
+const { parseFlight, parseTrain } = load("src/shared/flight-info.ts");
 
 test("parses airline, flight number, and dep/arr from a real AI-generated move", () => {
   const flight = parseFlight({
@@ -91,5 +91,49 @@ test("times are not mistaken for flight numbers", () => {
     transport: "飛行機",
     note: "IN 05:00",
     title: "空港へ",
+  }), null);
+});
+
+test("parses rail transport into a compact train card model", () => {
+  const train = parseTrain({
+    transport: "東海道新幹線 のぞみ23号",
+    note: "09:00 東京駅発、11:27 新大阪駅着 / 指定席 12号車 8A / 荷物は足元",
+    title: "東京駅 → 新大阪駅",
+    origin: "東京駅",
+    destination: "新大阪駅",
+    time: "09:00",
+  });
+  assert.ok(train);
+  assert.equal(train.serviceName, "のぞみ23号");
+  assert.deepEqual({ ...train.dep }, { time: "09:00", station: "東京駅" });
+  assert.deepEqual({ ...train.arr }, { time: "11:27", station: "新大阪駅" });
+  assert.equal(train.seat, "指定席 12号車 8A");
+  assert.equal(train.restNote, "荷物は足元");
+});
+
+test("train cards do not require user-specific seat details", () => {
+  const train = parseTrain({
+    transport: "台湾鉄路・自強号",
+    title: "高雄駅 → 花蓮駅",
+    origin: "高雄駅",
+    destination: "花蓮駅",
+    time: "12:30",
+  });
+  assert.ok(train);
+  assert.equal(train.serviceName, "自強号");
+  assert.equal(train.seat, "");
+  assert.deepEqual({ ...train.dep }, { time: "12:30", station: "高雄駅" });
+  assert.deepEqual({ ...train.arr }, { time: "", station: "花蓮駅" });
+});
+
+test("non-rail ground moves do not become train cards", () => {
+  assert.equal(parseTrain({
+    transport: "バス・フェリー等",
+    note: "香港エクスプレス UO622 17:35発に合わせて余裕を持って移動",
+    title: "コタイ → 香港国際空港",
+  }), null);
+  assert.equal(parseTrain({
+    transport: "地下鉄・タクシー",
+    title: "厦門北駅 → 中山路周辺ホテル",
   }), null);
 });

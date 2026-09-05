@@ -1568,6 +1568,92 @@
   .tl-ticket-edit svg, .tl-ticket-edit .hi { width: 14px; height: 14px; }
   .tl-ticket-edit:hover { color: var(--blue); }
 
+  /* 鉄道の移動：特急・新幹線・高鉄などを最小情報の乗車券カードで表示 */
+  .tl-train-card {
+    margin: 6px 0 5px;
+    max-width: 360px;
+    padding: 9px 12px 10px;
+    border-left: 4px solid var(--green);
+    background: rgba(7, 95, 70, .06);
+    box-shadow: 3px 3px 0 rgba(17, 25, 22, .1);
+  }
+  .tl-train-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 8px;
+  }
+  .tl-train-service {
+    min-width: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    color: var(--green);
+    font-size: 12.5px;
+    font-weight: 760;
+    letter-spacing: .03em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .tl-train-service svg, .tl-train-service .hi { width: 14px; height: 14px; flex: none; }
+  .tl-train-seat {
+    flex: none;
+    max-width: 45%;
+    padding: 2px 8px;
+    border: 1px solid rgba(7, 95, 70, .24);
+    border-radius: 999px;
+    background: var(--paper);
+    color: var(--ink);
+    font-size: 11px;
+    font-weight: 650;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .tl-train-route {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    align-items: center;
+    gap: 10px;
+  }
+  .tl-train-end {
+    min-width: 0;
+    display: grid;
+    gap: 1px;
+  }
+  .tl-train-end.is-arr { justify-items: end; text-align: right; }
+  .tl-train-time {
+    color: var(--ink);
+    font-size: 17px;
+    font-weight: 780;
+    line-height: 1.1;
+  }
+  .tl-train-station {
+    min-width: 0;
+    color: var(--ink);
+    font-size: 12px;
+    font-weight: 650;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .tl-train-mid {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1px;
+    color: var(--green);
+  }
+  .tl-train-mid svg, .tl-train-mid .hi { width: 18px; height: 18px; }
+  .tl-train-mid small {
+    color: var(--muted);
+    font-size: 10.5px;
+    font-weight: 650;
+    white-space: nowrap;
+  }
+
   /* QRの拡大表示（搭乗ゲートでそのまま見せられるサイズ） */
   .tl-qr-card { text-align: center; }
   .tl-qr-title {
