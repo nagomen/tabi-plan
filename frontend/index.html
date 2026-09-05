@@ -106,6 +106,15 @@
               <button type="submit" data-ai-chat-send>AIに相談する</button>
             </div>
           </form>
+          <details class="tl-ai-import" data-ai-chat-import>
+            <summary>外部AIのJSONを取り込む</summary>
+            <p>利用上限に達した場合は、コピーしたプロンプトをChatGPT/Geminiへ貼り付け、返ってきたJSONをここへ入れてください。</p>
+            <textarea data-ai-chat-import-json rows="5" spellcheck="false" placeholder='{"format":"tabi-plan-external-ai-v1","message":"...","days":[...]}'></textarea>
+            <div class="tl-ai-chat-actions">
+              <span data-ai-chat-import-status></span>
+              <button type="button" data-ai-chat-import-apply>JSONを提案として読み込む</button>
+            </div>
+          </details>
           <p class="tl-ai-chat-note">AIの提案は確認後に反映できます。交通・営業情報は予約前に公式情報をご確認ください。</p>
         </section>
         <div data-day-feed></div>

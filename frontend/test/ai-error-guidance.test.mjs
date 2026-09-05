@@ -39,5 +39,8 @@ test("APIのエラー契約(code/action/retry_after/request_id)を画面操作�
   const external = read("src/shared/external-ai.ts");
   assert.match(external, /buildExternalAiCreatePrompt/);
   assert.match(external, /buildExternalAiRefinePrompt/);
+  assert.match(external, /tabi-plan-external-ai-v1/);
+  assert.match(external, /parseExternalAiCreateJson/);
+  assert.match(external, /parseExternalAiRefineJson/);
   assert.match(external, /clipboard\.writeText/);
 });

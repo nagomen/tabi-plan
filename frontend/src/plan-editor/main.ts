@@ -33,13 +33,15 @@ import { mountAppHeader } from "../shared/app-header";
 import { currentAccount } from "../shared/account-store";
 import { listFriends } from "../shared/friendship-store";
 import { canEditPlan, canEditPlanMetadata, canManagePlan, planHasOwner } from "../shared/membership";
+import { presentMemberIds } from "../shared/member-period";
+import { dayTracks, pickTrack, isItemInTrack, everyoneIds, type DayTrack } from "../shared/day-tracks";
 import { addBaseLayer } from "../shared/map-tiles";
 import { validatePublishPlan } from "./validation";
 import { formatDurationMinutes } from "../shared/travel-duration";
 import { AiConsultationState, type AiStage } from "./ai-consultation-state";
 import { aiErrorGuidance, retryWaitLabel, type AiErrorPhase } from "./ai-error-guidance";
 import { resolveAiMapGeocodeJobs, type AiMapGeocodeSummary } from "./ai-map-geocoding";
-import { buildExternalAiCreatePrompt, copyExternalAiPrompt, openExternalAi } from "../shared/external-ai";
+import { buildExternalAiCreatePrompt, copyExternalAiPrompt, openExternalAi, parseExternalAiCreateJson } from "../shared/external-ai";
 import {
   automaticGeocodingAvailable,
   cityAliasesFor,
@@ -1078,6 +1080,9 @@ const aiBuild = qs<HTMLButtonElement>(root, "[data-ai-build]");
 const aiWalking = qs<HTMLSelectElement>(root, "[data-ai-walking]");
 const aiTransport = qs<HTMLSelectElement>(root, "[data-ai-transport]");
 const aiExtra = qs<HTMLTextAreaElement>(root, "[data-ai-extra]");
+const aiImportJson = qs<HTMLTextAreaElement>(root, "[data-ai-import-json]");
+const aiImportApply = qs<HTMLButtonElement>(root, "[data-ai-import-apply]");
+const aiImportStatus = qs<HTMLElement>(root, "[data-ai-import-status]");
 
 type AiPreferences = db.ItineraryAiPreferences;
 const aiConsultation = new AiConsultationState();
@@ -1623,7 +1628,69 @@ async function runAiDraft(): Promise<void> {
   }
 }
 
+async function importExternalAiDraft(): Promise<void> {
+  if (editorLocked) {
+    aiImportStatus.textContent = "この計画を編集する権限がありません。";
+    aiImportStatus.className = "pe-ai-import-status is-warn";
+    return;
+  }
+  const raw = aiImportJson.value.trim();
+  if (!raw) {
+    aiImportStatus.textContent = "外部AIが出力したJSONを貼り付けてください。";
+    aiImportStatus.className = "pe-ai-import-status is-warn";
+    return;
+  }
+  let imported: ReturnType<typeof parseExternalAiCreateJson>;
+  try {
+    imported = parseExternalAiCreateJson(raw, {
+      startDate: model.startDate,
+      endDate: model.endDate,
+      title: model.title,
+    });
+  } catch (error) {
+    aiImportStatus.textContent = errorMessage(error) || "JSONを取り込めませんでした。";
+    aiImportStatus.className = "pe-ai-import-status is-warn";
+    return;
+  }
+
+  const filled = model.days.some((day) => day.items.length || day.stay);
+  if (filled && !window.confirm("現在の行程を、外部AIのJSONで置き換えます。よろしいですか。")) return;
+
+  aiImportApply.disabled = true;
+  aiImportStatus.textContent = "JSONを行程へ反映しています…";
+  aiImportStatus.className = "pe-ai-import-status";
+  try {
+    if (imported.title) model.title = imported.title;
+    model.startDate = imported.startDate;
+    model.endDate = imported.endDate;
+    rebuildDays();
+    applyItineraryDraft(imported.draft);
+    markDirty();
+    syncBasicInputs();
+    renderCities();
+    renderDays();
+    refreshMap(true);
+    aiImportStatus.textContent = "行程に反映しました。住所と座標を確認しています…";
+    await registerAiDraftPlacesOnMap();
+    renderCities();
+    renderDays();
+    refreshMap(true);
+    const saved = await persist(true);
+    aiImportStatus.textContent = saved
+      ? "外部AIのJSONを取り込み、保存しました。"
+      : "外部AIのJSONを取り込みましたが、保存できませんでした。";
+    aiImportStatus.className = "pe-ai-import-status" + (saved ? " is-ok" : " is-warn");
+    setViewStep(3);
+  } catch (error) {
+    aiImportStatus.textContent = errorMessage(error) || "JSONを取り込めませんでした。";
+    aiImportStatus.className = "pe-ai-import-status is-warn";
+  } finally {
+    aiImportApply.disabled = false;
+  }
+}
+
 aiRun.addEventListener("click", () => { void startAiConsultation(); });
+aiImportApply.addEventListener("click", () => { void importExternalAiDraft(); });
 watchComposition(aiArea);
 aiArea.addEventListener("keydown", (e) => {
   if (isComposingKey(e)) return;
@@ -1710,9 +1777,14 @@ function dayHeader(day: Day, index: number): string {
   );
 }
 
-/** 一部メンバーだけの予定に出す名前バッジ。全員（空）のときは何も出さない。 */
+/**
+ * 一部メンバーだけの予定に出す名前バッジ。全員（空）は通常なにも出さないが、
+ * 班タブで絞っているときだけ「全員」と明示する（どの班にも表示される予定だと分かるように）。
+ */
 function rowMembersBadge(item: Item): string {
-  if (!item.members.length) return "";
+  if (!item.members.length) {
+    return renderingWithTrack ? `<span class="pe-row-members is-all">全員</span>` : "";
+  }
   const names = item.members.map((id) => db.nameOf(id)).filter(Boolean);
   return `<span class="pe-row-members" title="この予定の対象メンバー">${escapeHtml(names.join("・") || "一部メンバー")}</span>`;
 }
@@ -1909,6 +1981,66 @@ function stayBand(index: number): string {
   );
 }
 
+// ---- 参加者で行程が分かれる日の班タブ ------------------------------------
+// ダッシュボードの表示と同じ day-tracks ロジックで班を割り、編集もタブで切り替える。
+// 全員の予定（members 空か全員入り）はどの班のタブにも表示され、どちらからでも編集できる。
+
+/** 日付 → 選択中の班キー。再描画をまたいで保持する。 */
+const editTrackChoice = new Map<string, string>();
+/** 班タブで絞った描画中か（rowMembersBadge が「全員」チップを出す判断に使う）。 */
+let renderingWithTrack = false;
+
+/** その日に在籍しているメンバー（参加期間 memberDates を反映）。 */
+function presentIdsOnDate(date: string): string[] {
+  const ids = model.memberIds.filter((id) => id && db.nameOf(id));
+  return presentMemberIds(
+    ids.map((id) => ({
+      user_id: id,
+      from_date: model.memberDates[id]?.from ?? null,
+      to_date: model.memberDates[id]?.to ?? null,
+    })),
+    date,
+  );
+}
+
+function dayTracksOf(day: Day): DayTrack[] {
+  return dayTracks(day.items.map((item) => item.members), presentIdsOnDate(day.date));
+}
+
+function selectedEditTrack(day: Day): DayTrack | null {
+  return pickTrack(dayTracksOf(day), editTrackChoice.get(day.date), currentAccount()?.id || "");
+}
+
+/** 班タブの表示名（本人は「あなた」、4人以上は他N人）。 */
+function editTrackLabel(track: DayTrack): string {
+  const you = currentAccount()?.id || "";
+  const names: string[] = [];
+  if (you && track.memberIds.includes(you)) names.push("あなた");
+  for (const id of track.memberIds) {
+    if (id === you) continue;
+    const name = db.nameOf(id);
+    if (name) names.push(name);
+  }
+  if (!names.length) return "そのほか";
+  return names.slice(0, 3).join("・") + (names.length > 3 ? ` 他${names.length - 3}人` : "");
+}
+
+function dayTrackTabsHtml(day: Day, index: number): string {
+  const tracks = dayTracksOf(day);
+  if (!tracks.length) return "";
+  const selected = selectedEditTrack(day);
+  return (
+    `<div class="pe-track-tabs" role="tablist" aria-label="班ごとの行程">` +
+    tracks.map((track) =>
+      `<button class="pe-track-tab" type="button" role="tab" aria-selected="${track.key === selected?.key}"` +
+      ` data-act="track" data-day="${index}" data-track="${escapeHtml(track.key)}">` +
+      `${icon("users")}<span>${escapeHtml(editTrackLabel(track))}</span></button>`,
+    ).join("") +
+    `</div>` +
+    `<p class="pe-track-note">「全員」の予定はどの班にも表示されます。ここで追加した予定は選択中の班のものになります。</p>`
+  );
+}
+
 function quickAdd(_day: Day, index: number): string {
   const btn = (kind: ItemKind): string =>
     `<button class="pe-q" type="button" data-act="add" data-kind="${kind}" data-day="${index}">${icon(KINDS[kind].icon)}${KINDS[kind].label}を追加</button>`;
@@ -1950,8 +2082,14 @@ function renderDays(): void {
   }
   daysEl.innerHTML = model.days
     .map((day, index) => {
-      const items = day.items.map(timelineNode).join("");
-      const empty = day.items.length ? "" : `<p class="pe-day-empty">予定はまだありません。下のボタンから追加できます。</p>`;
+      // 班タブで絞っているときは、全員の予定＋選択中の班の予定だけを出す
+      const track = selectedEditTrack(day);
+      const everyone = track ? everyoneIds(day.items.map((it) => it.members), presentIdsOnDate(day.date)) : [];
+      const visible = track ? day.items.filter((it) => isItemInTrack(it.members, track, everyone)) : day.items;
+      renderingWithTrack = Boolean(track);
+      const items = visible.map(timelineNode).join("");
+      renderingWithTrack = false;
+      const empty = visible.length ? "" : `<p class="pe-day-empty">予定はまだありません。下のボタンから追加できます。</p>`;
       // 前夜の宿を朝に出発するときだけ「前泊から出発」を出す（連泊中は出さない）
       const coverPrev = index > 0 ? stayCovering(index - 1) : null;
       const coverToday = stayCovering(index);
@@ -1967,6 +2105,7 @@ function renderDays(): void {
         dayHeader(day, index) +
         `<div class="pe-day-body">` +
         startBanner +
+        dayTrackTabsHtml(day, index) +
         `<div class="pe-timeline">${items}</div>` +
         empty +
         stayBand(index) +
@@ -2008,12 +2147,21 @@ function initSortables(): void {
 function syncTimelineOrder(): void {
   const all = new Map<number, Item>();
   model.days.forEach((d) => d.items.forEach((it) => all.set(it.id, it)));
+  // 班タブで非表示の予定は DOM に存在しない。消さずに元の位置へ差し戻す。
+  const domIds = new Map<number, number[]>();
+  const seen = new Set<number>();
   daysEl.querySelectorAll<HTMLElement>("article[data-day]").forEach((article) => {
     const di = Number(article.dataset.day);
-    const day = model.days[di];
-    if (!day) return;
     const ids = Array.from(article.querySelectorAll<HTMLElement>(".pe-timeline > .pe-node")).map((n) => Number(n.dataset.node));
-    day.items = ids.map((id) => all.get(id)).filter((x): x is Item => Boolean(x));
+    domIds.set(di, ids);
+    ids.forEach((id) => seen.add(id));
+  });
+  model.days.forEach((day, di) => {
+    if (!domIds.has(di)) return;
+    const ordered = (domIds.get(di) || []).map((id) => all.get(id)).filter((x): x is Item => Boolean(x));
+    const hidden = day.items.map((item, index) => ({ item, index })).filter(({ item }) => !seen.has(item.id));
+    for (const { item, index } of hidden) ordered.splice(Math.min(index, ordered.length), 0, item);
+    day.items = ordered;
   });
 }
 
@@ -2404,12 +2552,25 @@ daysEl.addEventListener("click", (event) => {
     }
     return;
   }
+  if (act === "track") {
+    const day = model.days[dayIndex];
+    if (day) {
+      editTrackChoice.set(day.date, actEl.dataset.track || "");
+      renderDays();
+      refreshMap(false);
+    }
+    return;
+  }
   if (act === "add") {
     const kind = (actEl.dataset.kind || "sight") as ItemKind;
     const day = model.days[dayIndex];
     if (!day) return;
     const it = newItem(kind);
     maybeDefaultMoveTransport(it, day, "", undefined, true);
+    // 班タブを選んでいる日は、追加した予定をその班のものにする
+    // （全員の予定にしたければ、予定を開いて対象メンバーを「全員」に戻せる）
+    const track = selectedEditTrack(day);
+    if (track && kind !== "stay") it.members = [...track.memberIds];
     if (kind === "stay") day.stay = it;
     else day.items.push(it);
     openItemId = it.id;

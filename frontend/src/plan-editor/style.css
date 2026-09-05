@@ -2232,6 +2232,55 @@
 }
 .pe-ai-error-action:disabled { border-color: var(--line-strong); color: var(--muted); cursor: wait; }
 
+.pe-ai-import {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.pe-ai-import summary {
+  color: var(--green-deep);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.pe-ai-import p {
+  margin: 8px 0 10px;
+  color: var(--muted);
+  font-size: 11.5px;
+  line-height: 1.6;
+}
+.pe-ai-import textarea {
+  width: 100%;
+  min-height: 120px;
+  padding: 10px 12px;
+  border: 1px solid var(--line-strong);
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.5;
+  resize: vertical;
+}
+.pe-ai-import textarea:focus {
+  outline: none;
+  border-color: var(--green);
+}
+.pe-ai-import-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-top: 9px;
+}
+.pe-ai-import-status {
+  color: var(--muted);
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+.pe-ai-import-status.is-ok { color: var(--green); }
+.pe-ai-import-status.is-warn { color: var(--red); }
+
 .pe-ai-dialog {
   margin-top: 14px;
   border-top: 1px solid var(--line);
@@ -2945,4 +2994,53 @@
   max-width: 12em;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+/* 班タブで絞っているときの「全員」チップ（どの班にも表示される予定の印） */
+.pe-row-members.is-all {
+  background: var(--green-soft);
+  color: var(--green);
+}
+
+/* 参加者で行程が分かれる日：横幅いっぱいの帯タブで班を切り替えて編集する。
+   ダッシュボードの表示（tl-day-tabs）と同じ意匠。 */
+.pe-track-tabs {
+  display: flex;
+  width: 100%;
+  margin: 0 0 6px;
+  border-block: 1px solid var(--line);
+}
+.pe-track-tab {
+  flex: 1 1 0;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 8px 10px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.pe-track-tab + .pe-track-tab { border-left: 1px solid var(--line); }
+.pe-track-tab svg { width: 13px; height: 13px; flex: none; }
+.pe-track-tab span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pe-track-tab[aria-selected="true"] {
+  background: var(--gray);
+  color: #fff;
+}
+.pe-track-note {
+  margin: 0 0 10px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.5;
 }

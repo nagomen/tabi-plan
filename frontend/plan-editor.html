@@ -163,6 +163,18 @@
                 <button class="pe-ai-error-action" type="button" data-ai-error-action hidden></button>
                 <small data-ai-error-reference hidden></small>
               </section>
+
+              <section class="pe-ai-import" data-ai-import>
+                <details>
+                  <summary>外部AIのJSONを取り込む</summary>
+                  <p>利用上限に達した場合は、コピーしたプロンプトをChatGPT/Geminiへ貼り付け、返ってきたJSONをここへ入れてください。</p>
+                  <textarea data-ai-import-json rows="5" spellcheck="false" placeholder='{"format":"tabi-plan-external-ai-v1","trip":...,"days":[...]}'></textarea>
+                  <div class="pe-ai-import-actions">
+                    <button class="pe-ai-secondary" type="button" data-ai-import-apply>JSONを行程に反映</button>
+                    <span data-ai-import-status role="status"></span>
+                  </div>
+                </details>
+              </section>
             </div>
           </div>
         </div>

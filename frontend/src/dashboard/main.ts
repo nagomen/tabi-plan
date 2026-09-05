@@ -49,7 +49,7 @@ import { setTripDocumentTitle } from "../shared/page-meta";
 import { localDateISO, parseISO, toISO, mdLabel } from "../shared/date";
 import { buildGoogleMyMapsKml, googleMyMapsKmlFilename, mapsSearchUrl } from "../shared/maps";
 import { formatDurationMinutes, parseDurationMinutes } from "../shared/travel-duration";
-import { buildExternalAiRefinePrompt, copyExternalAiPrompt, openExternalAi } from "../shared/external-ai";
+import { buildExternalAiRefinePrompt, copyExternalAiPrompt, openExternalAi, parseExternalAiRefineJson } from "../shared/external-ai";
 import type {
   TripData,
   TripLink,
@@ -2402,7 +2402,8 @@ function openFlightQr(flightNo: string): void {
       <img class="tl-qr-image" src="${escapeHtml(note.qr_image)}" alt="搭乗用QRコード">
       <button type="button" class="tl-confirm-cancel" data-qr-close>閉じる</button>
     </section>`;
-  document.body.appendChild(modal);
+  // body 直下だと .trip-live のフォント・色トークンが当たらないため root 配下に置く
+  root.appendChild(modal);
   modal.querySelectorAll<HTMLElement>("[data-qr-close]").forEach((el) => {
     el.addEventListener("click", () => modal.remove());
   });
@@ -2472,32 +2473,46 @@ function openFlightNoteEditor(flightNo: string): void {
   modal.innerHTML = `
     <div class="tl-confirm-scrim" data-fnote-cancel></div>
     <section class="tl-confirm-card tl-fnote-card" role="dialog" aria-modal="true" aria-labelledby="fnoteTitle">
-      <h2 id="fnoteTitle" class="tl-fnote-title">${icon("paperAirplane")}${escapeHtml(flightNo)} の自分用メモ</h2>
-      <p class="tl-fnote-desc">保存した内容は自分にだけ表示されます。</p>
-      <label class="tl-fnote-field">リンク（カードを押すと開く）
-        <input type="url" data-fnote-link placeholder="https://…（予約確認ページなど）" value="${escapeHtml(note?.link_url || "")}">
-      </label>
-      <label class="tl-fnote-field">予約番号
-        <input type="text" data-fnote-ref maxlength="100" placeholder="例: ABC123" value="${escapeHtml(note?.booking_ref || "")}">
-      </label>
-      <label class="tl-fnote-field">座席
-        <input type="text" data-fnote-seat maxlength="50" placeholder="例: 32A" value="${escapeHtml(note?.seat || "")}">
-      </label>
-      <div class="tl-fnote-field">
-        <span>QRコード画像</span>
-        <div class="tl-fnote-qr">
-          <img data-fnote-qr-preview alt="QRコードのプレビュー"${qrImage ? ` src="${escapeHtml(qrImage)}"` : " hidden"}>
-          <label class="tl-fnote-qr-pick">${icon("photo")}画像を選ぶ<input type="file" accept="image/*" data-fnote-qr hidden></label>
-          <button type="button" class="tl-fnote-qr-clear" data-fnote-qr-clear${qrImage ? "" : " hidden"}>削除</button>
+      <div class="tl-fnote-head">
+        <span class="tl-fnote-plane">${icon("paperAirplane")}</span>
+        <span class="tl-fnote-headtext">
+          <b id="fnoteTitle">${escapeHtml(flightNo)}</b>
+          <span>自分用メモ ・ 自分にだけ表示されます</span>
+        </span>
+      </div>
+      <div class="tl-fnote-divider" aria-hidden="true"></div>
+      <div class="tl-fnote-body">
+        <label class="tl-fnote-field">
+          <span>リンク（カードを押すと開く）</span>
+          <input type="url" data-fnote-link placeholder="https://…（予約確認ページなど）" value="${escapeHtml(note?.link_url || "")}">
+        </label>
+        <div class="tl-fnote-grid">
+          <label class="tl-fnote-field">
+            <span>予約番号</span>
+            <input type="text" data-fnote-ref maxlength="100" placeholder="ABC123" value="${escapeHtml(note?.booking_ref || "")}">
+          </label>
+          <label class="tl-fnote-field">
+            <span>座席</span>
+            <input type="text" data-fnote-seat maxlength="50" placeholder="32A" value="${escapeHtml(note?.seat || "")}">
+          </label>
+        </div>
+        <div class="tl-fnote-field">
+          <span>QRコード画像</span>
+          <div class="tl-fnote-qr">
+            <img data-fnote-qr-preview alt="QRコードのプレビュー"${qrImage ? ` src="${escapeHtml(qrImage)}"` : " hidden"}>
+            <label class="tl-fnote-qr-pick">${icon("photo")}画像を選ぶ<input type="file" accept="image/*" data-fnote-qr hidden></label>
+            <button type="button" class="tl-fnote-qr-clear" data-fnote-qr-clear${qrImage ? "" : " hidden"}>削除</button>
+          </div>
+        </div>
+        <p class="tl-fnote-status" data-fnote-status aria-live="polite"></p>
+        <div class="tl-fnote-actions">
+          <button type="button" class="tl-fnote-cancel" data-fnote-cancel>キャンセル</button>
+          <button type="button" class="tl-fnote-save" data-fnote-save>${icon("check")}保存</button>
         </div>
       </div>
-      <p class="tl-expense-status" data-fnote-status aria-live="polite"></p>
-      <div class="tl-confirm-actions">
-        <button type="button" class="tl-confirm-cancel" data-fnote-cancel>キャンセル</button>
-        <button type="button" class="tl-confirm-ok" data-fnote-save>保存</button>
-      </div>
     </section>`;
-  document.body.appendChild(modal);
+  // body 直下だと .trip-live のフォント・色トークンが当たらないため root 配下に置く
+  root.appendChild(modal);
   const field = <T extends HTMLElement>(selector: string): T => modal.querySelector<T>(selector) as T;
   const status = field<HTMLElement>("[data-fnote-status]");
   const preview = field<HTMLImageElement>("[data-fnote-qr-preview]");
@@ -3016,6 +3031,27 @@ function externalAiRefinePrompt(instruction: string): string {
   });
 }
 
+function importExternalAiRefineJson(raw: string): void {
+  const status = root.querySelector<HTMLElement>("[data-ai-chat-import-status]");
+  if (!status) return;
+  if (!raw.trim()) {
+    status.textContent = "外部AIが出力したJSONを貼り付けてください。";
+    status.className = "is-warn";
+    return;
+  }
+  try {
+    const dates = tripDateRange(state.data);
+    const proposal = parseExternalAiRefineJson(raw, dates);
+    aiChatEntries.push({ role: "assistant", text: proposal.message, proposal });
+    status.textContent = "JSONを提案として読み込みました。内容を確認して反映してください。";
+    status.className = "is-ok";
+    renderAiChat();
+  } catch (error) {
+    status.textContent = errorMessage(error) || "JSONを取り込めませんでした。";
+    status.className = "is-warn";
+  }
+}
+
 /**
  * AI提案で行程を丸ごと置き換えるとき、対象メンバー指定（一部の人だけの予定）を
  * AI出力から反映する。AIが既存予定のmembersを省略した場合に備えて、同じ予定
@@ -3117,7 +3153,9 @@ function setupAiChat(aiSupport: HTMLButtonElement): void {
   const input = root.querySelector<HTMLTextAreaElement>("[data-ai-chat-input]");
   const send = root.querySelector<HTMLButtonElement>("[data-ai-chat-send]");
   const status = root.querySelector<HTMLElement>("[data-ai-chat-status]");
-  if (!chat || !close || !form || !input || !send || !status) return;
+  const importJson = root.querySelector<HTMLTextAreaElement>("[data-ai-chat-import-json]");
+  const importApply = root.querySelector<HTMLButtonElement>("[data-ai-chat-import-apply]");
+  if (!chat || !close || !form || !input || !send || !status || !importJson || !importApply) return;
   const setOpen = (open: boolean): void => {
     chat.hidden = !open;
     aiSupport.setAttribute("aria-expanded", String(open));
@@ -3132,6 +3170,7 @@ function setupAiChat(aiSupport: HTMLButtonElement): void {
   aiSupport.setAttribute("aria-expanded", "false");
   aiSupport.addEventListener("click", () => setOpen(chat.hidden));
   close.addEventListener("click", () => setOpen(false));
+  importApply.addEventListener("click", () => importExternalAiRefineJson(importJson.value));
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
     const instruction = input.value.trim();
