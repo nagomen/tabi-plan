@@ -25,6 +25,8 @@ export interface FlightInfo {
 const FLIGHT_NO_RE = /\b([A-Z]{2,3})\s?(\d{1,4})(?![:\d])/;
 /** 航空文脈の語。誤検出を避けるため、これが無い予定は飛行機として扱わない。 */
 const AVIATION_RE = /空港|飛行機|フライト|航空|airport|airlines?|airways|flight/i;
+/** transport が明示的に非航空なら、note に便名があっても航空券カード化しない。 */
+const FLIGHT_TRANSPORT_RE = /飛行機|フライト|航空|airlines?|airways|flight/i;
 
 const DEP_RE = /(?:([A-Z]{3})\s*(\d{1,2}:\d{2})|(\d{1,2}:\d{2})\s*([A-Z]{3}))\s*発/;
 const ARR_RE = /(?:([A-Z]{3})\s*(\d{1,2}:\d{2})|(\d{1,2}:\d{2})\s*([A-Z]{3}))\s*着/;
@@ -48,12 +50,15 @@ export interface FlightSource {
 export function parseFlight(source: FlightSource): FlightInfo | null {
   const transport = String(source.transport || "");
   const note = String(source.note || "");
+  const transportHasFlightNo = FLIGHT_NO_RE.test(transport);
+  const transportAllowsFlight = !transport.trim() || transportHasFlightNo || FLIGHT_TRANSPORT_RE.test(transport);
+  if (!transportAllowsFlight) return null;
   const context = [transport, note, source.title, source.origin, source.destination]
     .map((part) => String(part || "")).join(" / ");
   if (!AVIATION_RE.test(context)) return null;
 
   // 便名は transport を優先し、無ければ note から拾う。
-  const host = FLIGHT_NO_RE.test(transport) ? transport : note;
+  const host = transportHasFlightNo ? transport : note;
   const match = host.match(FLIGHT_NO_RE);
   if (!match) return null;
   const flightNo = `${match[1]}${match[2]}`;

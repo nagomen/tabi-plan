@@ -60,6 +60,12 @@ test("non-flight moves return null even when airport codes appear in the note", 
     note: "1時間 / 現行ダイヤの始発。要最終確認。",
     title: "マカオ外港フェリーターミナル → 香港・マカオ・フェリーターミナル",
   }), null);
+  // 空港行きの地上移動。帰国便名がメモにあっても、移動自体は航空券ではない。
+  assert.equal(parseFlight({
+    transport: "バス・フェリー等",
+    note: "香港エクスプレス UO622 17:35発に合わせて余裕を持って移動",
+    title: "コタイ → 香港国際空港",
+  }), null);
 });
 
 test("aviation context is required so codes in plain text do not trigger", () => {
