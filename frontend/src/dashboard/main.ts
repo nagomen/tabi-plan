@@ -2630,6 +2630,7 @@ function itineraryForAi(items: ItineraryItem[]): db.ItineraryRefineItem[] {
       to_longitude: move ? numberOrNull(item.destinationLng ?? item.lng, -180, 180) : null,
       transport: move ? String(item.transport || "その他") : "",
       duration_minutes: move ? parseDurationMinutes(item.duration) || 0 : 0,
+      members: Array.isArray(item.members) && item.members.length ? [...item.members] : [],
     };
   }).filter((item) => item.date);
 }
@@ -2666,14 +2667,38 @@ function itineraryFromAi(items: db.ItineraryRefineItem[]): ItineraryItem[] {
       destinationLng: move ? item.to_longitude ?? undefined : undefined,
       transport: move ? item.transport : "",
       duration: move ? formatDurationMinutes(item.duration_minutes) : "",
+      members: Array.isArray(item.members) && item.members.length ? [...item.members] : undefined,
     };
   });
 }
 
+function citiesForAiRefinement(): db.ItineraryRefineCity[] {
+  return (state.data.cities || [])
+    .map((city) => ({
+      name: String(city.name || "").trim(),
+      from_date: normalizeDate(city.fromDate),
+      to_date: normalizeDate(city.toDate),
+    }))
+    .filter((city) => city.name);
+}
+
+function membersForAiRefinement(): db.ItineraryRefineMember[] {
+  const id = planId();
+  return db.members()
+    .filter((member) => member.plan_id === id && member.status === "active")
+    .map((member) => ({
+      user_id: member.user_id,
+      name: db.nameOf(member.user_id),
+      from_date: member.from_date ? normalizeDate(member.from_date) : null,
+      to_date: member.to_date ? normalizeDate(member.to_date) : null,
+    }))
+    .filter((member) => member.user_id);
+}
+
 /**
  * AI提案で行程を丸ごと置き換えるとき、対象メンバー指定（一部の人だけの予定）を
- * 旧行程から引き継ぐ。AIのDTOは member 情報を持たないため、同じ予定
- * （日付+種別+タイトル、移動は日付+区間）を探して移し替える。
+ * AI出力から反映する。AIが既存予定のmembersを省略した場合に備えて、同じ予定
+ * （日付+種別+タイトル、移動は日付+区間）から旧行程のmembersを補完する。
  */
 function carryOverItemMembers(next: ItineraryItem[]): ItineraryItem[] {
   const tagged = (state.data.itinerary || []).filter((it) => Array.isArray(it.members) && it.members.length);
@@ -2800,6 +2825,8 @@ function setupAiChat(aiSupport: HTMLButtonElement): void {
         instruction,
         history,
         current_itinerary: latestAiItinerary(),
+        cities: citiesForAiRefinement(),
+        members: membersForAiRefinement(),
       });
       aiChatEntries.push({ role: "assistant", text: proposal.message, proposal });
       status.textContent = "提案を確認して、反映するか選んでください。";

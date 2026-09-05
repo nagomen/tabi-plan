@@ -61,6 +61,11 @@ test("旅行詳細では編集メンバーだけが全日程対応のAIチャッ
   assert.match(dashboard, /aiSupport\.hidden = false/);
   assert.match(dashboard, /setupAiChat\(aiSupport\)/);
   assert.match(dashboard, /current_itinerary: latestAiItinerary\(\)/);
+  assert.match(dashboard, /members: Array\.isArray\(item\.members\)/);
+  assert.match(dashboard, /cities: citiesForAiRefinement\(\)/);
+  assert.match(dashboard, /members: membersForAiRefinement\(\)/);
+  assert.match(dashboard, /ItineraryRefineCity/);
+  assert.match(dashboard, /ItineraryRefineMember/);
   assert.match(dashboard, /await db\.refineItinerary/);
   assert.match(dashboard, /この提案を行程に反映/);
   assert.match(dashboard, /await db\.flushMutations\(checkpoint\)/);

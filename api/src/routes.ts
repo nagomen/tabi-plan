@@ -149,8 +149,20 @@ function itineraryRefineInput(body: Body): ItineraryRefineInput {
       to_longitude: finiteOrNull(item.to_longitude),
       transport: str(item.transport).slice(0, 40),
       duration_minutes: Math.max(0, Math.min(1440, Math.round(Number(item.duration_minutes) || 0))),
+      members: strArr(item.members).slice(0, 50).map((value) => value.slice(0, 64)),
     };
   });
+  const cities = arr(body.cities).slice(0, MAX_AI_CITIES).map((city) => ({
+    name: str(city.name).slice(0, 100),
+    from_date: str(city.from_date).slice(0, 10),
+    to_date: str(city.to_date).slice(0, 10),
+  })).filter((city) => city.name);
+  const members = arr(body.members).slice(0, 50).map((member) => ({
+    user_id: str(member.user_id).slice(0, 64),
+    name: str(member.name).slice(0, 100),
+    from_date: str(member.from_date).slice(0, 10) || null,
+    to_date: str(member.to_date).slice(0, 10) || null,
+  })).filter((member) => member.user_id);
   return {
     plan_id: planId,
     start_date: str(body.start_date).slice(0, 10),
@@ -159,6 +171,8 @@ function itineraryRefineInput(body: Body): ItineraryRefineInput {
     instruction,
     history,
     current_itinerary: currentItinerary,
+    cities,
+    members,
   };
 }
 

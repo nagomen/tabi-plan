@@ -56,3 +56,60 @@ test("移動到着前の予定と旅行日の欠落を拒否する", () => {
     { date: "2026-10-13", items: [] },
   ] }, ["2026-10-13", "2026-10-14"]), /日付の欠落/);
 });
+
+test("チャット修正案は対象メンバーを保持し、知らないIDは保存対象から外す", () => {
+  const result = finalizeRefinedItinerary({
+    message: "メンバー分岐を保ちました。",
+    days: [{
+      date: "2026-10-12",
+      items: [
+        item({ members: ["usr_owner", "unknown", "usr_owner"] }),
+        item({
+          time: "11:00", kind: "move", city: "香港", title: "帰国組：香港空港方面へ", place: "香港国際空港",
+          from_city: "深圳", from_place: "深圳北駅", from_address: "深圳市",
+          to_city: "香港", to_place: "香港国際空港", to_address: "香港",
+          transport: "電車", duration_minutes: 120,
+          members: ["usr_returning"],
+        }),
+      ],
+    }],
+  }, ["2026-10-12"], {
+    members: [
+      { user_id: "usr_owner", name: "小宮", from_date: "2026-10-09", to_date: "2026-10-18" },
+      { user_id: "usr_returning", name: "帰国組", from_date: "2026-10-09", to_date: "2026-10-12" },
+    ],
+  });
+
+  assert.deepEqual(result.itinerary[0].members, ["usr_owner"]);
+  assert.deepEqual(result.itinerary[1].members, ["usr_returning"]);
+});
+
+test("チャット修正案は参加期間外メンバーを保存対象から外す", () => {
+  const result = finalizeRefinedItinerary({
+    message: "参加期間に合わせて分岐を整理しました。",
+    days: [{
+      date: "2026-10-13",
+      items: [
+        item({ members: ["usr_owner", "usr_returning"] }),
+      ],
+    }],
+  }, ["2026-10-13"], {
+    members: [
+      { user_id: "usr_owner", name: "小宮", from_date: "2026-10-09", to_date: "2026-10-18" },
+      { user_id: "usr_returning", name: "帰国組", from_date: "2026-10-09", to_date: "2026-10-12" },
+    ],
+  });
+
+  assert.deepEqual(result.itinerary[0].members, ["usr_owner"]);
+  assert.throws(() => finalizeRefinedItinerary({
+    message: "参加期間に合わせました。",
+    days: [{
+      date: "2026-10-13",
+      items: [item({ members: ["usr_returning"] })],
+    }],
+  }, ["2026-10-13"], {
+    members: [
+      { user_id: "usr_returning", name: "帰国組", from_date: "2026-10-09", to_date: "2026-10-12" },
+    ],
+  }), /参加期間外/);
+});

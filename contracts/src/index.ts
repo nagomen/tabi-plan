@@ -186,6 +186,21 @@ export interface ItineraryRefineItem {
   to_longitude: number | null;
   transport: string;
   duration_minutes: number;
+  /** この予定の対象メンバーuser_id。空/省略 = その日の参加者全員。 */
+  members?: string[];
+}
+
+export interface ItineraryRefineCity {
+  name: string;
+  from_date: string;
+  to_date: string;
+}
+
+export interface ItineraryRefineMember {
+  user_id: string;
+  name: string;
+  from_date: string | null;
+  to_date: string | null;
 }
 
 export interface ItineraryRefineMessage {
@@ -201,6 +216,10 @@ export interface ItineraryRefineInput {
   instruction: string;
   history: ItineraryRefineMessage[];
   current_itinerary: ItineraryRefineItem[];
+  /** 計画に登録済みの訪問地メタ。AIは依頼がない限りこの順序・期間を維持する。 */
+  cities?: ItineraryRefineCity[];
+  /** 参加期間つきメンバー。分岐日程のmembers判定に使う。 */
+  members?: ItineraryRefineMember[];
 }
 
 export interface ItineraryRefineResult {

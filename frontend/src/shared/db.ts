@@ -21,7 +21,7 @@ import type {
 export type {
   CredentialRow, ExpenseCategory, ExpenseRow, ExpenseShareRow, ItineraryKind, ItineraryRow,
   ItineraryAiBaseInput, ItineraryAiGenerateInput, ItineraryAiPreferences, ItineraryDraft, ItineraryOptions,
-  ItineraryRefineInput, ItineraryRefineItem, ItineraryRefineMessage, ItineraryRefineResult,
+  ItineraryRefineCity, ItineraryRefineInput, ItineraryRefineItem, ItineraryRefineMember, ItineraryRefineMessage, ItineraryRefineResult,
   PaymentMethod, PlanMemberPlaceholderRow, PlanMemberRow, PlanRow, SettlementRow, SplitMethod, UserRow,
 } from "@tabi/contracts";
 
