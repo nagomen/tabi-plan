@@ -1,5 +1,17 @@
 /** フロントとNode APIが共有する通信DTO。実行時ロジックは置かない。 */
 export interface UserRow { id: string; display_name: string }
+
+/** 便（飛行機の移動）ごとの個人メモ。便名でひも付け、本人の行だけがAPIから返る。 */
+export interface FlightNoteRow {
+  plan_id: string;
+  user_id: string;
+  flight_no: string;
+  link_url: string | null;
+  booking_ref: string | null;
+  seat: string | null;
+  /** QRコード画像の data URL。 */
+  qr_image: string | null;
+}
 export interface CredentialRow { user_id: string; email: string }
 
 export interface PlanRow {

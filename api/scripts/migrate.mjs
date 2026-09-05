@@ -351,6 +351,25 @@ async function migrate013() {
          c.lng = COALESCE(c.lng, x.sample_lng)`);
 }
 
+async function migrate014() {
+  // 便（飛行機の移動）ごとの個人メモ。リンク・予約番号・座席・QR画像（data URL）。
+  // 行程は保存のたびに全行を作り直して id が変わるため、行 id ではなく
+  // 内容由来の便名（UO857 等）でひも付ける。
+  await conn.query(`CREATE TABLE IF NOT EXISTS plan_flight_notes (
+    plan_id     VARCHAR(32)  NOT NULL,
+    user_id     VARCHAR(32)  NOT NULL,
+    flight_no   VARCHAR(16)  NOT NULL,
+    link_url    VARCHAR(500) NULL,
+    booking_ref VARCHAR(100) NULL,
+    seat        VARCHAR(50)  NULL,
+    qr_image    MEDIUMTEXT   NULL,
+    updated_at  TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (plan_id, user_id, flight_no),
+    CONSTRAINT fk_flight_notes_plan FOREIGN KEY (plan_id) REFERENCES plans (id) ON DELETE CASCADE,
+    CONSTRAINT fk_flight_notes_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+  ) ENGINE=InnoDB`);
+}
+
 async function main() {
   await conn.query(`CREATE TABLE IF NOT EXISTS schema_migrations (
     id VARCHAR(64) NOT NULL PRIMARY KEY,
@@ -368,6 +387,7 @@ async function main() {
   await applyMigration("011_membership_integrity", migrate011);
   await applyMigration("012_account_recovery_and_settlement_audit", migrate012);
   await applyMigration("013_plan_city_details", migrate013);
+  await applyMigration("014_plan_flight_notes", migrate014);
 }
 
 // 同時デプロイが同じDDLを並走させないよう、DB側の advisory lock で直列化する。

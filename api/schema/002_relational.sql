@@ -103,6 +103,23 @@ CREATE TABLE user_payment_links (
   CONSTRAINT fk_payment_links_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
+-- 便（飛行機の移動）ごとの個人メモ。リンク・予約番号・座席・QR画像（data URL）。
+-- 行程は保存のたびに全行を作り直して id が変わるため、行 id ではなく
+-- 内容由来の便名（UO857 等）でひも付ける。本人の行だけを bootstrap で返す。
+CREATE TABLE plan_flight_notes (
+  plan_id     VARCHAR(32)  NOT NULL,
+  user_id     VARCHAR(32)  NOT NULL,
+  flight_no   VARCHAR(16)  NOT NULL,
+  link_url    VARCHAR(500) NULL,
+  booking_ref VARCHAR(100) NULL,
+  seat        VARCHAR(50)  NULL,
+  qr_image    MEDIUMTEXT   NULL,
+  updated_at  TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (plan_id, user_id, flight_no),
+  CONSTRAINT fk_flight_notes_plan FOREIGN KEY (plan_id) REFERENCES plans (id) ON DELETE CASCADE,
+  CONSTRAINT fk_flight_notes_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
 -- 表示設定。旧 history-privacy も名前キーだった。
 CREATE TABLE user_settings (
   user_id         VARCHAR(32) NOT NULL,

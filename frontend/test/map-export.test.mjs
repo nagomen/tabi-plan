@@ -68,3 +68,14 @@ test("Google My Maps filename removes unsafe filesystem characters", () => {
   const { googleMyMapsKmlFilename } = loadMaps();
   assert.equal(googleMyMapsKmlFilename("香港 / マカオ:金門?"), "香港__マカオ金門-google-mymaps.kml");
 });
+
+test("dashboard Google Maps button falls back to generated directions", () => {
+  const html = fs.readFileSync(new URL("index.html", root), "utf8");
+  const dashboard = fs.readFileSync(new URL("src/dashboard/main.ts", root), "utf8");
+  assert.match(html, /data-my-maps[\s\S]*Google Mapsで開く/);
+  assert.match(dashboard, /function syncGoogleMapsLink\(places: ItineraryItem\[\]\)/);
+  assert.match(dashboard, /const configured = linkByKey\("maps"\)\.url \|\| ""/);
+  assert.match(dashboard, /const fallback = mapsDir\(fallbackPlaces\)/);
+  assert.match(dashboard, /syncGoogleMapsLink\(activePlaces\)/);
+  assert.doesNotMatch(dashboard, /data-my-maps"\)\.href = linkByKey\("maps"\)\.url \|\| "#"/);
+});

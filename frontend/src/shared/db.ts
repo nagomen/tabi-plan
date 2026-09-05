@@ -13,14 +13,14 @@
 
 import { resolvedTripConfig } from "./config";
 import type {
-  CredentialRow, ExpenseCategory, ExpenseRow, ExpenseShareRow, ItineraryRow,
+  CredentialRow, ExpenseCategory, ExpenseRow, ExpenseShareRow, FlightNoteRow, ItineraryRow,
   ItineraryAiBaseInput, ItineraryAiGenerateInput, ItineraryDraft, ItineraryOptions,
   ItineraryRefineInput, ItineraryRefineResult,
   PaymentMethod, PlanMemberPlaceholderRow, PlanMemberRow, PlanRow, SettlementRow, SplitMethod,
   TransportSearchInput, TransportSearchResult, UserRow,
 } from "@tabi/contracts";
 export type {
-  CredentialRow, ExpenseCategory, ExpenseRow, ExpenseShareRow, ItineraryKind, ItineraryRow,
+  CredentialRow, ExpenseCategory, ExpenseRow, ExpenseShareRow, FlightNoteRow, ItineraryKind, ItineraryRow,
   ItineraryAiBaseInput, ItineraryAiGenerateInput, ItineraryAiPreferences, ItineraryDraft, ItineraryOptions,
   ItineraryRefineCity, ItineraryRefineInput, ItineraryRefineItem, ItineraryRefineMember, ItineraryRefineMessage, ItineraryRefineResult,
   PaymentMethod, PlanMemberPlaceholderRow, PlanMemberRow, PlanRow, SettlementRow, SplitMethod,
@@ -78,6 +78,8 @@ interface Snapshot {
   settlements: SettlementRow[];
   views: ViewRow[];
   paymentLinks: PaymentLinkRow[];
+  /** 便ごとの個人メモ。APIは本人の行だけを返す。 */
+  flightNotes: FlightNoteRow[];
   userSettings: UserSettingRow[];
   pendingInvites: PendingInviteRow[];
   friendships: FriendshipRow[];
@@ -87,7 +89,7 @@ function emptySnapshot(): Snapshot {
   return {
     users: [], credentials: [], plans: [], members: [], memberPlaceholders: [], itinerary: [], cities: [], links: [],
     checklist: [], candidates: [], candidateVotes: [], expenses: [], expenseShares: [],
-    settlements: [], views: [], paymentLinks: [], userSettings: [], pendingInvites: [], friendships: [],
+    settlements: [], views: [], paymentLinks: [], flightNotes: [], userSettings: [], pendingInvites: [], friendships: [],
     viewer: null, identities: [],
   };
 }
@@ -853,6 +855,8 @@ export const expenseShares = (): ExpenseShareRow[] => snap.expenseShares;
 export const settlements = (): SettlementRow[] => snap.settlements;
 export const views = (): ViewRow[] => snap.views;
 export const paymentLinks = (): PaymentLinkRow[] => snap.paymentLinks;
+// 旧キャッシュには flightNotes が無いことがあるので必ず配列に落とす。
+export const flightNotes = (): FlightNoteRow[] => snap.flightNotes || [];
 export const userSettings = (): UserSettingRow[] => snap.userSettings;
 export const pendingInvites = (): PendingInviteRow[] => snap.pendingInvites;
 export const friendships = (): FriendshipRow[] => snap.friendships;
@@ -986,6 +990,37 @@ export function setPaymentLink(userId: string, handle: string): void {
     snap.paymentLinks = snap.paymentLinks.filter((p) => p !== row);
   }
   send("PUT", `/api/users/${encodeURIComponent(userId)}/payment-link`, { handle });
+}
+
+/** 自分の便メモ（リンク・予約番号・座席・QR）を保存する。全フィールド空なら削除。 */
+export function setFlightNote(
+  planId: string,
+  userId: string,
+  flightNo: string,
+  input: { link_url: string; booking_ref: string; seat: string; qr_image: string },
+): void {
+  if (!snap.flightNotes) snap.flightNotes = [];
+  const empty = !input.link_url && !input.booking_ref && !input.seat && !input.qr_image;
+  const existing = snap.flightNotes.find(
+    (note) => note.plan_id === planId && note.user_id === userId && note.flight_no === flightNo,
+  );
+  if (empty) {
+    if (existing) snap.flightNotes = snap.flightNotes.filter((note) => note !== existing);
+  } else if (existing) {
+    existing.link_url = input.link_url || null;
+    existing.booking_ref = input.booking_ref || null;
+    existing.seat = input.seat || null;
+    existing.qr_image = input.qr_image || null;
+  } else {
+    snap.flightNotes.push({
+      plan_id: planId, user_id: userId, flight_no: flightNo,
+      link_url: input.link_url || null, booking_ref: input.booking_ref || null,
+      seat: input.seat || null, qr_image: input.qr_image || null,
+    });
+  }
+  send("PUT", `/api/plans/${encodeURIComponent(planId)}/flight-notes/${encodeURIComponent(flightNo)}`, {
+    link_url: input.link_url, booking_ref: input.booking_ref, seat: input.seat, qr_image: input.qr_image,
+  });
 }
 
 export function setHistoryPublic(userId: string, isPublic: boolean): void {

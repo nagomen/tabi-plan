@@ -14,6 +14,7 @@
 //   POST   /api/plans/<id>/owner-transfer    所有権を参加者へ移譲
 //   DELETE /api/plans/<id>/members/me        自分が計画から脱退
 //   PUT    /api/plans/<id>/content           行程・都市・リンク・チェックリスト・候補を一括置換
+//   PUT    /api/plans/<id>/flight-notes/<便名> 自分の便メモ（リンク・予約番号・座席・QR）を保存
 //   POST   /api/plans/<id>/views             閲覧を1加算
 //   POST   /api/plans/<id>/invites           招待リンクを作る
 //   POST   /api/invites/accept               招待リンクを受けて参加する
@@ -37,6 +38,7 @@ import * as inviteRepo from "./plan-invite-repo.js";
 import * as memberRepo from "./plan-member-repo.js";
 import * as expenseRepo from "./expense-repo.js";
 import * as userRepo from "./user-repo.js";
+import * as flightNoteRepo from "./flight-note-repo.js";
 import { PLAN_MANAGE_FIELDS, PLAN_PATCH_FIELDS } from "./plan-contract.js";
 import { generateItinerary, MAX_AI_CITIES, suggestItineraryOptions, type ItineraryInput } from "./ai-itinerary.js";
 import { refineItinerary } from "./ai-itinerary-refine.js";
@@ -459,6 +461,21 @@ export async function route(method: string, path: string, body: Body, actorUserI
       m[1], content as Parameters<typeof repo.replacePlanContent>[1], requestedVersion, actorUserId,
     );
     return { status: 200, body: { ok: true, version } };
+  }
+  // 便ごとの個人メモ（リンク・予約番号・座席・QR）。自分の行だけを書ける。
+  // 観覧ロールでも自分の搭乗情報は持てるので、active な参加者なら誰でも可。
+  m = /^\/api\/plans\/([\w-]{1,32})\/flight-notes\/([A-Z]{2,3}\d{1,4})$/.exec(path);
+  if (m && method === "PUT") {
+    const access = await accessRepo.getPlanAccess(m[1], actorUserId);
+    const denied = await forbiddenUnless(Boolean(actorUserId && access.role));
+    if (denied) return denied;
+    await flightNoteRepo.setFlightNote(m[1], actorUserId, m[2], {
+      link_url: str(body.link_url),
+      booking_ref: str(body.booking_ref),
+      seat: str(body.seat),
+      qr_image: str(body.qr_image),
+    });
+    return { status: 200, body: { ok: true } };
   }
   m = /^\/api\/plans\/([\w-]{1,32})\/views$/.exec(path);
   if (m && method === "POST") {

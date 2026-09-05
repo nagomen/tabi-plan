@@ -39,6 +39,11 @@ export interface Bootstrap {
   settlements: SettlementRow[];
   views: { plan_id: string; view_count: number }[];
   paymentLinks: { user_id: string; provider: string; handle: string }[];
+  /** 便ごとの個人メモ（リンク・予約番号・座席・QR）。本人の行だけを返す。 */
+  flightNotes: {
+    plan_id: string; user_id: string; flight_no: string;
+    link_url: string | null; booking_ref: string | null; seat: string | null; qr_image: string | null;
+  }[];
   userSettings: { user_id: string; history_public: 0 | 1 }[];
   pendingInvites: {
     id: string; plan_id: string; plan_slug: string; plan_title: string;

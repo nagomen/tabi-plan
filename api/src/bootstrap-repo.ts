@@ -161,6 +161,16 @@ export async function bootstrapForUser(userId = ""): Promise<Bootstrap> {
     )
     : [];
 
+  // 便ごとの個人メモは本人の行だけを返す（予約番号・QR は他人に見せない）。
+  const flightNotes = userId && workspacePlanIds.length
+    ? await all<Bootstrap["flightNotes"][number]>(
+      `SELECT plan_id, user_id, flight_no, link_url, booking_ref, seat, qr_image
+         FROM plan_flight_notes
+        WHERE user_id = ? AND plan_id IN (${workspaceIn.sql})`,
+      [userId, ...workspaceIn.params],
+    )
+    : [];
+
   const identities = userId
     ? await all<{ provider: string; display_name: string | null }>(
         "SELECT provider, display_name FROM user_identities WHERE user_id = ?", [userId])
@@ -170,6 +180,6 @@ export async function bootstrapForUser(userId = ""): Promise<Bootstrap> {
     identities,
     users, credentials, plans, members, memberPlaceholders, itinerary, cities, links, checklist,
     candidates, candidateVotes, expenses, expenseShares, settlements, views,
-    paymentLinks, userSettings, friendships, pendingInvites,
+    paymentLinks, flightNotes, userSettings, friendships, pendingInvites,
   } as Bootstrap;
 }
