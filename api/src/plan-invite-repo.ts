@@ -9,6 +9,19 @@ function tokenHash(token: string): Buffer {
   return crypto.createHash("sha256").update(token, "utf8").digest();
 }
 
+/**
+ * 取消・期限切れの招待を業務エラーへ変換する。inspect と accept で同じ文言を使う。
+ * accepted の扱いだけ呼び出し側で分岐する（inspect は拒否、accept は同一人物なら冪等成功）。
+ */
+function assertInviteNotClosed(invite: { status: string; expires_at: string | null }): void {
+  if (invite.status === "revoked" || invite.status === "expired") {
+    throw new BadRequest("この招待リンクは使えません");
+  }
+  if (invite.expires_at && new Date(invite.expires_at).getTime() < Date.now()) {
+    throw new BadRequest("この招待リンクは期限切れです");
+  }
+}
+
 /** 期限切れを業務エラーで返す前に永続化する（例外によるtransaction rollbackを避ける）。 */
 async function markExpiredInvites(filter: { token: string } | { planId: string }): Promise<void> {
   if ("token" in filter) {
@@ -130,13 +143,9 @@ export async function inspectInvite(token: string): Promise<{
       WHERE i.token_hash = ? LIMIT 1`,
     [tokenHash(token)],
   );
-  if (!invite || invite.status === "revoked" || invite.status === "expired") {
-    throw new BadRequest("この招待リンクは使えません");
-  }
+  if (!invite) throw new BadRequest("この招待リンクは使えません");
   if (invite.status === "accepted") throw new BadRequest("この招待リンクは既に使われています");
-  if (invite.expires_at && new Date(invite.expires_at).getTime() < Date.now()) {
-    throw new BadRequest("この招待リンクは期限切れです");
-  }
+  assertInviteNotClosed(invite);
   const targetPlaceholder = invite.invited_user_id
     ? await firstRow<{ user_id: string; display_name: string }>(
       pool,
@@ -262,12 +271,11 @@ export async function acceptInvite(token: string, userId: string, selectedMember
       [tokenHash(token)],
     );
     if (!invite) throw new BadRequest("招待リンクが無効です");
-    if (invite.status === "revoked" || invite.status === "expired") throw new BadRequest("この招待リンクは使えません");
     if (invite.status === "accepted") {
       if (invite.accepted_by_id === userId) return { planSlug: invite.slug };
       throw new BadRequest("この招待リンクは既に使われています");
     }
-    if (invite.expires_at && new Date(invite.expires_at).getTime() < Date.now()) throw new BadRequest("この招待リンクは期限切れです");
+    assertInviteNotClosed(invite);
     let membershipChanged = false;
     const requestedPlaceholder = String(selectedMemberUserId || "").trim();
     const invitedPlaceholder = invite.invited_user_id

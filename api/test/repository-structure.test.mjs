@@ -33,12 +33,20 @@ test("AI route distinguishes an expired login session from missing plan permissi
   assert.match(routes, /path === "\/api\/ai\/itinerary-options"[\s\S]*suggestItineraryOptions/);
   assert.match(routes, /path === "\/api\/ai\/itinerary-refine"[\s\S]*access\.canEditWorkspace/);
   assert.match(routes, /access\.canEditWorkspace[\s\S]*refineItinerary/);
-  assert.match(routes, /reserveAi\(actorUserId, "options"\)/);
-  assert.match(routes, /reserveAi\(actorUserId, "itinerary"\)/);
+  assert.match(routes, /withAiReservation\(actorUserId, "options"/);
+  assert.match(routes, /withAiReservation\(actorUserId, "itinerary"/);
   assert.match(routes, /ai_daily_limit[\s\S]*use_external_ai/);
+  // AIから結果を得られなかった失敗は1日枠を返す（上限3回/日が障害で消えないように）。
+  assert.match(routes, /AiUpstreamError \|\| error instanceof AiUnavailableError[\s\S]*refundAiRequest/);
   assert.match(routes, /transportOptionsForCities\(input\.cities \|\| \[\]/);
   assert.match(routes, /error instanceof AiOutputError[\s\S]*status: 422/);
   assert.doesNotMatch(routes, /causeDetail[^\n]*body/);
+  const aiItinerary = source("ai-itinerary.ts");
+  assert.match(aiItinerary, /schemaName: "itinerary"[\s\S]*webSearch: false/);
+  assert.match(aiItinerary, /maxItems: 5/);
+  assert.match(aiItinerary, /error instanceof AiUpstreamError && error\.code === "ai_output_too_long"[\s\S]*generate\(true\)/);
+  assert.match(aiItinerary, /軽量版として/);
+  assert.match(source("openai-client.ts"), /tooLong \? "use_external_ai" : "retry"/);
 });
 
 test("unregistered trip members are explicit placeholders, not auto-created friends", () => {

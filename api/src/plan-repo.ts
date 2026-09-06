@@ -5,6 +5,7 @@
 //   - bootstrap、認証、認可、招待、メンバー、ユーザー、費用は各専用repositoryへ分離する。
 
 import mysql from "mysql2/promise";
+import { boundedNumber, safeDate } from "./coerce.js";
 import { all, firstRow, pool, withTransaction } from "./db.js";
 import { BadRequest, VersionConflict } from "./errors.js";
 import { newId } from "./ids.js";
@@ -21,7 +22,9 @@ export async function createPlan(input: Record<string, unknown>): Promise<{ id: 
   if (String(input.status || "draft") === "published") {
     throw new BadRequest("計画は下書きで作成し、旅行名・期間・訪問地を設定してから公開してください");
   }
+  // idはURLパスの照合（[\w-]{1,32}）に使うため、クライアント指定値も同じ形式に限る。
   const id = String(input.id || newId("pln"));
+  if (!/^[\w-]{1,32}$/.test(id)) throw new BadRequest("id の形式が正しくありません");
   const cols: string[] = ["id"];
   const vals: unknown[] = [id];
   for (const [k, v] of Object.entries(input)) {
@@ -116,14 +119,18 @@ export async function updatePlan(
   vals.push(expectedVersion);
   const [result] = await pool.query<mysql.ResultSetHeader>(sql, vals);
   if (result.affectedRows !== 1) {
-    // 「消えた計画」と「別端末の更新」を区別する。前者を409にすると、
+    // 「消えた計画」「権限喪失」「別端末の更新」を区別する。前2つを409にすると、
     // 画面が読み込み直しを繰り返しても直らない案内を出してしまう。
     const rows = await all<{ version: number }>(
       "SELECT version FROM plans WHERE id = ? AND deleted_at IS NULL LIMIT 1", [id],
     );
-    const currentVersion = Number(rows[0]?.version || 0);
     if (!rows.length) throw new BadRequest("計画が見つかりません");
-    throw new VersionConflict("計画が別の端末で更新されています", currentVersion);
+    const permitted = await all<{ id: string }>(
+      `SELECT id FROM plans WHERE id = ? AND deleted_at IS NULL AND source <> 'sample' AND (${accessSql}) LIMIT 1`,
+      [id, actorUserId],
+    );
+    if (!permitted.length) throw new BadRequest("この計画を変更する権限がありません");
+    throw new VersionConflict("計画が別の端末で更新されています", Number(rows[0]?.version || 0));
   }
   return expectedVersion + 1;
 }
@@ -179,15 +186,6 @@ export async function replacePlanContent(planId: string, body: {
       }
     }
 
-    // 日付・座標は行程と都市の両方で同じDB契約を使う。
-    const dateOrNull = (v: unknown): string | null =>
-      /^\d{4}-\d{2}-\d{2}$/.test(String(v || "")) ? String(v) : null;
-    const numOrNull = (v: unknown, min: number, max: number): number | null => {
-      if (v === null || v === undefined || v === "") return null;
-      const n = Number(v);
-      return Number.isFinite(n) && n >= min && n <= max ? n : null;
-    };
-
     if (body.itinerary) {
       await conn.query("DELETE FROM itinerary_items WHERE plan_id = ?", [planId]);
       // 日付・時刻・座標・分数は、DBの厳格モードで500になる前に安全な値へ丸める。
@@ -200,13 +198,13 @@ export async function replacePlanContent(planId: string, body: {
         return ids.length ? JSON.stringify(ids) : null;
       };
       const rows = body.itinerary.map((it, i) => [
-        newId("itm"), planId, dateOrNull(it.item_date), numOrNull(it.day_index, 0, 1000), i,
+        newId("itm"), planId, safeDate(it.item_date), boundedNumber(it.day_index, 0, 1000), i,
         it.kind || "sight", timeOrNull(it.start_time), String(it.title || "").slice(0, 200),
         it.place || null, it.area || null, it.note || null, it.map_query || null,
-        numOrNull(it.lat, -90, 90), numOrNull(it.lng, -180, 180),
-        it.from_place || null, numOrNull(it.from_lat, -90, 90), numOrNull(it.from_lng, -180, 180),
-        it.to_place || null, numOrNull(it.to_lat, -90, 90), numOrNull(it.to_lng, -180, 180),
-        it.transport || null, numOrNull(it.duration_minutes, 0, 100_000),
+        boundedNumber(it.lat, -90, 90), boundedNumber(it.lng, -180, 180),
+        it.from_place || null, boundedNumber(it.from_lat, -90, 90), boundedNumber(it.from_lng, -180, 180),
+        it.to_place || null, boundedNumber(it.to_lat, -90, 90), boundedNumber(it.to_lng, -180, 180),
+        it.transport || null, boundedNumber(it.duration_minutes, 0, 100_000),
         memberIdsOrNull(it.member_ids),
       ]);
       if (rows.length) {
@@ -221,8 +219,8 @@ export async function replacePlanContent(planId: string, body: {
     if (body.cities) {
       await conn.query("DELETE FROM plan_cities WHERE plan_id = ?", [planId]);
       const rows = body.cities.filter((c) => c && c.name).map((c, i) => [
-        newId("cty"), planId, String(c.name).slice(0, 100), dateOrNull(c.from_date), dateOrNull(c.to_date),
-        numOrNull(c.lat, -90, 90), numOrNull(c.lng, -180, 180), i,
+        newId("cty"), planId, String(c.name).slice(0, 100), safeDate(c.from_date), safeDate(c.to_date),
+        boundedNumber(c.lat, -90, 90), boundedNumber(c.lng, -180, 180), i,
       ]);
       if (rows.length) {
         await conn.query(

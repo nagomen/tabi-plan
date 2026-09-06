@@ -23,7 +23,6 @@ export interface AiErrorGuidance {
 const REVISE_CODES = new Set([
   "ai_content_filtered",
   "ai_input_too_large",
-  "ai_output_too_long",
   "ai_refused",
   "payload_too_large",
 ]);
@@ -75,9 +74,9 @@ export function aiErrorGuidance(error: AiErrorLike, phase: AiErrorPhase): AiErro
   if (code === "session_required" || error.action === "sign_in") {
     return { title: "ログインが必要です", message, action: "sign_in", actionLabel: "ログインする", retryAfter: 0, requestId };
   }
-  if (code === "ai_daily_limit" || error.action === "use_external_ai") {
+  if (code === "ai_daily_limit" || code === "ai_output_too_long" || error.action === "use_external_ai") {
     return {
-      title: "本日のAI利用上限に達しました",
+      title: code === "ai_output_too_long" ? "外部AIでも続けられます" : "本日のAI利用上限に達しました",
       message,
       action: "external_ai",
       actionLabel: "プロンプトをコピーしてChatGPTを開く",

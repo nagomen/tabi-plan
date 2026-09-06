@@ -44,8 +44,9 @@ import { generateItinerary, MAX_AI_CITIES, suggestItineraryOptions, type Itinera
 import { refineItinerary } from "./ai-itinerary-refine.js";
 import type { ItineraryKind, ItineraryRefineInput, ItineraryRefineItem, TransportOption, TransportSearchInput, TransportSearchMode } from "@tabi/contracts";
 import { AiInputError, AiOutputError, AiUnavailableError, AiUpstreamError } from "./ai-errors.js";
+import { arr, boundedNumber, isRecord, str, strArr } from "./coerce.js";
 import { BadRequest } from "./errors.js";
-import { reserveAiRequest, type AiScope } from "./ai-usage-repo.js";
+import { refundAiRequest, reserveAiRequest, type AiScope } from "./ai-usage-repo.js";
 import { unlinkLine } from "./line-auth.js";
 import { searchTransportOptions, transportOptionsForCities } from "./transport-search.js";
 
@@ -56,13 +57,21 @@ export interface Handled {
 
 type Body = Record<string, unknown>;
 
-const str = (v: unknown): string => (typeof v === "string" ? v : "");
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  Boolean(value) && typeof value === "object" && !Array.isArray(value);
-const arr = (v: unknown): Record<string, unknown>[] => (Array.isArray(v) ? v.filter(isRecord) : []);
-const strArr = (v: unknown): string[] => Array.isArray(v)
-  ? v.filter((item): item is string => typeof item === "string").map((item) => item.trim()).filter(Boolean)
-  : [];
+// 全エラーは共通契約 {error, message, retryable, action} で返す（README「エラー契約」）。
+// error は機械判定用のコード、message が利用者向けの日本語。
+const badRequest = (message: string): Handled => ({
+  status: 400,
+  body: { error: "bad_request", message, retryable: false, action: "revise_input" },
+});
+const forbidden = (): Handled => ({
+  status: 403,
+  body: {
+    error: "forbidden",
+    message: "この操作を行う権限がありません。画面を読み込み直して最新の状態を確認してください。",
+    retryable: false,
+    action: "reload",
+  },
+});
 const PLAN_CONTENT_FIELDS = new Set(["itinerary", "cities", "links", "checklist", "candidates"]);
 const ITINERARY_KINDS = new Set<ItineraryKind>(["sight", "move", "food", "stay", "todo", "form"]);
 const TRANSPORT_SEARCH_MODES = new Set<TransportSearchMode>(["any", "flight", "transit", "drive", "walk"]);
@@ -143,12 +152,6 @@ function itineraryInput(body: Body): ItineraryInput {
   };
 }
 
-const finiteOrNull = (value: unknown): number | null => {
-  if (value === null || value === undefined || value === "") return null;
-  const number = Number(value);
-  return Number.isFinite(number) ? number : null;
-};
-
 function itineraryRefineInput(body: Body): ItineraryRefineInput {
   const instruction = str(body.instruction).trim().slice(0, 1_200);
   if (!instruction) throw new AiInputError("変更したい内容を入力してください");
@@ -172,19 +175,19 @@ function itineraryRefineInput(body: Body): ItineraryRefineInput {
       title: str(item.title).slice(0, 160),
       place: str(item.place).slice(0, 160),
       address: str(item.address).slice(0, 240),
-      latitude: finiteOrNull(item.latitude),
-      longitude: finiteOrNull(item.longitude),
+      latitude: boundedNumber(item.latitude, -90, 90),
+      longitude: boundedNumber(item.longitude, -180, 180),
       note: str(item.note).slice(0, 300),
       from_city: str(item.from_city).slice(0, 100),
       from_place: str(item.from_place).slice(0, 160),
       from_address: str(item.from_address).slice(0, 240),
-      from_latitude: finiteOrNull(item.from_latitude),
-      from_longitude: finiteOrNull(item.from_longitude),
+      from_latitude: boundedNumber(item.from_latitude, -90, 90),
+      from_longitude: boundedNumber(item.from_longitude, -180, 180),
       to_city: str(item.to_city).slice(0, 100),
       to_place: str(item.to_place).slice(0, 160),
       to_address: str(item.to_address).slice(0, 240),
-      to_latitude: finiteOrNull(item.to_latitude),
-      to_longitude: finiteOrNull(item.to_longitude),
+      to_latitude: boundedNumber(item.to_latitude, -90, 90),
+      to_longitude: boundedNumber(item.to_longitude, -180, 180),
       transport: str(item.transport).slice(0, 40),
       duration_minutes: Math.max(0, Math.min(1440, Math.round(Number(item.duration_minutes) || 0))),
       members: strArr(item.members).slice(0, 50).map((value) => value.slice(0, 64)),
@@ -311,6 +314,25 @@ async function reserveAi(userId: string, scope: AiScope): Promise<Handled | null
     };
 }
 
+/**
+ * 1日枠を確保してからAI生成を実行する。AIから結果を得られなかった失敗
+ * （設定不足・上流障害）は枠を返し、障害の連続で当日分が消えないようにする。
+ * AiOutputError はトークンを消費済みなので返さない。
+ */
+async function withAiReservation(userId: string, scope: AiScope, work: () => Promise<unknown>): Promise<Handled> {
+  const limited = await reserveAi(userId, scope);
+  if (limited) return limited;
+  try {
+    return { status: 200, body: await work() };
+  } catch (error) {
+    if (error instanceof AiUpstreamError || error instanceof AiUnavailableError) {
+      await refundAiRequest(userId, scope).catch((refundError) =>
+        console.error("[travel-ai] usage refund failed", refundError));
+    }
+    return aiFailure(error);
+  }
+}
+
 function expectedVersion(body: Body): number | null {
   if (!Object.prototype.hasOwnProperty.call(body, "expected_version")) return null;
   const value = Number(body.expected_version);
@@ -318,7 +340,7 @@ function expectedVersion(body: Body): number | null {
 }
 
 async function forbiddenUnless(ok: boolean | Promise<boolean>): Promise<Handled | null> {
-  return await ok ? null : { status: 403, body: { error: "forbidden" } };
+  return await ok ? null : forbidden();
 }
 
 export async function route(method: string, path: string, body: Body, actorUserId = ""): Promise<Handled | null> {
@@ -329,24 +351,24 @@ export async function route(method: string, path: string, body: Body, actorUserI
 
   // ---- ユーザー ----
   if (method === "POST" && path === "/api/users/search") {
-    if (!actorUserId) return { status: 403, body: { error: "forbidden" } };
+    if (!actorUserId) return forbidden();
     return { status: 200, body: { users: await userRepo.searchUsers(str(body.query), actorUserId) } };
   }
   let m = /^\/api\/users\/([\w-]{1,32})$/.exec(path);
   if (m && method === "PATCH") {
-    if (m[1] !== actorUserId) return { status: 403, body: { error: "forbidden" } };
+    if (m[1] !== actorUserId) return forbidden();
     await userRepo.renameUser(m[1], str(body.display_name));
     return { status: 200, body: { ok: true } };
   }
   m = /^\/api\/users\/([\w-]{1,32})\/payment-link$/.exec(path);
   if (m && method === "PUT") {
-    if (m[1] !== actorUserId) return { status: 403, body: { error: "forbidden" } };
+    if (m[1] !== actorUserId) return forbidden();
     await userRepo.setPaymentLink(m[1], str(body.handle));
     return { status: 200, body: { ok: true } };
   }
   m = /^\/api\/users\/([\w-]{1,32})\/settings$/.exec(path);
   if (m && method === "PUT") {
-    if (m[1] !== actorUserId) return { status: 403, body: { error: "forbidden" } };
+    if (m[1] !== actorUserId) return forbidden();
     await userRepo.setUserSettings(m[1], Boolean(body.history_public));
     return { status: 200, body: { ok: true } };
   }
@@ -369,22 +391,22 @@ export async function route(method: string, path: string, body: Body, actorUserI
 
   // ---- 計画 ----
   if (method === "POST" && path === "/api/plans") {
-    if (!actorUserId) return { status: 403, body: { error: "forbidden" } };
+    if (!actorUserId) return forbidden();
     return { status: 200, body: await repo.createPlan({ ...body, owner_user_id: actorUserId }) };
   }
   m = /^\/api\/plans\/([\w-]{1,32})$/.exec(path);
   if (m && method === "PATCH") {
     if (Object.prototype.hasOwnProperty.call(body, "owner_user_id")) {
-      return { status: 400, body: { error: "owner_user_id はこのAPIでは変更できません" } };
+      return badRequest("owner_user_id はこのAPIでは変更できません");
     }
     const requestedVersion = expectedVersion(body);
     if (requestedVersion === null) {
-      return { status: 400, body: { error: "expected_version が必要です" } };
+      return badRequest("expected_version には1以上の整数が必要です");
     }
     const patch = Object.fromEntries(Object.entries(body).filter(([key]) => key !== "expected_version"));
     const unknownFields = Object.keys(patch).filter((key) => !PLAN_PATCH_FIELDS.has(key));
     if (unknownFields.length) {
-      return { status: 400, body: { error: `更新できない項目です: ${unknownFields.join(", ")}` } };
+      return badRequest(`更新できない項目です: ${unknownFields.join(", ")}`);
     }
     const managesPlan = Object.keys(patch).some((key) => PLAN_MANAGE_FIELDS.has(key));
     const access = await accessRepo.getPlanAccess(m[1], actorUserId);
@@ -405,7 +427,7 @@ export async function route(method: string, path: string, body: Body, actorUserI
   if (m && method === "PUT") {
     const requestedVersion = expectedVersion(body);
     if (requestedVersion === null) {
-      return { status: 400, body: { error: "expected_version が必要です" } };
+      return badRequest("expected_version には1以上の整数が必要です");
     }
     const denied = await forbiddenUnless(accessRepo.canManagePlan(m[1], actorUserId));
     if (denied) return denied;
@@ -419,7 +441,7 @@ export async function route(method: string, path: string, body: Body, actorUserI
   }
   m = /^\/api\/plans\/([\w-]{1,32})\/members\/me$/.exec(path);
   if (m && method === "DELETE") {
-    if (!actorUserId) return { status: 403, body: { error: "forbidden" } };
+    if (!actorUserId) return forbidden();
     await memberRepo.leavePlan(m[1], actorUserId);
     return { status: 200, body: { ok: true } };
   }
@@ -434,16 +456,16 @@ export async function route(method: string, path: string, body: Body, actorUserI
   if (m && method === "PUT") {
     const requestedVersion = expectedVersion(body);
     if (requestedVersion === null) {
-      return { status: 400, body: { error: "expected_version が必要です" } };
+      return badRequest("expected_version には1以上の整数が必要です");
     }
     const contentEntries = Object.entries(body).filter(([key]) => key !== "expected_version");
     const unknownFields = contentEntries.map(([key]) => key).filter((key) => !PLAN_CONTENT_FIELDS.has(key));
     if (unknownFields.length) {
-      return { status: 400, body: { error: `更新できない項目です: ${unknownFields.join(", ")}` } };
+      return badRequest(`更新できない項目です: ${unknownFields.join(", ")}`);
     }
     for (const [key, value] of contentEntries) {
       if (!Array.isArray(value) || value.some((item) => !isRecord(item))) {
-        return { status: 400, body: { error: `${key} はオブジェクトの配列で指定してください` } };
+        return badRequest(`${key} はオブジェクトの配列で指定してください`);
       }
     }
     const normalizedContent = Object.fromEntries(contentEntries.map(([key, value]) => [key, arr(value)]));
@@ -512,7 +534,7 @@ export async function route(method: string, path: string, body: Body, actorUserI
     return { status: 200, body: { ok: true } };
   }
   if (method === "POST" && path === "/api/invites/accept") {
-    if (!actorUserId) return { status: 403, body: { error: "forbidden" } };
+    if (!actorUserId) return forbidden();
     return {
       status: 200,
       body: await inviteRepo.acceptInvite(str(body.token), actorUserId, str(body.member_user_id)),
@@ -569,7 +591,17 @@ export async function route(method: string, path: string, body: Body, actorUserI
 
   // ---- 外部ログインの紐付け ----
   if (method === "DELETE" && path === "/api/auth/line/link") {
-    if (!actorUserId) return { status: 401, body: { error: "session_required" } };
+    if (!actorUserId) {
+      return {
+        status: 401,
+        body: {
+          error: "session_required",
+          message: "ログインセッションが無効です。ログインし直してからお試しください。",
+          retryable: false,
+          action: "sign_in",
+        },
+      };
+    }
     try {
       await unlinkLine(actorUserId);
       return { status: 200, body: { ok: true } };
@@ -577,7 +609,7 @@ export async function route(method: string, path: string, body: Body, actorUserI
       // 業務上の理由（他のログイン手段が無い等）だけ400で説明する。
       // DB障害などの生エラーは server.ts の分類に任せ、画面へ漏らさない。
       if (!(error instanceof BadRequest)) throw error;
-      return { status: 400, body: { error: "bad_request", message: error.message } };
+      return badRequest(error.message);
     }
   }
 
@@ -597,10 +629,7 @@ export async function route(method: string, path: string, body: Body, actorUserI
     try {
       const input = transportSearchInput(body);
       if (!input.from || !input.to || !input.date) {
-        return {
-          status: 400,
-          body: { error: "bad_request", message: "出発地・到着地・日付を指定してください", action: "revise_input" },
-        };
+        return badRequest("出発地・到着地・日付を指定してください");
       }
       return { status: 200, body: await searchTransportOptions(input) };
     } catch (error) {
@@ -621,9 +650,8 @@ export async function route(method: string, path: string, body: Body, actorUserI
     if (!actorUserId) return aiSessionRequired();
     try {
       const input = itineraryInput(body);
-      const limited = await reserveAi(actorUserId, "options");
-      if (limited) return limited;
-      return { status: 200, body: await suggestItineraryOptions(actorUserId, input) };
+      return await withAiReservation(actorUserId, "options", () =>
+        suggestItineraryOptions(actorUserId, input));
     } catch (error) {
       return aiFailure(error);
     }
@@ -633,17 +661,16 @@ export async function route(method: string, path: string, body: Body, actorUserI
     if (!actorUserId) return aiSessionRequired();
     try {
       const input = itineraryInput(body);
-      const limited = await reserveAi(actorUserId, "itinerary");
-      if (limited) return limited;
-      const searched = await transportOptionsForCities(input.cities || [], input.people).catch((error) => {
-        console.warn("[transport] search for itinerary failed", error);
-        return [];
+      return await withAiReservation(actorUserId, "itinerary", async () => {
+        const searched = await transportOptionsForCities(input.cities || [], input.people).catch((error) => {
+          console.warn("[transport] search for itinerary failed", error);
+          return [];
+        });
+        return generateItinerary(actorUserId, {
+          ...input,
+          transportOptions: [...(input.transportOptions || []), ...searched],
+        });
       });
-      const draft = await generateItinerary(actorUserId, {
-        ...input,
-        transportOptions: [...(input.transportOptions || []), ...searched],
-      });
-      return { status: 200, body: draft };
     } catch (error) {
       return aiFailure(error);
     }
@@ -655,17 +682,17 @@ export async function route(method: string, path: string, body: Body, actorUserI
       // 閲覧者や公開共同編集者が他人の計画を材料にAI費用を使わないよう、
       // 正式な owner / editor メンバーだけに限定する。
       const access = await accessRepo.getPlanAccess(input.plan_id, actorUserId);
-      if (!access.canEditWorkspace) return { status: 403, body: { error: "forbidden" } };
-      const limited = await reserveAi(actorUserId, "itinerary");
-      if (limited) return limited;
-      const searched = await transportOptionsForCities(input.cities || []).catch((error) => {
-        console.warn("[transport] search for refine failed", error);
-        return [];
+      if (!access.canEditWorkspace) return forbidden();
+      return await withAiReservation(actorUserId, "itinerary", async () => {
+        const searched = await transportOptionsForCities(input.cities || []).catch((error) => {
+          console.warn("[transport] search for refine failed", error);
+          return [];
+        });
+        return refineItinerary(actorUserId, {
+          ...input,
+          transport_options: [...(input.transport_options || []), ...searched],
+        });
       });
-      return { status: 200, body: await refineItinerary(actorUserId, {
-        ...input,
-        transport_options: [...(input.transport_options || []), ...searched],
-      }) };
     } catch (error) {
       return aiFailure(error);
     }
@@ -673,30 +700,33 @@ export async function route(method: string, path: string, body: Body, actorUserI
 
   // ---- 友達 ----
   if (method === "POST" && path === "/api/friendships") {
-    if (!actorUserId) return { status: 403, body: { error: "forbidden" } };
+    if (!actorUserId) return forbidden();
     const a = str(body.a);
     const b = str(body.b);
     const requestedBy = str(body.requested_by_id);
     const status = str(body.status) || "pending";
-    if (![a, b].includes(actorUserId)) return { status: 403, body: { error: "forbidden" } };
+    if (![a, b].includes(actorUserId)) return forbidden();
     const existing = await userRepo.friendshipBetween(a, b);
     if (status === "pending") {
-      if (requestedBy !== actorUserId) return { status: 403, body: { error: "forbidden" } };
+      if (requestedBy !== actorUserId) return forbidden();
       if (existing?.status === "accepted") {
-        return { status: 400, body: { error: "already_friends", message: "既に友達です" } };
+        return {
+          status: 400,
+          body: { error: "already_friends", message: "既に友達です", retryable: false, action: "reload" },
+        };
       }
     } else if (status === "accepted" || status === "declined") {
       if (!existing || existing.status !== "pending" || existing.requested_by_id === actorUserId) {
-        return { status: 403, body: { error: "forbidden" } };
+        return forbidden();
       }
     } else if (status === "canceled") {
       if (!existing || existing.status !== "pending" || existing.requested_by_id !== actorUserId) {
-        return { status: 403, body: { error: "forbidden" } };
+        return forbidden();
       }
     } else if (status === "removed") {
-      if (!existing || existing.status !== "accepted") return { status: 403, body: { error: "forbidden" } };
+      if (!existing || existing.status !== "accepted") return forbidden();
     } else {
-      return { status: 400, body: { error: "invalid friendship status" } };
+      return badRequest("友達関係の更新内容が正しくありません");
     }
     return {
       status: 200,

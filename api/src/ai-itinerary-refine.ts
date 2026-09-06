@@ -5,10 +5,15 @@ import type {
 } from "@tabi/contracts";
 import { config } from "./config.js";
 import { AiInputError, AiOutputError, AiUnavailableError } from "./ai-errors.js";
-import { daysBetween } from "./ai-itinerary.js";
-import { recordAiTokens } from "./ai-usage-repo.js";
-import { structuredResponse } from "./openai-client.js";
-import { cityNamesEquivalent, strictTimeMinutes, validCoordinate } from "./itinerary-normalization.js";
+import { daysBetween, generateValidated } from "./ai-itinerary.js";
+import { boundedNumber } from "./coerce.js";
+import {
+  assertDistinctStartTimes,
+  assertStaysInFinalCity,
+  type ScheduleEvent,
+  strictTimeMinutes,
+  walkDaySchedule,
+} from "./itinerary-normalization.js";
 
 const KINDS = ["sight", "move", "food", "stay", "todo", "form"] as const;
 const TRANSPORTS = ["", "電車", "新幹線", "飛行機", "車", "バス", "フェリー", "徒歩", "その他"] as const;
@@ -126,19 +131,19 @@ function normalizeItem(
     title: String(item.title || "").trim(),
     place: String(item.place || "").trim(),
     address: String(item.address || item.place || "").trim(),
-    latitude: validCoordinate(item.latitude, -90, 90),
-    longitude: validCoordinate(item.longitude, -180, 180),
+    latitude: boundedNumber(item.latitude, -90, 90),
+    longitude: boundedNumber(item.longitude, -180, 180),
     note: String(item.note || "").trim(),
     from_city: move ? String(item.from_city || "").trim() : "",
     from_place: move ? String(item.from_place || "").trim() : "",
     from_address: move ? String(item.from_address || item.from_place || "").trim() : "",
-    from_latitude: move ? validCoordinate(item.from_latitude, -90, 90) : null,
-    from_longitude: move ? validCoordinate(item.from_longitude, -180, 180) : null,
+    from_latitude: move ? boundedNumber(item.from_latitude, -90, 90) : null,
+    from_longitude: move ? boundedNumber(item.from_longitude, -180, 180) : null,
     to_city: move ? String(item.to_city || city).trim() : "",
     to_place: move ? String(item.to_place || item.place || "").trim() : "",
     to_address: move ? String(item.to_address || item.to_place || "").trim() : "",
-    to_latitude: move ? validCoordinate(item.to_latitude, -90, 90) : null,
-    to_longitude: move ? validCoordinate(item.to_longitude, -180, 180) : null,
+    to_latitude: move ? boundedNumber(item.to_latitude, -90, 90) : null,
+    to_longitude: move ? boundedNumber(item.to_longitude, -180, 180) : null,
     transport: move && TRANSPORTS.includes(item.transport as typeof TRANSPORTS[number]) ? item.transport : "",
     duration_minutes: move ? Math.round(Number(item.duration_minutes || 0)) : 0,
     members: normalizeMembers(date, item.members, knownMemberIds, presentMemberIds),
@@ -162,6 +167,7 @@ export function finalizeRefinedItinerary(
     throw new AiOutputError("AIの修正案に日付の欠落、重複、または旅行期間外の日付があります");
   }
 
+  // 現在都市は日をまたいで引き継ぐ（前日の到着都市から翌日が始まる）。
   let currentCity = "";
   const itinerary: ItineraryRefineItem[] = [];
   for (const date of dates) {
@@ -183,39 +189,24 @@ export function finalizeRefinedItinerary(
       throw new AiOutputError(`${date}に開始時刻が正しくない予定があります`);
     }
     scheduled.sort((left, right) => left.minutes! - right.minutes! || left.order - right.order);
-    for (let index = 1; index < scheduled.length; index += 1) {
-      if (scheduled[index - 1].minutes === scheduled[index].minutes) {
-        throw new AiOutputError(`${date}に同じ開始時刻の予定があります`);
-      }
-    }
-    let unavailableUntil = 0;
-    for (const event of scheduled) {
-      const item = event.item;
+    const events: ScheduleEvent[] = scheduled.map(({ item, minutes }) => {
       if (!item.city) throw new AiOutputError(`${date}の予定に都市がありません`);
-      if (event.minutes! < unavailableUntil) {
-        throw new AiOutputError(`${date}の「${item.title || item.place}」が移動の到着前に始まります`);
+      if (item.kind !== "move") {
+        return { minutes: minutes!, label: item.title || item.place, city: item.city };
       }
-      if (!currentCity) currentCity = item.kind === "move" ? item.from_city : item.city;
-      if (item.kind === "move") {
-        if (!item.from_city || !item.to_city || !item.from_place || !item.to_place ||
-            !item.transport || item.duration_minutes < 1) {
-          throw new AiOutputError(`${date}の都市間移動に必要な情報が不足しています`);
-        }
-        if (!cityNamesEquivalent(currentCity, item.from_city)) {
-          throw new AiOutputError(`${date}の移動が現在地${currentCity}から始まっていません`);
-        }
-        currentCity = item.to_city;
-        unavailableUntil = event.minutes! + item.duration_minutes;
-      } else if (!cityNamesEquivalent(currentCity, item.city)) {
-        throw new AiOutputError(`${date}の「${item.title || item.place}」は${currentCity}滞在中ですが、${item.city}の予定になっています`);
+      if (!item.from_city || !item.to_city || !item.from_place || !item.to_place ||
+          !item.transport || item.duration_minutes < 1) {
+        throw new AiOutputError(`${date}の都市間移動に必要な情報が不足しています`);
       }
-    }
-    for (const stay of stays) {
-      if (!currentCity) currentCity = stay.city;
-      if (!cityNamesEquivalent(currentCity, stay.city)) {
-        throw new AiOutputError(`${date}の宿泊先が最終到着都市${currentCity}にありません`);
-      }
-    }
+      return {
+        minutes: minutes!,
+        label: item.title || item.place,
+        move: { fromCity: item.from_city, toCity: item.to_city, durationMinutes: item.duration_minutes },
+      };
+    });
+    assertDistinctStartTimes(date, events);
+    currentCity = walkDaySchedule(date, events, currentCity);
+    currentCity = assertStaysInFinalCity(date, stays, currentCity);
     itinerary.push(...scheduled.map((event) => event.item), ...stays);
   }
   const message = String(raw.message || "").trim();
@@ -273,14 +264,14 @@ export async function refineItinerary(userId: string, input: ItineraryRefineInpu
   if (input.current_itinerary.length > dates.length * MAX_ITEMS_PER_DAY) {
     throw new AiInputError("現在の行程が多すぎるためAI旅行相談を利用できません");
   }
-  const result = await structuredResponse<RawRefineResult>({
+  // 初回生成と同じ generateValidated を通し、指示文の防護・トークン計上・
+  // 検証失敗時の1回再生成を共通の方針で行う。
+  return generateValidated<RawRefineResult, ItineraryRefineResult>({
+    userId,
     schemaName: "itinerary_refinement",
     schema: REFINE_SCHEMA,
     system: "あなたは既存の旅行行程を会話形式で改善するプランナーです。利用者の依頼に必要な範囲だけを変更し、全日程を実行可能な順序で返します。",
     user: refinementPrompt({ ...input, instruction }, dates),
-    webSearch: config.ai.webSearchEnabled,
+    validate: (value) => finalizeRefinedItinerary(value, dates, input),
   });
-  await recordAiTokens(userId, result.meta.inputTokens, result.meta.outputTokens)
-    .catch((error) => console.error("[travel-ai] token usage update failed", error));
-  return finalizeRefinedItinerary(result.value, dates, input);
 }

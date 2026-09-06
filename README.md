@@ -41,8 +41,9 @@ npm workspaces 構成です。**ルートで `npm install` 1回**で frontend / 
 | `npm run dev` | フロントのローカル開発サーバ（Vite） |
 | `npm run build` | フロントを型検査してビルド（`tsc --noEmit` + `vite build`、出力 `frontend/dist`） |
 | `npm run typecheck` | frontend / api をすべて型検査 |
+| `npm run lint` | ESLint（await忘れ・async誤用・層の越境だけを検査。スタイルは見ない） |
 | `npm test` | frontend / API のテスト |
-| `npm run ci` | 全ワークスペース型検査 + APIテスト + 本番フロントビルド |
+| `npm run ci` | 全ワークスペース型検査 + lint + APIテスト + 本番フロントビルド |
 | `npm run deploy:production` | APIとフロントをまとめて本番デプロイし、反映まで検証 |
 | `npm run build:api` | APIを `api/dist` へコンパイル |
 
@@ -70,11 +71,17 @@ npm run dev:full
 
 AI旅行相談は、候補提示と行程確定の2リクエストで終了します。OpenAI APIキーは必ずAPIサーバーの
 `OPENAI_KEY`へ設定し、フロントの`trip-config.js`には入れないでください。候補・行程の生成には
-Responses APIの構造化出力を使用し、既定ではWeb検索で観光地と都市間移動の実在性を補強します。
+Responses APIの構造化出力を使用します。候補提示ではWeb検索で観光地の実在性を補強し、
+行程確定では選択済み候補とサーバー側で検索済みの移動候補を使って短いJSONを生成します。
+最終行程生成では出力途中切れを避けるため、Web検索を使いません。
+それでもOpenAIの`max_output_tokens`で途中終了した場合は、利用者へすぐ条件削減を求めず、
+サーバー側で軽量版プロンプトへ切り替えて1回だけ自動再試行します。
 
 AI機能はログインユーザーだけが利用できます。未ログインユーザーにはOpenAI APIを使わせません。
 トークン費用を抑えるため、ログインユーザーも全AIリクエスト合計で1日3回までに制限します
 （候補生成、行程生成、詳細ページのAI相談はいずれも1回として数えます）。
+OpenAI側の障害・設定不足でAIから結果を得られなかった場合は、消費した1日枠を自動で返します
+（クールダウンは返さないため、障害中の連打はできません）。
 主な運用設定は`.env.sample`の`OPENAI_*`と`AI_*`です。`AI_DAILY_REQUESTS_PER_USER`は
 設定できますが、アプリ側で3回にハードキャップします。利用回数とトークン数は
 `ai_usage_daily`へ記録されるため、既存DBでは`npm run migrate -w api`を適用してください。
@@ -82,6 +89,7 @@ Web検索を利用できないモデル・環境では`OPENAI_WEB_SEARCH_ENABLED
 根拠が弱くなるため本番では有効を推奨します。
 
 1日の上限に達した場合、画面は外部AI用プロンプトをコピーしてChatGPTを開く導線を出します。
+OpenAIの回答が長くなって`ai_output_too_long`になった場合も、同じ導線へ逃がします。
 別サイトの入力欄へブラウザから完全自動で貼り付けることはできないため、プロンプトをクリップボードへ
 コピーし、開いたChatGPT/Gemini等へ利用者が貼り付ける設計にします。外部AIには
 `format: "tabi-plan-external-ai-v1"` の厳密なJSONを返すよう指示し、返ってきたJSONは
@@ -90,8 +98,10 @@ Web検索を利用できないモデル・環境では`OPENAI_WEB_SEARCH_ENABLED
 
 移動手段の現実性を上げるため、APIサーバーに`/api/transport/search`を用意しています。
 `GOOGLE_ROUTES_API_KEY`があればGoogle Routesで公共交通・車・徒歩の候補を検索し、
-`AMADEUS_CLIENT_ID` / `AMADEUS_CLIENT_SECRET`があればIATAコードへ解決できる都市間の航空券候補を
-Amadeusで検索します。AI行程生成・詳細ページのAI相談では、登録済み訪問地の隣接区間をサーバー側で
+`AMADEUS_CLIENT_ID` / `AMADEUS_CLIENT_SECRET`があれば都市間の航空券候補をAmadeusで検索します。
+都市名→IATAコードは内蔵の一般地理辞書に加え、辞書に無いラテン文字の都市名はAmadeusの
+ロケーション検索で動的に解決します（結果はプロセス内にキャッシュ）。解決できない都市は
+黙って0件にせず、`warnings`で「航空券は検索しなかった」ことを利用者へ返します。AI行程生成・詳細ページのAI相談では、登録済み訪問地の隣接区間をサーバー側で
 検索し、取得できた`transport_options`をAIへ渡します。候補がない区間は従来どおりAIが概算で組み、
 noteに要確認と書かせます。航空券価格や時刻は変動するため、予約確定情報としては扱いません。
 
@@ -108,7 +118,7 @@ APIのエラーは全経路で共通の形
 `{ error, message, retryable, retry_after?, action, request_id? }`
 を返します（分類は`api/src/errors.ts`の`describeError`、AI系は`api/src/ai-errors.ts`）。
 `message`は利用者へそのまま表示できる日本語、`action`は`retry / retry_later / revise_input /
-restart_consultation / reload / contact_support / sign_in`のいずれかで、フロントの
+restart_consultation / use_external_ai / reload / contact_support / sign_in`のいずれかで、フロントの
 `ApiRequestError`（`frontend/src/shared/db.ts`）が解釈します。全レスポンスに`X-Request-Id`が付き、
 サーバーログと突き合わせられます。DBのデッドロックは自動再試行し、接続断・キュー超過は
 `retry_after`付きの503になります。フロント側は全リクエストに打ち切り時間（AI 90秒・他 30秒）があり、

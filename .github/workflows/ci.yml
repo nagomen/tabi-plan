@@ -26,6 +26,8 @@ jobs:
       - run: npm ci
       - name: Type-check all workspaces
         run: npm run typecheck
+      - name: Lint (async safety and layering)
+        run: npm run lint
       - name: Test frontend and API
         run: npm test
       - name: API coverage (enforced thresholds)

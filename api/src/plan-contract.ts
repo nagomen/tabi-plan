@@ -23,6 +23,11 @@ export function planFieldError(input: Record<string, unknown>): string {
       !/^[A-Z]{3}$/.test(String(input.base_currency || "").toUpperCase())) {
     return "基準通貨は3文字の通貨コードで指定してください";
   }
+  // slugはURLと一意キー（VARCHAR(64)）に使う。フロントのsafeTripSlugと同じ字種に限る。
+  if (Object.prototype.hasOwnProperty.call(input, "slug") &&
+      !/^[a-z0-9][a-z0-9-]{0,63}$/.test(String(input.slug || ""))) {
+    return "URLスラッグは英小文字・数字・ハイフン64文字以内で指定してください";
+  }
   if (Object.prototype.hasOwnProperty.call(input, "title") && String(input.title || "").trim().length > 120) {
     return "旅行名は120文字以内にしてください";
   }

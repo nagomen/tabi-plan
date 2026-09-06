@@ -77,7 +77,7 @@ test("refusalと不完全応答を通常のJSONとして扱わない", async () 
       status: "incomplete", incomplete_details: { reason: "max_output_tokens" }, output: [],
     }), { status: 200 }),
     sleep: async () => {},
-  }), (error) => error.code === "ai_output_too_long" && error.retryable === false && error.action === "revise_input");
+  }), (error) => error.code === "ai_output_too_long" && error.retryable === false && error.action === "use_external_ai");
 });
 
 test("認証・課金・content filterは再試行せず管理者/入力対応として分類する", async () => {

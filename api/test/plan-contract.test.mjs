@@ -11,4 +11,13 @@ test("plan fields are rejected before violating storage contracts", () => {
   assert.equal(planFieldError({ source: "local" }), "");
   assert.match(planFieldError({ source: "sample" }), /変更できません/);
   assert.match(planFieldError({ source: null }), /変更できません/);
+  // slugはURLと一意キーに使うため、フロントのsafeTripSlugと同じ字種に限る。
+  assert.equal(planFieldError({ slug: "trip-10" }), "");
+  assert.match(planFieldError({ slug: "Trip_10" }), /スラッグ/);
+  assert.match(planFieldError({ slug: `${"a".repeat(65)}` }), /スラッグ/);
+  assert.match(planFieldError({ slug: "" }), /スラッグ/);
+  assert.match(planFieldError({ start_date: "2026/08/01" }), /日付/);
+  assert.equal(planFieldError({ start_date: "2026-08-01", end_date: "" }), "");
+  assert.match(planFieldError({ base_currency: "円" }), /通貨/);
+  assert.equal(planFieldError({ base_currency: "usd" }), "");
 });

@@ -166,11 +166,11 @@ function extractOutput(data: OpenAiResponse, requestId: string): string {
       filtered
         ? "入力内容の一部をAIが安全上の理由で処理できませんでした。表現を変えてお試しください。"
         : tooLong
-          ? "旅行条件が多く、AIの回答が途中で切れました。都市数や希望条件を減らしてお試しください。"
+          ? "AIの回答が長くなり途中で切れました。外部AI用プロンプトを使うか、条件を少し減らしてお試しください。"
           : "AIの応答が途中で終了しました。もう一度お試しください。",
       {
         retryable: !filtered && !tooLong,
-        action: filtered || tooLong ? "revise_input" : "retry",
+        action: filtered ? "revise_input" : tooLong ? "use_external_ai" : "retry",
         requestId,
         causeDetail: reason,
       },

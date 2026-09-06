@@ -56,6 +56,22 @@ export async function reserveAiRequest(userId: string, scope: AiScope): Promise<
   });
 }
 
+/**
+ * AIから結果を得られなかったときに、確保済みの1日利用枠を返す。
+ * 上限3回/日のため、OpenAI側の障害で枠だけ減ると当日中に使えなくなる。
+ * クールダウン（last_*_at）は返さない。障害中の連打をそのまま許さないため。
+ */
+export async function refundAiRequest(userId: string, scope: AiScope): Promise<void> {
+  const scopeColumn = scope === "options" ? "options_count" : "itinerary_count";
+  await pool.query(
+    `UPDATE ai_usage_daily
+        SET request_count = GREATEST(0, request_count - 1),
+            ${scopeColumn} = GREATEST(0, ${scopeColumn} - 1)
+      WHERE user_id = ? AND usage_date = CURRENT_DATE()`,
+    [userId],
+  );
+}
+
 export async function recordAiTokens(userId: string, inputTokens: number, outputTokens: number): Promise<void> {
   await pool.query(
     `UPDATE ai_usage_daily

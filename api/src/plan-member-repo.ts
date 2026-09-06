@@ -1,9 +1,37 @@
+import type mysql from "mysql2/promise";
+import { safeDate } from "./coerce.js";
 import { firstRow, inClause, type Row, withTransaction } from "./db.js";
 import { BadRequest, VersionConflict } from "./errors.js";
 import { newId } from "./ids.js";
 import { identityKey } from "./identity.js";
 import { reassignPlanMemberReferences } from "./plan-member-reference-repo.js";
-import { safeDate } from "./repo-helpers.js";
+
+/**
+ * 指定メンバーが費用・負担・精算で参照されている件数。
+ * メンバー除外（replaceMembers）と脱退（leavePlan）の双方が同じ基準で判定する。
+ */
+async function memberReferenceCount(
+  conn: mysql.PoolConnection,
+  planId: string,
+  userIds: string[],
+): Promise<number> {
+  if (!userIds.length) return 0;
+  const idsIn = inClause(userIds);
+  const referenced = await firstRow<{ total: number }>(
+    conn,
+    `SELECT (
+       (SELECT COUNT(*) FROM expenses e
+         WHERE e.plan_id = ? AND e.deleted_at IS NULL AND e.payer_user_id IN (${idsIn.sql})) +
+       (SELECT COUNT(*) FROM expense_shares s JOIN expenses e ON e.id = s.expense_id
+         WHERE e.plan_id = ? AND e.deleted_at IS NULL AND s.user_id IN (${idsIn.sql})) +
+       (SELECT COUNT(*) FROM settlements s
+         WHERE s.plan_id = ? AND s.deleted_at IS NULL
+           AND (s.from_user_id IN (${idsIn.sql}) OR s.to_user_id IN (${idsIn.sql})))
+     ) AS total`,
+    [planId, ...idsIn.params, planId, ...idsIn.params, planId, ...idsIn.params, ...idsIn.params],
+  );
+  return Number(referenced?.total || 0);
+}
 
 /** 名前だけ分かっている人を、この旅行専用の未登録メンバーとして追加する。 */
 export async function createPlaceholderMember(
@@ -123,24 +151,8 @@ export async function replaceMembers(
     const removedIds = (currentRows as unknown as { user_id: string }[])
       .map((row) => row.user_id)
       .filter((id) => !nextIds.has(id));
-    if (removedIds.length) {
-      const removedIn = inClause(removedIds);
-      const referenced = await firstRow<{ total: number }>(
-        conn,
-        `SELECT (
-           (SELECT COUNT(*) FROM expenses e
-             WHERE e.plan_id = ? AND e.deleted_at IS NULL AND e.payer_user_id IN (${removedIn.sql})) +
-           (SELECT COUNT(*) FROM expense_shares s JOIN expenses e ON e.id = s.expense_id
-             WHERE e.plan_id = ? AND e.deleted_at IS NULL AND s.user_id IN (${removedIn.sql})) +
-           (SELECT COUNT(*) FROM settlements s
-             WHERE s.plan_id = ? AND s.deleted_at IS NULL
-               AND (s.from_user_id IN (${removedIn.sql}) OR s.to_user_id IN (${removedIn.sql})))
-         ) AS total`,
-        [planId, ...removedIn.params, planId, ...removedIn.params, planId, ...removedIn.params, ...removedIn.params],
-      );
-      if (Number(referenced?.total || 0) > 0) {
-        throw new BadRequest("費用・負担・精算に使われているメンバーは削除できません。先に該当データを修正してください");
-      }
+    if (await memberReferenceCount(conn, planId, removedIds) > 0) {
+      throw new BadRequest("費用・負担・精算に使われているメンバーは削除できません。先に該当データを修正してください");
     }
     await conn.query(
       `UPDATE plan_members SET status = 'revoked'
@@ -185,18 +197,7 @@ export async function leavePlan(planId: string, userId: string): Promise<void> {
     if (plan.owner_user_id === userId || member.role === "owner") {
       throw new BadRequest("所有者は脱退できません。先に所有権を移譲してください");
     }
-    const referenced = await firstRow<{ total: number }>(
-      conn,
-      `SELECT (
-        (SELECT COUNT(*) FROM expenses WHERE plan_id = ? AND deleted_at IS NULL AND payer_user_id = ?) +
-        (SELECT COUNT(*) FROM expense_shares s JOIN expenses e ON e.id = s.expense_id
-          WHERE e.plan_id = ? AND e.deleted_at IS NULL AND s.user_id = ?) +
-        (SELECT COUNT(*) FROM settlements WHERE plan_id = ? AND deleted_at IS NULL
-          AND (from_user_id = ? OR to_user_id = ?))
-      ) AS total`,
-      [planId, userId, planId, userId, planId, userId, userId],
-    );
-    if (Number(referenced?.total || 0) > 0) {
+    if (await memberReferenceCount(conn, planId, [userId]) > 0) {
       throw new BadRequest("費用・負担・精算に記録があるため脱退できません。計画のownerにデータ整理を依頼してください");
     }
     await conn.query(

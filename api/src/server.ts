@@ -21,6 +21,7 @@ import {
   signUp, logIn, createSession, resolveSession, revokeSession,
   revokeOtherSessions, changePassword, addCredentials, recoverPassword, rotateRecoveryCode,
 } from "./auth-repo.js";
+import { str } from "./coerce.js";
 import { describeError } from "./errors.js";
 import { route } from "./routes.js";
 import { closeDatabase, pingDatabase } from "./db.js";
@@ -57,6 +58,14 @@ function corsHeaders(origin: string | undefined): Record<string, string> {
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * Math.max(1, config.sessionTtlDays);
 
 const sessionForUser = (userId: string): Promise<string> => createSession(userId, SESSION_TTL_MS);
+
+/** 有効なセッションが必要な操作に、無効・欠落トークンで来たときの共通契約ボディ。 */
+const SESSION_REQUIRED_BODY = {
+  error: "session_required",
+  message: "ログインセッションが無効です。ログインし直してからお試しください。",
+  retryable: false,
+  action: "sign_in",
+} as const;
 
 function redirect(res: http.ServerResponse, location: string): void {
   res.writeHead(302, { Location: location, "Cache-Control": "no-store" });
@@ -124,7 +133,21 @@ async function readJsonBody(req: http.IncomingMessage): Promise<Record<string, u
 
 // ---- ルーティング -------------------------------------------------------
 
-const server = http.createServer(async (req, res) => {
+// asyncハンドラを createServer へ直接渡すと、try に入る前の失敗が未処理拒否になる。
+// ここで受けて共通契約の500を返す（送信済みなら send が黙って打ち切る）。
+const server = http.createServer((req, res) => {
+  handleRequest(req, res).catch((error) => {
+    console.error("[travel-api] request handler crashed", error);
+    send(res, 500, {
+      error: "internal error",
+      message: "サーバーでエラーが発生しました。続く場合は管理者へお知らせください。",
+      retryable: false,
+      action: "contact_support",
+    });
+  });
+});
+
+async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
   const origin = req.headers.origin;
   const cors = corsHeaders(origin);
   const url = new URL(req.url || "/", "http://localhost");
@@ -141,7 +164,12 @@ const server = http.createServer(async (req, res) => {
 
   // ブラウザから来た（Origin 付き）のに許可外なら、ここで落とす
   if (origin && !Object.keys(cors).length) {
-    send(res, 403, { error: "origin not allowed" });
+    send(res, 403, {
+      error: "origin not allowed",
+      message: "このアクセス元からの利用は許可されていません。",
+      retryable: false,
+      action: "contact_support",
+    });
     return;
   }
 
@@ -175,7 +203,12 @@ const server = http.createServer(async (req, res) => {
   if (path === "/api/auth/line/start" || path === "/api/auth/line/callback") {
     const query = new URL(req.url || "/", "http://localhost").searchParams;
     if (!lineLoginEnabled()) {
-      send(res, 503, { error: "LINE ログインは設定されていません" }, cors);
+      send(res, 503, {
+        error: "line_login_disabled",
+        message: "LINEログインは設定されていません。",
+        retryable: false,
+        action: "contact_support",
+      }, cors);
       return;
     }
     // 画面遷移で来る口なので、拒否も JSON ではなくログイン画面へ戻して伝える。
@@ -255,26 +288,26 @@ const server = http.createServer(async (req, res) => {
     const body = req.method === "GET" || req.method === "DELETE" ? {} : await readJsonBody(req);
     if (path === "/api/auth/signup" && req.method === "POST") {
       const result = await signUp({
-        email: typeof body.email === "string" ? body.email : "",
-        password: typeof body.password === "string" ? body.password : "",
-        displayName: typeof body.display_name === "string" ? body.display_name : "",
+        email: str(body.email),
+        password: str(body.password),
+        displayName: str(body.display_name),
       });
       send(res, 200, { ...result, session: await sessionForUser(result.user.id) }, cors);
       return;
     }
     if (path === "/api/auth/login" && req.method === "POST") {
       const result = await logIn({
-        email: typeof body.email === "string" ? body.email : "",
-        password: typeof body.password === "string" ? body.password : "",
+        email: str(body.email),
+        password: str(body.password),
       });
       send(res, 200, { ...result, session: await sessionForUser(result.user.id) }, cors);
       return;
     }
     if (path === "/api/auth/recover" && req.method === "POST") {
       const result = await recoverPassword({
-        email: typeof body.email === "string" ? body.email : "",
-        recoveryCode: typeof body.recovery_code === "string" ? body.recovery_code : "",
-        newPassword: typeof body.new_password === "string" ? body.new_password : "",
+        email: str(body.email),
+        recoveryCode: str(body.recovery_code),
+        newPassword: str(body.new_password),
       });
       send(res, 200, { ok: true, ...result }, cors);
       return;
@@ -291,14 +324,19 @@ const server = http.createServer(async (req, res) => {
     // 紐付けのときもトークンが URL（＝アクセスログ）へ出ない。
     if (path === "/api/auth/line/authorize-url" && req.method === "POST") {
       if (!lineLoginEnabled()) {
-        send(res, 503, { error: "LINE ログインは設定されていません" }, cors);
+        send(res, 503, {
+        error: "line_login_disabled",
+        message: "LINEログインは設定されていません。",
+        retryable: false,
+        action: "contact_support",
+      }, cors);
         return;
       }
       const linkTo = await resolveSession(sessionToken);
       const url = authorizeUrl(
-        typeof body.return_to === "string" ? body.return_to : "",
+        str(body.return_to),
         linkTo,
-        typeof body.nonce === "string" ? body.nonce : "",
+        str(body.nonce),
       );
       send(res, 200, { url }, cors);
       return;
@@ -308,13 +346,13 @@ const server = http.createServer(async (req, res) => {
     // 401 を返すのは「ログインし直せば直る」と画面に伝えるため。
     if (path === "/api/auth/password" && req.method === "POST") {
       if (!actorUserId) {
-        send(res, 401, { error: "session_required" }, cors);
+        send(res, 401, SESSION_REQUIRED_BODY, cors);
         return;
       }
       const changed = await changePassword({
         userId: actorUserId,
-        currentPassword: typeof body.current_password === "string" ? body.current_password : "",
-        newPassword: typeof body.new_password === "string" ? body.new_password : "",
+        currentPassword: str(body.current_password),
+        newPassword: str(body.new_password),
         keepToken: sessionToken,
       });
       send(res, 200, { ok: true, ...changed }, cors);
@@ -322,20 +360,20 @@ const server = http.createServer(async (req, res) => {
     }
     if (path === "/api/auth/credentials" && req.method === "POST") {
       if (!actorUserId) {
-        send(res, 401, { error: "session_required" }, cors);
+        send(res, 401, SESSION_REQUIRED_BODY, cors);
         return;
       }
       const added = await addCredentials({
         userId: actorUserId,
-        email: typeof body.email === "string" ? body.email : "",
-        password: typeof body.password === "string" ? body.password : "",
+        email: str(body.email),
+        password: str(body.password),
       });
       send(res, 200, { ok: true, ...added }, cors);
       return;
     }
     if (path === "/api/auth/recovery-code" && req.method === "POST") {
       if (!actorUserId) {
-        send(res, 401, { error: "session_required" }, cors);
+        send(res, 401, SESSION_REQUIRED_BODY, cors);
         return;
       }
       send(res, 200, { ok: true, ...await rotateRecoveryCode(actorUserId) }, cors);
@@ -343,7 +381,7 @@ const server = http.createServer(async (req, res) => {
     }
     if (path === "/api/auth/sessions/revoke-others" && req.method === "POST") {
       if (!actorUserId) {
-        send(res, 401, { error: "session_required" }, cors);
+        send(res, 401, SESSION_REQUIRED_BODY, cors);
         return;
       }
       send(res, 200, { ok: true, revoked: await revokeOtherSessions(actorUserId, sessionToken) }, cors);
@@ -353,7 +391,7 @@ const server = http.createServer(async (req, res) => {
     // 403 だと画面に「権限がありません」と出て、ログインし直す導線が出ない。
     const publicWrite = path === "/api/invites/inspect" && req.method === "POST";
     if (sessionToken && !actorUserId && req.method !== "GET" && !publicWrite) {
-      send(res, 401, { error: "session_required" }, cors);
+      send(res, 401, SESSION_REQUIRED_BODY, cors);
       return;
     }
     const handled = await route(req.method || "GET", path, body, actorUserId);
@@ -380,7 +418,7 @@ const server = http.createServer(async (req, res) => {
       : {};
     send(res, status, body, { ...cors, ...retryAfter });
   }
-});
+}
 
 // listen 失敗（ポート使用中など）を素のスタックではなく一行で説明して終了する。
 server.on("error", (error: NodeJS.ErrnoException) => {

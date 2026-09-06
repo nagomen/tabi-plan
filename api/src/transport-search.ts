@@ -11,6 +11,8 @@ interface AmadeusToken {
 
 let amadeusToken: AmadeusToken | null = null;
 
+// よく使う都市の一般地理の近道。ここに無い都市は resolveCityCode が
+// Amadeusのロケーション検索で動的に解決するため、旅行のたびに追記しない。
 const IATA_BY_CITY = new Map<string, string>([
   ["東京", "TYO"], ["成田", "NRT"], ["成田空港", "NRT"], ["羽田", "HND"], ["羽田空港", "HND"],
   ["大阪", "OSA"], ["関西空港", "KIX"], ["関空", "KIX"],
@@ -24,13 +26,17 @@ const IATA_BY_CITY = new Map<string, string>([
   ["上海", "SHA"], ["浦東", "PVG"], ["北京", "BJS"], ["ソウル", "SEL"], ["仁川", "ICN"],
 ]);
 
-const UTC_OFFSET_BY_IATA = new Map<string, string>([
+// 既知コードのUTCオフセット。動的解決したコードのオフセットもここへ学習する。
+const utcOffsetByCode = new Map<string, string>([
   ["TYO", "+09:00"], ["NRT", "+09:00"], ["HND", "+09:00"], ["OSA", "+09:00"], ["KIX", "+09:00"],
   ["SEL", "+09:00"], ["ICN", "+09:00"],
   ["TPE", "+08:00"], ["TSA", "+08:00"], ["KHH", "+08:00"], ["HUN", "+08:00"],
   ["HKG", "+08:00"], ["MFM", "+08:00"], ["SZX", "+08:00"], ["CAN", "+08:00"],
   ["XMN", "+08:00"], ["SHA", "+08:00"], ["PVG", "+08:00"], ["BJS", "+08:00"],
 ]);
+
+/** Amadeusロケーション検索の結果（空文字=解決不能も含めて）を再利用する。 */
+const cityCodeCache = new Map<string, string>();
 
 function normalizeText(value: string): string {
   return value
@@ -51,6 +57,35 @@ function cityCode(value: string): string {
   return "";
 }
 
+/**
+ * 辞書に無い都市をAmadeusのロケーション検索で解決する。
+ * 表示ロジックを旅行固有のハードコードへ依存させないための動的解決。
+ * キーワードAPIはラテン文字のみ受けるため、それ以外は解決不能として返す。
+ */
+async function resolveCityCode(value: string, fetchImpl: typeof fetch): Promise<string> {
+  const known = cityCode(value);
+  if (known) return known;
+  const keyword = String(value || "").normalize("NFKC").trim();
+  if (!/^[A-Za-z][A-Za-z0-9 .'-]{0,40}$/.test(keyword)) return "";
+  const cacheKey = keyword.toLowerCase();
+  const cached = cityCodeCache.get(cacheKey);
+  if (cached !== undefined) return cached;
+  const token = await amadeusAccessToken(fetchImpl);
+  const params = new URLSearchParams({ subType: "CITY,AIRPORT", keyword, "page[limit]": "3" });
+  const response = await fetchImpl(
+    `${config.transport.amadeusBaseUrl}/v1/reference-data/locations?${params}`,
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+  if (!response.ok) throw new Error(`amadeus location lookup failed: ${response.status}`);
+  const json = await response.json() as { data?: { iataCode?: string; timeZoneOffset?: string }[] };
+  const found = (json.data || []).find((location) => location.iataCode);
+  const code = String(found?.iataCode || "").toUpperCase();
+  cityCodeCache.set(cacheKey, code);
+  const offset = String(found?.timeZoneOffset || "");
+  if (code && /^[+-]\d{2}:\d{2}$/.test(offset)) utcOffsetByCode.set(code, offset);
+  return code;
+}
+
 function parseDurationMinutes(duration: unknown): number {
   const raw = String(duration || "");
   const seconds = /^(\d+)s$/.exec(raw);
@@ -64,17 +99,32 @@ function parseDateTime(value: unknown): string {
   return typeof value === "string" ? value : "";
 }
 
-function addMinutes(localDate: string, minutes: number): string {
-  if (!localDate) return "";
-  const date = new Date(localDate);
+/** 出発時刻へ分を足す。出発と同じオフセット表記で返し、UTC(Z)との混在で表示がずれるのを防ぐ。 */
+function addMinutes(localDateTime: string, minutes: number): string {
+  if (!localDateTime) return "";
+  const date = new Date(localDateTime);
   if (Number.isNaN(date.getTime())) return "";
-  return new Date(date.getTime() + minutes * 60_000).toISOString();
+  const shifted = date.getTime() + minutes * 60_000;
+  const offsetMatch = /([+-])(\d{2}):(\d{2})$/.exec(localDateTime);
+  if (!offsetMatch) return new Date(shifted).toISOString();
+  const offsetMinutes = (offsetMatch[1] === "-" ? -1 : 1) *
+    (Number(offsetMatch[2]) * 60 + Number(offsetMatch[3]));
+  return new Date(shifted + offsetMinutes * 60_000).toISOString()
+    .replace(/\.\d{3}Z$/, `${offsetMatch[1]}${offsetMatch[2]}:${offsetMatch[3]}`);
+}
+
+/** 辞書と動的解決キャッシュの両方から既知コードを引く（ネットワークへは出ない）。 */
+function knownCityCode(value: string): string {
+  const direct = cityCode(value);
+  if (direct) return direct;
+  return cityCodeCache.get(String(value || "").normalize("NFKC").trim().toLowerCase()) || "";
 }
 
 function departureDateTime(input: TransportSearchInput): string {
   const date = String(input.date || "").slice(0, 10);
   const time = /^([01]\d|2[0-3]):[0-5]\d$/.test(String(input.time || "")) ? input.time : "09:00";
-  const offset = UTC_OFFSET_BY_IATA.get(cityCode(input.from)) || "+09:00";
+  // オフセット不明の都市は、この機能の主対象が日本発着のため日本時間を既定にする。
+  const offset = utcOffsetByCode.get(knownCityCode(input.from)) || "+09:00";
   return date ? `${date}T${time}:00${offset}` : "";
 }
 
@@ -104,13 +154,23 @@ async function amadeusAccessToken(fetchImpl: typeof fetch): Promise<string> {
   return amadeusToken.value;
 }
 
-async function searchAmadeusFlights(input: TransportSearchInput, fetchImpl: typeof fetch): Promise<TransportOption[]> {
+async function searchAmadeusFlights(
+  input: TransportSearchInput,
+  fetchImpl: typeof fetch,
+  warnings: string[],
+): Promise<TransportOption[]> {
   if (!config.transport.amadeusClientId || !config.transport.amadeusClientSecret) return [];
   const mode = transportMode(input);
   if (mode !== "any" && mode !== "flight") return [];
-  const origin = cityCode(input.from);
-  const destination = cityCode(input.to);
-  if (!origin || !destination || origin === destination) return [];
+  const origin = await resolveCityCode(input.from, fetchImpl);
+  const destination = await resolveCityCode(input.to, fetchImpl);
+  const unresolved = [...(origin ? [] : [input.from]), ...(destination ? [] : [input.to])];
+  if (unresolved.length) {
+    // 黙って0件にすると検索できたのか判断できない。解決不能を利用者へ伝える。
+    warnings.push(`空港コードを特定できないため航空券は検索しませんでした: ${unresolved.join("、")}`);
+    return [];
+  }
+  if (origin === destination) return [];
   const token = await amadeusAccessToken(fetchImpl);
   const params = new URLSearchParams({
     originLocationCode: origin,
@@ -256,7 +316,7 @@ export async function searchTransportOptions(
   }
   const warnings: string[] = [];
   const results = await Promise.allSettled([
-    searchAmadeusFlights(normalized, fetchImpl),
+    searchAmadeusFlights(normalized, fetchImpl, warnings),
     searchGoogleRoutes(normalized, fetchImpl),
   ]);
   const options = results.flatMap((result) => {
@@ -270,6 +330,7 @@ export async function searchTransportOptions(
 export async function transportOptionsForCities(
   cities: { name: string; from_date?: string; to_date?: string }[],
   people?: number,
+  fetchImpl: typeof fetch = fetch,
 ): Promise<TransportOption[]> {
   const pairs = cities
     .filter((city) => city.name && city.name.trim())
@@ -281,6 +342,6 @@ export async function transportOptionsForCities(
       if (!date) return [];
       return [{ from: city.name, to: next.name, date, time: "09:00", mode: "any", people }];
     });
-  const results = await Promise.allSettled(pairs.map((pair) => searchTransportOptions(pair)));
+  const results = await Promise.allSettled(pairs.map((pair) => searchTransportOptions(pair, fetchImpl)));
   return results.flatMap((result) => result.status === "fulfilled" ? result.value.options : []).slice(0, 16);
 }
