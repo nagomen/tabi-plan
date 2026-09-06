@@ -247,7 +247,11 @@ function parseJsonLike(value: string, depth = 0): unknown | undefined {
 function repairedJsonCandidates(value: string): string[] {
   const base = String(value || "").trim().replace(/^\uFEFF/, "");
   const withoutLineContinuations = base.replace(/\\\s*\r?\n/g, "\n");
-  const unescapedJsonString = base.replace(/\\"/g, "\"").replace(/\\r?\\n/g, "\n");
+  const unescapedJsonString = base
+    .replace(/\\r\\n/g, "\n")
+    .replace(/\\n/g, "\n")
+    .replace(/\\"/g, "\"");
+  const unescapedPunctuation = unescapedJsonString.replace(/\\([{}[\]",:])/g, "$1");
   const normalizedPunctuation = withoutLineContinuations
     .replace(/[“”]/g, "\"")
     .replace(/[‘’]/g, "'")
@@ -269,6 +273,7 @@ function repairedJsonCandidates(value: string): string[] {
     base,
     withoutLineContinuations,
     unescapedJsonString,
+    unescapedPunctuation,
     normalizedPunctuation,
     withoutTrailingCommas,
     withQuotedKeys,

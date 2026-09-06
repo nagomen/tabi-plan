@@ -131,6 +131,11 @@ test("external AI create JSON tolerates common escaped paste artifacts", () => {
   const importedFromJsonString = parseExternalAiCreateJson(JSON.stringify(pretty));
   assert.equal(importedFromJsonString.endDate, "2026-10-10");
   assert.equal(importedFromJsonString.draft.days[1].items[0].transport, "フェリー");
+
+  const escapedObjectFragment = pretty.replace(/\n/g, "\\n").replace(/"/g, "\\\"");
+  const importedFromEscapedFragment = parseExternalAiCreateJson(escapedObjectFragment);
+  assert.equal(importedFromEscapedFragment.startDate, "2026-10-09");
+  assert.equal(importedFromEscapedFragment.draft.days[0].items[0].title, "中環を散策");
 });
 
 test("external AI create JSON tolerates small JSON syntax drift", () => {
