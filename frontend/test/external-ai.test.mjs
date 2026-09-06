@@ -121,6 +121,33 @@ test("external AI create JSON can be converted to the app draft shape", () => {
   assert.equal(imported.draft.days[1].items[0].duration_minutes, 60);
 });
 
+test("external AI create JSON tolerates common escaped paste artifacts", () => {
+  const pretty = JSON.stringify(sample, null, 2);
+  const withLineContinuationBackslashes = pretty.replace(/\n/g, "\\\n");
+  const importedFromBackslashes = parseExternalAiCreateJson(withLineContinuationBackslashes);
+  assert.equal(importedFromBackslashes.startDate, "2026-10-09");
+  assert.equal(importedFromBackslashes.draft.days.length, 2);
+
+  const importedFromJsonString = parseExternalAiCreateJson(JSON.stringify(pretty));
+  assert.equal(importedFromJsonString.endDate, "2026-10-10");
+  assert.equal(importedFromJsonString.draft.days[1].items[0].transport, "フェリー");
+});
+
+test("external AI create JSON tolerates small JSON syntax drift", () => {
+  const pretty = JSON.stringify(sample, null, 2);
+  const loose = [
+    "以下がJSONです。",
+    pretty
+      .replace(/"([A-Za-z_][A-Za-z0-9_]*)":/g, "$1:")
+      .replace(/"tabi-plan-external-ai-v1"/, "'tabi-plan-external-ai-v1'")
+      .replace(/\n}$/, ",\n}"),
+  ].join("\n");
+  const imported = parseExternalAiCreateJson(loose);
+  assert.equal(imported.title, "香港・マカオ旅行");
+  assert.equal(imported.draft.days.length, 2);
+  assert.equal(imported.draft.days[1].items[0].from_place, "香港・マカオ・フェリーターミナル");
+});
+
 test("external AI refine JSON requires every trip date", () => {
   assert.throws(
     () => parseExternalAiRefineJson(JSON.stringify({ ...sample, days: sample.days.slice(0, 1) }), ["2026-10-09", "2026-10-10"]),

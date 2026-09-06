@@ -204,14 +204,76 @@ const KIND_ALIASES: Record<string, ItineraryKind> = {
 function extractJsonObject(text: string): unknown {
   const raw = String(text || "").trim();
   if (!raw) throw new ExternalAiImportError("JSONを貼り付けてください。");
-  const fence = raw.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  const candidate = fence?.[1]?.trim() ||
-    raw.slice(Math.max(0, raw.indexOf("{")), raw.lastIndexOf("}") + 1).trim();
-  try {
-    return JSON.parse(candidate || raw);
-  } catch {
-    throw new ExternalAiImportError("JSONとして読み取れませんでした。外部AIにはJSONオブジェクトだけを出力させてください。");
+  for (const candidate of extractJsonCandidates(raw)) {
+    const parsed = parseJsonLike(candidate);
+    if (parsed !== undefined) return parsed;
   }
+  throw new ExternalAiImportError("JSONとして読み取れませんでした。外部AIにはJSONオブジェクトだけを出力させてください。");
+}
+
+function extractJsonCandidates(raw: string): string[] {
+  const candidates: string[] = [raw];
+  const fence = raw.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fence?.[1]) candidates.push(fence[1].trim());
+  for (const opener of ["{", "["]) {
+    const closer = opener === "{" ? "}" : "]";
+    const start = raw.indexOf(opener);
+    const end = raw.lastIndexOf(closer);
+    if (start >= 0 && end > start) candidates.push(raw.slice(start, end + 1).trim());
+  }
+  return [...new Set(candidates.filter(Boolean))];
+}
+
+function parseJsonLike(value: string, depth = 0): unknown | undefined {
+  if (depth > 2) return undefined;
+  const base = String(value || "").trim();
+  const candidates = repairedJsonCandidates(base);
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    try {
+      const parsed = JSON.parse(candidate);
+      if (typeof parsed === "string" && /^[\s`]*[{[]/.test(parsed)) {
+        const nested = parseJsonLike(parsed, depth + 1);
+        if (nested !== undefined) return nested;
+      }
+      return parsed;
+    } catch {
+      // 次の補正候補を試す。
+    }
+  }
+  return undefined;
+}
+
+function repairedJsonCandidates(value: string): string[] {
+  const base = String(value || "").trim().replace(/^\uFEFF/, "");
+  const withoutLineContinuations = base.replace(/\\\s*\r?\n/g, "\n");
+  const unescapedJsonString = base.replace(/\\"/g, "\"").replace(/\\r?\\n/g, "\n");
+  const normalizedPunctuation = withoutLineContinuations
+    .replace(/[“”]/g, "\"")
+    .replace(/[‘’]/g, "'")
+    .replace(/，/g, ",")
+    .replace(/：/g, ":");
+  const withoutTrailingCommas = normalizedPunctuation.replace(/,\s*([}\]])/g, "$1");
+  const withQuotedKeys = withoutTrailingCommas.replace(/([{,]\s*)([A-Za-z_][A-Za-z0-9_]*)\s*:/g, "$1\"$2\":");
+  const withSimpleSingleQuotedStrings = withQuotedKeys
+    .replace(/([{,]\s*)'([^'\\]*(?:\\.[^'\\]*)*)'\s*:/g, (_match, prefix: string, key: string) =>
+      `${prefix}"${key.replace(/\\"/g, "\"").replace(/"/g, "\\\"")}":`
+    )
+    .replace(/:\s*'([^'\\]*(?:\\.[^'\\]*)*)'/g, (_match, text: string) =>
+      `: "${text.replace(/\\"/g, "\"").replace(/"/g, "\\\"")}"`
+    )
+    .replace(/([\[,]\s*)'([^'\\]*(?:\\.[^'\\]*)*)'(?=\s*[,}\]])/g, (_match, prefix: string, text: string) =>
+      `${prefix}"${text.replace(/\\"/g, "\"").replace(/"/g, "\\\"")}"`
+    );
+  return [...new Set([
+    base,
+    withoutLineContinuations,
+    unescapedJsonString,
+    normalizedPunctuation,
+    withoutTrailingCommas,
+    withQuotedKeys,
+    withSimpleSingleQuotedStrings,
+  ])];
 }
 
 function objectOf(value: unknown, label: string): Record<string, unknown> {
