@@ -252,13 +252,22 @@ function repairedJsonCandidates(value: string): string[] {
     .replace(/\\n/g, "\n")
     .replace(/\\"/g, "\"");
   const unescapedPunctuation = unescapedJsonString.replace(/\\([{}[\]",:])/g, "$1");
+  const unescapedSpacedPunctuation = unescapedJsonString.replace(/\\(?=\s*["{}[\],:])/g, "");
   const normalizedPunctuation = withoutLineContinuations
     .replace(/[“”]/g, "\"")
     .replace(/[‘’]/g, "'")
     .replace(/，/g, ",")
-    .replace(/：/g, ":");
-  const withoutTrailingCommas = normalizedPunctuation.replace(/,\s*([}\]])/g, "$1");
+    .replace(/：/g, ":")
+    .replace(/[｛]/g, "{")
+    .replace(/[｝]/g, "}")
+    .replace(/[［]/g, "[")
+    .replace(/[］]/g, "]");
+  const withoutComments = stripJsonComments(normalizedPunctuation);
+  const withoutTrailingCommas = withoutComments.replace(/,\s*([}\]])/g, "$1").replace(/;\s*$/, "");
   const withQuotedKeys = withoutTrailingCommas.replace(/([{,]\s*)([A-Za-z_][A-Za-z0-9_]*)\s*:/g, "$1\"$2\":");
+  const withJsonLiterals = withQuotedKeys
+    .replace(/:\s*undefined(?=\s*[,}\]])/g, ": null")
+    .replace(/:\s*NaN(?=\s*[,}\]])/g, ": null");
   const withSimpleSingleQuotedStrings = withQuotedKeys
     .replace(/([{,]\s*)'([^'\\]*(?:\\.[^'\\]*)*)'\s*:/g, (_match, prefix: string, key: string) =>
       `${prefix}"${key.replace(/\\"/g, "\"").replace(/"/g, "\\\"")}":`
@@ -269,16 +278,98 @@ function repairedJsonCandidates(value: string): string[] {
     .replace(/([\[,]\s*)'([^'\\]*(?:\\.[^'\\]*)*)'(?=\s*[,}\]])/g, (_match, prefix: string, text: string) =>
       `${prefix}"${text.replace(/\\"/g, "\"").replace(/"/g, "\\\"")}"`
     );
-  return [...new Set([
+  const baseCandidates = [
     base,
     withoutLineContinuations,
     unescapedJsonString,
     unescapedPunctuation,
+    unescapedSpacedPunctuation,
     normalizedPunctuation,
+    withoutComments,
     withoutTrailingCommas,
     withQuotedKeys,
+    withJsonLiterals,
     withSimpleSingleQuotedStrings,
+  ];
+  return [...new Set([
+    ...baseCandidates,
+    ...baseCandidates.map((candidate) => appendMissingJsonClosers(candidate)),
   ])];
+}
+
+function stripJsonComments(value: string): string {
+  let result = "";
+  let inString = false;
+  let quote = "";
+  let escaped = false;
+  for (let index = 0; index < value.length; index += 1) {
+    const char = value[index];
+    const next = value[index + 1];
+    if (inString) {
+      result += char;
+      if (escaped) {
+        escaped = false;
+      } else if (char === "\\") {
+        escaped = true;
+      } else if (char === quote) {
+        inString = false;
+        quote = "";
+      }
+      continue;
+    }
+    if (char === "\"" || char === "'") {
+      inString = true;
+      quote = char;
+      result += char;
+      continue;
+    }
+    if (char === "/" && next === "/") {
+      while (index < value.length && value[index] !== "\n") index += 1;
+      result += "\n";
+      continue;
+    }
+    if (char === "/" && next === "*") {
+      index += 2;
+      while (index < value.length && !(value[index] === "*" && value[index + 1] === "/")) index += 1;
+      index += 1;
+      continue;
+    }
+    result += char;
+  }
+  return result;
+}
+
+function appendMissingJsonClosers(value: string): string {
+  const stack: string[] = [];
+  let inString = false;
+  let quote = "";
+  let escaped = false;
+  for (const char of value) {
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (char === "\\") {
+        escaped = true;
+      } else if (char === quote) {
+        inString = false;
+        quote = "";
+      }
+      continue;
+    }
+    if (char === "\"" || char === "'") {
+      inString = true;
+      quote = char;
+      continue;
+    }
+    if (char === "{") {
+      stack.push("}");
+    } else if (char === "[") {
+      stack.push("]");
+    } else if (char === "}" || char === "]") {
+      if (stack.pop() !== char) return value;
+    }
+  }
+  return stack.length ? `${value}${stack.reverse().join("")}` : value;
 }
 
 function objectOf(value: unknown, label: string): Record<string, unknown> {

@@ -151,6 +151,14 @@ test("external AI create JSON tolerates small JSON syntax drift", () => {
   assert.equal(imported.title, "香港・マカオ旅行");
   assert.equal(imported.draft.days.length, 2);
   assert.equal(imported.draft.days[1].items[0].from_place, "香港・マカオ・フェリーターミナル");
+
+  const withCommentsAndSemicolon = `// 外部AIの出力\n${pretty.replace(/"note": ""/, '"note": undefined')};`;
+  const importedFromComments = parseExternalAiCreateJson(withCommentsAndSemicolon);
+  assert.equal(importedFromComments.draft.days[0].items[0].note, "");
+
+  const missingOuterCloser = pretty.slice(0, pretty.lastIndexOf("}"));
+  const importedFromMissingCloser = parseExternalAiCreateJson(missingOuterCloser);
+  assert.equal(importedFromMissingCloser.draft.cities.length, 2);
 });
 
 test("external AI refine JSON requires every trip date", () => {
