@@ -36,7 +36,7 @@ test("APIのエラー契約(code/action/retry_after/request_id)を画面操作�
   assert.match(db, /navigator\.onLine === false/);
   assert.match(guidance, /action: "external_ai"/);
   assert.match(guidance, /code === "ai_output_too_long"/);
-  assert.match(guidance, /プロンプトをコピーしてChatGPTを開く/);
+  assert.match(guidance, /ChatGPTで旅行案を作る/);
   const external = read("src/shared/external-ai.ts");
   assert.match(external, /buildExternalAiCreatePrompt/);
   assert.match(external, /buildExternalAiRefinePrompt/);

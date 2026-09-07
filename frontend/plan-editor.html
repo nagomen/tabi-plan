@@ -166,12 +166,42 @@
 
               <section class="pe-ai-import" data-ai-import>
                 <details>
-                  <summary>外部AIのJSONを取り込む</summary>
-                  <p>利用上限に達した場合は、コピーしたプロンプトをChatGPT/Geminiへ貼り付け、返ってきたJSONをここへ入れてください。</p>
-                  <textarea data-ai-import-json rows="5" spellcheck="false" placeholder='{"format":"tabi-plan-external-ai-v1","trip":...,"days":[...]}'></textarea>
-                  <div class="pe-ai-import-actions">
-                    <button class="pe-ai-secondary" type="button" data-ai-import-apply>JSONを行程に反映</button>
-                    <span data-ai-import-status role="status"></span>
+                  <summary>
+                    <span>ChatGPTで旅行案を作る</span>
+                    <small>この画面のAIが使えないときも続けられます</small>
+                  </summary>
+                  <div class="pe-ai-import-guide">
+                    <p class="pe-ai-import-lead">難しい操作はありません。次の3つを順番に進めてください。</p>
+                    <ol class="pe-ai-import-steps">
+                      <li>
+                        <span class="pe-ai-step-number">1</span>
+                        <div>
+                          <strong>ChatGPTを開く</strong>
+                          <p>旅行の条件が入った質問文を自動でコピーして、ChatGPTを開きます。</p>
+                          <button class="pe-ai-secondary pe-ai-import-open" type="button" data-ai-import-open>質問文をコピーしてChatGPTを開く</button>
+                        </div>
+                      </li>
+                      <li>
+                        <span class="pe-ai-step-number">2</span>
+                        <div>
+                          <strong>返ってきた答えを全部コピー</strong>
+                          <p>ChatGPTが旅行案を作り終えたら、答えの最初から最後までコピーします。</p>
+                        </div>
+                      </li>
+                      <li>
+                        <span class="pe-ai-step-number">3</span>
+                        <div>
+                          <label for="pe-ai-import-answer"><strong>ここへ貼り付けて取り込む</strong></label>
+                          <p>見慣れない英数字が含まれていても、そのままで大丈夫です。</p>
+                          <textarea id="pe-ai-import-answer" data-ai-import-json rows="5" spellcheck="false" placeholder="ChatGPTの答えを、そのまま全部貼り付けてください"></textarea>
+                          <div class="pe-ai-import-actions">
+                            <button class="pe-ai-primary" type="button" data-ai-import-apply>旅行案をこの計画に取り込む</button>
+                            <span data-ai-import-status role="status"></span>
+                          </div>
+                        </div>
+                      </li>
+                    </ol>
+                    <p class="pe-ai-import-note">貼り付けた内容は、このアプリが旅行計画として読める形に自動で整えます。</p>
                   </div>
                 </details>
               </section>

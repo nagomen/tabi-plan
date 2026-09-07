@@ -15,6 +15,11 @@ test("AI相談は候補・条件・完成の3段階で終了する", () => {
   assert.match(html, /data-ai-show-itinerary/);
   assert.match(html, /data-ai-import-json/);
   assert.match(html, /data-ai-import-apply/);
+  assert.match(html, /data-ai-import-open/);
+  assert.match(html, /ChatGPTで旅行案を作る/);
+  assert.match(html, /返ってきた答えを全部コピー/);
+  assert.match(html, /旅行案をこの計画に取り込む/);
+  assert.doesNotMatch(html, />[^<]*(?:外部AI|JSON|プロンプト)[^<]*</);
   assert.doesNotMatch(html, /data-ai-send|さらに質問/);
 });
 
@@ -28,6 +33,7 @@ test("候補選択と指定条件を1回の最終行程生成へ渡す", () => {
   assert.match(editor, /preferences: aiPreferences\(\)/);
   assert.match(editor, /parseExternalAiCreateJson/);
   assert.match(editor, /importExternalAiDraft/);
+  assert.match(editor, /aiImportOpen\.addEventListener/);
   assert.match(editor, /setAiStage\("done"\)/);
   assert.match(editor, /function aiCandidateGroups\(\)/);
   assert.match(editor, /function unselectedAiCities\(\)/);
@@ -63,6 +69,10 @@ test("旅行詳細では編集メンバーだけが全日程対応のAIチャッ
   assert.match(html, /data-ai-chat[\s\S]*data-ai-chat-log[\s\S]*data-ai-chat-form/);
   assert.match(html, /data-ai-chat-import-json/);
   assert.match(html, /data-ai-chat-import-apply/);
+  assert.match(html, /data-ai-chat-import-open/);
+  assert.match(html, /ChatGPTにも相談する/);
+  assert.match(html, /旅行の修正案として取り込む/);
+  assert.doesNotMatch(html, />[^<]*(?:外部AI|JSON|プロンプト)[^<]*</);
   assert.match(dashboard, /if \(aiSupport && editTarget && isEditableLocalPlan\(\)\)/);
   assert.match(dashboard, /aiSupport\.hidden = false/);
   assert.match(dashboard, /setupAiChat\(aiSupport\)/);
@@ -76,6 +86,7 @@ test("旅行詳細では編集メンバーだけが全日程対応のAIチャッ
   assert.match(dashboard, /buildExternalAiRefinePrompt/);
   assert.match(dashboard, /parseExternalAiRefineJson/);
   assert.match(dashboard, /importExternalAiRefineJson/);
+  assert.match(dashboard, /importOpen\.addEventListener/);
   assert.match(dashboard, /data-ai-external/);
   assert.match(dashboard, /error\.code === "ai_daily_limit"/);
   assert.match(dashboard, /この提案を行程に反映/);

@@ -76,10 +76,10 @@ export function aiErrorGuidance(error: AiErrorLike, phase: AiErrorPhase): AiErro
   }
   if (code === "ai_daily_limit" || code === "ai_output_too_long" || error.action === "use_external_ai") {
     return {
-      title: code === "ai_output_too_long" ? "外部AIでも続けられます" : "本日のAI利用上限に達しました",
+      title: code === "ai_output_too_long" ? "ChatGPTでも続けられます" : "本日のAI利用上限に達しました",
       message,
       action: "external_ai",
-      actionLabel: "プロンプトをコピーしてChatGPTを開く",
+      actionLabel: "ChatGPTで旅行案を作る",
       retryAfter: 0,
       requestId,
     };

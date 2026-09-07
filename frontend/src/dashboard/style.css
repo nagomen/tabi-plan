@@ -1216,23 +1216,85 @@
   .tl-ai-chat-actions > span.is-warn { color: var(--red); }
   .tl-ai-import {
     margin: 0 16px 14px;
-    padding: 11px 12px;
+    padding: 0;
+    overflow: hidden;
     border: 1px solid #d9e8e1;
     border-radius: 12px;
     background: rgba(255, 255, 255, .65);
   }
   .tl-ai-import summary {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    position: relative;
+    padding: 13px 42px 13px 14px;
     color: var(--green-deep);
     font-size: 12px;
     font-weight: 800;
     cursor: pointer;
+    list-style: none;
+  }
+  .tl-ai-import summary::-webkit-details-marker { display: none; }
+  .tl-ai-import summary::after {
+    content: "+";
+    position: absolute;
+    top: 50%;
+    right: 14px;
+    translate: 0 -50%;
+    font-size: 21px;
+    font-weight: 500;
+  }
+  .tl-ai-import[open] summary::after { content: "−"; }
+  .tl-ai-import summary small {
+    color: #688078;
+    font-size: 10px;
+    font-weight: 500;
+    line-height: 1.4;
+  }
+  .tl-ai-import-guide {
+    padding: 0 12px 12px;
+    border-top: 1px solid #d9e8e1;
+  }
+  .tl-ai-import .tl-ai-import-lead {
+    margin: 11px 1px;
+    color: #334d45;
+    font-weight: 700;
   }
   .tl-ai-import p {
-    margin: 8px 0 10px;
+    margin: 4px 0 9px;
     color: #577069;
     font-size: 11px;
     line-height: 1.55;
   }
+  .tl-ai-import-steps {
+    display: grid;
+    gap: 9px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .tl-ai-import-steps > li {
+    display: grid;
+    grid-template-columns: 26px minmax(0, 1fr);
+    gap: 9px;
+    padding: 11px;
+    border: 1px solid #dfeae6;
+    border-radius: 10px;
+    background: #fff;
+  }
+  .tl-ai-step-number {
+    display: grid;
+    place-items: center;
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    background: var(--green);
+    color: #fff;
+    font-size: 11px;
+    font-weight: 900;
+  }
+  .tl-ai-import-steps strong { color: var(--ink); font-size: 12px; }
+  .tl-ai-import-steps button { width: 100%; }
   .tl-ai-import textarea {
     width: 100%;
     min-height: 110px;
@@ -1245,6 +1307,9 @@
     font: 12px/1.5 inherit;
   }
   .tl-ai-import textarea:focus { outline: 2px solid rgba(0, 104, 75, .18); border-color: var(--green); }
+  .tl-ai-import .tl-ai-chat-actions { display: grid; gap: 8px; }
+  .tl-ai-import .tl-ai-chat-actions button { width: 100%; }
+  .tl-ai-import .tl-ai-import-note { margin: 10px 1px 0; font-size: 10px; }
   .tl-ai-chat-note { margin: 0; padding: 0 16px 14px; color: #75867f; font-size: 10.5px; line-height: 1.5; }
 
   .tl-day-title h2 {

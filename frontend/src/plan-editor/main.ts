@@ -1080,6 +1080,8 @@ const aiBuild = qs<HTMLButtonElement>(root, "[data-ai-build]");
 const aiWalking = qs<HTMLSelectElement>(root, "[data-ai-walking]");
 const aiTransport = qs<HTMLSelectElement>(root, "[data-ai-transport]");
 const aiExtra = qs<HTMLTextAreaElement>(root, "[data-ai-extra]");
+const aiImportDetails = qs<HTMLDetailsElement>(root, "[data-ai-import] details");
+const aiImportOpen = qs<HTMLButtonElement>(root, "[data-ai-import-open]");
 const aiImportJson = qs<HTMLTextAreaElement>(root, "[data-ai-import-json]");
 const aiImportApply = qs<HTMLButtonElement>(root, "[data-ai-import-apply]");
 const aiImportStatus = qs<HTMLElement>(root, "[data-ai-import-status]");
@@ -1149,12 +1151,13 @@ function showAiError(error: unknown, phase: AiErrorPhase): void {
         }
         : guidance.action === "external_ai"
           ? async () => {
+            aiImportDetails.open = true;
             openExternalAi("chatgpt");
             const copied = await copyExternalAiPrompt(externalAiCreatePrompt());
             setAiStatus(
               copied
-                ? "外部AI用のプロンプトをコピーしました。開いたChatGPTに貼り付けてください。"
-                : "外部AI用のプロンプトを表示しました。コピーしてChatGPTやGeminiに貼り付けてください。",
+                ? "質問文をコピーしました。開いたChatGPTへ貼り付けてください。"
+                : "質問文を表示しました。すべてコピーしてChatGPTへ貼り付けてください。",
               copied ? "ok" : "warn",
             );
           }
@@ -1636,7 +1639,7 @@ async function importExternalAiDraft(): Promise<void> {
   }
   const raw = aiImportJson.value.trim();
   if (!raw) {
-    aiImportStatus.textContent = "外部AIが出力したJSONを貼り付けてください。";
+    aiImportStatus.textContent = "ChatGPTから返ってきた答えを貼り付けてください。";
     aiImportStatus.className = "pe-ai-import-status is-warn";
     return;
   }
@@ -1648,16 +1651,16 @@ async function importExternalAiDraft(): Promise<void> {
       title: model.title,
     });
   } catch (error) {
-    aiImportStatus.textContent = errorMessage(error) || "JSONを取り込めませんでした。";
+    aiImportStatus.textContent = errorMessage(error) || "旅行案を読み取れませんでした。答えを最初から最後までコピーして、もう一度お試しください。";
     aiImportStatus.className = "pe-ai-import-status is-warn";
     return;
   }
 
   const filled = model.days.some((day) => day.items.length || day.stay);
-  if (filled && !window.confirm("現在の行程を、外部AIのJSONで置き換えます。よろしいですか。")) return;
+  if (filled && !window.confirm("現在の行程を、貼り付けた旅行案で置き換えます。よろしいですか。")) return;
 
   aiImportApply.disabled = true;
-  aiImportStatus.textContent = "JSONを行程へ反映しています…";
+  aiImportStatus.textContent = "旅行案を取り込んでいます…";
   aiImportStatus.className = "pe-ai-import-status";
   try {
     if (imported.title) model.title = imported.title;
@@ -1677,12 +1680,12 @@ async function importExternalAiDraft(): Promise<void> {
     refreshMap(true);
     const saved = await persist(true);
     aiImportStatus.textContent = saved
-      ? "外部AIのJSONを取り込み、保存しました。"
-      : "外部AIのJSONを取り込みましたが、保存できませんでした。";
+      ? "旅行案を取り込み、保存しました。"
+      : "旅行案は取り込めましたが、保存できませんでした。";
     aiImportStatus.className = "pe-ai-import-status" + (saved ? " is-ok" : " is-warn");
     setViewStep(3);
   } catch (error) {
-    aiImportStatus.textContent = errorMessage(error) || "JSONを取り込めませんでした。";
+    aiImportStatus.textContent = errorMessage(error) || "旅行案を読み取れませんでした。答えを最初から最後までコピーして、もう一度お試しください。";
     aiImportStatus.className = "pe-ai-import-status is-warn";
   } finally {
     aiImportApply.disabled = false;
@@ -1690,6 +1693,14 @@ async function importExternalAiDraft(): Promise<void> {
 }
 
 aiRun.addEventListener("click", () => { void startAiConsultation(); });
+aiImportOpen.addEventListener("click", async () => {
+  openExternalAi("chatgpt");
+  const copied = await copyExternalAiPrompt(externalAiCreatePrompt());
+  aiImportStatus.textContent = copied
+    ? "質問文をコピーしました。開いたChatGPTへ貼り付けてください。"
+    : "表示された質問文をすべてコピーし、ChatGPTへ貼り付けてください。";
+  aiImportStatus.className = "pe-ai-import-status" + (copied ? " is-ok" : " is-warn");
+});
 aiImportApply.addEventListener("click", () => { void importExternalAiDraft(); });
 watchComposition(aiArea);
 aiArea.addEventListener("keydown", (e) => {

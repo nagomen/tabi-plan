@@ -107,12 +107,42 @@
             </div>
           </form>
           <details class="tl-ai-import" data-ai-chat-import>
-            <summary>外部AIのJSONを取り込む</summary>
-            <p>利用上限に達した場合は、コピーしたプロンプトをChatGPT/Geminiへ貼り付け、返ってきたJSONをここへ入れてください。</p>
-            <textarea data-ai-chat-import-json rows="5" spellcheck="false" placeholder='{"format":"tabi-plan-external-ai-v1","message":"...","days":[...]}'></textarea>
-            <div class="tl-ai-chat-actions">
-              <span data-ai-chat-import-status></span>
-              <button type="button" data-ai-chat-import-apply>JSONを提案として読み込む</button>
+            <summary>
+              <span>ChatGPTにも相談する</span>
+              <small>この画面のAIが使えないときも続けられます</small>
+            </summary>
+            <div class="tl-ai-import-guide">
+              <p class="tl-ai-import-lead">上の相談欄に希望を書いてから、次の3つを順番に進めてください。</p>
+              <ol class="tl-ai-import-steps">
+                <li>
+                  <span class="tl-ai-step-number">1</span>
+                  <div>
+                    <strong>ChatGPTを開く</strong>
+                    <p>今の旅行日程と相談内容が入った質問文を、自動でコピーします。</p>
+                    <button type="button" data-ai-chat-import-open>質問文をコピーしてChatGPTを開く</button>
+                  </div>
+                </li>
+                <li>
+                  <span class="tl-ai-step-number">2</span>
+                  <div>
+                    <strong>返ってきた答えを全部コピー</strong>
+                    <p>ChatGPTが修正案を作り終えたら、答えの最初から最後までコピーします。</p>
+                  </div>
+                </li>
+                <li>
+                  <span class="tl-ai-step-number">3</span>
+                  <div>
+                    <label for="tl-ai-import-answer"><strong>ここへ貼り付ける</strong></label>
+                    <p>見慣れない英数字が含まれていても、そのままで大丈夫です。</p>
+                    <textarea id="tl-ai-import-answer" data-ai-chat-import-json rows="5" spellcheck="false" placeholder="ChatGPTの答えを、そのまま全部貼り付けてください"></textarea>
+                    <div class="tl-ai-chat-actions">
+                      <span data-ai-chat-import-status></span>
+                      <button type="button" data-ai-chat-import-apply>旅行の修正案として取り込む</button>
+                    </div>
+                  </div>
+                </li>
+              </ol>
+              <p class="tl-ai-import-note">取り込んだあとに内容を確認できます。確認するまでは日程は変わりません。</p>
             </div>
           </details>
           <p class="tl-ai-chat-note">AIの提案は確認後に反映できます。交通・営業情報は予約前に公式情報をご確認ください。</p>

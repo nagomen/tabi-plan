@@ -203,12 +203,12 @@ const KIND_ALIASES: Record<string, ItineraryKind> = {
 
 function extractJsonObject(text: string): unknown {
   const raw = String(text || "").trim();
-  if (!raw) throw new ExternalAiImportError("JSONを貼り付けてください。");
+  if (!raw) throw new ExternalAiImportError("ChatGPTから返ってきた答えを貼り付けてください。");
   for (const candidate of extractJsonCandidates(raw)) {
     const parsed = parseJsonLike(candidate);
     if (parsed !== undefined) return parsed;
   }
-  throw new ExternalAiImportError("JSONとして読み取れませんでした。外部AIにはJSONオブジェクトだけを出力させてください。");
+  throw new ExternalAiImportError("貼り付けた答えを読み取れませんでした。ChatGPTの答えを最初から最後までコピーして、もう一度お試しください。");
 }
 
 function extractJsonCandidates(raw: string): string[] {
@@ -374,7 +374,7 @@ function appendMissingJsonClosers(value: string): string {
 
 function objectOf(value: unknown, label: string): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new ExternalAiImportError(`${label}がJSONオブジェクトではありません。`);
+    throw new ExternalAiImportError(`${label}の形を読み取れませんでした。答えを省略せず、すべて貼り付けてください。`);
   }
   return value as Record<string, unknown>;
 }
@@ -478,13 +478,13 @@ function normalizeExternalDays(value: Record<string, unknown>): { date: string; 
     return rawDays.map((dayValue) => {
       const day = objectOf(dayValue, "日別行程");
       const date = dateStr(day.date);
-      if (!date) throw new ExternalAiImportError("days内の日付が不正です。");
+      if (!date) throw new ExternalAiImportError("予定の日付を読み取れませんでした。ChatGPTの答えを省略せず、すべて貼り付けてください。");
       const items = arrayOf(day.items).map((item) => normalizeExternalItem(item, date));
       return { date, area: str(day.area || items.find((item) => item.kind !== "stay")?.city || items[0]?.city, 100), items };
     });
   }
   const rawItinerary = arrayOf(value.itinerary);
-  if (!rawItinerary.length) throw new ExternalAiImportError("daysまたはitineraryが見つかりません。");
+  if (!rawItinerary.length) throw new ExternalAiImportError("旅行の日程が見つかりませんでした。ChatGPTの答えを省略せず、すべて貼り付けてください。");
   const grouped = new Map<string, ItineraryRefineItem[]>();
   for (const item of rawItinerary.map((raw) => normalizeExternalItem(raw))) {
     grouped.set(item.date, [...(grouped.get(item.date) || []), item]);
@@ -500,11 +500,11 @@ function validateRequiredDates(days: { date: string }[], dates: string[]): void 
   if (!dates.length) return;
   const returned = days.map((day) => day.date);
   const unique = new Set(returned);
-  if (unique.size !== returned.length) throw new ExternalAiImportError("同じ日付のdaysが重複しています。");
+  if (unique.size !== returned.length) throw new ExternalAiImportError("同じ日付の予定が重複しています。ChatGPTに日程を作り直してもらってください。");
   const missing = dates.filter((date) => !unique.has(date));
   const extra = returned.filter((date) => !dates.includes(date));
   if (missing.length || extra.length) {
-    throw new ExternalAiImportError(`旅行期間とJSONの日付が一致しません。不足: ${missing.join("、") || "なし"} / 範囲外: ${extra.join("、") || "なし"}`);
+    throw new ExternalAiImportError(`旅行期間と、貼り付けた予定の日付が一致しません。不足: ${missing.join("、") || "なし"} / 範囲外: ${extra.join("、") || "なし"}`);
   }
 }
 
@@ -562,12 +562,12 @@ function draftItemFromRefineItem(item: ItineraryRefineItem): ItineraryDraft["day
 }
 
 export function parseExternalAiCreateJson(text: string, fallback?: { startDate?: string; endDate?: string; title?: string }): ExternalAiCreateImport {
-  const root = objectOf(extractJsonObject(text), "外部AIの出力");
+  const root = objectOf(extractJsonObject(text), "貼り付けた答え");
   const trip = objectOf(root.trip || {}, "trip");
   const startDate = dateStr(trip.start_date || trip.startDate) || fallback?.startDate || "";
   const endDate = dateStr(trip.end_date || trip.endDate) || fallback?.endDate || startDate;
   const dates = daysBetween(startDate, endDate);
-  if (!dates.length) throw new ExternalAiImportError("旅行期間を確認できません。trip.start_date と trip.end_date をYYYY-MM-DDで含めてください。");
+  if (!dates.length) throw new ExternalAiImportError("旅行の開始日と終了日を確認できませんでした。ChatGPTの答えを省略せず、すべて貼り付けてください。");
   const days = normalizeExternalDays(root);
   validateRequiredDates(days, dates);
   return {
@@ -588,11 +588,11 @@ export function parseExternalAiCreateJson(text: string, fallback?: { startDate?:
 }
 
 export function parseExternalAiRefineJson(text: string, dates: string[]): ItineraryRefineResult {
-  const root = objectOf(extractJsonObject(text), "外部AIの出力");
+  const root = objectOf(extractJsonObject(text), "貼り付けた答え");
   const days = normalizeExternalDays(root);
   validateRequiredDates(days, dates);
   return {
-    message: str(root.message, 500) || "外部AIのJSONを取り込みました。",
+    message: str(root.message, 500) || "ChatGPTの旅行案を取り込みました。",
     itinerary: days.flatMap((day) => day.items),
   };
 }
@@ -602,7 +602,7 @@ export async function copyExternalAiPrompt(prompt: string): Promise<boolean> {
     await navigator.clipboard.writeText(prompt);
     return true;
   } catch {
-    window.prompt("外部AIへ貼り付けるプロンプトをコピーしてください", prompt);
+    window.prompt("この質問文をすべてコピーして、ChatGPTへ貼り付けてください", prompt);
     return false;
   }
 }

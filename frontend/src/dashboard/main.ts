@@ -3035,7 +3035,7 @@ function importExternalAiRefineJson(raw: string): void {
   const status = root.querySelector<HTMLElement>("[data-ai-chat-import-status]");
   if (!status) return;
   if (!raw.trim()) {
-    status.textContent = "外部AIが出力したJSONを貼り付けてください。";
+    status.textContent = "ChatGPTから返ってきた答えを貼り付けてください。";
     status.className = "is-warn";
     return;
   }
@@ -3043,11 +3043,11 @@ function importExternalAiRefineJson(raw: string): void {
     const dates = tripDateRange(state.data);
     const proposal = parseExternalAiRefineJson(raw, dates);
     aiChatEntries.push({ role: "assistant", text: proposal.message, proposal });
-    status.textContent = "JSONを提案として読み込みました。内容を確認して反映してください。";
+    status.textContent = "旅行の修正案を読み込みました。内容を確認して反映してください。";
     status.className = "is-ok";
     renderAiChat();
   } catch (error) {
-    status.textContent = errorMessage(error) || "JSONを取り込めませんでした。";
+    status.textContent = errorMessage(error) || "修正案を読み取れませんでした。答えを最初から最後までコピーして、もう一度お試しください。";
     status.className = "is-warn";
   }
 }
@@ -3097,7 +3097,7 @@ function renderAiChat(): void {
     <div class="tl-ai-message is-${entry.role}">
       <span>${escapeHtml(entry.text).replace(/\n/g, "<br>")}</span>
       ${entry.proposal ? `<button type="button" data-ai-apply="${index}" ${entry.applied ? "disabled" : ""}>${entry.applied ? "反映済み" : "この提案を行程に反映"}</button>` : ""}
-      ${entry.externalPrompt ? `<button type="button" data-ai-external="${index}">プロンプトをコピーしてChatGPTを開く</button>` : ""}
+      ${entry.externalPrompt ? `<button type="button" data-ai-external="${index}">ChatGPTで続きを作る</button>` : ""}
     </div>`).join("") + (aiChatBusy ? `
     <div class="tl-ai-message is-assistant is-thinking"><span>全日程を確認して修正案を作っています…</span></div>` : "");
   log.scrollTop = log.scrollHeight;
@@ -3108,12 +3108,14 @@ function renderAiChat(): void {
     button.addEventListener("click", async () => {
       const entry = aiChatEntries[Number(button.dataset.aiExternal)];
       if (!entry?.externalPrompt) return;
+      const importPanel = root.querySelector<HTMLDetailsElement>("[data-ai-chat-import]");
+      if (importPanel) importPanel.open = true;
       openExternalAi("chatgpt");
       const copied = await copyExternalAiPrompt(entry.externalPrompt);
       const status = root.querySelector<HTMLElement>("[data-ai-chat-status]");
       if (status) status.textContent = copied
-        ? "外部AI用のプロンプトをコピーしました。開いたChatGPTに貼り付けてください。"
-        : "外部AI用のプロンプトを表示しました。コピーしてChatGPTやGeminiに貼り付けてください。";
+        ? "質問文をコピーしました。開いたChatGPTへ貼り付けてください。"
+        : "表示された質問文をすべてコピーし、ChatGPTへ貼り付けてください。";
     });
   });
 }
@@ -3153,9 +3155,11 @@ function setupAiChat(aiSupport: HTMLButtonElement): void {
   const input = root.querySelector<HTMLTextAreaElement>("[data-ai-chat-input]");
   const send = root.querySelector<HTMLButtonElement>("[data-ai-chat-send]");
   const status = root.querySelector<HTMLElement>("[data-ai-chat-status]");
+  const importDetails = root.querySelector<HTMLDetailsElement>("[data-ai-chat-import]");
+  const importOpen = root.querySelector<HTMLButtonElement>("[data-ai-chat-import-open]");
   const importJson = root.querySelector<HTMLTextAreaElement>("[data-ai-chat-import-json]");
   const importApply = root.querySelector<HTMLButtonElement>("[data-ai-chat-import-apply]");
-  if (!chat || !close || !form || !input || !send || !status || !importJson || !importApply) return;
+  if (!chat || !close || !form || !input || !send || !status || !importDetails || !importOpen || !importJson || !importApply) return;
   const setOpen = (open: boolean): void => {
     chat.hidden = !open;
     aiSupport.setAttribute("aria-expanded", String(open));
@@ -3170,6 +3174,23 @@ function setupAiChat(aiSupport: HTMLButtonElement): void {
   aiSupport.setAttribute("aria-expanded", "false");
   aiSupport.addEventListener("click", () => setOpen(chat.hidden));
   close.addEventListener("click", () => setOpen(false));
+  importOpen.addEventListener("click", async () => {
+    const instruction = input.value.trim();
+    const importStatus = root.querySelector<HTMLElement>("[data-ai-chat-import-status]");
+    if (!instruction) {
+      status.textContent = "まず上の相談欄に、変えたいことを書いてください。";
+      input.focus();
+      return;
+    }
+    openExternalAi("chatgpt");
+    const copied = await copyExternalAiPrompt(externalAiRefinePrompt(instruction));
+    if (importStatus) {
+      importStatus.textContent = copied
+        ? "質問文をコピーしました。開いたChatGPTへ貼り付けてください。"
+        : "表示された質問文をすべてコピーし、ChatGPTへ貼り付けてください。";
+      importStatus.className = copied ? "is-ok" : "is-warn";
+    }
+  });
   importApply.addEventListener("click", () => importExternalAiRefineJson(importJson.value));
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -3207,7 +3228,7 @@ function setupAiChat(aiSupport: HTMLButtonElement): void {
       if (error instanceof db.ApiRequestError && (error.code === "ai_daily_limit" || error.action === "use_external_ai")) {
         aiChatEntries.push({
           role: "assistant",
-          text: errorMessage(error) || "本日のAI利用上限に達しました。外部AI用のプロンプトを使って続けられます。",
+          text: errorMessage(error) || "本日のAI利用上限に達しました。ChatGPTを使って続けられます。",
           externalPrompt: externalAiRefinePrompt(instruction),
         });
       } else {
