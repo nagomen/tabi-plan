@@ -35,7 +35,7 @@ test("計画の409衝突では自動保存を止め、上書きせずに読み�
 });
 
 test("招待作成・参加期間・友達申請の失敗が利用者に見える", () => {
-  const editor = read("src/plan-editor/main.ts");
+  const editor = read("src/plan-editor/members.ts");
   assert.match(editor, /招待リンクを作成できませんでした/);
   assert.match(editor, /参加期間を保存できませんでした/);
   const dashboard = read("src/dashboard/main.ts");
