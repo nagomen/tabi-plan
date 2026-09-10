@@ -1,45 +1,45 @@
 import "../shared/ui.css";
 import "./style.css";
-import { initPageTransitions, navigateWithPageTransition } from "../shared/page-transition";
+import { initPageTransitions } from "../shared/page-transition";
 import "leaflet/dist/leaflet.css";
 
 import { icon, type IconName } from "../shared/icons";
 import * as TripPlans from "../shared/plans-store";
-import { getUser } from "../shared/user-store";
-import { canManagePlan, isMemberOf } from "../shared/membership";
+import { isMemberOf } from "../shared/membership";
 import { joinersOn, leaversOn } from "../shared/member-period";
 import { dayTracks, pickTrack, isItemInTrack, everyoneIds, type DayTrack } from "../shared/day-tracks";
 import { parseFlight, parseTrain, type FlightInfo, type TrainInfo } from "../shared/flight-info";
 import { currentUserId, adoptLegacyIdentity } from "../shared/identity";
 import * as db from "../shared/db";
 import { incrementView } from "../shared/views-store";
-import { splitNames } from "../shared/friend-store";
-import { buildInviteLink } from "../shared/invite";
 import { escapeHtml, errorMessage, safeHref } from "../shared/dom";
 import { loadData, normalizeDate } from "./api-data-source";
 import type { DayGroup } from "./types";
 import { registerServiceWorker } from "../shared/pwa";
 import { fetchDayWeather, weatherLabel } from "../shared/weather";
 import { buildItineraryShareText } from "../shared/itinerary-text";
-import { taskStatus, nextTaskStatus, setTaskStatus, checklistSummary, TASK_STATUS_LABEL } from "../shared/checklist";
 import * as Backend from "../shared/backend";
 import { mdLabel } from "../shared/date";
 import { buildGoogleMyMapsKml, googleMyMapsKmlFilename, mapsSearchUrl } from "../shared/maps";
 import { formatDurationMinutes, parseDurationMinutes } from "../shared/travel-duration";
 import { buildExternalAiRefinePrompt, copyExternalAiPrompt, openExternalAi, parseExternalAiRefineJson } from "../shared/external-ai";
-import type { TripData, TripLink, ItineraryItem, LocalInfoItem } from "../shared/types";
-import { applyPlanConfig, CONFIG, getMobileView, hooks, isAccessDenied, isReadOnly, leafletState, linkByKey, SAMPLE, setAccessDenied, setMobileView, setReadOnly, setRenderHooks, state } from "./state";
-import { downloadTextFile, flashButton, flashLabel, qs, qsa, root, setHtml, setLoading, setText, subhead } from "./dom";
-import { canUseWorkspaceView, computeAccessDenied, computeReadOnly, isEditableLocalPlan, isOpenEditingVisitor, planId, tasksEditable } from "./plan-access";
+import type { TripData, TripLink, ItineraryItem } from "../shared/types";
+import { applyPlanConfig, CONFIG, getMobileView, hooks, isAccessDenied, isReadOnly, linkByKey, SAMPLE, setAccessDenied, setMobileView, setReadOnly, setRenderHooks, state } from "./state";
+import { downloadTextFile, flashLabel, qs, qsa, root, setHtml, setLoading, setText } from "./dom";
+import { canUseWorkspaceView, computeAccessDenied, computeReadOnly, isEditableLocalPlan, planId } from "./plan-access";
 import { chooseActive, dayCoord, groupDays, nowHM, nowMinutes, timeToMinutes, todayISO, tripDateRange, untilLabel } from "./days";
 import { renderAccessDenied, showError } from "./errors";
 import { updateHeaderHero } from "./header-hero";
 import { mapsDir, projectPlaces, refreshMapLayout, renderMapEmbed, syncGoogleMapsLink } from "./map";
 import { applyMobileView, syncMobileNavLayout, syncStickyOffsets } from "./view-mode";
-import { readProfile, requestIdentityIfNeeded, requestPassword, saveExpenseEntryCache } from "./profile";
+import { requestIdentityIfNeeded, requestPassword, saveExpenseEntryCache } from "./profile";
 import { renderExpenseEntry, setExpenseSheet } from "./expense-entry";
 import { applyMoneyTab, localSettlement, renderExpenseDetails, renderTransfers } from "./settlement";
 import { renderPhotoAlbum, setupPhotoAlbumEditor } from "./photo-album";
+import { bindChecklist, renderChecklist } from "./checklist";
+import { leaveTrip, renderMembers, shareTripInvite } from "./members";
+import { renderLocalInfo } from "./local-info";
+import { computeRoute, renderDayTabs } from "./route";
 
 initPageTransitions();
 
@@ -95,126 +95,6 @@ function linkIcon(key: string): string {
 }
 
 // ---- 基本描画 -----------------------------------------------------------
-
-// ---- ルート（滞在都市セグメント） --------------------------------------
-
-const ROUTE_PALETTE = ["#0b5a42", "#22719d", "#b87418", "#6246a6", "#cf4f3d", "#2f7d6b", "#8a5a2b", "#3b4c8a"];
-
-interface RouteSeg {
-  name: string;
-  fromDate: string;
-  toDate: string;
-  firstDayIndex: number;
-  nights: number;
-  color: string;
-}
-
-function nightsBetween(from: string, to: string): number {
-  const a = new Date(from);
-  const b = new Date(to);
-  if (isNaN(a.getTime()) || isNaN(b.getTime())) return 0;
-  return Math.max(0, Math.round((b.getTime() - a.getTime()) / 86400000));
-}
-
-// 滞在都市セグメントを算出。cities があればそれ、無ければ各日 area の連続区間。
-function computeRoute(): { segs: RouteSeg[]; dayToSeg: number[] } {
-  const days = state.days;
-  const dayToSeg: number[] = new Array(days.length).fill(-1);
-  const segs: RouteSeg[] = [];
-  const cities = (state.data.cities || []).filter((c) => c.name && c.fromDate && c.toDate);
-
-  if (cities.length) {
-    cities.forEach((c, i) =>
-      segs.push({
-        name: c.name,
-        fromDate: c.fromDate,
-        toDate: c.toDate,
-        firstDayIndex: -1,
-        nights: nightsBetween(c.fromDate, c.toDate),
-        color: ROUTE_PALETTE[i % ROUTE_PALETTE.length],
-      }),
-    );
-    days.forEach((day, di) => {
-      // その日をカバーする都市のうち、開始日が最も新しい（=現在地）ものに割り当て
-      let best = -1;
-      let bestFrom = "";
-      cities.forEach((c, ci) => {
-        if (c.fromDate <= day.date && day.date <= c.toDate && c.fromDate >= bestFrom) {
-          best = ci;
-          bestFrom = c.fromDate;
-        }
-      });
-      dayToSeg[di] = best;
-    });
-    segs.forEach((s, si) => {
-      const idx = dayToSeg.indexOf(si);
-      s.firstDayIndex = idx >= 0 ? idx : 0;
-    });
-  } else {
-    let prev: string | null = null;
-    days.forEach((day, di) => {
-      const area = (day.area || "").trim();
-      if (!area) {
-        dayToSeg[di] = segs.length ? segs.length - 1 : -1;
-        return;
-      }
-      if (area !== prev) {
-        segs.push({
-          name: area,
-          fromDate: day.date,
-          toDate: day.date,
-          firstDayIndex: di,
-          nights: 0,
-          color: ROUTE_PALETTE[segs.length % ROUTE_PALETTE.length],
-        });
-        prev = area;
-      }
-      const seg = segs[segs.length - 1];
-      seg.toDate = day.date;
-      seg.nights = nightsBetween(seg.fromDate, seg.toDate);
-      dayToSeg[di] = segs.length - 1;
-    });
-  }
-  return { segs, dayToSeg };
-}
-
-function jumpToDay(index: number): void {
-  state.active = index;
-  state.viewEnd = index; // 日を切り替えたらフィードは1日だけに戻す
-  leafletState.followActive = true;
-  hooks.renderActive();
-}
-
-function renderDayTabs(route: { segs: RouteSeg[]; dayToSeg: number[] }): void {
-  const dayTab = (day: (typeof state.days)[number], index: number, withArea: boolean): string =>
-    `<button class="tl-day" type="button" data-day-index="${index}" aria-selected="${index === state.active}">` +
-    `<b>${escapeHtml(day.day || `Day ${index + 1}`)}${withArea ? `<br>${escapeHtml(day.area || "")}` : ""}</b>` +
-    `<small>${escapeHtml(mdLabel(day.date))}</small></button>`;
-
-  if (route.segs.length >= 2) {
-    let html = "";
-    let cur = -2;
-    state.days.forEach((day, index) => {
-      const seg = route.dayToSeg[index];
-      if (seg !== cur) {
-        if (cur !== -2) html += "</div></div>";
-        const s = route.segs[seg];
-        html += `<div class="tl-daygroup" style="--c:${s ? s.color : "#68746e"}">` +
-          `<span class="tl-daygroup-label">${escapeHtml(s ? s.name : "—")}</span><div class="tl-daygroup-days">`;
-        cur = seg;
-      }
-      html += dayTab(day, index, false);
-    });
-    if (cur !== -2) html += "</div></div>";
-    setHtml("[data-days]", html);
-  } else {
-    setHtml("[data-days]", state.days.map((day, index) => dayTab(day, index, true)).join(""));
-  }
-
-  qsa<HTMLElement>("[data-day-index]").forEach((button) => {
-    button.addEventListener("click", () => jumpToDay(Number(button.dataset.dayIndex)));
-  });
-}
 
 function renderBase(): void {
   const data = state.data;
@@ -303,166 +183,6 @@ function renderBase(): void {
   applyMobileView(getMobileView());
 }
 
-// ---- タスク（チェックリスト） -------------------------------------------
-
-/** ローカル計画のチェックリストを localStorage に保存する。 */
-function persistChecklist(): void {
-  if (!tasksEditable()) return;
-  const stored = TripPlans.getData(CONFIG.tripSlug);
-  if (!stored) return;
-  stored.checklist = state.data.checklist || [];
-  TripPlans.saveData(CONFIG.tripSlug, stored);
-}
-
-/** チェックリストを3状態（未着手/進行中/完了）のタスクリストとして描画する。 */
-function renderChecklist(): void {
-  const items = state.data.checklist || [];
-  const editable = tasksEditable();
-  const summary = checklistSummary(items);
-  // 状態はアイコンだけで示す。「未着手」などの文字を毎行に置くと
-  // 幅を食ってタスク名が折り返し、行の高さがばらついていた。
-  const STATE_ICON: Record<string, IconName> = { todo: "minus", doing: "clock", done: "check" };
-
-  const rows = items
-    .map((item, index) => {
-      const status = taskStatus(item);
-      const label = TASK_STATUS_LABEL[status];
-      const mark = `<span class="tl-task-mark">${icon(STATE_ICON[status] || "minus")}</span>`;
-      const state = editable
-        ? `<button class="tl-task-state" type="button" data-task-toggle="${index}" aria-label="状態: ${label}（押すと変更）" title="${label}">${mark}</button>`
-        : `<span class="tl-task-state" aria-label="状態: ${label}" title="${label}">${mark}</span>`;
-      const del = editable
-        ? `<button class="tl-task-del" type="button" data-task-del="${index}" aria-label="このタスクを削除">${icon("xMark")}</button>`
-        : "";
-      return `<li class="tl-task is-${status}">${state}<span class="tl-task-label">${escapeHtml(item.label)}</span>${del}</li>`;
-    })
-    .join("");
-
-  // 進捗は細い罫線1本で示す（箱やゲージを置かない）。
-  const pct = summary.total ? Math.round((summary.done / summary.total) * 100) : 0;
-  const progress = summary.total
-    ? `<div class="tl-task-progress" role="img" aria-label="完了 ${summary.done} / ${summary.total}">
-         <span style="width:${pct}%"></span>
-       </div>`
-    : "";
-  const addHtml = editable
-    ? `<form class="tl-task-add" data-task-add>
-         <input data-task-input type="text" maxlength="60" placeholder="タスクを追加" aria-label="タスクを追加" autocomplete="off">
-         <button type="submit" aria-label="追加">${icon("plus")}</button>
-       </form>`
-    : "";
-  const emptyHtml = !items.length
-    ? `<p class="tl-task-empty">${editable ? "タスクを追加すると、ここに並びます。" : "タスクはありません"}</p>`
-    : "";
-
-  setHtml(
-    "[data-checks]",
-    `${subhead("listBullet", "タスク", summary.total ? `${summary.done}/${summary.total}` : "")}
-     ${progress}
-     <ul class="tl-tasks">${rows}</ul>${emptyHtml}${addHtml}`,
-  );
-}
-
-/** タスクの状態変更・削除・追加を [data-checks] にデリゲートで束ねる（初期化時に1回）。 */
-function bindChecklist(): void {
-  const container = root.querySelector<HTMLElement>("[data-checks]");
-  if (!container) return;
-  container.addEventListener("click", (event) => {
-    const target = event.target;
-    if (!(target instanceof Element)) return;
-    const toggle = target.closest<HTMLElement>("[data-task-toggle]");
-    if (toggle) {
-      const item = (state.data.checklist || [])[Number(toggle.dataset.taskToggle)];
-      if (!item) return;
-      setTaskStatus(item, nextTaskStatus(taskStatus(item)));
-      persistChecklist();
-      renderChecklist();
-      return;
-    }
-    const del = target.closest<HTMLElement>("[data-task-del]");
-    if (del) {
-      const items = state.data.checklist || [];
-      items.splice(Number(del.dataset.taskDel), 1);
-      persistChecklist();
-      renderChecklist();
-    }
-  });
-  container.addEventListener("submit", (event) => {
-    if (!(event.target instanceof Element) || !event.target.closest("[data-task-add]")) return;
-    event.preventDefault();
-    const input = container.querySelector<HTMLInputElement>("[data-task-input]");
-    const label = (input?.value || "").trim();
-    if (!label) return;
-    const items = state.data.checklist || (state.data.checklist = []);
-    items.push({ label, done: false, status: "todo" });
-    if (input) input.value = "";
-    persistChecklist();
-    renderChecklist();
-  });
-}
-
-// ---- メンバー（参加者一覧・招待） ---------------------------------------
-
-/** 参加メンバー一覧を描画。招待は owner、脱退は owner 以外の正式メンバーに表示。 */
-function renderMembers(data: TripData): void {
-  const meta = TripPlans.get(CONFIG.tripSlug);
-  const membersStr = (meta && meta.members) || (data.trip && data.trip.members) || "";
-  // 公開共同編集者は正式メンバーではないため、本人設定した名前を候補として扱う。
-  // （連携元のメンバー表には載らないため、ここで補って「参加している」状態に見せる）。
-  const openEditingVisitor = isOpenEditingVisitor();
-  const myName = getUser().name.trim() || (openEditingVisitor ? (readProfile()?.name || "").trim() : "");
-  const people = meta?.memberIds?.length
-    ? meta.memberIds.map((id) => ({ id, name: db.nameOf(id) })).filter((person) => person.name)
-    : splitNames(membersStr).map((name) => ({ id: "", name }));
-  if (openEditingVisitor && myName && !people.some((person) => person.name === myName)) {
-    people.unshift({ id: currentUserId(), name: myName });
-  }
-
-  const countEl = root.querySelector<HTMLElement>("[data-members-count]");
-  if (countEl) countEl.textContent = people.length ? `${people.length}人` : "";
-
-  const listEl = root.querySelector<HTMLElement>("[data-members-list]");
-  if (listEl) {
-    listEl.innerHTML = people.length
-      ? people
-          .map(({ id, name }) => {
-            const self = id ? id === currentUserId() : Boolean(myName) && name === myName;
-            // アイコン/名前をタップするとその人の旅行履歴ページへ。
-            return (
-              `<a class="tl-member-row${self ? " is-self" : ""}" href="person.html?name=${encodeURIComponent(name)}${id ? `&user=${encodeURIComponent(id)}` : ""}" title="${escapeHtml(name)}さんの旅行履歴を見る">` +
-              `<span class="tl-member-avatar">${escapeHtml(name.slice(0, 1) || "?")}</span>` +
-              `<span class="tl-member-name">${escapeHtml(name)}</span>` +
-              (self ? `<span class="tl-member-self-badge">自分</span>` : "") +
-              `<span class="tl-member-go">${icon("chevronRight")}</span>` +
-              "</a>"
-            );
-          })
-          .join("")
-      : `<div class="tl-members-empty">まだメンバーがいません。下から招待できます。</div>`;
-  }
-
-  const inviteEl = root.querySelector<HTMLElement>("[data-members-invite]");
-  if (inviteEl) inviteEl.hidden = isReadOnly() || CONFIG.mode !== "local" || !meta || !canManagePlan(meta);
-
-  // 脱退は「名前を設定した参加メンバー」だけ（＝自分が一覧にいる）。
-  const leaveEl = root.querySelector<HTMLElement>("[data-members-leave]");
-  if (leaveEl) leaveEl.hidden = isReadOnly() || !meta || !isMemberOf(meta) || canManagePlan(meta);
-}
-
-/** 自分をこの旅行のメンバーから外して一覧へ戻る（脱退）。 */
-async function leaveTrip(): Promise<void> {
-  if (isReadOnly()) return;
-  const meta = TripPlans.get(CONFIG.tripSlug);
-  if (!meta || !meta.id || !isMemberOf(meta) || canManagePlan(meta)) return;
-  try {
-    await db.leavePlan(meta.id);
-    navigateWithPageTransition("plans.html");
-  } catch (error) {
-    const leaveButton = root.querySelector<HTMLButtonElement>("[data-leave-trip]");
-    if (leaveButton) flashButton(leaveButton, errorMessage(error) || "脱退できませんでした");
-  }
-}
-
 /** 旅行の全日程を LINE で送れるテキストにして共有／コピーする。 */
 async function shareSchedule(): Promise<void> {
   const btn = root.querySelector<HTMLButtonElement>("[data-copy-schedule]");
@@ -486,92 +206,6 @@ async function shareSchedule(): Promise<void> {
   } catch {
     window.prompt("日程をコピーしてLINEに貼り付けてください", text);
   }
-}
-
-/** 招待リンクを作成して共有／コピーする（ローカル計画のみ）。 */
-async function shareTripInvite(): Promise<void> {
-  if (isReadOnly()) return;
-  const meta = TripPlans.get(CONFIG.tripSlug);
-  const planData = TripPlans.getData(CONFIG.tripSlug);
-  const btn = root.querySelector<HTMLButtonElement>("[data-invite-share]");
-  if (!meta || !planData) {
-    if (btn) flashButton(btn, "招待に未対応");
-    return;
-  }
-  if (!canManagePlan(meta)) {
-    if (btn) flashButton(btn, "所有者のみ招待できます");
-    return;
-  }
-  const nameInput = root.querySelector<HTMLInputElement>("[data-invite-name]");
-  const name = (nameInput?.value || "").trim();
-  try {
-    const planId = TripPlans.planIdOf(meta.slug);
-    if (!planId) throw new Error("計画IDが見つかりません");
-    const invite = await db.createInvite(planId, { invited_name: name || undefined, role: "editor" });
-    const link = await buildInviteLink({
-      v: 1,
-      meta: {
-        slug: meta.slug,
-        title: meta.title,
-        dates: meta.dates,
-        members: meta.members,
-        route: meta.route,
-        updatedAt: meta.updatedAt,
-      },
-      token: invite.token,
-      invitedName: name || undefined,
-      role: "editor",
-    });
-    const shareData = {
-      title: meta.title || "旅行計画",
-      text: `「${meta.title || "旅行"}」に${name ? `${name}さんを` : ""}招待します`,
-      url: link,
-    };
-    if (navigator.share) {
-      try {
-        await navigator.share(shareData);
-      } catch {
-        /* 共有キャンセル */
-      }
-      return;
-    }
-    try {
-      await navigator.clipboard.writeText(link);
-      if (btn) flashButton(btn, "リンクをコピーしました");
-    } catch {
-      window.prompt("招待リンクをコピーしてください", link);
-    }
-    if (nameInput) nameInput.value = "";
-  } catch (error) {
-    // 権限なし・回数制限・期限切れを見分けられるよう、サーバーの説明をそのまま出す
-    if (btn) flashButton(btn, errorMessage(error) || "作成できませんでした");
-  }
-}
-
-function renderLocalInfo(rows: LocalInfoItem[]): void {
-  const items = (rows || []).slice(0, 9);
-  setHtml("[data-local-info]", items.map((item) => {
-    const currency = [item.currencyCode, item.currencyName].filter(Boolean).join(" / ");
-    const rate = [item.approxRate, item.rateUpdatedAt ? `更新 ${item.rateUpdatedAt}` : ""].filter(Boolean).join(" · ");
-    const rideRecommendations = [item.rideBest].concat(String(item.rideAlt || "").split("/"))
-      .map((value) => String(value || "").trim())
-      .filter(Boolean)
-      .filter((value, index, list) => list.indexOf(value) === index)
-      .slice(0, 2)
-      .join(" / ");
-    return `<article class="tl-local-card">
-      <div class="tl-local-top">
-        <b class="tl-local-country">${escapeHtml(item.country)}</b>
-        <span class="tl-local-currency">${escapeHtml(currency || item.approxRate || "")}</span>
-      </div>
-      <dl class="tl-local-meta">
-        <div><dt>為替</dt><dd>${escapeHtml(rate || "-")}</dd></div>
-        <div><dt>無料ATM</dt><dd>${escapeHtml(item.feeFreeAtm || "-")}</dd></div>
-        <div><dt>配車おすすめ</dt><dd>${escapeHtml(rideRecommendations || "-")}</dd></div>
-      </dl>
-      <p class="tl-local-note">${escapeHtml([item.atmNote, item.paymentNote].filter(Boolean).join(" / "))}</p>
-    </article>`;
-  }).join(""));
 }
 
 const KIND_ICON: Record<string, IconName> = {
