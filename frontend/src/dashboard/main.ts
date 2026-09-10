@@ -1,22 +1,9 @@
-// 旅行ダッシュボード本体。docs/index.html のインライン IIFE を
-// strict TypeScript モジュールへ移行したもの。
-// データ取得（sample / local）、日別タイムライン、
-// Leaflet 地図、費用精算・明細、本人設定・認証、Service Worker 登録を担う。
-
 import "../shared/ui.css";
 import "./style.css";
 import { initPageTransitions, navigateWithPageTransition } from "../shared/page-transition";
 import "leaflet/dist/leaflet.css";
 
 import { icon, type IconName } from "../shared/icons";
-
-initPageTransitions();
-
-import {
-  readGlobalTripConfig,
-  resolvedTripConfig,
-  type TripConfig,
-} from "../shared/config";
 import * as TripPlans from "../shared/plans-store";
 import { isPublished } from "../shared/plans-store";
 import { getUser } from "../shared/user-store";
@@ -28,41 +15,34 @@ import { currentAccount } from "../shared/account-store";
 import { currentUserId, adoptLegacyIdentity, identifyByName } from "../shared/identity";
 import * as db from "../shared/db";
 import { incrementView } from "../shared/views-store";
-import { planCoverImage, planCoverImageForLocation, type CoverPlace } from "../shared/cover";
+import { planCoverImageForLocation, type CoverPlace } from "../shared/cover";
 import { splitNames } from "../shared/friend-store";
 import { buildInviteLink } from "../shared/invite";
 import * as ExpenseStore from "../shared/expense-store";
-import { escapeHtml, errorMessage, makeScopedQuery, safeHref } from "../shared/dom";
+import { escapeHtml, errorMessage, safeHref } from "../shared/dom";
 import { requestPasswordGate } from "../shared/auth";
 import { loadData, normalizeDate, numberOrNaN, formatYen } from "./api-data-source";
 import { renderLeafletMap } from "./leaflet-map";
-import type { DayGroup, LeafletState } from "./types";
+import type { DayGroup } from "./types";
 import { registerServiceWorker } from "../shared/pwa";
-import { mountAppHeader, setAppHeaderHero } from "../shared/app-header";
+import { setAppHeaderHero } from "../shared/app-header";
 import { getPayLink, isPayUrl } from "../shared/payment-links";
 import { fetchDayWeather, weatherLabel } from "../shared/weather";
 import { buildItineraryShareText } from "../shared/itinerary-text";
 import { taskStatus, nextTaskStatus, setTaskStatus, checklistSummary, TASK_STATUS_LABEL } from "../shared/checklist";
 import * as Backend from "../shared/backend";
 import { bindExpenseSplitForm, expenseCurrencyCodes, expenseParticipantNames } from "../shared/expense-form";
-import { setTripDocumentTitle } from "../shared/page-meta";
 import { localDateISO, parseISO, toISO, mdLabel } from "../shared/date";
 import { buildGoogleMyMapsKml, googleMyMapsKmlFilename, mapsSearchUrl } from "../shared/maps";
 import { formatDurationMinutes, parseDurationMinutes } from "../shared/travel-duration";
 import { buildExternalAiRefinePrompt, copyExternalAiPrompt, openExternalAi, parseExternalAiRefineJson } from "../shared/external-ai";
-import type {
-  TripData,
-  TripLink,
-  ItineraryItem,
-  RouteCity,
-  Settlement,
-  SettlementTransfer,
-  ExpenseDetail,
-  LocalInfoItem,
-  LatLng,
-} from "../shared/types";
+import type { TripData, TripLink, ItineraryItem, RouteCity, Settlement, SettlementTransfer, ExpenseDetail, LocalInfoItem, LatLng } from "../shared/types";
+import { applyPlanConfig, CONFIG, getEditingExpenseId, getMobileView, hooks, isAccessDenied, isReadOnly, leafletState, linkByKey, SAMPLE, setAccessDenied, setEditingExpenseId, setMobileView, setReadOnly, setRenderHooks, state } from "./state";
+import { appHeaderEl, coverMeta, downloadTextFile, flashButton, flashLabel, qs, qsa, root, setHtml, setLoading, setText, subhead } from "./dom";
 
-// ---- 補助型 -------------------------------------------------------------
+initPageTransitions();
+
+setRenderHooks({ renderBase, renderActive, renderData, syncData });
 
 /** ローカルストレージに保存する本人プロフィール */
 interface ProfileRecord {
@@ -80,31 +60,6 @@ interface HeaderCoverMeta {
   cover?: string;
 }
 
-interface AppState {
-  data: TripData;
-  days: DayGroup[];
-  active: number;
-  /** 「この日の予定」フィードで下に展開して表示している最後の日 index */
-  viewEnd: number;
-  source: string;
-}
-
-// ---- 設定 ---------------------------------------------------------------
-
-const BASE_TRIP_CONFIG = readGlobalTripConfig();
-const PLAN_OVERRIDE = TripPlans.resolveConfigOverride(BASE_TRIP_CONFIG) || {};
-const CONFIG: TripConfig = resolvedTripConfig(PLAN_OVERRIDE);
-setTripDocumentTitle(CONFIG.tripTitle, (title) => `${title}ダッシュボード`, "");
-
-/** 共有ストアを読み終えたあと、開いている計画の実体で CONFIG を補正する。 */
-function applyPlanConfig(): void {
-  const meta = TripPlans.get(CONFIG.tripSlug);
-  if (!meta) return;
-  CONFIG.tripTitle = meta.title || CONFIG.tripTitle;
-  CONFIG.mode = meta.source === "sample" ? "sample" : "local";
-  setTripDocumentTitle(CONFIG.tripTitle, (title) => `${title}ダッシュボード`, "");
-}
-
 /** 正式メンバーではない、ログイン済みの公開共同編集者か。 */
 function isOpenEditingVisitor(): boolean {
   const meta = TripPlans.get(CONFIG.tripSlug);
@@ -115,121 +70,11 @@ function isOpenEditingVisitor(): boolean {
   );
 }
 
-// ---- サンプルデータ -----------------------------------------------------
-
-const SAMPLE: TripData = {
-  trip: {
-    title: CONFIG.tripTitle || "サンプル旅行",
-    dates: "2027/3/10 - 3/12",
-    members: "参加者A / 参加者B",
-    note: "共有メモ: 予約番号や住所などの機密情報は公開ページに載せないでください。",
-  },
-  links: [
-    { key: "maps", label: "My Maps", icon: "地", url: "https://www.google.com/maps/d/", caption: "Google My Maps" },
-    { key: "photos", label: "写真", icon: "写", url: "https://photos.google.com/", caption: "Google Photos" },
-  ],
-  settlement: {
-    paid: "¥3,200",
-    paidLabel: "精算額",
-    expenseTotal: "¥28,400",
-    progress: 50,
-    yourPaid: "¥14,200",
-    yourDue: "¥3,200",
-    transfers: [
-      { from: "参加者B", to: "参加者A", amount: 3200, amountLabel: "¥3,200" },
-    ],
-    rateDetails: [
-      { date: "2027-03-10", payer: "参加者A", title: "夕食", currency: "JPY", amount: "¥8,000", rateDate: "2027-03-10", rate: 1, converted: "¥8,000" },
-      { date: "2027-03-11", payer: "参加者B", title: "タクシー", currency: "USD", amount: "USD 35", rateDate: "2027-03-11", rate: 150, converted: "¥5,250" },
-    ],
-    expenseDetails: [
-      { date: "2027-03-10", payer: "参加者A", category: "食費", title: "夕食", mode: "全員で等分", amountLabel: "¥8,000", convertedLabel: "¥8,000", myShareLabel: "¥4,000", targetNames: ["参加者A", "参加者B"], shares: [{ name: "参加者A", amount: 4000, amountLabel: "¥4,000" }] },
-      { date: "2027-03-11", payer: "参加者B", category: "交通", title: "タクシー", mode: "選んだ人だけで等分", amountLabel: "USD 35", convertedLabel: "¥5,250", myShareLabel: "¥2,625", targetNames: ["参加者A", "参加者B"], shares: [{ name: "参加者A", amount: 2625, amountLabel: "¥2,625" }] },
-    ],
-    rateWarnings: [],
-    baseCurrency: "JPY",
-    photoTitle: "旅行アルバム",
-    photoMeta: "Google Photos",
-  },
-  checklist: [
-    { label: "交通と宿の予約状況確認", done: true },
-    { label: "保険と緊急連絡先の確認", done: false },
-    { label: "モバイル通信の設定", done: false },
-    { label: "荷物の最終確認", done: false },
-  ],
-  localInfo: [
-    { country: "日本", currencyCode: "JPY", currencyName: "円", approxRate: "1 JPY = ¥1", rateUpdatedAt: "", feeFreeAtm: "必要に応じて記入", atmBest: "", atmFee: "", atmNote: "", rideBest: "タクシーアプリ", rideAlt: "公共交通", paymentNote: "国内旅行では原則JPYで入力" },
-    { country: "海外渡航先", currencyCode: "USD", currencyName: "現地通貨", approxRate: "最新レートを確認", rateUpdatedAt: "", feeFreeAtm: "現地で確認", atmBest: "", atmFee: "", atmNote: "DCCは原則拒否", rideBest: "", rideAlt: "", paymentNote: "カードと少額現金を併用" },
-  ],
-  itinerary: [
-    { date: "2027-03-10", day: "Day 1", area: "東京", time: "10:00", type: "move", typeLabel: "移動", title: "集合", place: "東京駅", note: "集合場所を確認。", lat: 35.6812, lng: 139.7671, mapQuery: "東京駅", weather: "" },
-    { date: "2027-03-10", day: "Day 1", area: "京都", time: "13:00", type: "move", typeLabel: "移動", title: "京都へ移動", place: "京都駅", note: "新幹線または航空券を確認。", lat: 34.9858, lng: 135.7588, mapQuery: "京都駅", weather: "" },
-    { date: "2027-03-10", day: "Day 1", area: "京都", time: "18:30", type: "food", typeLabel: "食事", title: "夕食", place: "京都市内", note: "予約名を確認。", lat: 35.0116, lng: 135.7681, mapQuery: "京都市", weather: "" },
-    { date: "2027-03-11", day: "Day 2", area: "京都", time: "09:30", type: "sight", typeLabel: "観光", title: "市内観光", place: "京都市内", note: "混雑状況を見て順番を調整。", lat: 35.0116, lng: 135.7681, mapQuery: "京都市 観光", weather: "" },
-  ],
-};
-
-// ---- DOM ヘルパー -------------------------------------------------------
-
-const rootElement = document.getElementById("tripLive");
-if (!rootElement) {
-  throw new Error("tripLive 要素が見つかりません");
-}
-const root: HTMLElement = rootElement;
-
-// 計画のカバー画像（サムネ）をヘッダー背景のヒーローに使う。
-const coverMeta = TripPlans.get(CONFIG.tripSlug) ?? {
-  slug: CONFIG.tripSlug,
-  route: "",
-  title: CONFIG.tripTitle,
-};
-
-const appHeaderEl = mountAppHeader({
-  mount: "#tripLive [data-app-header]",
-  hero: planCoverImage(coverMeta),
-  kicker: "Shared Travel Dashboard",
-  title: "Tabi Plan",
-  titleAttr: "data-title",
-  back: { href: "plans.html", label: "計画一覧へ戻る" },
-  actions: [
-    {
-      kind: "link",
-      display: "icon",
-      icon: "pencilSquare",
-      label: "計画を編集",
-      href: "#",
-      attr: "data-edit-head",
-      hidden: true,
-    },
-    // 人の公開計画を見ているときだけ出す。自分用の下書きに持ち帰る導線。
-    {
-      kind: "button",
-      display: "icon",
-      icon: "documentDuplicate",
-      label: "コピーして自分用に作る",
-      attr: "data-copy-head",
-      hidden: true,
-    },
-    { kind: "button", display: "icon", icon: "user", label: "マイページ", attr: "data-mypage" },
-  ],
-});
-
-/** root にスコープした型付き qs/qsa（shared/dom 由来） */
-const { qs, qsa } = makeScopedQuery(root);
-
 // セクション見出し・ボタンの heroicon を流し込む（HTML 側は data-ic="名前" のみ持つ）
 qsa<HTMLElement>("[data-ic]").forEach((el) => {
   const name = el.getAttribute("data-ic");
   if (name) el.innerHTML = icon(name as IconName);
 });
-
-function setText(selector: string, value: string | undefined): void {
-  qs(selector).textContent = value || "";
-}
-
-function setHtml(selector: string, value: string | undefined): void {
-  qs(selector).innerHTML = value || "";
-}
 
 function mapsDir(places: ItineraryItem[]): string {
   const clean = places.map((p) => p.mapQuery || p.place).filter(Boolean) as string[];
@@ -264,11 +109,6 @@ function mapsEmbedDirections(places: ItineraryItem[]): string {
     "&mode=transit";
 }
 
-// ---- 状態 ---------------------------------------------------------------
-
-const state: AppState = { data: SAMPLE, days: [], active: 0, viewEnd: 0, source: "sample" };
-let mobileView = "home";
-const leafletState: LeafletState = { map: null, layer: null, followActive: true };
 /** スマホの費用タブ。既定は精算する金額。PC では両方出すので使わない。 */
 let moneyTab: "settle" | "details" = "settle";
 
@@ -283,7 +123,6 @@ function applyMoneyTab(next?: "settle" | "details"): void {
     panel.classList.toggle("is-active", panel.dataset.moneyPanel === moneyTab);
   });
 }
-let editingExpenseId: string | null = null;
 let syncInFlight: Promise<void> | null = null;
 let lastSyncAt = 0;
 
@@ -297,18 +136,6 @@ interface AiChatEntry {
 
 const aiChatEntries: AiChatEntry[] = [];
 let aiChatBusy = false;
-
-function downloadTextFile(filename: string, content: string, mimeType: string): void {
-  const blob = new Blob([content], { type: mimeType });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = filename;
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
 
 function activeDayCoverMeta(): HeaderCoverMeta {
   const configuredCover = "cover" in coverMeta ? coverMeta.cover : "";
@@ -383,7 +210,7 @@ function memberIds(): string[] {
   const ids = meta?.memberIds || [];
   const me = currentUserId();
   // 自分がまだメンバーでない計画でも、自分名義で費用を入れられるようにする
-  return me && !ids.includes(me) && !READ_ONLY ? [me, ...ids] : ids;
+  return me && !ids.includes(me) && !isReadOnly() ? [me, ...ids] : ids;
 }
 
 /** 費用と精算から Settlement を組み立てる。 */
@@ -403,15 +230,7 @@ function renderData(data: TripData | null | undefined, source?: string): void {
   state.active = sameDayIndex >= 0 ? sameDayIndex : chooseActive(state.days);
   renderBase();
   renderActive();
-  applyMobileView(mobileView);
-}
-
-function setLoading(isLoading: boolean, label?: string): void {
-  root.classList.toggle("is-loading", Boolean(isLoading));
-  const loading = root.querySelector("[data-loading]");
-  const loadingLabel = root.querySelector("[data-loading-label]");
-  if (loading) loading.setAttribute("aria-busy", String(Boolean(isLoading)));
-  if (loadingLabel && label) loadingLabel.textContent = label;
+  applyMobileView(getMobileView());
 }
 
 // ---- 認証 / プロフィール ------------------------------------------------
@@ -543,14 +362,14 @@ function showIdentityModal(required: boolean): Promise<boolean> {
       saveProfile(name);
       // API利用時は既存の旅行メンバーだけを確定する。未登録者は招待で紐付ける。
       void identifyByName(name).then(() => {
-        renderBase();
-        renderActive();
+        hooks.renderBase();
+        hooks.renderActive();
       });
       modal.remove();
       const expenseForm = root.querySelector<HTMLFormElement>("[data-expense-form-native]");
       applyProfileDefaults(expenseForm, participants);
-      renderBase();
-      renderActive();
+      hooks.renderBase();
+      hooks.renderActive();
       resolve(true);
     });
   });
@@ -558,7 +377,7 @@ function showIdentityModal(required: boolean): Promise<boolean> {
 
 async function requestIdentityIfNeeded(): Promise<void> {
   // 読み取り専用（他人の公開計画の閲覧）では費用に関わらないので本人設定は求めない。
-  if (READ_ONLY) return;
+  if (isReadOnly()) return;
   // 利用者は identity（user_id）が正。確定済みなら訊かない。
   if (currentUserId()) {
     // 旧プロフィール（計画ごとの表示名）が空なら表示名で埋めておく（明細の見た目用）。
@@ -713,13 +532,9 @@ function chooseActive(days: DayGroup[]): number {
   return index >= 0 ? index : Math.max(0, days.length - 1);
 }
 
-function linkByKey(key: string): TripLink | Partial<TripLink> {
-  return state.data.links.find((link) => link.key === key) || {};
-}
-
 function isEditableLocalPlan(): boolean {
   const meta = TripPlans.get(CONFIG.tripSlug);
-  return !READ_ONLY && CONFIG.mode === "local" && Boolean(meta && isMemberOf(meta) && canEditPlan(meta));
+  return !isReadOnly() && CONFIG.mode === "local" && Boolean(meta && isMemberOf(meta) && canEditPlan(meta));
 }
 
 function normalizePhotoUrl(value: string): string {
@@ -790,7 +605,8 @@ function projectPlaces(items: ItineraryItem[]): ProjectedPlace[] {
 // ---- 表示モード（モバイル / セクション） --------------------------------
 
 function applyMobileView(view?: string): void {
-  mobileView = view || mobileView || "home";
+  const mobileView = view || getMobileView() || "home";
+  setMobileView(mobileView);
   if (mobileView === "map") leafletState.followActive = true;
   root.dataset.sectionView = mobileView;
   root.dataset.mobileView = mobileView;
@@ -809,7 +625,7 @@ function applyMobileView(view?: string): void {
   if (mobileView === "home" || mobileView === "map") {
     setTimeout(() => {
       refreshMapLayout();
-      if (mobileView === "map" && state.days.length && !leafletState.map) renderActive();
+      if (getMobileView() === "map" && state.days.length && !leafletState.map) hooks.renderActive();
     }, 80);
   }
 }
@@ -835,13 +651,13 @@ function setExpenseSheet(open: boolean): void {
   const sheet = root.querySelector<HTMLElement>("[data-expense-sheet]");
   if (!sheet) return;
   if (!open) {
-    editingExpenseId = null;
+    setEditingExpenseId(null);
     renderExpenseEntry(state.data || SAMPLE, { force: true });
   }
   const title = sheet.querySelector<HTMLElement>("[data-expense-sheet-title]");
-  if (title) title.textContent = editingExpenseId ? "費用を編集" : "費用を追加";
+  if (title) title.textContent = getEditingExpenseId() ? "費用を編集" : "費用を追加";
   const panel = sheet.querySelector<HTMLElement>("[role='dialog']");
-  if (panel) panel.setAttribute("aria-label", editingExpenseId ? "費用を編集" : "費用を追加");
+  if (panel) panel.setAttribute("aria-label", getEditingExpenseId() ? "費用を編集" : "費用を追加");
   sheet.hidden = !open;
   document.documentElement.style.overflow = open ? "hidden" : "";
   if (open) {
@@ -853,15 +669,6 @@ function setExpenseSheet(open: boolean): void {
 }
 
 // ---- 費用・精算描画 -----------------------------------------------------
-
-/** 費用まわりのセクション見出し。アイコン・文字サイズ・件数の位置をここで統一する。 */
-function subhead(iconName: IconName, title: string, count?: string): string {
-  return (
-    `<h3 class="tl-subhead"><span class="tl-subhead-ic">${icon(iconName)}</span><b>${escapeHtml(title)}</b>` +
-    (count ? `<small>${escapeHtml(count)}</small>` : "") +
-    `</h3>`
-  );
-}
 
 function renderTransfers(settlement: Settlement): void {
   const mount = root.querySelector<HTMLElement>("[data-transfers]");
@@ -1046,8 +853,8 @@ function setupSettlementCompleteHandlers(mount: HTMLElement): void {
           amountBaseMinor: amount,
           note: `サイト上で${from}から${to}への精算完了`,
         });
-        renderBase();
-        renderActive();
+        hooks.renderBase();
+        hooks.renderActive();
         const nextStatus = root.querySelector<HTMLElement>("[data-settlement-status]");
         if (nextStatus) {
           nextStatus.textContent = `${from} → ${to} を精算完了にしました。`;
@@ -1070,8 +877,8 @@ function setupSettlementCompleteHandlers(mount: HTMLElement): void {
       button.disabled = true;
       try {
         await ExpenseStore.removeSettlement(id);
-        renderBase();
-        renderActive();
+        hooks.renderBase();
+        hooks.renderActive();
       } catch (error) {
         window.alert(errorMessage(error) || "精算記録を取り消せませんでした");
         button.disabled = false;
@@ -1124,8 +931,8 @@ function setupPhotoAlbumEditor(): void {
       if (!url) throw new Error("共有アルバムURLを入力してください。");
       upsertPhotoAlbumLink(url);
       setOpen(false);
-      renderBase();
-      renderActive();
+      hooks.renderBase();
+      hooks.renderActive();
       setStatus("写真アルバムリンクを保存しました。", "ok");
     } catch (error) {
       setStatus((error as Error).message || "保存に失敗しました。", "error");
@@ -1140,7 +947,7 @@ function renderExpenseDetails(settlement: Settlement): void {
 
   // 利用者は identity（user_id）が正。表示名は users から引く。
   const profileName = db.nameOf(currentUserId());
-  const canManageExpenses = !READ_ONLY;
+  const canManageExpenses = !isReadOnly();
   const details = settlement.expenseDetails || [];
   const related = canManageExpenses ? details : profileName ? details.filter((detail) => {
     const shares = detail.shares || [];
@@ -1237,7 +1044,7 @@ function setupExpenseDetailActions(mount: HTMLElement): void {
       const id = button.dataset.expenseEdit || "";
       const record = ExpenseStore.get(planId(), id);
       if (!record) return;
-      editingExpenseId = id;
+      setEditingExpenseId(id);
       renderExpenseEntry(state.data || SAMPLE, { force: true });
       setExpenseSheet(true);
     });
@@ -1257,8 +1064,8 @@ function setupExpenseDetailActions(mount: HTMLElement): void {
       if (!ok) return;
       const removed = ExpenseStore.remove(id);
       if (!removed.row) return;
-      renderBase();
-      renderActive();
+      hooks.renderBase();
+      hooks.renderActive();
       showExpenseUndo(removed.row, removed.shares);
     });
   });
@@ -1266,8 +1073,8 @@ function setupExpenseDetailActions(mount: HTMLElement): void {
     button.addEventListener("click", () => {
       const id = button.dataset.expenseRestore || "";
       if (!id || !ExpenseStore.restoreById(planId(), id)) return;
-      renderBase();
-      renderActive();
+      hooks.renderBase();
+      hooks.renderActive();
       const status = root.querySelector<HTMLElement>("[data-settlement-status]");
       if (status) {
         status.textContent = "取り消した費用を支払い台帳へ戻しました。";
@@ -1287,8 +1094,8 @@ function showExpenseUndo(record: ExpenseStore.ExpenseRow, shares: ExpenseStore.E
   if (!undo) return;
   undo.addEventListener("click", () => {
     ExpenseStore.restore(record, shares);
-    renderBase();
-    renderActive();
+    hooks.renderBase();
+    hooks.renderActive();
     const nextStatus = root.querySelector<HTMLElement>("[data-settlement-status]");
     if (nextStatus) {
       nextStatus.textContent = `${record.title || "費用"}を元に戻しました。`;
@@ -1314,7 +1121,7 @@ function selfName(): string {
  * 閲覧のみの計画では他人の割り勘に自分を混ぜないので、追加しない。
  */
 function withSelf(names: string[]): string[] {
-  if (READ_ONLY) return names;
+  if (isReadOnly()) return names;
   // 保存済みの本人設定も必ず含める。端末のユーザー名と本人設定が食い違っていると
   // currentProfileName() が空を返し、本人設定モーダルが毎回出てしまうため。
   const mine = [selfName(), (readProfile()?.name || "").trim()].filter(Boolean);
@@ -1342,6 +1149,7 @@ function renderExpenseEntry(data: TripData, options: { force?: boolean } = {}): 
   if (!mount) return;
   const existingForm = mount.querySelector<HTMLFormElement>("[data-expense-form-native]");
   if (!options.force && existingForm && existingForm.dataset.dirty === "true") return;
+  const editingExpenseId = getEditingExpenseId();
   const editingRecord = editingExpenseId ? ExpenseStore.get(planId(), editingExpenseId) : undefined;
   const participants = expenseParticipants(data);
   if (editingExpenseId && !editingRecord) {
@@ -1552,7 +1360,7 @@ function setupExpenseEntryHandlers(form: HTMLFormElement, participants: string[]
 
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
-    if (READ_ONLY) {
+    if (isReadOnly()) {
       setStatus("閲覧のみの計画では費用を追加できません。", "error");
       return;
     }
@@ -1592,6 +1400,7 @@ function setupExpenseEntryHandlers(form: HTMLFormElement, participants: string[]
         selectedIds: targets.map(idOf),
         customAmounts: custom,
       };
+      const editingExpenseId = getEditingExpenseId();
       if (editingExpenseId) {
         await ExpenseStore.update(editingExpenseId, payload);
       } else {
@@ -1599,13 +1408,13 @@ function setupExpenseEntryHandlers(form: HTMLFormElement, participants: string[]
       }
       form.reset();
       form.dataset.dirty = "false";
-      editingExpenseId = null;
+      setEditingExpenseId(null);
       (field("paidDate") as HTMLInputElement).value = todayISO();
       applyProfileDefaults(form, participants);
       qsa<HTMLInputElement>("input[name='targets']", form).forEach((input) => { input.checked = true; });
       split.refresh();
-      renderBase();
-      renderActive();
+      hooks.renderBase();
+      hooks.renderActive();
       setExpenseSheet(false);
       const nextStatus = root.querySelector<HTMLElement>("[data-expense-status]");
       if (nextStatus) {
@@ -1708,7 +1517,7 @@ function jumpToDay(index: number): void {
   state.active = index;
   state.viewEnd = index; // 日を切り替えたらフィードは1日だけに戻す
   leafletState.followActive = true;
-  renderActive();
+  hooks.renderActive();
 }
 
 function renderDayTabs(route: { segs: RouteSeg[]; dayToSeg: number[] }): void {
@@ -1756,7 +1565,7 @@ function renderBase(): void {
   ];
   qs<HTMLElement>("[data-actions]").style.setProperty("--tl-action-count", String(tabs.length));
   setHtml("[data-actions]", tabs.map((tab) =>
-    `<button class="tl-action" type="button" data-section-nav="${tab.key}" aria-selected="${tab.key === mobileView}">
+    `<button class="tl-action" type="button" data-section-nav="${tab.key}" aria-selected="${tab.key === getMobileView()}">
       ${tab.glyph}<b>${tab.label}</b>
     </button>`,
   ).join(""));
@@ -1771,8 +1580,8 @@ function renderBase(): void {
     el.hidden = !workspaceView;
   });
   syncMobileNavLayout();
-  if (!workspaceView && (mobileView === "members" || mobileView === "money")) {
-    mobileView = "home";
+  if (!workspaceView && (getMobileView() === "members" || getMobileView() === "money")) {
+    setMobileView("home");
   }
 
   if (workspaceView) renderMembers(data);
@@ -1826,7 +1635,7 @@ function renderBase(): void {
 
   const route = computeRoute();
   renderDayTabs(route);
-  applyMobileView(mobileView);
+  applyMobileView(getMobileView());
 }
 
 // ---- タスク（チェックリスト） -------------------------------------------
@@ -1834,14 +1643,14 @@ function renderBase(): void {
 /** タスクを編集・保存できるのはこの端末のローカル計画のみ。 */
 function tasksEditable(): boolean {
   const meta = TripPlans.get(CONFIG.tripSlug);
-  return !READ_ONLY && CONFIG.mode === "local" && Boolean(meta && isMemberOf(meta) && canEditPlan(meta));
+  return !isReadOnly() && CONFIG.mode === "local" && Boolean(meta && isMemberOf(meta) && canEditPlan(meta));
 }
 
 function canUseWorkspaceView(): boolean {
   const meta = TripPlans.get(CONFIG.tripSlug);
-  if (!meta) return !READ_ONLY;
+  if (!meta) return !isReadOnly();
   if (isMemberOf(meta)) return true;
-  if (!planHasOwner(meta) && !READ_ONLY) return true;
+  if (!planHasOwner(meta) && !isReadOnly()) return true;
   return false;
 }
 
@@ -1989,16 +1798,16 @@ function renderMembers(data: TripData): void {
   }
 
   const inviteEl = root.querySelector<HTMLElement>("[data-members-invite]");
-  if (inviteEl) inviteEl.hidden = READ_ONLY || CONFIG.mode !== "local" || !meta || !canManagePlan(meta);
+  if (inviteEl) inviteEl.hidden = isReadOnly() || CONFIG.mode !== "local" || !meta || !canManagePlan(meta);
 
   // 脱退は「名前を設定した参加メンバー」だけ（＝自分が一覧にいる）。
   const leaveEl = root.querySelector<HTMLElement>("[data-members-leave]");
-  if (leaveEl) leaveEl.hidden = READ_ONLY || !meta || !isMemberOf(meta) || canManagePlan(meta);
+  if (leaveEl) leaveEl.hidden = isReadOnly() || !meta || !isMemberOf(meta) || canManagePlan(meta);
 }
 
 /** 自分をこの旅行のメンバーから外して一覧へ戻る（脱退）。 */
 async function leaveTrip(): Promise<void> {
-  if (READ_ONLY) return;
+  if (isReadOnly()) return;
   const meta = TripPlans.get(CONFIG.tripSlug);
   if (!meta || !meta.id || !isMemberOf(meta) || canManagePlan(meta)) return;
   try {
@@ -2008,32 +1817,6 @@ async function leaveTrip(): Promise<void> {
     const leaveButton = root.querySelector<HTMLButtonElement>("[data-leave-trip]");
     if (leaveButton) flashButton(leaveButton, errorMessage(error) || "脱退できませんでした");
   }
-}
-
-function flashButton(btn: HTMLButtonElement, msg: string): void {
-  const orig = btn.textContent || "";
-  btn.textContent = msg;
-  btn.disabled = true;
-  window.setTimeout(() => {
-    btn.textContent = orig;
-    btn.disabled = false;
-  }, 1800);
-}
-
-/** ボタン内のラベル span だけを一時的に書き換える（アイコンを消さずにフィードバック）。 */
-function flashLabel(btn: HTMLButtonElement, labelSel: string, msg: string): void {
-  const label = btn.querySelector<HTMLElement>(labelSel);
-  if (!label) {
-    flashButton(btn, msg);
-    return;
-  }
-  const orig = label.textContent || "";
-  label.textContent = msg;
-  btn.disabled = true;
-  window.setTimeout(() => {
-    label.textContent = orig;
-    btn.disabled = false;
-  }, 1800);
 }
 
 /** 旅行の全日程を LINE で送れるテキストにして共有／コピーする。 */
@@ -2063,7 +1846,7 @@ async function shareSchedule(): Promise<void> {
 
 /** 招待リンクを作成して共有／コピーする（ローカル計画のみ）。 */
 async function shareTripInvite(): Promise<void> {
-  if (READ_ONLY) return;
+  if (isReadOnly()) return;
   const meta = TripPlans.get(CONFIG.tripSlug);
   const planData = TripPlans.getData(CONFIG.tripSlug);
   const btn = root.querySelector<HTMLButtonElement>("[data-invite-share]");
@@ -2551,7 +2334,7 @@ function openFlightNoteEditor(flightNo: string): void {
       qr_image: qrImage,
     });
     modal.remove();
-    renderActive();
+    hooks.renderActive();
   });
 }
 
@@ -3138,10 +2921,10 @@ async function applyAiProposal(index: number): Promise<void> {
     await db.flushMutations(checkpoint);
     entry.applied = true;
     if (status) status.textContent = "行程に反映して保存しました。";
-    renderData(state.data, CONFIG.mode);
+    hooks.renderData(state.data, CONFIG.mode);
   } catch (error) {
     if (status) status.textContent = errorMessage(error) || "保存できませんでした。もう一度お試しください。";
-    await syncData(false);
+    await hooks.syncData(false);
   } finally {
     aiChatBusy = false;
     renderAiChat();
@@ -3250,8 +3033,8 @@ function computeAccessDenied(): boolean {
   return Boolean(meta) && !canViewPlan(meta!);
 }
 
-let READ_ONLY = computeReadOnly();
-let ACCESS_DENIED = computeAccessDenied();
+setReadOnly(computeReadOnly());
+setAccessDenied(computeAccessDenied());
 
 function renderAccessDenied(): void {
   setLoading(false);
@@ -3280,15 +3063,15 @@ async function init(): Promise<void> {
   // CONFIG はモジュール読み込み時に決まるが、そのとき計画の情報はまだ無い。
   // 読み終えた時点で、開いている計画の実体に合わせて上書きする。
   applyPlanConfig();
-  READ_ONLY = computeReadOnly();
-  ACCESS_DENIED = computeAccessDenied();
-  if (ACCESS_DENIED) {
+  setReadOnly(computeReadOnly());
+  setAccessDenied(computeAccessDenied());
+  if (isAccessDenied()) {
     renderAccessDenied();
     return;
   }
   // この計画を開いた＝1閲覧としてカウント（ホームの観覧数に反映）。
   if (CONFIG.tripSlug) incrementView(CONFIG.tripSlug);
-  if (READ_ONLY) {
+  if (isReadOnly()) {
     root.classList.add("is-readonly");
     const headMain = root.querySelector<HTMLElement>(".ah-main");
     if (headMain && !headMain.querySelector(".tl-ro-badge")) {
@@ -3356,9 +3139,9 @@ async function init(): Promise<void> {
   // リスナーは hidden でも必ず付ける: 表示されているのに何も起きないボタンは
   // 「壊れている」としか見えないため、押されたら理由を出せるようにしておく。
   qsa<HTMLElement>("[data-expense-open]").forEach((button) => {
-    button.hidden = READ_ONLY || !canUseWorkspaceView();
+    button.hidden = isReadOnly() || !canUseWorkspaceView();
     button.addEventListener("click", () => {
-      if (READ_ONLY || !canUseWorkspaceView()) {
+      if (isReadOnly() || !canUseWorkspaceView()) {
         const status = root.querySelector<HTMLElement>("[data-settlement-status]");
         if (status) {
           status.textContent = "費用を追加できるのは計画の参加者だけです。";
@@ -3395,7 +3178,7 @@ async function init(): Promise<void> {
   const planQuery = "?plan=" + encodeURIComponent(CONFIG.tripSlug);
   // 読み取り専用ビューでは編集導線（ヘッダー鉛筆 / フッター編集）を出さない。
   const editTarget =
-    READ_ONLY ? null
+    isReadOnly() ? null
     : CONFIG.mode === "local" ? { href: "plan-editor.html" + planQuery, label: "計画を編集" }
     : null;
   if (editWrap && editLink && editTarget) {
@@ -3428,7 +3211,7 @@ async function init(): Promise<void> {
     copyHead.hidden = Boolean(editTarget) || CONFIG.mode !== "local";
     copyHead.addEventListener("click", () => void copyPlanToMine(copyHead));
   }
-  applyMobileView(mobileView);
+  applyMobileView(getMobileView());
   await requestPassword();
   await syncData(true);
   await requestIdentityIfNeeded();
