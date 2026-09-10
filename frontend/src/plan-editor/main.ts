@@ -29,7 +29,6 @@ import { getUser } from "../shared/user-store";
 import { splitNames } from "../shared/friend-store";
 import { buildInviteLink } from "../shared/invite";
 import { gcalUrl, buildIcs, type CalEvent } from "../shared/calendar";
-import { mountAppHeader } from "../shared/app-header";
 import { currentAccount } from "../shared/account-store";
 import { listFriends } from "../shared/friendship-store";
 import { canEditPlan, canEditPlanMetadata, canManagePlan, planHasOwner } from "../shared/membership";
@@ -52,76 +51,30 @@ import {
   type GeoContext,
   type GeoResult,
 } from "../shared/geocoding";
+import {
+  type ItemKind, type ItemStrKey, type Item, type Day, type City, type GeoTarget,
+  KINDS, KIND_COLOR, TRANSPORTS, TRANSPORT_ICONS,
+  params, isNew, state, model, newItem, datesString, timeOrder, normalizeToISO,
+  cityDateDefault, applyCityDateDefaults, num, hasLatLng, autoCoords, clearItemCoords, latLngKeys,
+  findItem, inclusiveDateCount, nowHM, UNTITLED, hasContent, worthSaving, normalizeKind,
+  stayCovering, cityForDate,
+} from "./editor-state";
+import {
+  root, qs, daysEl, statusEl, titleEcho, mapHeaderBtn, warnEl, dayCountEl, savebarNoteEl, stepReasonEl,
+  citiesEl, cityInput, cityOptions, mapEl, mapHintEl, rangeEl, rangeTrigger, rangeLabel, dayStripEl, tripSummaryEl,
+  aiArea, aiNote, aiRun, aiRunLabel, aiRunIcon, aiBar, aiStatus, aiError, aiErrorTitle, aiErrorMessage,
+  aiErrorAction, aiErrorReference, aiIntro, aiDialog, aiThread, aiCandidatesStage, aiPreferencesStage, aiDoneStage,
+  aiCandidateList, aiSelection, aiToPreferences, aiBuild, aiWalking, aiTransport, aiExtra, aiImportDetails,
+  aiImportOpen, aiImportJson, aiImportApply, aiImportStatus,
+  coverInput, coverClearBtn, coverPreview,
+  membersMount, memberField, memberSelect, memberAddBtn, memberNameInput, memberNameAddBtn, memberHint, activeInvitesMount,
+  candMount, candInput, candCountEl, gcalBtn, icsBtn,
+  saveBtn, publishBtn, stepNextBtn, localNoteEl, exportBtn, mapToggle, mapClose,
+  toast, watchComposition, isComposingKey,
+} from "./editor-dom";
 
 initPageTransitions();
 
-// ---- モデル -------------------------------------------------------------
-
-type ItemKind = "sight" | "food" | "move" | "stay" | "todo" | "form";
-
-type ItemStrKey =
-  | "time" | "title" | "place" | "mapQuery" | "note" | "lat" | "lng"
-  | "from" | "fromLat" | "fromLng" | "to" | "toLat" | "toLng"
-  | "transport" | "duration";
-
-interface Item {
-  id: number;
-  kind: ItemKind;
-  time: string;
-  title: string;
-  place: string;
-  mapQuery: string;
-  note: string;
-  lat: string;
-  lng: string;
-  // 移動用
-  from: string;
-  fromLat: string;
-  fromLng: string;
-  to: string;
-  toLat: string;
-  toLng: string;
-  transport: string;
-  duration: string;
-  /** 宿泊専用：この夜から連泊する泊数（既定 1） */
-  nights: number;
-  /** この予定の対象メンバー（user_id）。空 = その日の在籍メンバー全員。途中合流の個人移動などに使う。 */
-  members: string[];
-}
-
-interface Day {
-  date: string;
-  area: string;
-  items: Item[];     // 観光/食事/移動/予定/手続き
-  stay: Item | null; // この夜にチェックインする宿（連泊は nights で表現）
-}
-
-/** 指定の日に「滞在中」の宿（連泊対応）。startIndex はチェックイン日。 */
-function stayCovering(dayIndex: number): { startIndex: number; stay: Item } | null {
-  for (let i = dayIndex; i >= 0; i--) {
-    const s = model.days[i] && model.days[i].stay;
-    if (s && i + Math.max(1, s.nights) > dayIndex) return { startIndex: i, stay: s };
-  }
-  return null;
-}
-
-interface City {
-  id: number;
-  name: string;
-  lat: string;
-  lng: string;
-  /** この都市に滞在する日（任意）。設定すると日が都市の下にまとまる */
-  fromDate: string;
-  toDate: string;
-}
-
-/** 指定日をカバーする都市（fromDate<=date<=toDate） */
-function cityForDate(date: string): City | null {
-  for (const c of model.cities) {
-    if (c.fromDate && c.toDate && c.fromDate <= date && date <= c.toDate) return c;
-  }
-  return null;
-}
 
 function countryFromText(text: string | undefined): CountryCode | null {
   const raw = String(text || "").trim();
@@ -214,57 +167,6 @@ function syncTransportSelect(item: Item): void {
   if (select) select.value = item.transport;
 }
 
-interface Model {
-  slug: string;
-  title: string;
-  members: string;
-  memberIds: string[];
-  pendingMembers: { key: string; name: string }[];
-  /** メンバーごとの旅行内参加期間（途中合流/離脱）。null 端は全日程。 */
-  memberDates: Record<string, { from: string | null; to: string | null }>;
-  note: string;
-  cover: string;
-  startDate: string;
-  endDate: string;
-  cities: City[];
-  days: Day[];
-  candidates: Candidate[];
-  visibility?: PlanVisibility;
-}
-
-type GeoTarget = "place" | "from" | "to";
-
-const KINDS: Record<ItemKind, { label: string; icon: IconName }> = {
-  sight: { label: "観光", icon: "camera" },
-  food: { label: "食事", icon: "cake" },
-  move: { label: "移動", icon: "arrowsRightLeft" },
-  stay: { label: "宿泊", icon: "buildingOffice2" },
-  todo: { label: "予定", icon: "check" },
-  form: { label: "手続き", icon: "documentText" },
-};
-
-const KIND_COLOR: Record<ItemKind, string> = {
-  sight: "#0b5a42", food: "#b87418", move: "#22719d", stay: "#cf4f3d", todo: "#68746e", form: "#6246a6",
-};
-
-const TRANSPORTS = ["電車", "新幹線", "飛行機", "車", "バス", "フェリー", "徒歩", "その他"];
-
-/**
- * 行程の行に出す移動手段のアイコン。
- * heroicons に電車・バス・船・徒歩の絵柄がないので、
- * 陸路（車・バス）は truck、鉄道と船は ticket（きっぷを買う移動）に寄せる。
- * 正確な手段名は title と展開後の選択欄に残す。
- */
-const TRANSPORT_ICONS: Record<string, IconName> = {
-  電車: "ticket",
-  新幹線: "ticket",
-  フェリー: "ticket",
-  飛行機: "paperAirplane",
-  車: "truck",
-  バス: "truck",
-  徒歩: "user",
-  その他: "arrowsRightLeft",
-};
 
 type CountryCode =
   | "JP" | "TH" | "US" | "FR" | "GB" | "KR" | "TW" | "CN" | "HK" | "SG"
@@ -293,61 +195,12 @@ const COUNTRY_TEXT_HINTS: [RegExp, CountryCode][] = [
   [/オーストラリア|australia|sydney|シドニー/i, "AU"],
 ];
 
-// ---- DOM ----------------------------------------------------------------
-
-function qs<E extends Element = HTMLElement>(parent: ParentNode, selector: string): E {
-  const el = parent.querySelector<E>(selector);
-  if (!el) throw new Error(`要素が見つかりません: ${selector}`);
-  return el;
-}
-
-const rootOrNull = document.getElementById("editor");
-if (!rootOrNull) throw new Error("エディタのルート要素が見つかりません: #editor");
-const root: HTMLElement = rootOrNull;
-
-mountAppHeader({
-  kicker: "Plan Editor",
-  title: "新しい計画",
-  titleAttr: "data-title-echo",
-  back: { href: "plans.html", label: "計画一覧へ戻る", attr: "data-back" },
-  meta: [{ attr: "data-status" }],
-  actions: [
-    // スマホでは画面下に浮いていた「地図を表示」をここへ移す。
-    // 本文の上に被らず、いつでも同じ場所から開けるようにするため。
-    {
-      kind: "button",
-      display: "icon",
-      icon: "map",
-      label: "地図を表示",
-      attr: "data-map-header",
-    },
-  ],
-});
-
-const daysEl = qs<HTMLElement>(root, "[data-days]");
-const statusEl = qs<HTMLElement>(root, "[data-status]");
-const titleEcho = qs<HTMLElement>(root, "[data-title-echo]");
-const mapHeaderBtn = qs<HTMLButtonElement>(root, "[data-map-header]");
-const warnEl = qs<HTMLElement>(root, "[data-daterange-warn]");
-const dayCountEl = qs<HTMLElement>(root, "[data-day-count]");
-const savebarNoteEl = qs<HTMLElement>(root, "[data-savebar-note]");
-const stepReasonEl = qs<HTMLElement>(root, "[data-step-reason]");
-const citiesEl = qs<HTMLElement>(root, "[data-cities]");
-const cityInput = qs<HTMLInputElement>(root, "[data-city-input]");
-const cityOptions = qs<HTMLDataListElement>(document, "#pe-city-options");
-const mapEl = qs<HTMLElement>(root, "[data-map]");
-const mapHintEl = qs<HTMLElement>(root, "[data-map-hint]");
-const rangeEl = qs<HTMLInputElement>(root, "[data-range]");
-const rangeTrigger = qs<HTMLButtonElement>(root, "[data-range-trigger]");
-const rangeLabel = qs<HTMLElement>(root, "[data-range-label]");
-const dayStripEl = qs<HTMLElement>(root, "[data-daystrip]");
-const tripSummaryEl = qs<HTMLElement>(root, "[data-trip-summary]");
 
 // セクション見出しにアイコン
-qs<HTMLElement>(root, "[data-ic-route]").insertAdjacentHTML("afterbegin", icon("map") + " ");
-qs<HTMLElement>(root, "[data-ic-days]").insertAdjacentHTML("afterbegin", icon("calendarDays") + " ");
-qs<HTMLElement>(root, "[data-ic-cand]").insertAdjacentHTML("afterbegin", icon("star") + " ");
-qs<HTMLElement>(root, "[data-ic-ai]").insertAdjacentHTML("afterbegin", icon("sparkles") + " ");
+qs<HTMLElement>("[data-ic-route]").insertAdjacentHTML("afterbegin", icon("map") + " ");
+qs<HTMLElement>("[data-ic-days]").insertAdjacentHTML("afterbegin", icon("calendarDays") + " ");
+qs<HTMLElement>("[data-ic-cand]").insertAdjacentHTML("afterbegin", icon("star") + " ");
+qs<HTMLElement>("[data-ic-ai]").insertAdjacentHTML("afterbegin", icon("sparkles") + " ");
 
 // 入力ラベル・操作ボタンにも Heroicon を添える
 const ICON_MOUNTS: [string, IconName][] = [
@@ -371,32 +224,9 @@ ICON_MOUNTS.forEach(([selector, name]) => {
   if (el) el.insertAdjacentHTML("afterbegin", icon(name) + " ");
 });
 
-// ---- 初期状態 -----------------------------------------------------------
-
-const params = new URLSearchParams(location.search);
-const planParam = (params.get("plan") || "").trim();
-const isNew = !planParam;
-let slug = isNew ? "" : TripPlans.safeSlug(planParam);
-
-const model: Model = {
-  slug, title: "", members: "", memberIds: [], pendingMembers: [], memberDates: {}, note: "", cover: "", startDate: "", endDate: "", cities: [], days: [], candidates: [],
-};
-let dirty = false;
-let editRevision = 0;
-let lastSavedContentFingerprint = "";
-let persistRunning: Promise<boolean> | null = null;
-let persistRequested = false;
-let saveActionsBusy = false;
-let seq = 1;
-let openItemId: number | null = null;
-let armed: { itemId: number; target: GeoTarget } | null = null;
-// 地図クリックで訪問地の位置を決めるときの対象（都市の id）
-let armedCity: number | null = null;
-let editorLocked = false;
-let metadataLocked = false;
 
 function lockEditor(message: string): false {
-  editorLocked = true;
+  state.editorLocked = true;
   statusEl.textContent = message;
   statusEl.className = "is-dirty";
   savebarNoteEl.textContent = message;
@@ -456,49 +286,7 @@ rangeTrigger.addEventListener("click", () => {
   fp.open(undefined, rangeTrigger);
 });
 
-function newItem(kind: ItemKind, seed?: Partial<Item>): Item {
-  return {
-    id: seq++, kind,
-    time: seed?.time ?? "", title: seed?.title ?? "", place: seed?.place ?? "",
-    mapQuery: seed?.mapQuery ?? "", note: seed?.note ?? "",
-    lat: seed?.lat ?? "", lng: seed?.lng ?? "",
-    from: seed?.from ?? "", fromLat: seed?.fromLat ?? "", fromLng: seed?.fromLng ?? "",
-    to: seed?.to ?? "", toLat: seed?.toLat ?? "", toLng: seed?.toLng ?? "",
-    transport: seed?.transport ?? "", duration: seed?.duration ?? "",
-    nights: seed?.nights ?? 1,
-    members: seed?.members ? [...seed.members] : [],
-  };
-}
 
-// ---- 日付ユーティリティ -------------------------------------------------
-
-function pad(n: number): string { return n < 10 ? "0" + n : String(n); }
-function datesString(): string {
-  const a = parseISO(model.startDate);
-  const b = parseISO(model.endDate);
-  if (!a || !b) return "";
-  const f = (d: Date): string => `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}`;
-  return `${f(a)} - ${f(b)}`;
-}
-// 時刻文字列を分に変換（並べ替え用）。HH:MM と 朝/昼/夕/夜 に対応。
-function timeOrder(s: string): number {
-  const t = String(s || "");
-  const m = /(\d{1,2}):(\d{2})/.exec(t);
-  if (m) return Number(m[1]) * 60 + Number(m[2]);
-  if (/朝|午前|モーニング/i.test(t)) return 8 * 60;
-  if (/昼|正午|ランチ/i.test(t)) return 12 * 60;
-  if (/夕/.test(t)) return 17 * 60;
-  if (/夜|ディナー|晩/i.test(t)) return 19 * 60;
-  return 9000;
-}
-
-function normalizeToISO(value: string | undefined): string {
-  const s = String(value || "").trim();
-  if (!s) return "";
-  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
-  const m = /^(\d{4})\/(\d{1,2})\/(\d{1,2})$/.exec(s);
-  return m ? `${m[1]}-${pad(Number(m[2]))}-${pad(Number(m[3]))}` : "";
-}
 
 function rebuildDays(): void {
   const a = parseISO(model.startDate);
@@ -520,47 +308,7 @@ function rebuildDays(): void {
   applyCityDateDefaults();
 }
 
-function cityDateDefault(index: number): string {
-  const firstDay = model.days[0]?.date || model.startDate || "";
-  if (index <= 0) return firstDay;
-  const prev = model.cities[index - 1];
-  return prev?.toDate || prev?.fromDate || firstDay;
-}
 
-function applyCityDateDefaults(): void {
-  if (!model.days.length) return;
-  model.cities.forEach((city, index) => {
-    if (!city.fromDate) city.fromDate = cityDateDefault(index);
-    if (!city.toDate) city.toDate = city.fromDate;
-  });
-}
-
-// ---- 座標補完・ジオコーディング -----------------------------------------
-
-function num(s: string): number { return Number(String(s).trim()); }
-function hasLatLng(lat: string, lng: string): boolean {
-  return String(lat).trim() !== "" && String(lng).trim() !== "" && !isNaN(num(lat)) && !isNaN(num(lng));
-}
-
-function autoCoords(item: Item, target: GeoTarget): void {
-  const [latKey, lngKey] = latLngKeys(target);
-  if (hasLatLng(item[latKey], item[lngKey])) return;
-  const name = target === "from" ? item.from : target === "to" ? item.to : (item.place || item.mapQuery);
-  const hit = TripPlans.coordsFor(name);
-  if (hit) { item[latKey] = String(hit.lat); item[lngKey] = String(hit.lng); }
-}
-
-function clearItemCoords(item: Item, target: GeoTarget): void {
-  const [latKey, lngKey] = latLngKeys(target);
-  item[latKey] = "";
-  item[lngKey] = "";
-}
-
-function latLngKeys(target: GeoTarget): [ItemStrKey, ItemStrKey] {
-  if (target === "from") return ["fromLat", "fromLng"];
-  if (target === "to") return ["toLat", "toLng"];
-  return ["lat", "lng"];
-}
 
 const MAPBOX_TOKEN = readGlobalTripConfig().geocoding?.mapboxToken || "";
 
@@ -568,16 +316,6 @@ function geocodeSearch(query: string, context?: GeoContext, automatic = false): 
   return searchLocations(query, context, { mapboxToken: MAPBOX_TOKEN, automatic });
 }
 
-// ---- 検索・参照ヘルパー -------------------------------------------------
-
-interface Found { day: Day; item: Item; }
-function findItem(id: number): Found | null {
-  for (const day of model.days) {
-    for (const it of day.items) if (it.id === id) return { day, item: it };
-    if (day.stay && day.stay.id === id) return { day, item: day.stay };
-  }
-  return null;
-}
 
 function geocodeContextForDay(day: Day, item?: Item, target?: GeoTarget): GeoContext | undefined {
   const city = cityForDate(day.date);
@@ -605,12 +343,6 @@ function geocodeContextForDay(day: Day, item?: Item, target?: GeoTarget): GeoCon
   };
 }
 
-function inclusiveDateCount(from: string, to: string): number {
-  const a = parseISO(from);
-  const b = parseISO(to);
-  if (!a || !b || b < a) return 1;
-  return Math.floor((b.getTime() - a.getTime()) / 86400000) + 1;
-}
 
 function stayNightLimits(item: Item): { cityMax: number; tripMax: number; cityName: string } {
   const found = findItem(item.id);
@@ -654,6 +386,9 @@ function conciseGeoLabel(label: string): string {
   return String(label || "").split(" / ")[0]?.trim() || String(label || "").trim();
 }
 
+let lastSavedContentFingerprint = "";
+let persistRunning: Promise<boolean> | null = null;
+let persistRequested = false;
 let persistTimer = 0;
 /**
  * 都市検索の状態メッセージ。
@@ -668,9 +403,9 @@ function showCityGeoMessage(target: HTMLElement, text: string, kind?: "warn"): v
 }
 
 function markDirty(): void {
-  if (editorLocked) return;
-  dirty = true;
-  editRevision += 1;
+  if (state.editorLocked) return;
+  state.dirty = true;
+  state.editRevision += 1;
   statusEl.textContent = model.title.trim() || hasContent()
     ? "編集中…"
     : "旅行名か行程を入れると自動保存されます";
@@ -680,32 +415,8 @@ function markDirty(): void {
   updateSteps();
 }
 
-function nowHM(): string {
-  const d = new Date();
-  return `${d.getHours()}:${pad(d.getMinutes())}`;
-}
 
-const UNTITLED = "無題の旅行";
 
-/**
- * 旅行名以外に何か入力されているか。
- *
- * 以前は旅行名が空だと persist() が即 return していたため、期間・訪問地・
- * 行程を作り込んでも旅行名を入れずに離れると、ローカルにも DB にも
- * 何も残らず消えていた。かといって開いただけで下書きを作ると空の計画が
- * 量産されるので、「実際に何か入れたら残す」を境目にする。
- */
-function hasContent(): boolean {
-  if (model.note.trim() || model.startDate || model.endDate) return true;
-  if (model.cities.some((c) => c.name.trim())) return true;
-  if (model.candidates.length) return true;
-  return model.days.some((d) => d.items.length > 0 || d.stay !== null || d.area.trim());
-}
-
-/** 保存する価値がある状態か（旅行名が空でも中身があれば下書きとして残す）。 */
-function worthSaving(): boolean {
-  return Boolean(model.title.trim()) || hasContent();
-}
 
 function contentFingerprint(data: LocalPlanData): string {
   return JSON.stringify({
@@ -727,7 +438,7 @@ let versionConflictHalt = false;
 
 function haltOnVersionConflict(error: db.ApiRequestError): void {
   versionConflictHalt = true;
-  dirty = true;
+  state.dirty = true;
   statusEl.textContent = "保存を一時停止しました";
   statusEl.className = "is-dirty";
   savebarNoteEl.textContent = "計画が別の端末で更新されています。相手の変更を上書きしないよう保存を止めました。";
@@ -739,7 +450,7 @@ function haltOnVersionConflict(error: db.ApiRequestError): void {
 }
 
 async function performPersist(explicit = false, slugRetry = 0): Promise<boolean> {
-  if (editorLocked) return false;
+  if (state.editorLocked) return false;
   if (versionConflictHalt) {
     if (explicit) {
       statusEl.textContent = "別の端末の更新があるため保存できません。読み込み直してください";
@@ -754,21 +465,21 @@ async function performPersist(explicit = false, slugRetry = 0): Promise<boolean>
     }
     return false;
   }
-  const revision = editRevision;
+  const revision = state.editRevision;
   const mutationCheckpoint = db.mutationCheckpoint();
-  if (!slug) {
-    slug = TripPlans.uniqueSlug(model.title.trim() || UNTITLED);
-    model.slug = slug;
-    try { history.replaceState(null, "", "plan-editor.html?plan=" + encodeURIComponent(slug)); } catch { /* ignore */ }
+  if (!state.slug) {
+    state.slug = TripPlans.uniqueSlug(model.title.trim() || UNTITLED);
+    model.slug = state.slug;
+    try { history.replaceState(null, "", "plan-editor.html?plan=" + encodeURIComponent(state.slug)); } catch { /* ignore */ }
   }
   const data = buildData();
   const nextContentFingerprint = contentFingerprint(data);
   const contentChanged = nextContentFingerprint !== lastSavedContentFingerprint;
-  const existing = TripPlans.get(slug);
+  const existing = TripPlans.get(state.slug);
   const saved = contentChanged
-    ? TripPlans.saveLocalPlan(slug, data, model.memberIds)
+    ? TripPlans.saveLocalPlan(state.slug, data, model.memberIds)
     : TripPlans.upsert({
-      slug,
+      slug: state.slug,
       title: model.title.trim() || UNTITLED,
       dates: datesString(),
       members: model.members,
@@ -778,18 +489,18 @@ async function performPersist(explicit = false, slugRetry = 0): Promise<boolean>
       ...(!existing ? { source: "local" as const, published: false } : {}),
     });
   if (!saved) {
-    dirty = true;
+    state.dirty = true;
     statusEl.textContent = "ログインしてから保存してください";
     statusEl.className = "is-dirty";
     return false;
   }
-  TripPlans.setActiveSlug(slug);
+  TripPlans.setActiveSlug(state.slug);
   try {
     await db.flushMutations(mutationCheckpoint);
     await persistPendingMembers();
     if (contentChanged) lastSavedContentFingerprint = nextContentFingerprint;
-    if (revision !== editRevision) return true;
-    dirty = false;
+    if (revision !== state.editRevision) return true;
+    state.dirty = false;
     statusEl.textContent = explicit
       ? `下書きを保存しました ${nowHM()}`
       : model.title.trim()
@@ -801,10 +512,10 @@ async function performPersist(explicit = false, slugRetry = 0): Promise<boolean>
   } catch (error) {
     // bootstrapには他人の非公開slugが含まれない。旧方式で採番済みのタブや
     // 極めて稀な乱数衝突は、入力内容を保ったまま別slugで作り直す。
-    if (slugRetry < 2 && error instanceof db.ApiRequestError && error.code === "ER_DUP_ENTRY" && !TripPlans.get(slug)) {
-      slug = TripPlans.uniqueSlug(model.title.trim() || UNTITLED);
-      model.slug = slug;
-      try { history.replaceState(null, "", "plan-editor.html?plan=" + encodeURIComponent(slug)); } catch { /* ignore */ }
+    if (slugRetry < 2 && error instanceof db.ApiRequestError && error.code === "ER_DUP_ENTRY" && !TripPlans.get(state.slug)) {
+      state.slug = TripPlans.uniqueSlug(model.title.trim() || UNTITLED);
+      model.slug = state.slug;
+      try { history.replaceState(null, "", "plan-editor.html?plan=" + encodeURIComponent(state.slug)); } catch { /* ignore */ }
       return performPersist(explicit, slugRetry + 1);
     }
     if (error instanceof db.ApiRequestError &&
@@ -812,7 +523,7 @@ async function performPersist(explicit = false, slugRetry = 0): Promise<boolean>
       haltOnVersionConflict(error);
       return false;
     }
-    dirty = true;
+    state.dirty = true;
     statusEl.textContent = "保存できませんでした";
     statusEl.className = "is-dirty";
     savebarNoteEl.textContent = errorMessage(error);
@@ -826,7 +537,7 @@ async function persist(explicit = false): Promise<boolean> {
   if (persistRunning) {
     persistRequested = true;
     const result = await persistRunning;
-    if (explicit && dirty) return persist(true);
+    if (explicit && state.dirty) return persist(true);
     return result;
   }
   persistRunning = performPersist(explicit);
@@ -850,8 +561,6 @@ function dayOptions(selected: string): string {
     .join("");
 }
 
-/** 表示中のステップ（1=期間 / 2=目的地 / 3=行程）。0 は未初期化。 */
-let viewStep = 0;
 
 function stepCompletion(): boolean[] {
   const periodDone = Boolean(model.title.trim()) && model.days.length > 0;
@@ -880,16 +589,16 @@ function scrollStepIntoView(): void {
 /** 作成ステップ（期間→目的地→行程）を実状態に連動させ、スマホでは該当パネルだけ表示。 */
 function updateSteps(): void {
   const done = stepCompletion();
-  if (viewStep === 0) {
+  if (state.viewStep === 0) {
     const natural = done.findIndex((d) => !d);
-    viewStep = natural < 0 ? done.length : natural + 1;
+    state.viewStep = natural < 0 ? done.length : natural + 1;
   }
   const pe = document.getElementById("editor");
-  if (pe) pe.dataset.step = String(viewStep);
+  if (pe) pe.dataset.step = String(state.viewStep);
   if (root) {
     // 期間だけの段では地図に出すものが無いので畳んでおく。
     // 地図のボタンはヘッダーに常設なので、出し入れの制御はしない。
-    if (viewStep === 1) root.classList.add("map-collapsed");
+    if (state.viewStep === 1) root.classList.add("map-collapsed");
     const collapsed = root.classList.contains("map-collapsed");
     const headerBtn = root.querySelector<HTMLButtonElement>("[data-map-header]");
     if (headerBtn) {
@@ -898,42 +607,42 @@ function updateSteps(): void {
     }
   }
   document.querySelectorAll<HTMLElement>(".pe-step").forEach((el, i) => {
-    const isDone = done[i] && i + 1 !== viewStep;
+    const isDone = done[i] && i + 1 !== state.viewStep;
     el.classList.toggle("is-done", isDone);
-    el.classList.toggle("is-current", i + 1 === viewStep);
+    el.classList.toggle("is-current", i + 1 === state.viewStep);
     const numEl = el.querySelector<HTMLElement>(".pe-step-n");
     if (numEl) numEl.innerHTML = isDone ? icon("check") : String(i + 1);
   });
   const prevBtn = document.querySelector<HTMLButtonElement>("[data-step-prev]");
   const nextBtn = document.querySelector<HTMLButtonElement>("[data-step-next]");
   if (prevBtn) {
-    prevBtn.disabled = viewStep <= 1;
-    const label = viewStep <= 2 ? "戻る" : "目的地へ戻る";
+    prevBtn.disabled = state.viewStep <= 1;
+    const label = state.viewStep <= 2 ? "戻る" : "目的地へ戻る";
     prevBtn.innerHTML = icon("chevronLeft") + `<span>${label}</span>`;
   }
   if (nextBtn) {
     nextBtn.hidden = false;
-    nextBtn.disabled = saveActionsBusy || (viewStep < 3 && !done[viewStep - 1]);
-    const label = viewStep === 1 ? "目的地へ" : viewStep === 2 ? "行程へ" : "公開設定へ";
-    const glyph = viewStep === 3 ? "globeAlt" : "chevronRight";
+    nextBtn.disabled = state.saveActionsBusy || (state.viewStep < 3 && !done[state.viewStep - 1]);
+    const label = state.viewStep === 1 ? "目的地へ" : state.viewStep === 2 ? "行程へ" : "公開設定へ";
+    const glyph = state.viewStep === 3 ? "globeAlt" : "chevronRight";
     nextBtn.innerHTML = `<span>${label}</span>` + icon(glyph);
   }
-  stepReasonEl.textContent = viewStep < 3 && !done[viewStep - 1] ? stepBlockReason(viewStep) : "";
+  stepReasonEl.textContent = state.viewStep < 3 && !done[state.viewStep - 1] ? stepBlockReason(state.viewStep) : "";
 }
 
 /** ステップのタップで表示を切り替える（スマホのウィザード送り）。 */
 function setViewStep(step: number): void {
   const target = Math.min(3, Math.max(1, step));
-  if (target > viewStep) {
+  if (target > state.viewStep) {
     const done = stepCompletion();
-    for (let current = viewStep; current < target; current += 1) {
+    for (let current = state.viewStep; current < target; current += 1) {
       if (!done[current - 1]) {
         stepReasonEl.textContent = stepBlockReason(current);
         return;
       }
     }
   }
-  viewStep = target;
+  state.viewStep = target;
   updateSteps();
   scrollStepIntoView();
 }
@@ -943,17 +652,17 @@ document.querySelectorAll<HTMLElement>(".pe-step").forEach((el, i) => {
 });
 
 document.querySelector<HTMLButtonElement>("[data-step-prev]")?.addEventListener("click", () => {
-  setViewStep(viewStep - 1);
+  setViewStep(state.viewStep - 1);
 });
 
 document.querySelector<HTMLButtonElement>("[data-step-next]")?.addEventListener("click", () => {
   const done = stepCompletion();
-  if (viewStep >= 3) {
+  if (state.viewStep >= 3) {
     publish();
     return;
   }
-  if (!done[viewStep - 1]) return;
-  setViewStep(viewStep + 1);
+  if (!done[state.viewStep - 1]) return;
+  setViewStep(state.viewStep + 1);
 });
 
 function renderCities(): void {
@@ -1033,58 +742,9 @@ async function searchCity(city: City): Promise<void> {
   }
 }
 
-/**
- * 日本語入力の変換中に来た Enter か。
- *
- * 変換確定の Enter を操作として拾うと、確定した文字が入力欄へ
- * 書き戻されて残る（「金門島」を入れたのに欄に残る、が起きていた）。
- * 判定は compositionstart / compositionend で持つ。keyCode 229 を見る書き方は、
- * 変換を終えたあとの Enter まで 229 で来る環境があり、
- * 「Enter を押しても追加されない」になってしまう。
- */
-const composingInputs = new WeakSet<EventTarget>();
-
-function watchComposition(input: HTMLElement): void {
-  input.addEventListener("compositionstart", () => { composingInputs.add(input); });
-  input.addEventListener("compositionend", () => { composingInputs.delete(input); });
-}
-
-function isComposingKey(event: KeyboardEvent): boolean {
-  return event.isComposing || (event.target !== null && composingInputs.has(event.target));
-}
 
 // ---- AI で下書きを作る ---------------------------------------------------
 
-const aiArea = qs<HTMLInputElement>(root, "[data-ai-area]");
-const aiNote = qs<HTMLInputElement>(root, "[data-ai-note]");
-const aiRun = qs<HTMLButtonElement>(root, "[data-ai-run]");
-const aiRunLabel = qs<HTMLElement>(root, "[data-ai-run-label]");
-const aiRunIcon = qs<HTMLElement>(root, "[data-ai-run-ic]");
-const aiBar = qs<HTMLElement>(root, "[data-ai-bar]");
-const aiStatus = qs<HTMLElement>(root, "[data-ai-status]");
-const aiError = qs<HTMLElement>(root, "[data-ai-error]");
-const aiErrorTitle = qs<HTMLElement>(root, "[data-ai-error-title]");
-const aiErrorMessage = qs<HTMLElement>(root, "[data-ai-error-message]");
-const aiErrorAction = qs<HTMLButtonElement>(root, "[data-ai-error-action]");
-const aiErrorReference = qs<HTMLElement>(root, "[data-ai-error-reference]");
-const aiIntro = qs<HTMLElement>(root, "[data-ai-intro]");
-const aiDialog = qs<HTMLElement>(root, "[data-ai-dialog]");
-const aiThread = qs<HTMLElement>(root, "[data-ai-thread]");
-const aiCandidatesStage = qs<HTMLElement>(root, "[data-ai-candidates]");
-const aiPreferencesStage = qs<HTMLElement>(root, "[data-ai-preferences]");
-const aiDoneStage = qs<HTMLElement>(root, "[data-ai-done]");
-const aiCandidateList = qs<HTMLElement>(root, "[data-ai-candidate-list]");
-const aiSelection = qs<HTMLElement>(root, "[data-ai-selection]");
-const aiToPreferences = qs<HTMLButtonElement>(root, "[data-ai-to-preferences]");
-const aiBuild = qs<HTMLButtonElement>(root, "[data-ai-build]");
-const aiWalking = qs<HTMLSelectElement>(root, "[data-ai-walking]");
-const aiTransport = qs<HTMLSelectElement>(root, "[data-ai-transport]");
-const aiExtra = qs<HTMLTextAreaElement>(root, "[data-ai-extra]");
-const aiImportDetails = qs<HTMLDetailsElement>(root, "[data-ai-import] details");
-const aiImportOpen = qs<HTMLButtonElement>(root, "[data-ai-import-open]");
-const aiImportJson = qs<HTMLTextAreaElement>(root, "[data-ai-import-json]");
-const aiImportApply = qs<HTMLButtonElement>(root, "[data-ai-import-apply]");
-const aiImportStatus = qs<HTMLElement>(root, "[data-ai-import-status]");
 
 type AiPreferences = db.ItineraryAiPreferences;
 const aiConsultation = new AiConsultationState();
@@ -1396,7 +1056,7 @@ function applyItineraryDraft(draft: db.ItineraryDraft): void {
     const latitude = aiCoordinate(city.latitude, -90, 90);
     const longitude = aiCoordinate(city.longitude, -180, 180);
     return {
-      id: seq++,
+      id: state.seq++,
       name,
       lat: latitude || (coords ? String(coords.lat) : ""),
       lng: longitude || (coords ? String(coords.lng) : ""),
@@ -1561,7 +1221,7 @@ function aiBaseInput(): db.ItineraryAiBaseInput | null {
 }
 
 async function startAiConsultation(): Promise<void> {
-  if (editorLocked || aiConsultation.stage !== "idle") return;
+  if (state.editorLocked || aiConsultation.stage !== "idle") return;
   const input = aiBaseInput();
   if (!input) return;
 
@@ -1580,7 +1240,7 @@ async function startAiConsultation(): Promise<void> {
 }
 
 async function runAiDraft(): Promise<void> {
-  if (editorLocked || aiConsultation.stage !== "preferences") return;
+  if (state.editorLocked || aiConsultation.stage !== "preferences") return;
   const input = aiBaseInput();
   if (!input) return;
   const selected = selectedAiCandidates();
@@ -1632,7 +1292,7 @@ async function runAiDraft(): Promise<void> {
 }
 
 async function importExternalAiDraft(): Promise<void> {
-  if (editorLocked) {
+  if (state.editorLocked) {
     aiImportStatus.textContent = "この計画を編集する権限がありません。";
     aiImportStatus.className = "pe-ai-import-status is-warn";
     return;
@@ -1727,13 +1387,13 @@ aiToPreferences.addEventListener("click", () => {
   setAiStatus("");
   setAiStage("preferences");
 });
-qs<HTMLButtonElement>(root, "[data-ai-back-candidates]").addEventListener("click", () => {
+qs<HTMLButtonElement>("[data-ai-back-candidates]").addEventListener("click", () => {
   setAiStatus("");
   setAiStage("candidates");
 });
-qs<HTMLButtonElement>(root, "[data-ai-reset]").addEventListener("click", resetAiConsultation);
+qs<HTMLButtonElement>("[data-ai-reset]").addEventListener("click", resetAiConsultation);
 aiBuild.addEventListener("click", () => { void runAiDraft(); });
-qs<HTMLButtonElement>(root, "[data-ai-show-itinerary]").addEventListener("click", () => setViewStep(3));
+qs<HTMLButtonElement>("[data-ai-show-itinerary]").addEventListener("click", () => setViewStep(3));
 
 async function addCity(name: string): Promise<void> {
   const trimmed = name.trim();
@@ -1741,7 +1401,7 @@ async function addCity(name: string): Promise<void> {
   const local = TripPlans.coordsFor(trimmed);
   const fromDate = cityDateDefault(model.cities.length);
   const city: City = {
-    id: seq++,
+    id: state.seq++,
     name: trimmed,
     lat: local ? String(local.lat) : "",
     lng: local ? String(local.lng) : "",
@@ -1949,7 +1609,7 @@ function editForm(item: Item): string {
 }
 
 function timelineNode(item: Item): string {
-  const open = openItemId === item.id ? " is-open" : "";
+  const open = state.openItemId === item.id ? " is-open" : "";
   return (
     `<div class="pe-node${open}" data-kind="${item.kind}" data-node="${item.id}">` +
     `<span class="pe-dot"></span>` +
@@ -1974,7 +1634,7 @@ function stayBand(index: number): string {
     );
   }
   const stay = cover.stay;
-  const open = openItemId === stay.id ? " is-open" : "";
+  const open = state.openItemId === stay.id ? " is-open" : "";
   const title = stay.title || "ホテル名未入力";
   const titleCls = stay.title ? "" : " is-empty";
   const meta = [stay.time ? `IN ${stay.time}` : "", stay.nights > 1 ? `${stay.nights}泊` : "", stay.place].filter(Boolean).join(" ・ ");
@@ -2145,7 +1805,7 @@ function initSortables(): void {
         chosenClass: "pe-drag-chosen",
         onEnd: () => {
           syncTimelineOrder();
-          openItemId = null;
+          state.openItemId = null;
           markDirty();
           window.setTimeout(() => { renderDays(); refreshMap(false); }, 0);
         },
@@ -2320,10 +1980,10 @@ function formatLatLng(lat: number, lng: number): string {
 }
 
 async function onMapClick(latlng: L.LatLng): Promise<void> {
-  if (armedCity !== null) { void applyCityPin(armedCity, latlng.lat, latlng.lng); return; }
-  if (!armed) return;
-  const itemId = armed.itemId;
-  const target = armed.target;
+  if (state.armedCity !== null) { void applyCityPin(state.armedCity, latlng.lat, latlng.lng); return; }
+  if (!state.armed) return;
+  const itemId = state.armed.itemId;
+  const target = state.armed.target;
   const found = findItem(itemId);
   if (!found) return;
   const lat = latlng.lat;
@@ -2348,8 +2008,8 @@ async function onMapClick(latlng: L.LatLng): Promise<void> {
 }
 
 function disarm(): void {
-  armed = null;
-  armedCity = null;
+  state.armed = null;
+  state.armedCity = null;
   mapHintEl.textContent = "";
   mapEl.style.cursor = "";
   daysEl.querySelectorAll(".pe-mini.is-armed").forEach((b) => b.classList.remove("is-armed"));
@@ -2357,9 +2017,9 @@ function disarm(): void {
 }
 
 function arm(itemId: number, target: GeoTarget, button: HTMLElement): void {
-  if (armed && armed.itemId === itemId && armed.target === target) { disarm(); return; }
+  if (state.armed && state.armed.itemId === itemId && state.armed.target === target) { disarm(); return; }
   disarm();
-  armed = { itemId, target };
+  state.armed = { itemId, target };
   mapHintEl.textContent = "地図をクリックして位置を指定";
   mapEl.style.cursor = "crosshair";
   button.classList.add("is-armed");
@@ -2374,9 +2034,9 @@ function arm(itemId: number, target: GeoTarget, button: HTMLElement): void {
  * 名前で見つからない土地でも、ピンさえ置けば登録できるようにするため。
  */
 function armCity(cityId: number, button: HTMLElement): void {
-  if (armedCity === cityId) { disarm(); return; }
+  if (state.armedCity === cityId) { disarm(); return; }
   disarm();
-  armedCity = cityId;
+  state.armedCity = cityId;
   mapHintEl.textContent = "地図をクリックすると、その場所の都市名で登録します";
   mapEl.style.cursor = "crosshair";
   button.classList.add("is-armed");
@@ -2547,13 +2207,13 @@ daysEl.addEventListener("click", (event) => {
   const dayIndex = Number(actEl.dataset.day || 0);
 
   if (act === "toggle") {
-    openItemId = openItemId === itemId ? null : itemId;
+    state.openItemId = state.openItemId === itemId ? null : itemId;
     disarm();
     renderDays();
     focusOpenItem();
     return;
   }
-  if (act === "close") { openItemId = null; disarm(); renderDays(); return; }
+  if (act === "close") { state.openItemId = null; disarm(); renderDays(); return; }
   if (act === "remove") {
     const found = findItem(itemId);
     if (found) {
@@ -2584,7 +2244,7 @@ daysEl.addEventListener("click", (event) => {
     if (track && kind !== "stay") it.members = [...track.memberIds];
     if (kind === "stay") day.stay = it;
     else day.items.push(it);
-    openItemId = it.id;
+    state.openItemId = it.id;
     markDirty(); renderDays(); refreshMap(false); focusOpenItem();
     return;
   }
@@ -2730,9 +2390,6 @@ root.querySelectorAll<HTMLInputElement>("[data-f]").forEach((input) => {
 // ---- サムネ画像（任意・未設定なら自動/デフォルト） ----------------------
 // 選んだ画像は canvas で小容量 WebP に変換し、上限を超える画像は保存しない。
 
-const coverInput = qs<HTMLInputElement>(root, "[data-cover-input]");
-const coverClearBtn = qs<HTMLButtonElement>(root, "[data-cover-clear]");
-const coverPreview = qs<HTMLElement>(root, "[data-cover-preview]");
 
 const MAX_COVER_DATA_URL_LENGTH = 300_000;
 
@@ -2823,14 +2480,6 @@ coverClearBtn.addEventListener("click", () => {
 
 // ---- メンバー（チップ／友達候補／招待リンク） --------------------------
 
-const membersMount = qs<HTMLElement>(root, "[data-members]");
-const memberField = qs<HTMLElement>(root, "[data-member-field]");
-const memberSelect = qs<HTMLSelectElement>(root, "[data-member-select]");
-const memberAddBtn = qs<HTMLButtonElement>(root, "[data-member-add]");
-const memberNameInput = qs<HTMLInputElement>(root, "[data-member-name]");
-const memberNameAddBtn = qs<HTMLButtonElement>(root, "[data-member-name-add]");
-const memberHint = qs<HTMLElement>(root, "[data-member-hint]");
-const activeInvitesMount = qs<HTMLElement>(root, "[data-active-invites]");
 
 function hasMemberAccount(): boolean {
   return Boolean(currentAccount());
@@ -2874,8 +2523,8 @@ function removePendingMember(key: string): void {
 }
 
 async function persistPendingMembers(): Promise<void> {
-  if (!model.pendingMembers.length || !slug) return;
-  const planId = TripPlans.planIdOf(slug);
+  if (!model.pendingMembers.length || !state.slug) return;
+  const planId = TripPlans.planIdOf(state.slug);
   if (!planId) throw new Error("旅行を保存してから未登録メンバーを追加してください");
   model.memberIds = [...new Set([
     ...model.memberIds,
@@ -2903,7 +2552,7 @@ function renderMembers(): void {
   const account = currentAccount();
   const me = account?.name || "";
   const arr = memberArray();
-  const meta = slug ? TripPlans.get(slug) : null;
+  const meta = state.slug ? TripPlans.get(state.slug) : null;
   const stored = meta ? db.planBySlug(meta.slug) : null;
   const ownerId = stored?.owner_user_id || account?.id || "";
   const memberAccounts = model.memberIds.map((id) => ({ id, name: db.nameOf(id) })).filter((member) => member.name);
@@ -2953,7 +2602,7 @@ function renderMembers(): void {
 
 let inviteListLoading = false;
 async function renderActiveInvites(): Promise<void> {
-  const meta = slug ? TripPlans.get(slug) : null;
+  const meta = state.slug ? TripPlans.get(state.slug) : null;
   if (!meta?.id || !canManagePlan(meta)) {
     activeInvitesMount.innerHTML = "";
     return;
@@ -2978,7 +2627,7 @@ async function renderActiveInvites(): Promise<void> {
 
 activeInvitesMount.addEventListener("click", (event) => {
   const button = event.target instanceof Element ? event.target.closest<HTMLElement>("[data-revoke-invite]") : null;
-  const meta = slug ? TripPlans.get(slug) : null;
+  const meta = state.slug ? TripPlans.get(state.slug) : null;
   if (!button || !meta?.id) return;
   button.setAttribute("disabled", "true");
   void db.revokeInvite(meta.id, button.dataset.revokeInvite || "")
@@ -3020,7 +2669,7 @@ function memberPeriodBar(dates: { from: string | null; to: string | null }, star
 }
 
 function memberPeriodsHtml(): string {
-  const meta = slug ? TripPlans.get(slug) : null;
+  const meta = state.slug ? TripPlans.get(state.slug) : null;
   if (!meta?.id || !canManagePlan(meta)) return "";
   if (!model.startDate || !model.endDate) return "";
   const ids = model.memberIds.filter((id) => id && db.nameOf(id));
@@ -3075,7 +2724,7 @@ function memberPeriodsHtml(): string {
 
 /** 現在の memberIds・役割・参加期間から、メンバー一覧をまるごと保存する。 */
 function persistMemberDates(): void {
-  const meta = slug ? TripPlans.get(slug) : null;
+  const meta = state.slug ? TripPlans.get(state.slug) : null;
   if (!meta?.id || !canManagePlan(meta)) return;
   const ownerId = db.planBySlug(meta.slug)?.owner_user_id || currentAccount()?.id || "";
   const checkpoint = db.mutationCheckpoint();
@@ -3121,14 +2770,14 @@ function renderMemberSelect(): void {
 }
 
 function updateMemberVisibility(): void {
-  const meta = slug ? TripPlans.get(slug) : null;
+  const meta = state.slug ? TripPlans.get(state.slug) : null;
   const enabled = hasMemberAccount() && (!meta || canManagePlan(meta));
   memberField.hidden = !enabled;
   memberField.classList.toggle("is-enabled", enabled);
 }
 
 function updateWorkspaceControlVisibility(): void {
-  const meta = slug ? TripPlans.get(slug) : null;
+  const meta = state.slug ? TripPlans.get(state.slug) : null;
   const accountId = currentAccount()?.id || "";
   const memberEditor = !meta || Boolean(
     meta.id && accountId && db.members().some((member) =>
@@ -3163,7 +2812,7 @@ membersMount.addEventListener("click", (event) => {
   if (rm) { removeMember(rm.dataset.rm || ""); return; }
   const unclaim = t.closest<HTMLElement>("[data-unclaim]");
   if (unclaim) {
-    const meta = slug ? TripPlans.get(slug) : null;
+    const meta = state.slug ? TripPlans.get(state.slug) : null;
     if (!meta?.id || !window.confirm("本人紐付けを取り消し、費用・精算・投票を元の未登録メンバーへ戻しますか？")) return;
     void db.undoPlaceholderClaim(meta.id, unclaim.dataset.unclaim || "")
       .then(() => { toast("本人紐付けを取り消しました"); location.reload(); })
@@ -3201,7 +2850,7 @@ membersMount.addEventListener("change", (event) => {
   const toId = input.dataset.memberTo;
   const id = fromId || toId;
   if (!id) return;
-  const meta = slug ? TripPlans.get(slug) : null;
+  const meta = state.slug ? TripPlans.get(state.slug) : null;
   if (!meta?.id || !canManagePlan(meta)) return;
   const current = model.memberDates[id] || { from: null, to: null };
   const value = input.value || null;
@@ -3218,8 +2867,8 @@ membersMount.addEventListener("change", (event) => {
 });
 
 async function transferOwnership(userId: string, name: string): Promise<void> {
-  const meta = slug ? TripPlans.get(slug) : null;
-  const planId = meta?.id || (slug ? TripPlans.planIdOf(slug) : "");
+  const meta = state.slug ? TripPlans.get(state.slug) : null;
+  const planId = meta?.id || (state.slug ? TripPlans.planIdOf(state.slug) : "");
   if (!meta || !planId || !userId || !canManagePlan(meta)) return;
   if (!window.confirm(`${name}さんへ所有権を移譲しますか？あなたは編集者になります。`)) return;
   try {
@@ -3252,22 +2901,12 @@ memberNameInput.addEventListener("keydown", (event) => {
   commitMemberName();
 });
 
-function toast(message: string): void {
-  const el = document.createElement("div");
-  el.className = "pe-toast";
-  el.textContent = message;
-  document.body.appendChild(el);
-  window.setTimeout(() => el.remove(), 3200);
-}
 
 // ---- 行きたい候補（投票ボード） ----------------------------------------
 
-const candMount = qs<HTMLElement>(root, "[data-candidates]");
-const candInput = qs<HTMLInputElement>(root, "[data-cand-input]");
-const candCountEl = qs<HTMLElement>(root, "[data-cand-count]");
 
 function candId(): string {
-  return "cand_" + seq++ + "_" + Math.random().toString(36).slice(2, 6);
+  return "cand_" + state.seq++ + "_" + Math.random().toString(36).slice(2, 6);
 }
 
 /** 票数の多い順（同数は作成順）に並べる。 */
@@ -3424,7 +3063,7 @@ function commitCandInput(): void {
   candInput.value = "";
   candInput.focus();
 }
-qs<HTMLButtonElement>(root, "[data-cand-add]").addEventListener("click", commitCandInput);
+qs<HTMLButtonElement>("[data-cand-add]").addEventListener("click", commitCandInput);
 watchComposition(candInput);
 candInput.addEventListener("keydown", (e) => {
   if (isComposingKey(e)) return;
@@ -3435,17 +3074,17 @@ candInput.addEventListener("keydown", (e) => {
 });
 
 async function shareInvite(name: string, userId = ""): Promise<void> {
-  if (editorLocked) return;
+  if (state.editorLocked) return;
   if (!model.title.trim()) { toast("先に旅行名を入力してください"); return; }
-  if (!slug) { slug = TripPlans.uniqueSlug(model.title); model.slug = slug; }
+  if (!state.slug) { state.slug = TripPlans.uniqueSlug(model.title); model.slug = state.slug; }
   if (!(await persist(true))) {
     toast("計画を保存できなかったため、招待を作成しませんでした");
     return;
   }
   const data = buildData();
-  const meta = TripPlans.get(slug);
+  const meta = TripPlans.get(state.slug);
   if (meta && !canManagePlan(meta)) { toast("招待できるのは計画の所有者だけです"); return; }
-  const planId = TripPlans.planIdOf(slug);
+  const planId = TripPlans.planIdOf(state.slug);
   if (!planId) { toast("保存してから招待してください"); return; }
   let link = "";
   let createdInviteId = "";
@@ -3457,12 +3096,12 @@ async function shareInvite(name: string, userId = ""): Promise<void> {
     link = await buildInviteLink({
       v: 1,
       meta: {
-        slug,
+        slug: state.slug,
         title: model.title,
         dates: datesString(),
         members: model.members,
         route: (data.cities || []).map((c) => c.name).filter(Boolean).join("→"),
-        updatedAt: TripPlans.get(slug)?.updatedAt,
+        updatedAt: TripPlans.get(state.slug)?.updatedAt,
       },
       token: invite.token,
       invitedName: name,
@@ -3496,8 +3135,6 @@ async function shareInvite(name: string, userId = ""): Promise<void> {
 
 // ---- カレンダー連携（Google テンプレート / .ics） ----------------------
 
-const gcalBtn = qs<HTMLButtonElement>(root, "[data-gcal]");
-const icsBtn = qs<HTMLButtonElement>(root, "[data-ics]");
 
 function fmtMd(iso: string): string {
   const d = parseISO(iso);
@@ -3603,7 +3240,7 @@ cityInput.addEventListener("keydown", (e) => {
   if (isComposingKey(e)) return;
   if (e.key === "Enter") { e.preventDefault(); void addCity(cityInput.value); }
 });
-qs<HTMLButtonElement>(root, "[data-city-add]").addEventListener("click", () => {
+qs<HTMLButtonElement>("[data-city-add]").addEventListener("click", () => {
   void addCity(cityInput.value);
 });
 
@@ -3697,8 +3334,8 @@ citiesEl.addEventListener("input", (event) => {
 // ---- 保存・読み込み -----------------------------------------------------
 
 function syncBasicInputs(): void {
-  qs<HTMLInputElement>(root, '[data-f="title"]').value = model.title || "";
-  qs<HTMLInputElement>(root, '[data-f="note"]').value = model.note || "";
+  qs<HTMLInputElement>('[data-f="title"]').value = model.title || "";
+  qs<HTMLInputElement>('[data-f="note"]').value = model.note || "";
   updateCoverPreview();
   updateMemberVisibility();
   renderMembers();
@@ -3772,7 +3409,7 @@ function buildData(): LocalPlanData {
 }
 
 function loadExisting(): boolean {
-  const meta = slug ? TripPlans.get(slug) : null;
+  const meta = state.slug ? TripPlans.get(state.slug) : null;
   if (meta && meta.source && meta.source !== "local") {
     return lockEditor("この計画は外部連携のため、ここでは編集できません");
   }
@@ -3781,7 +3418,7 @@ function loadExisting(): boolean {
   if (meta && planHasOwner(meta) && !canEditPlan(meta)) {
     return lockEditor("この計画を編集する権限がありません");
   }
-  const data = slug ? TripPlans.getData(slug) : null;
+  const data = state.slug ? TripPlans.getData(state.slug) : null;
   if (!data) return true;
   const trip = data.trip || { title: "", dates: "", members: "", note: "" };
   model.title = trip.title || "";
@@ -3846,7 +3483,7 @@ function loadExisting(): boolean {
       );
       const known = TripPlans.coordsFor(c.name || "");
       return {
-        id: seq++, name: c.name || "",
+        id: state.seq++, name: c.name || "",
         fromDate: c.fromDate || itineraryDates.find((date) => byDate[date]?.area === c.name) || "",
         toDate: c.toDate || [...itineraryDates].reverse().find((date) => byDate[date]?.area === c.name) || "",
         lat: c.lat != null && String(c.lat) !== ""
@@ -3859,19 +3496,15 @@ function loadExisting(): boolean {
     // 旧データ：行程の area から都市名だけ拾う（期間は空）
     model.cities = Array.from(cityNames).map((name) => {
       const hit = TripPlans.coordsFor(name);
-      return { id: seq++, name, lat: hit ? String(hit.lat) : "", lng: hit ? String(hit.lng) : "", fromDate: "", toDate: "" };
+      return { id: state.seq++, name, lat: hit ? String(hit.lat) : "", lng: hit ? String(hit.lng) : "", fromDate: "", toDate: "" };
     });
   }
   return true;
 }
 
-function normalizeKind(type: string | undefined): ItemKind {
-  const t = String(type || "");
-  return (["sight", "food", "move", "stay", "todo", "form"] as ItemKind[]).includes(t as ItemKind) ? (t as ItemKind) : "sight";
-}
 
 async function save(): Promise<void> {
-  if (editorLocked) {
+  if (state.editorLocked) {
     statusEl.textContent = "この計画を編集する権限がありません";
     statusEl.className = "is-dirty";
     return;
@@ -3886,14 +3519,14 @@ async function save(): Promise<void> {
 
 function focusPublishError(field: "title" | "dates" | "cities", step: 1 | 2): void {
   setViewStep(step);
-  if (field === "title") qs<HTMLInputElement>(root, '[data-f="title"]').focus();
+  if (field === "title") qs<HTMLInputElement>('[data-f="title"]').focus();
   else if (field === "dates") rangeTrigger.focus();
   else cityInput.focus();
 }
 
 function publish(): void {
-  if (editorLocked) return;
-  const meta = slug ? TripPlans.get(slug) : null;
+  if (state.editorLocked) return;
+  const meta = state.slug ? TripPlans.get(state.slug) : null;
   if (meta && !canManagePlan(meta)) {
     statusEl.textContent = "公開設定を変更できるのは計画の所有者だけです";
     statusEl.className = "is-dirty";
@@ -3910,7 +3543,7 @@ function publish(): void {
 }
 
 async function doPublish(visibility: PlanVisibility): Promise<void> {
-  if (editorLocked) return;
+  if (state.editorLocked) return;
   const invalid = validatePublishPlan(model);
   if (invalid) {
     statusEl.textContent = invalid.message;
@@ -3925,38 +3558,38 @@ async function doPublish(visibility: PlanVisibility): Promise<void> {
   }
   const mutationCheckpoint = db.mutationCheckpoint();
   model.visibility = visibility;
-  if (!TripPlans.upsert({ slug, visibility, published: true })) {
+  if (!TripPlans.upsert({ slug: state.slug, visibility, published: true })) {
     statusEl.textContent = "ログインしてから保存してください";
     statusEl.className = "is-dirty";
     setSaveActionsBusy(false);
     return;
   }
-  TripPlans.setActiveSlug(slug);
+  TripPlans.setActiveSlug(state.slug);
   try {
     await db.flushMutations(mutationCheckpoint);
   } catch (error) {
-    dirty = true;
+    state.dirty = true;
     statusEl.textContent = "保存できませんでした";
     statusEl.className = "is-dirty";
     savebarNoteEl.textContent = errorMessage(error);
     setSaveActionsBusy(false);
     return;
   }
-  dirty = false;
+  state.dirty = false;
   const visLabel = visibility === "invite" ? "招待制" : "公開";
   statusEl.textContent = `保存しました（${visLabel}）`;
   statusEl.className = "is-ok";
   savebarNoteEl.textContent = `保存しました（${visLabel}）。右上の「表示」でダッシュボードを確認できます。`;
-  try { history.replaceState(null, "", "plan-editor.html?plan=" + encodeURIComponent(slug)); } catch { /* ignore */ }
+  try { history.replaceState(null, "", "plan-editor.html?plan=" + encodeURIComponent(state.slug)); } catch { /* ignore */ }
   setSaveActionsBusy(false);
-  navigateWithPageTransition("index.html?plan=" + encodeURIComponent(slug));
+  navigateWithPageTransition("index.html?plan=" + encodeURIComponent(state.slug));
 }
 
 async function doUnpublish(): Promise<void> {
-  if (!slug || editorLocked) return;
+  if (!state.slug || state.editorLocked) return;
   setSaveActionsBusy(true);
   const mutationCheckpoint = db.mutationCheckpoint();
-  if (!TripPlans.upsert({ slug, published: false })) {
+  if (!TripPlans.upsert({ slug: state.slug, published: false })) {
     setSaveActionsBusy(false);
     return;
   }
@@ -3990,7 +3623,7 @@ function visOption(value: PlanVisibility, current: PlanVisibility, label: string
 function openVisibilityChooser(onConfirm: (v: PlanVisibility) => void): void {
   // 初回は安全側の「限定」を既定にし、公開は利用者が明示的に選ぶ。
   const current: PlanVisibility = model.visibility === "public" ? "public" : "invite";
-  const meta = slug ? TripPlans.get(slug) : null;
+  const meta = state.slug ? TripPlans.get(state.slug) : null;
   const isPublished = Boolean(meta && TripPlans.isPublished(meta));
   const modal = document.createElement("div");
   modal.className = "pe-modal";
@@ -4027,22 +3660,18 @@ function openVisibilityChooser(onConfirm: (v: PlanVisibility) => void): void {
 // ---- ヘッダーアイコン・初期化 -------------------------------------------
 
 // 戻る（<）は共通ヘッダー側で描画済み。開くボタンだけ eye アイコンに差し替える。
-const saveBtn = qs<HTMLButtonElement>(root, "[data-save]");
-const publishBtn = qs<HTMLButtonElement>(root, "[data-publish-plan]");
-const stepNextBtn = qs<HTMLButtonElement>(root, "[data-step-next]");
 function setSaveActionsBusy(busy: boolean): void {
-  saveActionsBusy = busy;
+  state.saveActionsBusy = busy;
   saveBtn.disabled = busy;
   publishBtn.disabled = busy;
-  stepNextBtn.disabled = busy || (viewStep < 3 && !stepCompletion()[viewStep - 1]);
+  stepNextBtn.disabled = busy || (state.viewStep < 3 && !stepCompletion()[state.viewStep - 1]);
   saveBtn.innerHTML = busy ? icon("arrowPath") + "<span>保存中…</span>" : icon("bookmark") + "<span>下書きを保存</span>";
 }
 saveBtn.innerHTML = icon("bookmark") + "<span>下書きを保存</span>";
 publishBtn.innerHTML = icon("globeAlt") + "<span>公開設定</span>";
 saveBtn.addEventListener("click", () => { void save(); });
 publishBtn.addEventListener("click", publish);
-qs<HTMLButtonElement>(root, "[data-city-add]").innerHTML = icon("plus") + "<span>追加</span>";
-const localNoteEl = qs<HTMLElement>(root, "[data-local-note]");
+qs<HTMLButtonElement>("[data-city-add]").innerHTML = icon("plus") + "<span>追加</span>";
 localNoteEl.innerHTML = icon("informationCircle") + (db.isEnabled()
   ? "クラウドに自動保存（公開するまでは下書き）"
   : "保存先が未設定（JSON書き出しのみ利用できます）");
@@ -4059,14 +3688,11 @@ function exportJson(): void {
   a.remove();
   URL.revokeObjectURL(url);
 }
-const exportBtn = qs<HTMLButtonElement>(root, "[data-export]");
 exportBtn.innerHTML = icon("documentText") + "<span>書き出し</span>";
 exportBtn.addEventListener("click", exportJson);
 
 // 地図の表示/非表示
-const mapToggle = qs<HTMLButtonElement>(root, "[data-map-toggle]");
 
-const mapClose = qs<HTMLButtonElement>(root, "[data-map-close]");
 mapClose.innerHTML = icon("xMark");
 function setMapCollapsed(collapsed: boolean): void {
   if (!collapsed) ensureMap();
@@ -4130,8 +3756,8 @@ if (mapGrip && mapWrapEl) {
 
 // 行のキーボード操作（Enter/Space で開閉）
 function focusOpenItem(): void {
-  if (openItemId == null) return;
-  const node = daysEl.querySelector<HTMLElement>(`[data-node="${openItemId}"]`);
+  if (state.openItemId == null) return;
+  const node = daysEl.querySelector<HTMLElement>(`[data-node="${state.openItemId}"]`);
   node?.querySelector<HTMLInputElement | HTMLSelectElement>(".pe-edit input, .pe-edit select")?.focus();
 }
 daysEl.addEventListener("keydown", (event) => {
@@ -4142,7 +3768,7 @@ daysEl.addEventListener("keydown", (event) => {
   if (event.key === "Enter" || event.key === " ") {
     event.preventDefault();
     const id = Number(row.dataset.item || 0);
-    openItemId = openItemId === id ? null : id;
+    state.openItemId = state.openItemId === id ? null : id;
     disarm();
     renderDays();
     focusOpenItem();
@@ -4159,13 +3785,13 @@ dayStripEl.addEventListener("click", (event) => {
 });
 
 window.addEventListener("beforeunload", (event) => {
-  if (editorLocked) return;
-  if (dirty) { event.preventDefault(); event.returnValue = ""; }
+  if (state.editorLocked) return;
+  if (state.dirty) { event.preventDefault(); event.returnValue = ""; }
 });
 
 // タブが背面へ移る時は、beforeunload の非同期処理に頼らず先に保存を開始する。
 document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "hidden" && dirty && worthSaving()) void persist();
+  if (document.visibilityState === "hidden" && state.dirty && worthSaving()) void persist();
 });
 
 // 共有ストア（MySQL）を読み終えてから既存計画を読み込む。
@@ -4198,13 +3824,13 @@ function bootstrapEditor(): void {
   // 畳まない構成（PC など）はこの時点で見えているので、ここで作る。
   if (!root.classList.contains("map-collapsed")) ensureMap();
   statusEl.textContent = isNew ? "下書き（自動保存・未保存）" : editable ? "読み込み完了" : statusEl.textContent;
-  const meta = slug ? TripPlans.get(slug) : null;
-  metadataLocked = Boolean(meta && canEditPlan(meta) && !canEditPlanMetadata(meta));
+  const meta = state.slug ? TripPlans.get(state.slug) : null;
+  state.metadataLocked = Boolean(meta && canEditPlan(meta) && !canEditPlanMetadata(meta));
   publishBtn.hidden = Boolean(meta && !canManagePlan(meta));
-  if (!editable || editorLocked) applyEditorLock();
-  else if (metadataLocked) applyMetadataLock();
+  if (!editable || state.editorLocked) applyEditorLock();
+  else if (state.metadataLocked) applyMetadataLock();
   // ダッシュボードの「AIサポート」から来たとき（?ai=1）は、AI相談ブロックへ案内する。
-  if (params.get("ai") === "1" && editable && !editorLocked) {
+  if (params.get("ai") === "1" && editable && !state.editorLocked) {
     const aiBlock = root.querySelector<HTMLElement>("[data-ai-block]");
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     window.setTimeout(() => {
