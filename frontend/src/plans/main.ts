@@ -7,27 +7,22 @@ import * as db from "../shared/db";
 import "../shared/ui.css";
 import "./style.css";
 import { initPageTransitions, navigateWithPageTransition } from "../shared/page-transition";
-import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import type { LocalPlanData, PlanMeta } from "../shared/plans-store";
+import type { PlanMeta } from "../shared/plans-store";
 import { readGlobalTripConfig } from "../shared/config";
 import { escapeHtml, errorMessage } from "../shared/dom";
-import { mdLabel, updatedTimestamp } from "../shared/date";
-import { mapsSearchUrl } from "../shared/maps";
 import { planDashboardHref } from "../shared/plan-url";
 import { registerServiceWorker } from "../shared/pwa";
 import { rememberInviteReturn } from "../shared/invite-resume";
 import { icon, type IconName } from "../shared/icons";
 import { mountAppHeader } from "../shared/app-header";
-import { getViews } from "../shared/views-store";
 import { decodeInvite } from "../shared/invite";
 import { isIdentified, currentUserId } from "../shared/identity";
-import { canEditPlan } from "../shared/membership";
-import { addBaseLayer } from "../shared/map-tiles";
 import { showToast } from "./toast";
 import { sortMinePlans, highlightedMineSlugs } from "./plan-timing";
-import { locationLabel, plansForLocation, destinationRows } from "./plan-locations";
-import { planHref, emptyList, rowHtml, matchesFilter, type RowVariant } from "./plan-card";
+import { rowHtml, matchesFilter, type RowVariant } from "./plan-card";
+import { rankingCardLimit } from "./rankings";
+import { queueLocationTransition, renderDiscover } from "./location-explorer";
 import {
   qs,
   hub,
@@ -45,27 +40,15 @@ import {
   inviteStripEl,
   inviteTitleEl,
   inviteNoteEl,
-  rankingNewEl,
-  rankingViewsEl,
   destinationsEl,
-  locationExplorerEl,
-  locationSideEl,
   locationHeadEl,
   locationPlansEl,
-  locationScheduleEl,
-  mapBoardEl,
-  newCountEl,
-  viewsTotalEl,
-  destinationCountEl,
-  mapCountEl,
 } from "./dom";
-import { state, planDataCache, getLastRankingLimit, setLastRankingLimit } from "./state";
+import { state, planDataCache, getLastRankingLimit } from "./state";
 
 // ---- 補助型 -------------------------------------------------------------
 
 initPageTransitions();
-
-type LocationTransition = "forward" | "back" | "swap";
 
 // ---- DOM 取得ヘルパー ----------------------------------------------------
 
@@ -81,10 +64,7 @@ mountAppHeader({
 });
 
 const searchToggleEl = qs<HTMLButtonElement>("[data-toggle-search]");
-let pendingLocationTransition: LocationTransition | "" = "";
-let locationTransitionTimer = 0;
 let rankingResizeTimer = 0;
-const locationMapState: { map: L.Map | null; layer: L.LayerGroup | null } = { map: null, layer: null };
 
 // セクション見出しの heroicon を流し込む（HTML 側は data-ic="名前" のみ持つ）
 document.querySelectorAll<HTMLElement>("[data-ic]").forEach((el) => {
@@ -113,350 +93,6 @@ const EMPTY_TRIP_COVERS = [
 
 const emptyTripCover = EMPTY_TRIP_COVERS[Math.floor(Math.random() * EMPTY_TRIP_COVERS.length)];
 
-function rankingCardLimit(): number {
-  const width = Math.max(
-    rankingNewEl.clientWidth,
-    rankingViewsEl.clientWidth,
-    Math.min(window.innerWidth, 1600) - 48,
-  );
-  const cardWidth = window.innerWidth <= 600 ? 180 : 220;
-  const gap = window.innerWidth <= 600 ? 12 : 18;
-  return Math.max(5, Math.min(12, Math.ceil((width + gap) / (cardWidth + gap))));
-}
-
-function renderRankings(plans: PlanMeta[]): void {
-  const limit = rankingCardLimit();
-  setLastRankingLimit(limit);
-  const latest = [...plans].sort((a, b) => updatedTimestamp(b) - updatedTimestamp(a)).slice(0, limit);
-  const byViews = [...plans].sort((a, b) => getViews(b.slug) - getViews(a.slug) || updatedTimestamp(b) - updatedTimestamp(a)).slice(0, limit);
-  // 新着・ランキングも「自分の計画」と同じカードを使う。
-  // 以前は discover-trip-card という別実装で、同じ旅行計画なのに
-  // 画像サイズ・文字サイズ・情報の並びが揃っていなかった。
-  const discoverCard = (meta: PlanMeta, label: string): string =>
-    rowHtml(meta, "public", "", undefined, label);
-
-  rankingNewEl.innerHTML = latest.length
-    ? latest.map((meta, i) => discoverCard(meta, "NEW " + String(i + 1).padStart(2, "0"))).join("")
-    : emptyList("公開旅行はまだありません。最初の旅行を作って公開できます。");
-  rankingViewsEl.innerHTML = byViews.length
-    ? byViews.map((meta, i) => discoverCard(meta, "No." + String(i + 1) + " / " + getViews(meta.slug).toLocaleString("ja-JP") + " views")).join("")
-    : emptyList("観覧数ランキングは、公開旅行が閲覧されると表示されます。");
-  newCountEl.textContent = latest.length ? latest.length + "件" : "";
-  const totalViews = plans.reduce((sum, meta) => sum + getViews(meta.slug), 0);
-  viewsTotalEl.textContent = totalViews ? totalViews.toLocaleString("ja-JP") + " views" : "";
-}
-
-function renderLocationCityList(plans: PlanMeta[]): void {
-  const rows = destinationRows(plans);
-  locationExplorerEl.classList.remove("is-plan-mode");
-  locationSideEl.classList.remove("is-plan-mode");
-  locationHeadEl.innerHTML =
-    '<div class="location-head-main"><span class="location-head-ic">' + icon("globeAlt") + '</span>' +
-    '<span class="location-head-copy"><span class="location-head-kicker">Destinations</span>' +
-    '<p class="location-side-title">都市・国から選ぶ</p>' +
-    '<span class="location-side-note">一覧または地図のピンから旅行計画を確認</span></span></div>';
-  locationPlansEl.hidden = true;
-  locationPlansEl.innerHTML = "";
-  destinationsEl.hidden = false;
-  destinationsEl.innerHTML = rows.length
-    ? rows.map((row) =>
-        '<a class="dest-row" href="#" data-no-transition="true" data-dest-filter="' + escapeHtml(row.name) + '"><b>' +
-        escapeHtml(row.name) +
-        "</b><span>" +
-        row.count +
-        "件の旅行計画</span></a>",
-      ).join("")
-    : emptyList("行き先別の一覧は、公開旅行が増えると表示されます。");
-  destinationCountEl.textContent = rows.length ? rows.length + "地域" : "";
-}
-
-function renderLocationPlans(plans: PlanMeta[]): PlanMeta[] {
-  const selected = state.selectedLocation;
-  const rows = plansForLocation(plans, selected);
-  if (!state.selectedPlanSlug || !rows.some((meta) => meta.slug === state.selectedPlanSlug)) {
-    state.selectedPlanSlug = rows[0]?.slug || "";
-  }
-  locationExplorerEl.classList.add("is-plan-mode");
-  locationSideEl.classList.add("is-plan-mode");
-  locationHeadEl.innerHTML =
-    '<div class="location-head-main"><span class="location-head-ic">' + icon("mapPin") + '</span>' +
-    '<span class="location-head-copy"><span class="location-head-kicker">Selected Area</span>' +
-    '<p class="location-side-title">' + escapeHtml(selected) + '</p>' +
-    '<span class="location-side-note">この都市の旅行計画 ' + rows.length + '件</span></span></div>' +
-    '<button class="location-back" type="button" data-location-back>' + icon("arrowLeft") + '<span>一覧へ戻る</span></button>';
-  destinationsEl.hidden = true;
-  // 計画が1件だけのときは、この一覧は下の詳細と同じことを繰り返すだけなので出さない
-  // （件数は見出しの「この都市の旅行計画 ◯件」で分かる）。
-  // 複数あるときは切り替えの役目があるので残す。
-  // 0件のときは案内を出したいので、隠すのは「ちょうど1件」のときだけ。
-  locationPlansEl.hidden = rows.length === 1;
-  // 複数あるときは横に流れるタブで切り替える（カードにすると下の詳細と
-  // 同じ内容が二重に並ぶため）。選んでいるものは下線で示す。
-  locationPlansEl.innerHTML = rows.length > 1
-    ? '<div class="location-plan-tabs" role="tablist">' +
-      rows.map((meta) =>
-        '<a class="location-plan-tab' + (meta.slug === state.selectedPlanSlug ? " is-active" : "") +
-        '" href="#" role="tab" aria-selected="' + (meta.slug === state.selectedPlanSlug ? "true" : "false") +
-        '" data-no-transition="true" data-location-plan="' + escapeHtml(meta.slug) + '">' +
-        '<b>' + escapeHtml(meta.title || "無題の旅行") + '</b>' +
-        '<small>' + escapeHtml(meta.dates || "") + '</small></a>',
-      ).join("") +
-      "</div>"
-    : rows.length ? "" : emptyList("この場所の旅行計画はまだありません。");
-  return rows;
-}
-
-function itineraryFor(meta: PlanMeta | undefined): LocalPlanData | null {
-  if (!meta) return null;
-  return TripPlans.getData(meta.slug);
-}
-
-function itemTitle(item: LocalPlanData["itinerary"][number]): string {
-  return item.title || item.place || item.area || item.destination || item.origin || "予定";
-}
-
-const SCHEDULE_KIND_ICON: Record<string, IconName> = {
-  sight: "camera",
-  food: "cake",
-  move: "arrowsRightLeft",
-  stay: "buildingOffice2",
-  todo: "check",
-  form: "documentText",
-};
-
-function scheduleKindClass(type: string | undefined): string {
-  const normalized = String(type || "todo");
-  return SCHEDULE_KIND_ICON[normalized] ? normalized : "todo";
-}
-
-function scheduleKindIcon(type: string | undefined): string {
-  return icon(SCHEDULE_KIND_ICON[String(type || "")] || "check");
-}
-
-function scheduleMapLink(query: string | undefined): string {
-  return '<a class="schedule-maplink" href="' + mapsSearchUrl(query) + '" target="_blank" rel="noopener">地図 ' +
-    icon("arrowTopRightOnSquare") + '</a>';
-}
-
-function scheduleMetaText(item: LocalPlanData["itinerary"][number]): string {
-  const title = itemTitle(item);
-  const place = item.place && item.place !== title ? "場所: " + item.place : "";
-  const move = String(item.type) === "move" ? [item.transport, item.duration].filter(Boolean).join("・") : "";
-  return [move || place, item.note].filter(Boolean).join(" / ");
-}
-
-function scheduleDayHead(rows: LocalPlanData["itinerary"], index: number): string {
-  const first = rows[0];
-  const day = first?.day || "Day " + (index + 1);
-  const area = first?.area || "";
-  const date = mdLabel(first?.date);
-  const title = [day, area, date].filter(Boolean).join(" ・ ");
-  const weather = rows.find((row) => row.weather)?.weather || "";
-  return '<div class="schedule-dayblock-head"><b>' + escapeHtml(title || "日程") + '</b>' +
-    (weather ? '<span class="schedule-weather">' + escapeHtml(weather) + '</span>' : "") + '</div>';
-}
-
-function scheduleStayHtml(item: LocalPlanData["itinerary"][number]): string {
-  const title = itemTitle(item) || "宿泊先";
-  const place = item.place && item.place !== title ? item.place : "";
-  return '<div class="schedule-stay">' +
-    '<span class="schedule-stay-ic">' + icon("buildingOffice2") + '</span>' +
-    '<div class="schedule-stay-body">' +
-    '<span class="schedule-stay-label">' + escapeHtml(item.typeLabel || "宿泊") + '</span>' +
-    '<span class="schedule-stay-name">' + escapeHtml(title) + '</span>' +
-    (place ? '<span class="schedule-stay-place">' + escapeHtml(place) + '</span>' : "") +
-    '</div>' +
-    scheduleMapLink(item.mapQuery || item.place || title) +
-    '</div>';
-}
-
-function scheduleItemHtml(item: LocalPlanData["itinerary"][number]): string {
-  const type = String(item.type || "todo");
-  const kind = scheduleKindClass(type);
-  const label = '<span class="schedule-kind ' + kind + '">' +
-    escapeHtml(item.typeLabel || type || "予定") + '</span>';
-  let segA = item.origin || "";
-  let segB = item.destination || "";
-  if (kind === "move" && (!segA || !segB) && /→|->/.test(item.title || "")) {
-    const parts = (item.title || "").split(/→|->/);
-    segA = segA || (parts[0] || "").trim();
-    segB = segB || (parts[1] || "").trim();
-  }
-  const title = kind === "move" && (segA || segB)
-    ? '<div class="schedule-seg"><span>' + escapeHtml(segA || "出発") + '</span>' +
-      '<span class="schedule-seg-arr">' + icon("arrowLongRight") + '</span>' +
-      '<span>' + escapeHtml(segB || "到着") + '</span></div>'
-    : '<h3>' + escapeHtml(itemTitle(item)) + '</h3>';
-  const meta = scheduleMetaText(item);
-  return '<article class="schedule-tl-item" data-kind="' + kind + '">' +
-    '<time class="schedule-time">' + escapeHtml(item.time || "") + '</time>' +
-    '<span class="schedule-rail"><span class="schedule-dot ' + kind + '">' + scheduleKindIcon(type) + '</span></span>' +
-    '<div class="schedule-plan">' +
-    '<div class="schedule-plan-line">' + label + title + '</div>' +
-    (item.needed ? '<p class="schedule-needed">' + escapeHtml(item.needed) + '</p>' : "") +
-    '<p class="schedule-meta">' +
-    (meta ? '<span class="schedule-meta-text">' + escapeHtml(meta) + '</span>' : "") +
-    scheduleMapLink(item.mapQuery || item.place || item.title) +
-    '</p>' +
-    '</div>' +
-    '</article>';
-}
-
-function renderSchedule(plan: PlanMeta | undefined): void {
-  mapBoardEl.hidden = true;
-  locationScheduleEl.hidden = false;
-  if (!plan) {
-    locationScheduleEl.innerHTML = emptyList("旅行計画を選択してください。");
-    return;
-  }
-  const data = itineraryFor(plan);
-  const items = data?.itinerary || [];
-  const head =
-    '<div class="schedule-head"><span class="schedule-head-ic">' + icon("calendarDays") + '</span>' +
-    '<div class="schedule-head-main"><span class="schedule-head-kicker">Itinerary</span>' +
-    '<b>' + escapeHtml(plan.title || "無題の旅行") + '</b>' +
-    '<span class="schedule-head-meta">' + escapeHtml([plan.dates, locationLabel(plan)].filter(Boolean).join(" ・ ") || "日程情報") + '</span></div>' +
-    '<a href="' + planHref(plan, !canEditPlan(plan)) + '">旅行計画を開く ' + icon("arrowTopRightOnSquare") + '</a></div>';
-  if (!items.length) {
-    locationScheduleEl.innerHTML = head + emptyList("この計画の日程データはまだありません。");
-    return;
-  }
-  const groups = new Map<string, typeof items>();
-  items.forEach((item) => {
-    const key = [item.date, item.day].filter(Boolean).join(" ") || "日程未設定";
-    const arr = groups.get(key) || [];
-    arr.push(item);
-    groups.set(key, arr);
-  });
-  locationScheduleEl.innerHTML = head + '<div class="schedule-list">' +
-    [...groups.values()].map((rows, index) =>
-      '<section class="schedule-dayblock">' +
-      scheduleDayHead(rows, index) +
-      rows.filter((item) => String(item.type) === "stay").map(scheduleStayHtml).join("") +
-      '<div class="schedule-timeline">' +
-      rows.filter((item) => String(item.type) !== "stay").map(scheduleItemHtml).join("") +
-      '</div>' +
-      '</section>',
-    ).join("") +
-    '</div>';
-}
-
-function renderLocationMap(plans: PlanMeta[]): void {
-  const rows = destinationRows(plans);
-  const totalPlans = plans.length;
-  mapCountEl.textContent = totalPlans ? totalPlans + "件" : "";
-  locationScheduleEl.hidden = true;
-  locationScheduleEl.innerHTML = "";
-  mapBoardEl.hidden = false;
-  if (!rows.length) {
-    if (locationMapState.map) {
-      locationMapState.map.remove();
-      locationMapState.map = null;
-      locationMapState.layer = null;
-    }
-    mapBoardEl.innerHTML = '<div class="map-empty">公開旅行が増えると、ここに行き先のピンが並びます。</div>';
-    return;
-  }
-  const destinations = new Map<string, { name: string; coords: L.LatLngTuple; count: number }>();
-  rows.forEach((row) => {
-    const fallback = TripPlans.coordsFor(row.name);
-    const coords = row.coords || (fallback ? [fallback.lat, fallback.lng] as L.LatLngTuple : undefined);
-    if (!coords) return;
-    const key = row.name + ":" + coords[0].toFixed(3) + "," + coords[1].toFixed(3);
-    destinations.set(key, { name: row.name, coords, count: row.count });
-  });
-  const points = [...destinations.values()];
-  if (!points.length) {
-    if (locationMapState.map) {
-      locationMapState.map.remove();
-      locationMapState.map = null;
-      locationMapState.layer = null;
-    }
-    mapBoardEl.innerHTML = '<div class="map-empty">座標が分かる都市名があると、ここに地図ピンが表示されます。</div>';
-    return;
-  }
-
-  mapBoardEl.classList.add("has-leaflet");
-  if (!locationMapState.map) {
-    mapBoardEl.innerHTML = "";
-    locationMapState.map = L.map(mapBoardEl, {
-      scrollWheelZoom: false,
-      attributionControl: true,
-      zoomControl: true,
-    });
-    addBaseLayer(L, locationMapState.map);
-  }
-  const map = locationMapState.map;
-  if (locationMapState.layer) locationMapState.layer.remove();
-  locationMapState.layer = L.layerGroup().addTo(map);
-  const bounds = L.latLngBounds([]);
-  points.forEach((point) => {
-    const shortName = point.name.replace(/\s+/g, "").slice(0, 4);
-    const marker = L.marker(point.coords, {
-      icon: L.divIcon({
-        className: "location-marker",
-        html: `<span>${escapeHtml(shortName)}${point.count > 1 ? `<b>${point.count}</b>` : ""}</span>`,
-        iconSize: [72, 34],
-        iconAnchor: [36, 17],
-      }),
-    }).addTo(locationMapState.layer!);
-    marker.bindTooltip(`${escapeHtml(point.name)} (${point.count}件)`, { direction: "top" });
-    marker.on("click", () => {
-      queueLocationTransition("forward");
-      state.selectedLocation = point.name;
-      state.selectedPlanSlug = "";
-      renderDiscover(plans);
-    });
-    bounds.extend(point.coords);
-  });
-  window.setTimeout(() => {
-    map.invalidateSize();
-    if (bounds.isValid()) map.fitBounds(bounds, { padding: [42, 42], maxZoom: points.length === 1 ? 6 : 12 });
-  }, 0);
-}
-
-function queueLocationTransition(direction: LocationTransition): void {
-  pendingLocationTransition = direction;
-}
-
-function playLocationTransition(): void {
-  const direction = pendingLocationTransition;
-  pendingLocationTransition = "";
-  if (!direction) return;
-  window.clearTimeout(locationTransitionTimer);
-  locationExplorerEl.classList.remove(
-    "is-location-animating",
-    "is-location-forward",
-    "is-location-back",
-    "is-location-swap",
-  );
-  void locationExplorerEl.offsetWidth;
-  locationExplorerEl.classList.add("is-location-animating", "is-location-" + direction);
-  locationTransitionTimer = window.setTimeout(() => {
-    locationExplorerEl.classList.remove(
-      "is-location-animating",
-      "is-location-forward",
-      "is-location-back",
-      "is-location-swap",
-    );
-  }, 340);
-}
-
-function renderLocationExplorer(plans: PlanMeta[]): void {
-  if (!state.selectedLocation || !plansForLocation(plans, state.selectedLocation).length) {
-    state.selectedLocation = "";
-    state.selectedPlanSlug = "";
-    renderLocationCityList(plans);
-    renderLocationMap(plans);
-    playLocationTransition();
-    return;
-  }
-  const rows = renderLocationPlans(plans);
-  const selected = rows.find((meta) => meta.slug === state.selectedPlanSlug) || rows[0];
-  renderSchedule(selected);
-  playLocationTransition();
-}
-
 function renderStart(): void {
   const invites = db.pendingInvites();
   createMainEl.innerHTML = icon("plusCircle") + "<span>新しい旅行計画を作る</span>";
@@ -471,11 +107,6 @@ function renderStart(): void {
 function newPlanHref(): string {
   if (!db.isEnabled() || isIdentified()) return "plan-editor.html";
   return "login.html?returnTo=" + encodeURIComponent("plan-editor.html");
-}
-
-function renderDiscover(publicPlans: PlanMeta[]): void {
-  renderRankings(publicPlans);
-  renderLocationExplorer(publicPlans);
 }
 
 function render(): void {
