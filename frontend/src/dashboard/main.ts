@@ -5,9 +5,8 @@ import "leaflet/dist/leaflet.css";
 
 import { icon, type IconName } from "../shared/icons";
 import * as TripPlans from "../shared/plans-store";
-import { isPublished } from "../shared/plans-store";
 import { getUser } from "../shared/user-store";
-import { canEditPlan, canManagePlan, canViewPlan, isMemberOf, planHasOwner } from "../shared/membership";
+import { canManagePlan, isMemberOf } from "../shared/membership";
 import { joinersOn, leaversOn } from "../shared/member-period";
 import { dayTracks, pickTrack, isItemInTrack, everyoneIds, type DayTrack } from "../shared/day-tracks";
 import { parseFlight, parseTrain, type FlightInfo, type TrainInfo } from "../shared/flight-info";
@@ -21,7 +20,7 @@ import { buildInviteLink } from "../shared/invite";
 import * as ExpenseStore from "../shared/expense-store";
 import { escapeHtml, errorMessage, safeHref } from "../shared/dom";
 import { requestPasswordGate } from "../shared/auth";
-import { loadData, normalizeDate, numberOrNaN, formatYen } from "./api-data-source";
+import { loadData, normalizeDate, formatYen } from "./api-data-source";
 import { renderLeafletMap } from "./leaflet-map";
 import type { DayGroup } from "./types";
 import { registerServiceWorker } from "../shared/pwa";
@@ -32,13 +31,16 @@ import { buildItineraryShareText } from "../shared/itinerary-text";
 import { taskStatus, nextTaskStatus, setTaskStatus, checklistSummary, TASK_STATUS_LABEL } from "../shared/checklist";
 import * as Backend from "../shared/backend";
 import { bindExpenseSplitForm, expenseCurrencyCodes, expenseParticipantNames } from "../shared/expense-form";
-import { localDateISO, parseISO, toISO, mdLabel } from "../shared/date";
+import { mdLabel } from "../shared/date";
 import { buildGoogleMyMapsKml, googleMyMapsKmlFilename, mapsSearchUrl } from "../shared/maps";
 import { formatDurationMinutes, parseDurationMinutes } from "../shared/travel-duration";
 import { buildExternalAiRefinePrompt, copyExternalAiPrompt, openExternalAi, parseExternalAiRefineJson } from "../shared/external-ai";
-import type { TripData, TripLink, ItineraryItem, RouteCity, Settlement, SettlementTransfer, ExpenseDetail, LocalInfoItem, LatLng } from "../shared/types";
+import type { TripData, TripLink, ItineraryItem, RouteCity, Settlement, SettlementTransfer, ExpenseDetail, LocalInfoItem } from "../shared/types";
 import { applyPlanConfig, CONFIG, getEditingExpenseId, getMobileView, hooks, isAccessDenied, isReadOnly, leafletState, linkByKey, SAMPLE, setAccessDenied, setEditingExpenseId, setMobileView, setReadOnly, setRenderHooks, state } from "./state";
 import { appHeaderEl, coverMeta, downloadTextFile, flashButton, flashLabel, qs, qsa, root, setHtml, setLoading, setText, subhead } from "./dom";
+import { canUseWorkspaceView, computeAccessDenied, computeReadOnly, isEditableLocalPlan, isOpenEditingVisitor, memberIds, planId, tasksEditable } from "./plan-access";
+import { chooseActive, dayCoord, groupDays, nowHM, nowMinutes, timeToMinutes, todayISO, tripDateRange, untilLabel } from "./days";
+import { renderAccessDenied, showError } from "./errors";
 
 initPageTransitions();
 
@@ -58,16 +60,6 @@ interface HeaderCoverMeta {
   route?: string;
   title: string;
   cover?: string;
-}
-
-/** 正式メンバーではない、ログイン済みの公開共同編集者か。 */
-function isOpenEditingVisitor(): boolean {
-  const meta = TripPlans.get(CONFIG.tripSlug);
-  const row = db.planBySlug(CONFIG.tripSlug);
-  return Boolean(
-    meta && row && currentUserId() && !isMemberOf(meta) && row.open_editing &&
-    row.visibility === "public" && row.status === "published"
-  );
 }
 
 // セクション見出し・ボタンの heroicon を流し込む（HTML 側は data-ic="名前" のみ持つ）
@@ -197,20 +189,6 @@ function splitFromLabel(label: string): ExpenseStore.SplitMethod {
 }
 function paymentFromLabel(label: string): ExpenseStore.PaymentMethod | null {
   return ExpenseStore.PAYMENT_METHODS.find((m) => ExpenseStore.PAYMENT_LABEL[m] === label) || null;
-}
-
-/** この計画の DB 上の id。無ければ空文字。 */
-function planId(): string {
-  return TripPlans.planIdOf(CONFIG.tripSlug);
-}
-
-/** 参加者の user_id。表示名ではなくこちらを操作に使う。 */
-function memberIds(): string[] {
-  const meta = TripPlans.get(CONFIG.tripSlug);
-  const ids = meta?.memberIds || [];
-  const me = currentUserId();
-  // 自分がまだメンバーでない計画でも、自分名義で費用を入れられるようにする
-  return me && !ids.includes(me) && !isReadOnly() ? [me, ...ids] : ids;
 }
 
 /** 費用と精算から Settlement を組み立てる。 */
@@ -408,133 +386,6 @@ function requestPassword(): Promise<boolean> {
     title: "旅行ページを開く",
     submitLabel: "送信",
   });
-}
-
-// ---- 日付ユーティリティ -------------------------------------------------
-
-function todayISO(): string {
-  return localDateISO(CONFIG.todayOverride);
-}
-
-/** 現在時刻を分（0-1439）で返す。 */
-function nowMinutes(): number {
-  const now = new Date();
-  return now.getHours() * 60 + now.getMinutes();
-}
-
-function nowHM(): string {
-  const now = new Date();
-  return `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
-}
-
-/** "HH:MM" を分に変換（解析不可なら null）。 */
-function timeToMinutes(time: string | undefined): number | null {
-  const m = /^(\d{1,2}):(\d{2})/.exec(String(time || "").trim());
-  if (!m) return null;
-  return Number(m[1]) * 60 + Number(m[2]);
-}
-
-/** 分差を「あとN分 / あとN時間M分」の形にする。 */
-function untilLabel(minutes: number): string {
-  if (minutes <= 0) return "まもなく";
-  if (minutes < 60) return `あと${minutes}分`;
-  const h = Math.floor(minutes / 60);
-  const mm = minutes % 60;
-  return mm ? `あと${h}時間${mm}分` : `あと${h}時間`;
-}
-
-function addDays(date: Date, days: number): Date {
-  const next = new Date(date.getTime());
-  next.setDate(next.getDate() + days);
-  return next;
-}
-
-function tripDateRange(data: TripData): string[] {
-  const datesText = String(data.trip?.dates || "");
-  const parts = datesText.split(/\s+-\s+/);
-  let start = normalizeDate(parts[0]);
-  let end = normalizeDate(parts[1] || parts[0]);
-  if (start && end && /^\d{1,2}-\d{1,2}$/.test(end)) {
-    end = normalizeDate(`${start.slice(0, 4)}-${end}`);
-  }
-  if ((!start || !end) && data.cities && data.cities.length) {
-    const cityDates = data.cities.flatMap((city) => [normalizeDate(city.fromDate), normalizeDate(city.toDate)]).filter(Boolean).sort();
-    start = start || cityDates[0] || "";
-    end = end || cityDates[cityDates.length - 1] || "";
-  }
-  const a = parseISO(start);
-  const b = parseISO(end);
-  if (!a || !b || b < a) return [];
-  const dates: string[] = [];
-  let cursor = a;
-  let guard = 0;
-  while (cursor <= b && guard < 400) {
-    dates.push(toISO(cursor));
-    cursor = addDays(cursor, 1);
-    guard++;
-  }
-  return dates;
-}
-
-function cityNameForDate(data: TripData, date: string): string {
-  const cities = data.cities || [];
-  let current = "";
-  let currentFrom = "";
-  cities.forEach((city) => {
-    const from = normalizeDate(city.fromDate);
-    const to = normalizeDate(city.toDate);
-    if (city.name && from && to && from <= date && date <= to && from >= currentFrom) {
-      current = city.name;
-      currentFrom = from;
-    }
-  });
-  return current;
-}
-
-function groupDays(itinerary: ItineraryItem[], data: TripData = state.data): DayGroup[] {
-  const map = new Map<string, DayGroup>();
-  itinerary
-    .map((item) => ({ ...item, date: normalizeDate(item.date), lat: numberOrNaN(item.lat), lng: numberOrNaN(item.lng) }))
-    .forEach((item) => {
-      const key = item.date || "undated";
-      if (!map.has(key)) {
-        map.set(key, { date: key, day: item.day || "", area: item.area || item.place || "", weather: item.weather || "", items: [] });
-      }
-      const day = map.get(key)!;
-      day.items.push(item);
-      day.day = day.day || item.day || "";
-      day.area = day.area || item.area || item.place || "";
-      day.weather = day.weather || item.weather || "";
-    });
-  tripDateRange(data).forEach((date) => {
-    if (!map.has(date)) {
-      map.set(date, { date, day: "", area: cityNameForDate(data, date), weather: "", items: [] });
-    }
-  });
-  return Array.from(map.values())
-    .sort((a, b) => {
-      if (a.date === "undated") return 1;
-      if (b.date === "undated") return -1;
-      return a.date.localeCompare(b.date);
-    })
-    .map((day, index) => ({
-      ...day,
-      day: day.day || `Day ${index + 1}`,
-      area: day.area || cityNameForDate(data, day.date),
-    }));
-}
-
-function chooseActive(days: DayGroup[]): number {
-  const today = todayISO();
-  let index = days.findIndex((day) => day.date === today);
-  if (index >= 0) return index;
-  index = days.findIndex((day) => day.date > today);
-  return index >= 0 ? index : Math.max(0, days.length - 1);
-}
-
-function isEditableLocalPlan(): boolean {
-  const meta = TripPlans.get(CONFIG.tripSlug);
-  return !isReadOnly() && CONFIG.mode === "local" && Boolean(meta && isMemberOf(meta) && canEditPlan(meta));
 }
 
 function normalizePhotoUrl(value: string): string {
@@ -1640,20 +1491,6 @@ function renderBase(): void {
 
 // ---- タスク（チェックリスト） -------------------------------------------
 
-/** タスクを編集・保存できるのはこの端末のローカル計画のみ。 */
-function tasksEditable(): boolean {
-  const meta = TripPlans.get(CONFIG.tripSlug);
-  return !isReadOnly() && CONFIG.mode === "local" && Boolean(meta && isMemberOf(meta) && canEditPlan(meta));
-}
-
-function canUseWorkspaceView(): boolean {
-  const meta = TripPlans.get(CONFIG.tripSlug);
-  if (!meta) return !isReadOnly();
-  if (isMemberOf(meta)) return true;
-  if (!planHasOwner(meta) && !isReadOnly()) return true;
-  return false;
-}
-
 function syncMobileNavLayout(): void {
   const nav = root.querySelector<HTMLElement>(".tl-mobile-nav");
   if (!nav) return;
@@ -2378,16 +2215,6 @@ function timelineHtmlForDay(idx: number): string {
   }).join("");
 }
 
-/** その日を代表する座標（最初の座標付き予定、無ければ area の地名辞書）。 */
-function dayCoord(day: DayGroup): LatLng | null {
-  for (const it of day.items) {
-    const la = Number(it.lat);
-    const ln = Number(it.lng);
-    if (Number.isFinite(la) && Number.isFinite(ln)) return { lat: la, lng: ln };
-  }
-  return TripPlans.coordsFor(day.area || "");
-}
-
 /** 表示中の各日について、座標と日付から天気を非同期取得してチップを埋める。 */
 function hydrateWeather(fromIdx: number, toIdx: number): void {
   for (let i = fromIdx; i <= toIdx; i++) {
@@ -2593,14 +2420,6 @@ async function renderMapEmbed(activePlaces: ItineraryItem[], _day: DayGroup): Pr
 
 // ---- 同期・初期化 -------------------------------------------------------
 
-function showError(error: unknown): void {
-  const message = error instanceof Error ? error.message : String(error || "");
-  const box = document.createElement("div");
-  box.className = "tl-error";
-  box.textContent = `データ読み込みに失敗しました。サンプル表示に戻します: ${message}`;
-  root.insertAdjacentElement("afterbegin", box);
-}
-
 async function syncData(isInitial: boolean): Promise<void> {
   if (syncInFlight) return syncInFlight;
   const minInterval = Number(CONFIG.minRefreshSeconds || 0) * 1000;
@@ -2625,34 +2444,6 @@ async function syncData(isInitial: boolean): Promise<void> {
   } finally {
     syncInFlight = null;
   }
-}
-
-/**
- * 読み取り専用ビュー判定。
- * 他人の公開計画は plans ホームから `?view=1` 付きで開かれる（明示シグナル）。
- * 加えて、持ち主が居る計画（権限行 or メンバー名がある）の非メンバーなら読み取り専用にする。
- * 持ち主が居ない計画は、名前未設定の本人までロックしないよう planHasOwner でガードする。
- */
-function computeReadOnly(): boolean {
-  // 公開共同編集はログイン済み利用者だけ。正式メンバー権限とは分離する。
-  if (isOpenEditingVisitor()) return false;
-  const forcedView = new URLSearchParams(location.search).get("view") === "1";
-  if (forcedView) return true;
-  const meta = TripPlans.get(CONFIG.tripSlug);
-  if (!meta) return false;
-  if (canEditPlan(meta)) return false;
-  // 公開されている計画は、参加者でなければ閲覧のみ。
-  //
-  // ここは planHasOwner だけで判断していたが、bootstrap は自分が
-  // 関わらない計画の参加者行を返さない。そのため人の公開計画は
-  // 「持ち主が居ない」と見えてしまい、編集できる扱いになっていた
-  // （保存はサーバーが 403 で止めるが、編集ボタンが出て、
-  //   代わりに出すべき「コピーして自分用に作る」が出なかった）。
-  if (isPublished(meta)) return true;
-  // 未公開の計画で参加者も権限行も無いものは、持ち主が居ないと見なして
-  // ロックしない（ログアウト状態で作った下書きを、本人が二度と
-  // 編集できなくなるのを防ぐ）。
-  return planHasOwner(meta);
 }
 
 /**
@@ -3028,29 +2819,8 @@ function setupAiChat(aiSupport: HTMLButtonElement): void {
   });
 }
 
-function computeAccessDenied(): boolean {
-  const meta = TripPlans.get(CONFIG.tripSlug);
-  return Boolean(meta) && !canViewPlan(meta!);
-}
-
 setReadOnly(computeReadOnly());
 setAccessDenied(computeAccessDenied());
-
-function renderAccessDenied(): void {
-  setLoading(false);
-  root.classList.add("is-readonly");
-  root
-    .querySelectorAll<HTMLElement>(".tl-actions, .tl-days, .tl-main, .tl-mobile-nav")
-    .forEach((el) => {
-      el.hidden = true;
-    });
-  const box = document.createElement("div");
-  box.className = "tl-error";
-  box.textContent = "この旅行計画は限定公開です。招待リンクから参加するか、権限のあるアカウントでログインしてください。";
-  const header = root.querySelector(".ah");
-  if (header) header.insertAdjacentElement("afterend", box);
-  else root.insertAdjacentElement("afterbegin", box);
-}
 
 async function init(): Promise<void> {
   registerServiceWorker();
