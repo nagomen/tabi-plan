@@ -4,25 +4,18 @@
 import "../shared/ui.css";
 import * as db from "../shared/db";
 import "./style.css";
-import { initPageTransitions, navigateWithPageTransition } from "../shared/page-transition";
+import { initPageTransitions } from "../shared/page-transition";
 import { icon, type IconName } from "../shared/icons";
-import { escapeHtml, makeScopedQuery } from "../shared/dom";
-import { planDashboardHref } from "../shared/plan-url";
+import { makeScopedQuery } from "../shared/dom";
 import { registerServiceWorker } from "../shared/pwa";
 import * as Backend from "../shared/backend";
-import * as TripPlans from "../shared/plans-store";
-import type { PlanMeta } from "../shared/plans-store";
-import { getUser, setUserName } from "../shared/user-store";
-import { currentUserId } from "../shared/identity";
-import { isMemberOf } from "../shared/membership";
-import { currentAccount, logOut, updateName, isLoggedIn } from "../shared/account-store";
-import { isHistoryPublic, setHistoryPublic } from "../shared/history-privacy";
 import { mountAppHeader } from "../shared/app-header";
-import { bandColor } from "../shared/calendar";
 import { mountCalendar } from "./calendar-view";
 import { mountFriends } from "./friends";
 import { mountLoginMethods } from "./login-methods";
 import { mountPayLinks } from "./pay-links";
+import { mountPlansList } from "./plans-list";
+import { mountProfile } from "./profile";
 
 initPageTransitions();
 
@@ -60,151 +53,26 @@ ICONS.forEach(([sel, name]) => {
   if (el) el.insertAdjacentHTML("afterbegin", icon(name) + (el.tagName === "BUTTON" && el.textContent ? " " : ""));
 });
 
-// ---- プロフィール -------------------------------------------------------
-
-const nameInput = qs<HTMLInputElement>("[data-name]");
-const avatarEl = qs<HTMLElement>("[data-avatar]");
-const noteEl = qs<HTMLElement>("[data-profile-note]");
-const accountEl = qs<HTMLElement>("[data-account]");
-
-function avatarText(name: string): string {
-  return (name.trim().slice(0, 1) || "?").toUpperCase();
-}
-
-function renderProfile(): void {
-  const user = getUser();
-  // LINE で登録した場合、この端末には名前が無い。サーバー側の表示名を引き継ぐ
-  // （以降はここで変えた名前が正。LINE 名で上書きはしない）。
-  if (!user.name.trim()) {
-    const serverName = db.nameOf(currentUserId());
-    if (serverName) {
-      setUserName(serverName);
-      user.name = serverName;
-    }
-  }
-  nameInput.value = user.name;
-  avatarEl.textContent = avatarText(user.name);
-  renderAccount();
-  renderHistorySetting();
-}
-
-// 旅行履歴の公開設定（名前キーで保存）。名前未設定なら無効化。
-const historyToggle = qs<HTMLInputElement>("[data-history-public]");
-const historyNote = qs<HTMLElement>("[data-history-note]");
-function renderHistorySetting(): void {
-  const name = getUser().name.trim();
-  const userId = currentUserId();
-  historyToggle.disabled = !name;
-  historyToggle.checked = name && userId ? isHistoryPublic(userId) : false;
-  historyNote.textContent = name
-    ? "あなたのアイコンから開くプロフィールに、行った場所やカレンダーを掲載します（共有計画内の参加者表示は変わりません）"
-    : "名前を設定すると、旅行履歴プロフィールへの掲載を選べます";
-}
-historyToggle.addEventListener("change", () => {
-  const name = getUser().name.trim();
-  const userId = currentUserId();
-  if (!name || !userId) return;
-  setHistoryPublic(userId, historyToggle.checked);
-});
-
-function renderAccount(): void {
-  const account = currentAccount();
-  if (account) {
-    // LINE で登録した場合はメールを持たない。その場合は表示名で伝える。
-    const who = account.email || account.name || "この端末";
-    accountEl.innerHTML =
-      `${icon("user")}<span>${escapeHtml(who)} でログイン中</span>` +
-      `<a href="plans.html" class="danger" data-logout data-no-transition="true">ログアウト</a>`;
-    const logout = accountEl.querySelector<HTMLAnchorElement>("[data-logout]");
-    logout?.addEventListener("click", (e) => {
-      e.preventDefault();
-      if (isEmbedded) {
-        try {
-          window.parent?.postMessage({ type: "trip-account-logout" }, location.origin);
-        } catch {
-          /* ignore */
-        }
-        return;
-      }
-      logOut();
-      navigateWithPageTransition("plans.html", { replace: true });
-    });
-  } else {
-    accountEl.innerHTML = `<a href="login.html">ログイン / 新規登録</a><span>すると別端末でも同じ旅行計画を使えます</span>`;
-  }
-}
-
-// 名前は自動保存（入力中はデバウンス、確定時は即時）。
-// 表示名は users テーブルの1列なので、変更はそこを更新するだけで済む。
-// 以前は名前が実質的な主キーだったため、計画のメンバー欄・費用の支払者・
-// 候補の票・送金リンクへ配り直す必要があった（shared/rename.ts）。
-let nameTimer = 0;
-let noteTimer = 0;
-
-function commitName(): void {
-  const user = setUserName(nameInput.value);
-  if (isLoggedIn()) updateName(user.name); // ログイン中はアカウントの表示名も更新
-  avatarEl.textContent = avatarText(user.name);
-  renderPlans();
-  renderHistorySetting();
-  noteEl.textContent = user.name ? "保存しました" : "入力すると自動で保存されます";
-  window.clearTimeout(noteTimer);
-  if (user.name) noteTimer = window.setTimeout(() => { noteEl.textContent = ""; }, 2000);
-}
-nameInput.addEventListener("input", () => {
-  window.clearTimeout(nameTimer);
-  nameTimer = window.setTimeout(commitName, 500);
-});
-nameInput.addEventListener("blur", () => { window.clearTimeout(nameTimer); commitName(); });
-nameInput.addEventListener("keydown", (e) => {
-  if (e.key === "Enter") { window.clearTimeout(nameTimer); commitName(); nameInput.blur(); }
-});
-
 // ---- 計画リスト ---------------------------------------------------------
 
-const planMount = qs<HTMLElement>("[data-plans]");
-const planCount = qs<HTMLElement>("[data-plan-count]");
+const { renderPlans } = mountPlansList({
+  planMount: qs<HTMLElement>("[data-plans]"),
+  planCount: qs<HTMLElement>("[data-plan-count]"),
+});
 
-function planRow(plan: PlanMeta, allSlugs: string[]): string {
-  const meta = [plan.dates, plan.members].filter(Boolean).map(escapeHtml).join(" ・ ");
-  const draft = !TripPlans.isPublished(plan);
-  const href = draft
-    ? `plan-editor.html?plan=${encodeURIComponent(plan.slug)}`
-    : planDashboardHref(plan.slug);
-  const dotColor = draft ? "#b87418" : bandColor(plan.slug, allSlugs);
-  return (
-    `<a class="mp-row${draft ? " is-draft" : ""}" href="${href}">` +
-    `<span class="mp-dot" style="background:${dotColor}"></span>` +
-    `<span class="mp-row-body">` +
-    `<span class="mp-row-name">` +
-    `<span>${escapeHtml(plan.title || "無題の旅行")}</span>` +
-    (draft ? `<span class="mp-draft-badge">${icon("pencilSquare")}作成中</span>` : "") +
-    `</span>` +
-    (meta ? `<span class="mp-row-meta">${meta}</span>` : "") +
-    (draft ? `<span class="mp-row-meta mp-row-meta-draft">保存すると公開計画として扱われます</span>` : "") +
-    `</span>` +
-    `<span class="mp-chev">${icon("chevronRight")}</span>` +
-    `</a>`
-  );
-}
+// ---- プロフィール -------------------------------------------------------
 
-// マイページは「自分が参加している計画のみ」を表示する。
-function renderPlans(): void {
-  const all = TripPlans.list();
-  const allSlugs = all.map((p) => p.slug); // 色は全計画基準で安定させる
-  const userName = getUser().name;
-  const list = all.filter(isMemberOf);
-  const draftCount = list.filter((p) => !TripPlans.isPublished(p)).length;
-  planCount.textContent = list.length ? `${list.length}件${draftCount ? `・作成中${draftCount}件` : ""}` : "";
-
-  if (list.length) {
-    planMount.innerHTML = list.map((p) => planRow(p, allSlugs)).join("");
-    return;
-  }
-  planMount.innerHTML = userName
-    ? `<div class="mp-empty"><b>参加している計画はありません</b><span>計画のメンバーに「${escapeHtml(userName)}」を追加すると表示されます</span></div>`
-    : `<div class="mp-empty"><b>名前を設定してください</b><span>上で名前を入力（またはログイン）すると、参加している計画が表示されます</span></div>`;
-}
+const { renderProfile } = mountProfile(
+  {
+    nameInput: qs<HTMLInputElement>("[data-name]"),
+    avatarEl: qs<HTMLElement>("[data-avatar]"),
+    noteEl: qs<HTMLElement>("[data-profile-note]"),
+    accountEl: qs<HTMLElement>("[data-account]"),
+    historyToggle: qs<HTMLInputElement>("[data-history-public]"),
+    historyNote: qs<HTMLElement>("[data-history-note]"),
+  },
+  { isEmbedded, renderPlans },
+);
 
 // ---- タブ ---------------------------------------------------------------
 
