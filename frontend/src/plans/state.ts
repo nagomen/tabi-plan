@@ -1,5 +1,7 @@
 import type { LocalPlanData } from "../shared/plans-store";
 
+// ---- 補助型 -------------------------------------------------------------
+
 interface AppState {
   filter: string;
   selectedLocation: string;

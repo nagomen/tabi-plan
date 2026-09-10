@@ -8,24 +8,19 @@ import "../shared/ui.css";
 import "./style.css";
 import { initPageTransitions, navigateWithPageTransition } from "../shared/page-transition";
 import "leaflet/dist/leaflet.css";
-import type { PlanMeta } from "../shared/plans-store";
-import { escapeHtml, errorMessage } from "../shared/dom";
-import { planDashboardHref } from "../shared/plan-url";
+import { errorMessage } from "../shared/dom";
 import { registerServiceWorker } from "../shared/pwa";
-import { rememberInviteReturn } from "../shared/invite-resume";
 import { icon, type IconName } from "../shared/icons";
 import { mountAppHeader } from "../shared/app-header";
-import { decodeInvite } from "../shared/invite";
-import { isIdentified, currentUserId } from "../shared/identity";
 import { showToast } from "./toast";
 import { type RowVariant } from "./plan-card";
 import { rankingCardLimit } from "./rankings";
 import { queueLocationTransition } from "./location-explorer";
 import { render } from "./render";
+import { closeMenus, duplicateToMine, openAuthorPage } from "./plan-actions";
+import { handleJoinLink } from "./invite-join";
 import { qs, hub, filterEl, destinationsEl, locationHeadEl, locationPlansEl } from "./dom";
 import { state, getLastRankingLimit } from "./state";
-
-// ---- 補助型 -------------------------------------------------------------
 
 initPageTransitions();
 
@@ -62,62 +57,11 @@ searchToggleEl.addEventListener("click", () => {
   setSearchOpen(!hub.classList.contains("is-search-open"));
 });
 
-function closeMenus(except?: Element | null): void {
-  hub.querySelectorAll<HTMLElement>("[data-menu-panel]").forEach((panel) => {
-    if (panel === except) return;
-    panel.hidden = true;
-    const btn = panel.parentElement?.querySelector<HTMLButtonElement>("[data-menu]");
-    if (btn) btn.setAttribute("aria-expanded", "false");
-  });
-}
-
-/**
- * 計画を自分のローカル計画へ複製する。
- * 公開計画からの複製時は、所有＝メンバーのため自分の名前をメンバーに加え、
- * 「自分の計画」セクションに出るようにする。
- */
-async function duplicateToMine(slug: string, fromPublic: boolean): Promise<void> {
-  if (!currentUserId()) {
-    navigateWithPageTransition("login.html?returnTo=" + encodeURIComponent("plans.html"));
-    return;
-  }
-  // 既にコピーを持っているなら、作り直さずそれを開く。
-  const already = TripPlans.existingCopyOf(slug);
-  if (already) {
-    showToast("すでにコピーがあります。そのコピーを開きます");
-    navigateWithPageTransition("plan-editor.html?plan=" + encodeURIComponent(already.slug));
-    return;
-  }
-  let copy: PlanMeta | null = null;
-  try {
-    copy = await TripPlans.duplicateAndSave(slug);
-  } catch (error) {
-    render();
-    showToast("コピーを保存できませんでした");
-    console.error("[plans] duplicate", error);
-    return;
-  }
-  if (!copy) {
-    render();
-    return;
-  }
-  // 参加者は duplicate() が複製者ひとりに揃えるので、ここでは触らない。
-  render();
-  showToast(fromPublic ? "自分の計画に複製しました。編集画面を開きます" : "計画を複製しました。編集画面を開きます");
-  navigateWithPageTransition("plan-editor.html?plan=" + encodeURIComponent(copy.slug));
-}
-
 document.addEventListener("click", (event) => {
   const target = event.target;
   if (target instanceof Element && target.closest(".plan-tools")) return;
   closeMenus();
 });
-
-function openAuthorPage(link: HTMLElement): void {
-  const href = link.dataset.authorLink;
-  if (!href) return;
-  navigateWithPageTransition(href);
-}
 
 hub.addEventListener("click", (event) => {
   const target = event.target;
@@ -250,111 +194,6 @@ window.addEventListener("resize", () => {
 });
 
 registerServiceWorker();
-
-function chooseInviteMember(inspection: db.InviteInspection): Promise<string | null> {
-  return new Promise((resolve) => {
-    const modal = document.createElement("div");
-    modal.className = "pub-modal";
-    modal.setAttribute("role", "dialog");
-    modal.setAttribute("aria-modal", "true");
-    modal.setAttribute("aria-labelledby", "join-member-title");
-    modal.innerHTML = `
-      <div class="pub-box">
-        <h2 id="join-member-title">旅行メンバーの中で、あなたは誰ですか？</h2>
-        <div class="pub-body">
-          <p>「${escapeHtml(inspection.planTitle || "旅行計画")}」に登録されている名前を選んでください。参加後、その名前はあなたのアカウント名に置き換わります。</p>
-          <div class="join-member-options">
-            ${inspection.memberOptions.map((member) => `
-              <label class="join-member-option">
-                <input type="radio" name="join-member" value="${escapeHtml(member.userId)}">
-                <span>${escapeHtml(member.displayName)}</span>
-              </label>
-            `).join("")}
-          </div>
-          <div class="pub-error" data-join-error></div>
-          <div class="pub-actions">
-            <button type="button" class="secondary" data-join-cancel>キャンセル</button>
-            <button type="button" data-join-next disabled>次へ</button>
-          </div>
-        </div>
-      </div>`;
-    document.body.appendChild(modal);
-    const next = modal.querySelector<HTMLButtonElement>("[data-join-next]");
-    const finish = (value: string | null): void => {
-      modal.remove();
-      resolve(value);
-    };
-    modal.addEventListener("change", () => {
-      if (next) next.disabled = !modal.querySelector<HTMLInputElement>('input[name="join-member"]:checked');
-    });
-    modal.querySelector("[data-join-cancel]")?.addEventListener("click", () => finish(null));
-    next?.addEventListener("click", () => {
-      const selected = modal.querySelector<HTMLInputElement>('input[name="join-member"]:checked')?.value || "";
-      if (selected) finish(selected);
-    });
-    modal.querySelector<HTMLInputElement>('input[name="join-member"]')?.focus();
-  });
-}
-
-// 招待リンク（plans.html#join=<token>）を開いたら、計画を取り込んでダッシュボードへ。
-// 同じ計画（slug 一致）が既にあれば重複作成せず、本文を最新に更新しつつ候補の票はマージする。
-async function handleJoinLink(): Promise<boolean> {
-  const m = /(?:^|[#&])join=([^&]+)/.exec(location.hash || "");
-  if (!m) return false;
-  const payload = await decodeInvite(m[1]);
-  if (!payload) {
-    history.replaceState(null, "", location.pathname + location.search);
-    showToast("招待リンクを読み込めませんでした。", true);
-    return false;
-  }
-  const slug = TripPlans.safeSlug(payload.meta.slug || payload.meta.title || "trip");
-  if (payload.token) {
-    let selectedMemberId = /(?:^|[&#])member=([^&]+)/.exec(location.hash || "")?.[1] || "";
-    try { selectedMemberId = decodeURIComponent(selectedMemberId); } catch { selectedMemberId = ""; }
-    let inspection: db.InviteInspection;
-    try {
-      inspection = await db.inspectInvite(payload.token);
-    } catch (error) {
-      history.replaceState(null, "", location.pathname + location.search);
-      showToast(errorMessage(error) || "この招待リンクは利用できません。", true);
-      return true;
-    }
-    const validSelectedMember = inspection.memberOptions.some((member) => member.userId === selectedMemberId);
-    if (inspection.requiresMemberSelection && !validSelectedMember) {
-      selectedMemberId = await chooseInviteMember(inspection) || "";
-      if (!selectedMemberId) {
-        history.replaceState(null, "", location.pathname + location.search);
-        return false;
-      }
-      history.replaceState(
-        null,
-        "",
-        `${location.pathname}${location.search}#join=${encodeURIComponent(m[1])}&member=${encodeURIComponent(selectedMemberId)}`,
-      );
-    }
-    if (!isIdentified()) {
-      const memberPart = selectedMemberId ? `&member=${encodeURIComponent(selectedMemberId)}` : "";
-      const returnTo = `${location.pathname}${location.search}#join=${encodeURIComponent(m[1])}${memberPart}`;
-      if (!rememberInviteReturn(returnTo)) throw new Error("招待情報をこの端末に保存できませんでした");
-      navigateWithPageTransition("login.html?resumeInvite=1&returnTo=plans.html", { replace: true });
-      return true;
-    }
-    try {
-      const accepted = await db.acceptInvite(payload.token, selectedMemberId);
-      const nextSlug = accepted.planSlug || slug;
-      TripPlans.setActiveSlug(nextSlug);
-      history.replaceState(null, "", location.pathname + location.search);
-      navigateWithPageTransition(planDashboardHref(nextSlug), { replace: true });
-    } catch (error) {
-      history.replaceState(null, "", location.pathname + location.search);
-      showToast(errorMessage(error) || "招待リンクを受け取れませんでした。ログインしてからもう一度開いてください。", true);
-    }
-    return true;
-  }
-  history.replaceState(null, "", location.pathname + location.search);
-  showToast("この招待リンクは旧形式です。計画の所有者に新しいリンクの発行を依頼してください。", true);
-  return true;
-}
 
 // 共有ストア（MySQL）を読み終えてから描画する。
 // 読む前に描くと計画0件に見え、書き込むと実在しない行を作ってしまう。
