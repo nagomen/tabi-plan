@@ -9,7 +9,6 @@ import "./style.css";
 import { initPageTransitions, navigateWithPageTransition } from "../shared/page-transition";
 import "leaflet/dist/leaflet.css";
 import type { PlanMeta } from "../shared/plans-store";
-import { readGlobalTripConfig } from "../shared/config";
 import { escapeHtml, errorMessage } from "../shared/dom";
 import { planDashboardHref } from "../shared/plan-url";
 import { registerServiceWorker } from "../shared/pwa";
@@ -19,32 +18,12 @@ import { mountAppHeader } from "../shared/app-header";
 import { decodeInvite } from "../shared/invite";
 import { isIdentified, currentUserId } from "../shared/identity";
 import { showToast } from "./toast";
-import { sortMinePlans, highlightedMineSlugs } from "./plan-timing";
-import { rowHtml, matchesFilter, type RowVariant } from "./plan-card";
+import { type RowVariant } from "./plan-card";
 import { rankingCardLimit } from "./rankings";
-import { queueLocationTransition, renderDiscover } from "./location-explorer";
-import {
-  qs,
-  hub,
-  gridMine,
-  gridPublic,
-  discoverSectionEl,
-  toolbarEl,
-  mineHeadEl,
-  publicHead,
-  countEl,
-  countMineEl,
-  countPublicEl,
-  filterEl,
-  createMainEl,
-  inviteStripEl,
-  inviteTitleEl,
-  inviteNoteEl,
-  destinationsEl,
-  locationHeadEl,
-  locationPlansEl,
-} from "./dom";
-import { state, planDataCache, getLastRankingLimit } from "./state";
+import { queueLocationTransition } from "./location-explorer";
+import { render } from "./render";
+import { qs, hub, filterEl, destinationsEl, locationHeadEl, locationPlansEl } from "./dom";
+import { state, getLastRankingLimit } from "./state";
 
 // ---- 補助型 -------------------------------------------------------------
 
@@ -82,114 +61,6 @@ searchToggleEl.setAttribute("aria-expanded", "false");
 searchToggleEl.addEventListener("click", () => {
   setSearchOpen(!hub.classList.contains("is-search-open"));
 });
-
-const EMPTY_TRIP_COVERS = [
-  "./images/thumbs/cover_tokyo.webp",
-  "./images/thumbs/cover_newyork.webp",
-  "./images/thumbs/cover_africa.webp",
-  "./images/thumbs/cover_india.webp",
-  "./images/thumbs/cover_arizona.webp",
-];
-
-const emptyTripCover = EMPTY_TRIP_COVERS[Math.floor(Math.random() * EMPTY_TRIP_COVERS.length)];
-
-function renderStart(): void {
-  const invites = db.pendingInvites();
-  createMainEl.innerHTML = icon("plusCircle") + "<span>新しい旅行計画を作る</span>";
-  createMainEl.href = newPlanHref();
-  inviteStripEl.classList.toggle("is-visible", invites.length > 0);
-  if (invites.length) {
-    inviteTitleEl.textContent = "未参加の招待があります";
-    inviteNoteEl.textContent = invites.map((invite) => invite.plan_title).slice(0, 3).join("、");
-  }
-}
-
-function newPlanHref(): string {
-  if (!db.isEnabled() || isIdentified()) return "plan-editor.html";
-  return "login.html?returnTo=" + encodeURIComponent("plan-editor.html");
-}
-
-function render(): void {
-  TripPlans.ensureSeed(readGlobalTripConfig());
-  planDataCache.clear();
-  const activeSlug = TripPlans.getActiveSlug();
-  const filter = state.filter.trim().toLowerCase();
-  // 「自分の計画」は本人が確定していれば出す。
-  // 旧構造はアカウントのログイン有無で出し分けていたが、いまは identity（user_id）が正。
-  const loggedIn = isIdentified();
-
-  const all = TripPlans.list();
-  const mine = loggedIn ? sortMinePlans(TripPlans.listMine().filter((m) => matchesFilter(m, filter))) : [];
-  const others = TripPlans.listPublic().filter((m) => matchesFilter(m, filter));
-  const discoverPlans = all.filter((m) => TripPlans.isPublished(m) && TripPlans.planVisibility(m) === "public" && m.source !== "sample");
-  const mineHighlights = highlightedMineSlugs(mine);
-
-  const mineTotal = TripPlans.listMine().length;
-  if (loggedIn) {
-    inviteStripEl.after(toolbarEl);
-    toolbarEl.after(mineHeadEl);
-    mineHeadEl.after(gridMine);
-    gridMine.after(discoverSectionEl);
-  } else {
-    inviteStripEl.after(discoverSectionEl);
-    discoverSectionEl.after(toolbarEl);
-    toolbarEl.after(mineHeadEl);
-    mineHeadEl.after(gridMine);
-  }
-  mineHeadEl.hidden = !loggedIn;
-  gridMine.hidden = !loggedIn;
-
-  if (countEl) countEl.textContent = mineTotal ? "自分の計画 " + mineTotal + "件" : "計画はまだありません";
-  countMineEl.textContent = mine.length ? mine.length + "件" : "";
-  renderStart();
-  renderDiscover(discoverPlans);
-
-  // --- 自分の計画 ---
-  if (!loggedIn) {
-    gridMine.innerHTML = "";
-    countMineEl.textContent = "";
-  } else if (mine.length) {
-    gridMine.innerHTML = mine.map((meta) => rowHtml(meta, "mine", activeSlug, mineHighlights.get(meta.slug))).join("");
-  } else {
-    gridMine.innerHTML =
-      '<div class="hub-empty">' +
-      (mineTotal
-        ? '<div class="hub-empty-simple"><b>該当する計画がありません</b><span>検索条件を変えてください</span></div>'
-        : '<div class="hub-empty-layout">' +
-          '<span class="hub-empty-tag">' + icon("sparkles") + '<span>FIRST TRIP</span></span>' +
-          '<div class="hub-empty-art" aria-hidden="true">' +
-          '<img src="' + emptyTripCover + '" alt="">' +
-          '<span class="hub-empty-pin start">' + icon("mapPin") + '</span>' +
-          '<span class="hub-empty-pin end">' + icon("flag") + '</span>' +
-          '<span class="hub-empty-route"></span>' +
-          '</div>' +
-          '<div class="hub-empty-copy">' +
-          '<b>最初の計画を作りましょう</b>' +
-          '<span>行き先、日程、メンバーを入れて旅の下書きを始められます</span>' +
-          '</div>' +
-          '<div class="hub-empty-steps">' +
-          '<span>' + icon("mapPin") + '<i>01</i>行き先</span>' +
-          '<span>' + icon("calendarDays") + '<i>02</i>日程</span>' +
-          '<span>' + icon("listBullet") + '<i>03</i>行程</span>' +
-          '</div>' +
-          '<a class="hub-empty-cta" href="' + newPlanHref() + '">' + icon("plusCircle") + '<span>新規計画を作る</span></a>' +
-          '</div>') +
-      "</div>";
-  }
-
-  // --- みんなの公開計画（0件のときはセクションごと隠す） ---
-  if (others.length) {
-    gridPublic.innerHTML = others.map((meta) => rowHtml(meta, "public", activeSlug)).join("");
-    countPublicEl.textContent = others.length + "件";
-    publicHead.hidden = false;
-    gridPublic.hidden = false;
-  } else {
-    gridPublic.innerHTML = "";
-    countPublicEl.textContent = "";
-    publicHead.hidden = true;
-    gridPublic.hidden = true;
-  }
-}
 
 function closeMenus(except?: Element | null): void {
   hub.querySelectorAll<HTMLElement>("[data-menu-panel]").forEach((panel) => {
