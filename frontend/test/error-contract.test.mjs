@@ -27,7 +27,7 @@ test("裏の書き込み失敗と読み込み失敗は共通の帯へ通知さ�
 });
 
 test("計画の409衝突では自動保存を止め、上書きせずに読み込み直しを促す", () => {
-  const editor = read("src/plan-editor/main.ts");
+  const editor = read("src/plan-editor/persist.ts");
   assert.match(editor, /plan_version_conflict/);
   assert.match(editor, /versionConflictHalt/);
   assert.match(editor, /haltOnVersionConflict/);

@@ -26,8 +26,9 @@ test("AIの所要分数を表示文字列へ変換しDB保存時に分へ戻せ�
 
 test("移動手段は独立フィールドで保存・復元される", () => {
   const editor = fs.readFileSync(new URL("src/plan-editor/main.ts", root), "utf8");
+  const planData = fs.readFileSync(new URL("src/plan-editor/plan-data.ts", root), "utf8");
   const store = fs.readFileSync(new URL("src/shared/plans-store.ts", root), "utf8");
-  assert.match(editor, /base\.transport = it\.transport/);
+  assert.match(planData, /base\.transport = it\.transport/);
   assert.match(editor, /transport: String\(row\.transport/);
   assert.match(store, /origin: it\.from_place/);
   assert.match(store, /from_place: \(item\.origin/);

@@ -17,8 +17,8 @@ import "flatpickr/dist/flatpickr.css";
 import Sortable from "sortablejs";
 
 import * as TripPlans from "../shared/plans-store";
-import type { LocalPlanData, PlanVisibility } from "../shared/plans-store";
-import type { ItineraryItem, ItemType, Candidate } from "../shared/types";
+import type { PlanVisibility } from "../shared/plans-store";
+import type { ItineraryItem, Candidate } from "../shared/types";
 import { readGlobalTripConfig } from "../shared/config";
 import { escapeHtml, errorMessage } from "../shared/dom";
 import { parseISO, toISO, weekday, mdOf, mdLabel } from "../shared/date";
@@ -55,11 +55,11 @@ import {
   KINDS, TRANSPORTS, TRANSPORT_ICONS,
   params, isNew, state, model, newItem, datesString, timeOrder, normalizeToISO,
   cityDateDefault, applyCityDateDefaults, num, hasLatLng, autoCoords, clearItemCoords, latLngKeys,
-  findItem, inclusiveDateCount, nowHM, UNTITLED, hasContent, worthSaving, normalizeKind,
+  findItem, inclusiveDateCount, worthSaving, normalizeKind,
   stayCovering, cityForDate,
 } from "./editor-state";
 import {
-  root, qs, daysEl, statusEl, titleEcho, mapHeaderBtn, warnEl, dayCountEl, savebarNoteEl, stepReasonEl,
+  root, qs, daysEl, statusEl, titleEcho, mapHeaderBtn, warnEl, dayCountEl, savebarNoteEl,
   citiesEl, cityInput, cityOptions, mapEl, mapHintEl, rangeEl, rangeTrigger, rangeLabel, dayStripEl, tripSummaryEl,
   aiArea, aiNote, aiRun, aiRunLabel, aiRunIcon, aiBar, aiStatus, aiError, aiErrorTitle, aiErrorMessage,
   aiErrorAction, aiErrorReference, aiIntro, aiDialog, aiThread, aiCandidatesStage, aiPreferencesStage, aiDoneStage,
@@ -72,6 +72,9 @@ import {
   toast, watchComposition, isComposingKey,
 } from "./editor-dom";
 import { setMapHandlers, ensureMap, showCandidates, clearCandidates, refreshMap, scheduleMapRefresh, setMapCollapsed, bindMapResizeGrip } from "./map";
+import { stepCompletion, updateSteps, setViewStep } from "./steps";
+import { buildData, contentFingerprint } from "./plan-data";
+import { setPersistHooks, setLastSavedContentFingerprint, markDirty, persist } from "./persist";
 
 initPageTransitions();
 
@@ -386,10 +389,6 @@ function conciseGeoLabel(label: string): string {
   return String(label || "").split(" / ")[0]?.trim() || String(label || "").trim();
 }
 
-let lastSavedContentFingerprint = "";
-let persistRunning: Promise<boolean> | null = null;
-let persistRequested = false;
-let persistTimer = 0;
 /**
  * 都市検索の状態メッセージ。
  *
@@ -402,152 +401,6 @@ function showCityGeoMessage(target: HTMLElement, text: string, kind?: "warn"): v
     '<p class="pe-geo-msg' + (kind === "warn" ? " is-warn" : "") + '">' + escapeHtml(text) + "</p>";
 }
 
-function markDirty(): void {
-  if (state.editorLocked) return;
-  state.dirty = true;
-  state.editRevision += 1;
-  statusEl.textContent = model.title.trim() || hasContent()
-    ? "編集中…"
-    : "旅行名か行程を入れると自動保存されます";
-  statusEl.className = "is-dirty";
-  window.clearTimeout(persistTimer);
-  persistTimer = window.setTimeout(() => { void persist(); }, 900);
-  updateSteps();
-}
-
-
-
-
-function contentFingerprint(data: LocalPlanData): string {
-  return JSON.stringify({
-    itinerary: data.itinerary || [],
-    cities: data.cities || [],
-    links: data.links || [],
-    checklist: data.checklist || [],
-    candidates: data.candidates || [],
-  });
-}
-
-/**
- * 1回分の保存処理。旅行名・メモなどメタ情報だけの変更では本文を全置換しない。
- * 行程等が変わった時だけ content API を使う。
- */
-// 別の端末が先に保存していた（409）ときは、こちらの自動保存で相手の変更を
-// 上書きしないよう、読み込み直すまで保存を止める。
-let versionConflictHalt = false;
-
-function haltOnVersionConflict(error: db.ApiRequestError): void {
-  versionConflictHalt = true;
-  state.dirty = true;
-  statusEl.textContent = "保存を一時停止しました";
-  statusEl.className = "is-dirty";
-  savebarNoteEl.textContent = "計画が別の端末で更新されています。相手の変更を上書きしないよう保存を止めました。";
-  const link = document.createElement("a");
-  link.href = location.href;
-  link.textContent = "読み込み直す";
-  savebarNoteEl.append(" ", link);
-  console.warn("[plan-editor] version conflict", error.message);
-}
-
-async function performPersist(explicit = false, slugRetry = 0): Promise<boolean> {
-  if (state.editorLocked) return false;
-  if (versionConflictHalt) {
-    if (explicit) {
-      statusEl.textContent = "別の端末の更新があるため保存できません。読み込み直してください";
-      statusEl.className = "is-dirty";
-    }
-    return false;
-  }
-  if (!worthSaving()) {
-    if (explicit) {
-      statusEl.textContent = "旅行名または旅行内容を入力してください";
-      statusEl.className = "is-dirty";
-    }
-    return false;
-  }
-  const revision = state.editRevision;
-  const mutationCheckpoint = db.mutationCheckpoint();
-  if (!state.slug) {
-    state.slug = TripPlans.uniqueSlug(model.title.trim() || UNTITLED);
-    model.slug = state.slug;
-    try { history.replaceState(null, "", "plan-editor.html?plan=" + encodeURIComponent(state.slug)); } catch { /* ignore */ }
-  }
-  const data = buildData();
-  const nextContentFingerprint = contentFingerprint(data);
-  const contentChanged = nextContentFingerprint !== lastSavedContentFingerprint;
-  const existing = TripPlans.get(state.slug);
-  const saved = contentChanged
-    ? TripPlans.saveLocalPlan(state.slug, data, model.memberIds)
-    : TripPlans.upsert({
-      slug: state.slug,
-      title: model.title.trim() || UNTITLED,
-      dates: datesString(),
-      members: model.members,
-      memberIds: model.memberIds,
-      note: model.note,
-      cover: model.cover,
-      ...(!existing ? { source: "local" as const, published: false } : {}),
-    });
-  if (!saved) {
-    state.dirty = true;
-    statusEl.textContent = "ログインしてから保存してください";
-    statusEl.className = "is-dirty";
-    return false;
-  }
-  TripPlans.setActiveSlug(state.slug);
-  try {
-    await db.flushMutations(mutationCheckpoint);
-    await persistPendingMembers();
-    if (contentChanged) lastSavedContentFingerprint = nextContentFingerprint;
-    if (revision !== state.editRevision) return true;
-    state.dirty = false;
-    statusEl.textContent = explicit
-      ? `下書きを保存しました ${nowHM()}`
-      : model.title.trim()
-        ? `自動保存しました ${nowHM()}`
-      : `下書きを保存しました ${nowHM()}（旅行名は未入力）`;
-    statusEl.className = "is-ok";
-    savebarNoteEl.textContent = "";
-    return true;
-  } catch (error) {
-    // bootstrapには他人の非公開slugが含まれない。旧方式で採番済みのタブや
-    // 極めて稀な乱数衝突は、入力内容を保ったまま別slugで作り直す。
-    if (slugRetry < 2 && error instanceof db.ApiRequestError && error.code === "ER_DUP_ENTRY" && !TripPlans.get(state.slug)) {
-      state.slug = TripPlans.uniqueSlug(model.title.trim() || UNTITLED);
-      model.slug = state.slug;
-      try { history.replaceState(null, "", "plan-editor.html?plan=" + encodeURIComponent(state.slug)); } catch { /* ignore */ }
-      return performPersist(explicit, slugRetry + 1);
-    }
-    if (error instanceof db.ApiRequestError &&
-        (error.code === "plan_version_conflict" || (error.status === 409 && /別の端末で更新/.test(error.message)))) {
-      haltOnVersionConflict(error);
-      return false;
-    }
-    state.dirty = true;
-    statusEl.textContent = "保存できませんでした";
-    statusEl.className = "is-dirty";
-    savebarNoteEl.textContent = errorMessage(error);
-    return false;
-  }
-}
-
-// 自動保存。連続入力中の保存要求は同時実行せず、最新状態を最後にもう一度保存する。
-async function persist(explicit = false): Promise<boolean> {
-  window.clearTimeout(persistTimer);
-  if (persistRunning) {
-    persistRequested = true;
-    const result = await persistRunning;
-    if (explicit && state.dirty) return persist(true);
-    return result;
-  }
-  persistRunning = performPersist(explicit);
-  const result = await persistRunning.finally(() => { persistRunning = null; });
-  if (persistRequested) {
-    persistRequested = false;
-    void persist();
-  }
-  return result;
-}
 
 // ---- レンダリング: 都市（ルート） ---------------------------------------
 
@@ -561,91 +414,6 @@ function dayOptions(selected: string): string {
     .join("");
 }
 
-
-function stepCompletion(): boolean[] {
-  const periodDone = Boolean(model.title.trim()) && model.days.length > 0;
-  const placeDone = model.cities.length > 0;
-  const planDone = model.days.some((d) => d.items.length > 0 || d.stay);
-  return [periodDone, placeDone, planDone];
-}
-
-function stepBlockReason(step: number): string {
-  if (step === 1) {
-    if (!model.title.trim() && !model.days.length) return "旅行名と期間を入れると目的地へ進めます。";
-    if (!model.title.trim()) return "旅行名を入れると目的地へ進めます。";
-    if (!model.days.length) return "期間を選択すると目的地へ進めます。";
-  }
-  if (step === 2 && !model.cities.length) return "訪問する都市・エリアを1つ以上追加すると行程へ進めます。";
-  return "";
-}
-
-function scrollStepIntoView(): void {
-  const target = document.querySelector<HTMLElement>(".pe-setup");
-  if (!target) return;
-  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  window.setTimeout(() => target.scrollIntoView({ block: "start", behavior: reduce ? "auto" : "smooth" }), 0);
-}
-
-/** 作成ステップ（期間→目的地→行程）を実状態に連動させ、スマホでは該当パネルだけ表示。 */
-function updateSteps(): void {
-  const done = stepCompletion();
-  if (state.viewStep === 0) {
-    const natural = done.findIndex((d) => !d);
-    state.viewStep = natural < 0 ? done.length : natural + 1;
-  }
-  const pe = document.getElementById("editor");
-  if (pe) pe.dataset.step = String(state.viewStep);
-  if (root) {
-    // 期間だけの段では地図に出すものが無いので畳んでおく。
-    // 地図のボタンはヘッダーに常設なので、出し入れの制御はしない。
-    if (state.viewStep === 1) root.classList.add("map-collapsed");
-    const collapsed = root.classList.contains("map-collapsed");
-    const headerBtn = root.querySelector<HTMLButtonElement>("[data-map-header]");
-    if (headerBtn) {
-      headerBtn.classList.toggle("is-on", !collapsed);
-      headerBtn.setAttribute("aria-label", collapsed ? "地図を表示" : "地図を隠す");
-    }
-  }
-  document.querySelectorAll<HTMLElement>(".pe-step").forEach((el, i) => {
-    const isDone = done[i] && i + 1 !== state.viewStep;
-    el.classList.toggle("is-done", isDone);
-    el.classList.toggle("is-current", i + 1 === state.viewStep);
-    const numEl = el.querySelector<HTMLElement>(".pe-step-n");
-    if (numEl) numEl.innerHTML = isDone ? icon("check") : String(i + 1);
-  });
-  const prevBtn = document.querySelector<HTMLButtonElement>("[data-step-prev]");
-  const nextBtn = document.querySelector<HTMLButtonElement>("[data-step-next]");
-  if (prevBtn) {
-    prevBtn.disabled = state.viewStep <= 1;
-    const label = state.viewStep <= 2 ? "戻る" : "目的地へ戻る";
-    prevBtn.innerHTML = icon("chevronLeft") + `<span>${label}</span>`;
-  }
-  if (nextBtn) {
-    nextBtn.hidden = false;
-    nextBtn.disabled = state.saveActionsBusy || (state.viewStep < 3 && !done[state.viewStep - 1]);
-    const label = state.viewStep === 1 ? "目的地へ" : state.viewStep === 2 ? "行程へ" : "公開設定へ";
-    const glyph = state.viewStep === 3 ? "globeAlt" : "chevronRight";
-    nextBtn.innerHTML = `<span>${label}</span>` + icon(glyph);
-  }
-  stepReasonEl.textContent = state.viewStep < 3 && !done[state.viewStep - 1] ? stepBlockReason(state.viewStep) : "";
-}
-
-/** ステップのタップで表示を切り替える（スマホのウィザード送り）。 */
-function setViewStep(step: number): void {
-  const target = Math.min(3, Math.max(1, step));
-  if (target > state.viewStep) {
-    const done = stepCompletion();
-    for (let current = state.viewStep; current < target; current += 1) {
-      if (!done[current - 1]) {
-        stepReasonEl.textContent = stepBlockReason(current);
-        return;
-      }
-    }
-  }
-  state.viewStep = target;
-  updateSteps();
-  scrollStepIntoView();
-}
 
 document.querySelectorAll<HTMLElement>(".pe-step").forEach((el, i) => {
   el.addEventListener("click", () => setViewStep(i + 1));
@@ -2435,6 +2203,8 @@ async function persistPendingMembers(): Promise<void> {
   }
 }
 
+setPersistHooks({ persistPendingMembers });
+
 function renderMembers(): void {
   const account = currentAccount();
   const me = account?.name || "";
@@ -3233,68 +3003,6 @@ function syncBasicInputs(): void {
   updateCalsync();
 }
 
-function coordOut(s: string): number | "" {
-  return s.trim() !== "" && !isNaN(num(s)) ? num(s) : "";
-}
-
-function buildData(): LocalPlanData {
-  const itinerary: ItineraryItem[] = [];
-  model.days.forEach((day, di) => {
-    const dayLabel = `Day ${di + 1}`;
-    const city = cityForDate(day.date);
-    const dayArea = city?.name || day.area || "";
-    const flush = (it: Item): void => {
-      const base: ItineraryItem = {
-        date: day.date, day: dayLabel, area: dayArea || it.place || "",
-        time: it.time || "", type: it.kind as ItemType, typeLabel: KINDS[it.kind].label,
-        title: it.title || (it.kind === "move" ? `${it.from} → ${it.to}` : ""),
-        place: it.place || (it.kind === "move" ? it.to : ""),
-        note: it.note,
-        lat: it.kind === "move" ? "" : coordOut(it.lat),
-        lng: it.kind === "move" ? "" : coordOut(it.lng),
-        mapQuery: it.mapQuery || it.place || "",
-        weather: "",
-      };
-      if (it.kind === "move") {
-        base.origin = it.from; base.destination = it.to;
-        base.transport = it.transport;
-        base.duration = it.duration;
-        const fl = coordOut(it.fromLat), fn = coordOut(it.fromLng);
-        const tl = coordOut(it.toLat), tn = coordOut(it.toLng);
-        if (typeof fl === "number") base.originLat = fl;
-        if (typeof fn === "number") base.originLng = fn;
-        if (typeof tl === "number") base.destinationLat = tl;
-        if (typeof tn === "number") base.destinationLng = tn;
-        if (typeof tl === "number" && typeof tn === "number") { base.lat = tl; base.lng = tn; }
-      }
-      if (it.members.length) base.members = [...it.members];
-      itinerary.push(base);
-    };
-    day.items.forEach(flush);
-    // 連泊は各夜に1行ずつ出す（ダッシュボードで毎晩の宿が地図に出る）
-    const cover = stayCovering(di);
-    if (cover) flush(cover.stay);
-  });
-  return {
-    trip: {
-      title: model.title || "無題の旅行", dates: datesString(),
-      startDate: model.startDate, endDate: model.endDate,
-      members: model.members || "", note: model.note || "", cover: model.cover || "",
-    },
-    itinerary,
-    links: [],
-    checklist: [],
-    cities: model.cities.map((c) => ({
-      name: c.name,
-      fromDate: c.fromDate,
-      toDate: c.toDate,
-      lat: coordOut(c.lat),
-      lng: coordOut(c.lng),
-    })),
-    candidates: model.candidates,
-  };
-}
-
 function loadExisting(): boolean {
   const meta = state.slug ? TripPlans.get(state.slug) : null;
   if (meta && meta.source && meta.source !== "local") {
@@ -3642,7 +3350,7 @@ function bootstrapEditor(): void {
   const editable = loadExisting();
   syncBasicInputs();
   rebuildDays();
-  lastSavedContentFingerprint = contentFingerprint(buildData());
+  setLastSavedContentFingerprint(contentFingerprint(buildData()));
   renderCities();
   renderDays();
   renderCandidates();
