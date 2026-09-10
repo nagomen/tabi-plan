@@ -9,7 +9,7 @@ import "./style.css";
 import { initPageTransitions, navigateWithPageTransition } from "../shared/page-transition";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import type { LocalPlanData, PlanMeta, PlanSource } from "../shared/plans-store";
+import type { LocalPlanData, PlanMeta } from "../shared/plans-store";
 import { readGlobalTripConfig } from "../shared/config";
 import { escapeHtml, errorMessage } from "../shared/dom";
 import { mdLabel, updatedTimestamp } from "../shared/date";
@@ -20,12 +20,14 @@ import { rememberInviteReturn } from "../shared/invite-resume";
 import { icon, type IconName } from "../shared/icons";
 import { mountAppHeader } from "../shared/app-header";
 import { getViews } from "../shared/views-store";
-import { planCoverThumbnail } from "../shared/cover";
-import { splitNames } from "../shared/friend-store";
 import { decodeInvite } from "../shared/invite";
 import { isIdentified, currentUserId } from "../shared/identity";
-import { canEditPlan, ownerNameOf, roleLabel, roleOf } from "../shared/membership";
+import { canEditPlan } from "../shared/membership";
 import { addBaseLayer } from "../shared/map-tiles";
+import { showToast } from "./toast";
+import { sortMinePlans, highlightedMineSlugs } from "./plan-timing";
+import { locationLabel, plansForLocation, destinationRows } from "./plan-locations";
+import { planHref, emptyList, rowHtml, matchesFilter, type RowVariant } from "./plan-card";
 import {
   qs,
   hub,
@@ -63,19 +65,7 @@ import { state, planDataCache, getLastRankingLimit, setLastRankingLimit } from "
 
 initPageTransitions();
 
-type PlanTiming = "current" | "upcoming" | "past" | "undated";
 type LocationTransition = "forward" | "back" | "swap";
-
-interface LocationEntry {
-  name: string;
-  coords?: L.LatLngTuple;
-}
-
-interface DestinationRow {
-  name: string;
-  count: number;
-  coords?: L.LatLngTuple;
-}
 
 // ---- DOM 取得ヘルパー ----------------------------------------------------
 
@@ -113,11 +103,6 @@ searchToggleEl.addEventListener("click", () => {
   setSearchOpen(!hub.classList.contains("is-search-open"));
 });
 
-const SOURCE_LABEL: Record<string, string> = {
-  local: "ローカル",
-  sample: "サンプル",
-};
-
 const EMPTY_TRIP_COVERS = [
   "./images/thumbs/cover_tokyo.webp",
   "./images/thumbs/cover_newyork.webp",
@@ -127,191 +112,6 @@ const EMPTY_TRIP_COVERS = [
 ];
 
 const emptyTripCover = EMPTY_TRIP_COVERS[Math.floor(Math.random() * EMPTY_TRIP_COVERS.length)];
-
-function sourceClass(source: PlanSource | string): string {
-  return source === "local" || source === "sample" ? source : "local";
-}
-
-function planText(meta: PlanMeta): string {
-  return [meta.title, locationLabel(meta), meta.route, meta.dates, meta.members, creatorName(meta)].join(" ").toLowerCase();
-}
-
-function planHref(meta: PlanMeta, view = false): string {
-  return planDashboardHref(meta.slug, { view });
-}
-
-function dayStart(value: Date): number {
-  return new Date(value.getFullYear(), value.getMonth(), value.getDate()).getTime();
-}
-
-function parseLooseDate(token: string, fallbackYear?: number): Date | null {
-  const match = token.match(/(?:(\d{4})[\/.-])?\s*(\d{1,2})[\/.-](\d{1,2})/);
-  if (!match) return null;
-  const year = match[1] ? Number(match[1]) : fallbackYear;
-  const month = Number(match[2]);
-  const day = Number(match[3]);
-  if (!year || !month || !day) return null;
-  const date = new Date(year, month - 1, day);
-  return Number.isNaN(date.getTime()) ? null : date;
-}
-
-function dateRange(meta: PlanMeta): { start: number; end: number } | null {
-  const raw = String(meta.dates || "");
-  if (!raw.trim()) return null;
-  const parts = raw.split(/\s*(?:-|–|—|〜|~|から|to)\s*/).filter(Boolean);
-  const startDate = parseLooseDate(parts[0] || raw);
-  if (!startDate) return null;
-  const endDate = parseLooseDate(parts[1] || "", startDate.getFullYear()) || startDate;
-  return { start: dayStart(startDate), end: dayStart(endDate) };
-}
-
-function planTiming(meta: PlanMeta, today = dayStart(new Date())): { kind: PlanTiming; distance: number } {
-  const range = dateRange(meta);
-  if (!range) return { kind: "undated", distance: Number.POSITIVE_INFINITY };
-  if (range.start <= today && today <= range.end) return { kind: "current", distance: 0 };
-  if (today < range.start) return { kind: "upcoming", distance: range.start - today };
-  return { kind: "past", distance: today - range.end };
-}
-
-function sortMinePlans(plans: PlanMeta[]): PlanMeta[] {
-  const rank: Record<PlanTiming, number> = { current: 0, upcoming: 1, undated: 2, past: 3 };
-  return [...plans].sort((a, b) => {
-    const ta = planTiming(a);
-    const tb = planTiming(b);
-    if (rank[ta.kind] !== rank[tb.kind]) return rank[ta.kind] - rank[tb.kind];
-    if (ta.distance !== tb.distance) return ta.distance - tb.distance;
-    return updatedTimestamp(b) - updatedTimestamp(a);
-  });
-}
-
-function highlightedMineSlugs(plans: PlanMeta[]): Map<string, PlanTiming> {
-  const result = new Map<string, PlanTiming>();
-  plans.forEach((meta) => {
-    if (planTiming(meta).kind === "current") result.set(meta.slug, "current");
-  });
-  if (!result.size) {
-    const next = plans.find((meta) => planTiming(meta).kind === "upcoming");
-    if (next) result.set(next.slug, "upcoming");
-  }
-  return result;
-}
-
-function emptyList(message: string): string {
-  return '<div class="hub-empty" style="border:0;background:#fff;padding:24px 14px;">' + escapeHtml(message) + "</div>";
-}
-
-function routeParts(meta: PlanMeta): string[] {
-  const source = [meta.route, meta.title].filter(Boolean).join("、");
-  return TripPlans.splitRouteLocations(source).slice(0, 8);
-}
-
-function destinationName(meta: PlanMeta): string {
-  const parts = routeParts(meta);
-  if (parts[0]) return parts[0];
-  return meta.title.replace(/旅行|計画|ダッシュボード/g, "").trim() || "行き先未定";
-}
-
-const LOCATION_ALIASES: [RegExp, string][] = [
-  [/羽田|成田|東京駅|品川|新宿|マンハッタン|リバティ島/i, "東京"],
-  [/関西国際空港|伊丹|新大阪/i, "大阪"],
-  [/京都駅/i, "京都"],
-  [/博多/i, "福岡"],
-  [/ホノルル/i, "ハワイ"],
-  [/london\s*hotel/i, "ロンドン"],
-  [/ベルリン|ドイツ/i, "ドイツ"],
-  [/バルセロナ|マドリード/i, "スペイン"],
-  [/デリー/i, "インド"],
-  [/ウランバートル/i, "モンゴル"],
-  [/台北/i, "台湾"],
-];
-
-function displayLocationName(name: string): string {
-  const raw = String(name || "").trim();
-  const hit = LOCATION_ALIASES.find(([pattern]) => pattern.test(raw));
-  if (hit) return hit[1];
-  return raw
-    .replace(/国際?空港|空港|駅|ホテル|hotel/gi, "")
-    .replace(/\s+/g, " ")
-    .trim() || raw;
-}
-
-function numeric(value: number | string | undefined): number | null {
-  if (value === undefined || value === "") return null;
-  const n = Number(value);
-  return Number.isFinite(n) ? n : null;
-}
-
-function dataForPlan(meta: PlanMeta): LocalPlanData | null {
-  if (!planDataCache.has(meta.slug)) {
-    planDataCache.set(meta.slug, TripPlans.getData(meta.slug));
-  }
-  return planDataCache.get(meta.slug) || null;
-}
-
-function uniqueLocationEntries(entries: LocationEntry[]): LocationEntry[] {
-  const byName = new Map<string, LocationEntry>();
-  entries.forEach((entry) => {
-    const name = displayLocationName(entry.name);
-    if (!name) return;
-    const existing = byName.get(name);
-    if (!existing || (!existing.coords && entry.coords)) byName.set(name, { name, coords: entry.coords });
-  });
-  return [...byName.values()];
-}
-
-function locationEntries(meta: PlanMeta): LocationEntry[] {
-  const data = dataForPlan(meta);
-  const entries: LocationEntry[] = (data?.cities || [])
-    .map((city) => {
-      const lat = numeric(city.lat);
-      const lng = numeric(city.lng);
-      return {
-        name: city.name || "",
-        coords: lat !== null && lng !== null ? [lat, lng] as L.LatLngTuple : undefined,
-      };
-    });
-
-  entries.push(...(data?.itinerary || []).map((item) => ({ name: item.area || "" })));
-  entries.push(...routeParts(meta).map((name) => ({ name })));
-
-  const unique = uniqueLocationEntries(entries);
-  return unique.length ? unique : uniqueLocationEntries([{ name: destinationName(meta) }]);
-}
-
-function locationNames(meta: PlanMeta): string[] {
-  return locationEntries(meta).map((entry) => entry.name);
-}
-
-function locationLabel(meta: PlanMeta): string {
-  return locationNames(meta).join("、") || meta.route || destinationName(meta);
-}
-
-function compactLocationLabel(meta: PlanMeta, max = 3): string {
-  const names = locationNames(meta).slice(0, max);
-  return names.join("、") || meta.route || destinationName(meta);
-}
-
-function creatorName(meta: PlanMeta): string {
-  return ownerNameOf(meta) || splitNames(meta.members)[0] || "作成者不明";
-}
-
-function personHref(name: string, userId = ""): string {
-  return "person.html?name=" + encodeURIComponent(name) + (userId ? "&user=" + encodeURIComponent(userId) : "");
-}
-
-function creatorLinkHtml(meta: PlanMeta, className: string): string {
-  const name = creatorName(meta);
-  const ownerId = db.planBySlug(meta.slug)?.owner_user_id || "";
-  const isUnknown = name === "作成者不明";
-  const linkAttrs = isUnknown
-    ? ""
-    : ' role="link" tabindex="0" data-author-link="' + escapeHtml(personHref(name, ownerId)) + '" aria-label="' + escapeHtml(name + "の人物ページを開く") + '"';
-  return (
-    '<span class="' + className + (isUnknown ? " is-unknown" : "") + '"' + linkAttrs + ">" +
-    icon("user") +
-    "<span>" + escapeHtml(name) + "</span></span>"
-  );
-}
 
 function rankingCardLimit(): number {
   const width = Math.max(
@@ -344,27 +144,6 @@ function renderRankings(plans: PlanMeta[]): void {
   newCountEl.textContent = latest.length ? latest.length + "件" : "";
   const totalViews = plans.reduce((sum, meta) => sum + getViews(meta.slug), 0);
   viewsTotalEl.textContent = totalViews ? totalViews.toLocaleString("ja-JP") + " views" : "";
-}
-
-function hasLocation(meta: PlanMeta, location: string): boolean {
-  return locationNames(meta).includes(location);
-}
-
-function plansForLocation(plans: PlanMeta[], location: string): PlanMeta[] {
-  return plans.filter((meta) => hasLocation(meta, location));
-}
-
-function destinationRows(plans: PlanMeta[]): DestinationRow[] {
-  const rows = new Map<string, DestinationRow>();
-  plans.forEach((meta) => {
-    locationEntries(meta).forEach((entry) => {
-      const row = rows.get(entry.name) || { name: entry.name, count: 0 };
-      row.count += 1;
-      if (!row.coords && entry.coords) row.coords = entry.coords;
-      rows.set(entry.name, row);
-    });
-  });
-  return [...rows.values()].sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, "ja"));
 }
 
 function renderLocationCityList(plans: PlanMeta[]): void {
@@ -699,135 +478,6 @@ function renderDiscover(publicPlans: PlanMeta[]): void {
   renderLocationExplorer(publicPlans);
 }
 
-type RowVariant = "mine" | "public";
-
-/** 1枚のカード（計画）の HTML を組み立てる。variant で「自分の計画」/「みんなの公開計画」を出し分ける。 */
-function rowHtml(
-  meta: PlanMeta,
-  variant: RowVariant,
-  activeSlug: string,
-  highlight?: PlanTiming,
-  badge?: string,
-): string {
-  const src = sourceClass(meta.source);
-  const isLocal = meta.source === "local";
-  const isActive = meta.slug === activeSlug;
-  const metaLine = (variant === "public" ? [meta.dates] : [meta.dates, meta.members]).filter(Boolean).map(escapeHtml).join(" · ");
-  const compactLocations = compactLocationLabel(meta);
-  const authorLine =
-    variant === "public"
-      ? creatorLinkHtml(meta, "plan-author")
-      : "";
-  const openHref = planHref(meta, variant === "public" || !canEditPlan(meta));
-  const role = roleOf(meta);
-  const roleBadge = role
-    ? '<span class="role-badge ' + role + '">' + escapeHtml(roleLabel(role)) + "</span>"
-    : "";
-  const highlightBadge =
-    highlight === "current"
-      ? '<span class="plan-highlight-badge current">期間中</span>'
-      : highlight === "upcoming"
-        ? '<span class="plan-highlight-badge upcoming">直近</span>'
-        : "";
-
-  const menuItems =
-    variant === "public"
-      ? '<button class="plan-menu-item" type="button" data-dup>' +
-        icon("documentDuplicate") +
-        "<span>自分の計画に複製</span></button>"
-      : ((role === "owner" || role === "editor") && isLocal
-          ? '<button class="plan-menu-item" type="button" data-edit>' + icon("pencilSquare") + "<span>編集</span></button>"
-          : "") +
-        '<button class="plan-menu-item" type="button" data-dup>' +
-        icon("documentDuplicate") +
-        "<span>複製</span></button>" +
-        (meta.builtIn || role !== "owner"
-          ? ""
-          : '<button class="plan-menu-item danger" type="button" data-del>' + icon("trash") + "<span>削除</span></button>");
-
-  const nameExtra =
-    variant === "public"
-      ? '<span class="plan-tag">公開</span>'
-      : isActive
-        ? '<span class="plan-tag">表示中</span>'
-        : "";
-
-  const coverSrc = planCoverThumbnail(meta);
-  const sourceLabelText = SOURCE_LABEL[src] || src;
-  const views = getViews(meta.slug);
-  const viewsBadge =
-    '<div class="plan-views-badge" title="観覧数" aria-label="観覧数 ' +
-    views +
-    '">' +
-    icon("eye") +
-    "<span>" +
-    views.toLocaleString("ja-JP") +
-    "</span></div>";
-
-  return (
-    '<article class="plan-row' +
-    (variant === "mine" && isActive ? " is-active" : "") +
-    (highlight ? " is-" + highlight : "") +
-    '" data-slug="' +
-    escapeHtml(meta.slug) +
-    '" data-variant="' +
-    variant +
-    '">' +
-    (badge
-      ? '<div class="plan-dot-badge is-rank"><span>' + escapeHtml(badge) + "</span></div>"
-      : '<div class="plan-dot-badge">' +
-    '<span class="plan-dot ' +
-    src +
-    '" title="' +
-    escapeHtml(sourceLabelText) +
-    '" aria-label="' +
-    escapeHtml(sourceLabelText) +
-    '"></span>' +
-    "<span>" +
-    escapeHtml(sourceLabelText) +
-    "</span>" +
-    "</div>") +
-    '<a class="plan-open" href="' +
-    openHref +
-    '" data-open>' +
-    '<div class="plan-cover">' +
-    '<img src="' +
-    escapeHtml(coverSrc) +
-    '" alt="' +
-    escapeHtml(meta.title || "旅行画像") +
-    '" loading="lazy">' +
-    viewsBadge +
-    "</div>" +
-    '<span class="plan-body">' +
-    '<span class="plan-name">' +
-    '<span class="plan-name-text">' +
-    escapeHtml(meta.title || "無題の旅行") +
-    nameExtra +
-    "</span>" +
-    roleBadge +
-    highlightBadge +
-    "</span>" +
-    authorLine +
-    (metaLine ? '<span class="plan-meta">' + metaLine + "</span>" : "") +
-    (compactLocations ? '<span class="plan-route">' + escapeHtml(compactLocations) + "</span>" : "") +
-    "</span>" +
-    "</a>" +
-    '<div class="plan-tools">' +
-    '<button class="plan-menu-btn" type="button" data-menu aria-haspopup="true" aria-expanded="false" aria-label="操作メニュー">' +
-    icon("ellipsisHorizontal") +
-    "</button>" +
-    '<div class="plan-menu" data-menu-panel hidden>' +
-    menuItems +
-    "</div>" +
-    "</div>" +
-    "</article>"
-  );
-}
-
-function matchesFilter(meta: PlanMeta, filter: string): boolean {
-  return !filter || planText(meta).indexOf(filter) >= 0;
-}
-
 function render(): void {
   TripPlans.ensureSeed(readGlobalTripConfig());
   planDataCache.clear();
@@ -1033,20 +683,6 @@ hub.addEventListener("keydown", (event) => {
   event.preventDefault();
   openAuthorPage(authorLink);
 });
-
-function showToast(message: string, isError?: boolean): void {
-  const toast = document.createElement("div");
-  toast.className = "pub-toast" + (isError ? " is-error" : "");
-  const glyph = isError ? icon("exclamationTriangle") : icon("checkCircle");
-  const text = document.createElement("span");
-  text.textContent = message;
-  toast.innerHTML = glyph;
-  toast.appendChild(text);
-  document.body.appendChild(toast);
-  setTimeout(() => {
-    toast.remove();
-  }, 6000);
-}
 
 filterEl.addEventListener("input", (event) => {
   const target = event.target as HTMLInputElement | null;
