@@ -9,7 +9,6 @@ import { initPageTransitions } from "../shared/page-transition";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { escapeHtml } from "../shared/dom";
-import { updatedTimestamp } from "../shared/date";
 import { registerServiceWorker } from "../shared/pwa";
 import { mountAppHeader } from "../shared/app-header";
 import { icon, type IconName } from "../shared/icons";
@@ -19,17 +18,13 @@ import { currentAccount } from "../shared/account-store";
 import { isHistoryPublic } from "../shared/history-privacy";
 import { personTrips, historyPins, distinctPlaceCount, countriesFromPins, type PersonTrip, type HistoryPin } from "../shared/travel-history";
 import { countryOf } from "../shared/country";
-import * as TripPlans from "../shared/plans-store";
-import type { PlanMeta } from "../shared/plans-store";
-import { planCoverThumbnail } from "../shared/cover";
-import { getViews } from "../shared/views-store";
-import { canEditPlan, canViewPlan, ownerNameOf } from "../shared/membership";
 import { addBaseLayer } from "../shared/map-tiles";
 import { monthCalendarHtml, bandColor, stepMonth } from "../shared/calendar";
 import { personName, personId, $, today } from "./context";
 import { fmtShort, fmtFull } from "./date-format";
 import { tripDays, tripFlags, tripYear, tripDateRange } from "./trip-summary";
 import { renderFriendAction, handleFriendActionClick } from "./friend-action";
+import { renderCreatedPlans } from "./created-plans";
 
 // ---- 対象の名前 ---------------------------------------------------------
 
@@ -125,71 +120,6 @@ function renderHistory(): void {
   renderCreatedPlans();
   renderTrips(trips);
   renderCalendar(trips, allSlugs);
-}
-
-function samePerson(a: string | undefined, b: string): boolean {
-  return String(a || "").trim().toLowerCase() === b.trim().toLowerCase();
-}
-
-function planCreatorName(meta: PlanMeta): string {
-  return ownerNameOf(meta);
-}
-
-function isCreatedByPerson(meta: PlanMeta): boolean {
-  return samePerson(planCreatorName(meta), personName);
-}
-
-function canShowCreatedPlan(meta: PlanMeta): boolean {
-  if (!TripPlans.isPublished(meta) && !canEditPlan(meta)) return false;
-  return canViewPlan(meta);
-}
-
-function createdPlanLocations(meta: PlanMeta, max = 3): string {
-  const data = TripPlans.getData(meta.slug);
-  const names = [
-    ...(data?.cities || []).map((city) => city.name || ""),
-    ...(data?.itinerary || []).map((item) => item.area || item.place || ""),
-    meta.route || "",
-  ].flatMap((raw) => TripPlans.splitRouteLocations(raw));
-  return Array.from(new Set(names)).slice(0, max).join("、");
-}
-
-function renderCreatedPlans(): void {
-  const mount = $("[data-created-plans]");
-  const panel = $("[data-created-panel]");
-  const countEl = $("[data-created-count]");
-  if (!mount) return;
-
-  const plans = TripPlans.list()
-    .filter((meta) => isCreatedByPerson(meta) && canShowCreatedPlan(meta))
-    .sort((a, b) => updatedTimestamp(b) - updatedTimestamp(a));
-
-  if (countEl) countEl.textContent = plans.length ? `${plans.length}件` : "";
-  if (!plans.length) {
-    if (panel) panel.hidden = true;
-    mount.innerHTML = "";
-    return;
-  }
-  if (panel) panel.hidden = false;
-
-  mount.innerHTML = plans.map((meta) => {
-    const locations = createdPlanLocations(meta);
-    const views = getViews(meta.slug);
-    const href = `index.html?plan=${encodeURIComponent(meta.slug)}${canEditPlan(meta) ? "" : "&view=1"}`;
-    const cover = planCoverThumbnail(meta);
-    return (
-      `<a class="pv-created-card" href="${escapeHtml(href)}">` +
-      `<span class="pv-created-cover"><img src="${escapeHtml(cover)}" alt="${escapeHtml(meta.title || "旅行画像")}" loading="lazy"><span class="pv-created-views">${icon("eye")}<span>${views.toLocaleString("ja-JP")}</span></span></span>` +
-      `<span class="pv-created-body">` +
-      `<span class="pv-created-title">${escapeHtml(meta.title || "無題の旅行")}</span>` +
-      `<span class="pv-created-meta">` +
-      (meta.dates ? `<span>${icon("calendarDays")}${escapeHtml(meta.dates)}</span>` : "") +
-      (locations ? `<span>${icon("mapPin")}${escapeHtml(locations)}</span>` : "") +
-      `</span>` +
-      `</span>` +
-      `</a>`
-    );
-  }).join("");
 }
 
 // ---- 地図（行った場所。期間フィルター付き） ----------------------------
