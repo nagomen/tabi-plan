@@ -19,7 +19,6 @@ import Sortable from "sortablejs";
 import * as TripPlans from "../shared/plans-store";
 import type { PlanVisibility } from "../shared/plans-store";
 import type { ItineraryItem, Candidate } from "../shared/types";
-import { readGlobalTripConfig } from "../shared/config";
 import { escapeHtml, errorMessage } from "../shared/dom";
 import { parseISO, toISO, weekday, mdOf, mdLabel } from "../shared/date";
 import { icon, type IconName } from "../shared/icons";
@@ -42,19 +41,16 @@ import { resolveAiMapGeocodeJobs, type AiMapGeocodeSummary } from "./ai-map-geoc
 import { buildExternalAiCreatePrompt, copyExternalAiPrompt, openExternalAi, parseExternalAiCreateJson } from "../shared/external-ai";
 import {
   automaticGeocodingAvailable,
-  cityAliasesFor,
   geocodingAttribution,
   reverseCityName,
   reverseLocation,
-  searchLocations,
-  type GeoContext,
   type GeoResult,
 } from "../shared/geocoding";
 import {
   type ItemKind, type ItemStrKey, type Item, type Day, type City, type GeoTarget,
   KINDS, TRANSPORTS, TRANSPORT_ICONS,
   params, isNew, state, model, newItem, datesString, timeOrder, normalizeToISO,
-  cityDateDefault, applyCityDateDefaults, num, hasLatLng, autoCoords, clearItemCoords, latLngKeys,
+  cityDateDefault, applyCityDateDefaults, hasLatLng, autoCoords, clearItemCoords, latLngKeys,
   findItem, inclusiveDateCount, worthSaving, normalizeKind,
   stayCovering, cityForDate,
 } from "./editor-state";
@@ -75,128 +71,10 @@ import { setMapHandlers, ensureMap, showCandidates, clearCandidates, refreshMap,
 import { stepCompletion, updateSteps, setViewStep } from "./steps";
 import { buildData, contentFingerprint } from "./plan-data";
 import { setPersistHooks, setLastSavedContentFingerprint, markDirty, persist } from "./persist";
+import { countryFromText, maybeDefaultMoveTransport, syncTransportSelect } from "./move-transport";
+import { MAPBOX_TOKEN, geocodeSearch, geocodeContextForDay, geoQueryForItem, conciseGeoLabel, geoAppliedMessage, formatLatLng } from "./geo-search";
 
 initPageTransitions();
-
-
-function countryFromText(text: string | undefined): CountryCode | null {
-  const raw = String(text || "").trim();
-  if (!raw) return null;
-  return COUNTRY_TEXT_HINTS.find(([pattern]) => pattern.test(raw))?.[1] || null;
-}
-
-function countryFromCoords(latValue: string, lngValue: string): CountryCode | null {
-  if (!hasLatLng(latValue, lngValue)) return null;
-  const lat = num(latValue);
-  const lng = num(lngValue);
-  const inBox = (minLat: number, maxLat: number, minLng: number, maxLng: number): boolean =>
-    lat >= minLat && lat <= maxLat && lng >= minLng && lng <= maxLng;
-  if (inBox(24, 46, 122, 154)) return "JP";
-  if (inBox(5, 21, 97, 106)) return "TH";
-  if (inBox(24, 50, -125, -66) || inBox(18, 23, -161, -154)) return "US";
-  if (inBox(41, 52, -5.5, 10)) return "FR";
-  if (inBox(49, 61, -8.5, 2.5)) return "GB";
-  if (inBox(33, 39, 124, 132)) return "KR";
-  // 台湾本島に加えて金門・馬祖（東経118度台）も台湾の検索文脈に含める。
-  if (inBox(21, 27, 118, 123)) return "TW";
-  if (inBox(22.1, 22.6, 113.8, 114.4)) return "HK";
-  if (inBox(18, 54, 73, 135)) return "CN";
-  if (inBox(1.1, 1.6, 103.5, 104.1)) return "SG";
-  if (inBox(8, 24, 102, 110)) return "VN";
-  if (inBox(0, 8, 99, 120)) return "MY";
-  if (inBox(-11, 6, 95, 142)) return "ID";
-  if (inBox(4, 22, 116, 127)) return "PH";
-  if (inBox(6, 36, 68, 98)) return "IN";
-  if (inBox(41, 53, 87, 120)) return "MN";
-  if (inBox(47, 55, 5, 16)) return "DE";
-  if (inBox(35, 44, -10, 5)) return "ES";
-  if (inBox(36, 47, 6, 19)) return "IT";
-  if (inBox(-44, -10, 112, 154)) return "AU";
-  return null;
-}
-
-function countryForCity(city: City | null): CountryCode | null {
-  if (!city) return null;
-  return countryFromText(city.name) || countryFromCoords(city.lat, city.lng);
-}
-
-function nextDifferentCityCountry(dayIndex: number, current: CountryCode | null): CountryCode | null {
-  if (!current) return null;
-  for (let i = dayIndex + 1; i < model.days.length; i++) {
-    const nextCountry = countryForCity(cityForDate(model.days[i].date));
-    if (nextCountry && nextCountry !== current) return nextCountry;
-    if (nextCountry === current) return null;
-  }
-  return null;
-}
-
-function moveEndpointCountry(item: Item, target: "from" | "to", label = ""): CountryCode | null {
-  if (target === "from") {
-    return countryFromText(label) || countryFromText(item.from) || countryFromCoords(item.fromLat, item.fromLng);
-  }
-  return countryFromText(label) || countryFromText(item.to) || countryFromCoords(item.toLat, item.toLng);
-}
-
-function shouldDefaultMoveToAirplane(
-  item: Item,
-  day: Day,
-  resultLabel = "",
-  labelTarget?: "from" | "to",
-  useDayTransition = false,
-): boolean {
-  if (item.kind !== "move" || item.transport.trim()) return false;
-  const fromCountry = moveEndpointCountry(item, "from", labelTarget === "from" ? resultLabel : "");
-  const toCountry = moveEndpointCountry(item, "to", labelTarget === "to" ? resultLabel : "");
-  if (fromCountry && toCountry) return fromCountry !== toCountry;
-  if (!useDayTransition) return false;
-  const dayIndex = model.days.indexOf(day);
-  const currentCountry = countryForCity(cityForDate(day.date));
-  return Boolean(currentCountry && nextDifferentCityCountry(dayIndex, currentCountry));
-}
-
-function maybeDefaultMoveTransport(
-  item: Item,
-  day: Day,
-  resultLabel = "",
-  labelTarget?: "from" | "to",
-  useDayTransition = false,
-): void {
-  if (shouldDefaultMoveToAirplane(item, day, resultLabel, labelTarget, useDayTransition)) item.transport = "飛行機";
-}
-
-function syncTransportSelect(item: Item): void {
-  if (item.kind !== "move") return;
-  const select = daysEl.querySelector<HTMLSelectElement>(`select[data-field="transport"][data-item="${item.id}"]`);
-  if (select) select.value = item.transport;
-}
-
-
-type CountryCode =
-  | "JP" | "TH" | "US" | "FR" | "GB" | "KR" | "TW" | "CN" | "HK" | "SG"
-  | "VN" | "MY" | "ID" | "PH" | "IN" | "MN" | "DE" | "ES" | "IT" | "AU";
-
-const COUNTRY_TEXT_HINTS: [RegExp, CountryCode][] = [
-  [/日本|japan|東京|大阪|京都|長野|札幌|福岡|沖縄|那覇|羽田|成田|関空|新千歳|新宿|品川|横浜|名古屋|仙台|盛岡|青森|八戸/i, "JP"],
-  [/タイ王国|タイ|thailand|bangkok|バンコク|suvarnabhumi|スワンナプーム/i, "TH"],
-  [/アメリカ|米国|united states|usa|u\.s\.a|new york|ニューヨーク|manhattan|マンハッタン|los angeles|ロサンゼルス|san francisco|サンフランシスコ|hawaii|ハワイ|honolulu|ホノルル/i, "US"],
-  [/フランス|france|paris|パリ/i, "FR"],
-  [/イギリス|英国|united kingdom|uk|london|ロンドン/i, "GB"],
-  [/韓国|south korea|korea|seoul|ソウル/i, "KR"],
-  [/台湾|taiwan|taipei|台北|桃園|taoyuan|金門|kinmen|馬祖|matsu/i, "TW"],
-  [/香港|hong kong/i, "HK"],
-  [/中国|china|shanghai|上海|beijing|北京/i, "CN"],
-  [/シンガポール|singapore/i, "SG"],
-  [/ベトナム|vietnam|hanoi|ハノイ|ho chi minh|ホーチミン/i, "VN"],
-  [/マレーシア|malaysia|kuala lumpur|クアラルンプール/i, "MY"],
-  [/インドネシア|indonesia|bali|バリ|jakarta|ジャカルタ/i, "ID"],
-  [/フィリピン|philippines|manila|マニラ/i, "PH"],
-  [/インド|india|delhi|デリー/i, "IN"],
-  [/モンゴル|mongolia|ulaanbaatar|ウランバートル/i, "MN"],
-  [/ドイツ|germany|berlin|ベルリン/i, "DE"],
-  [/スペイン|spain|madrid|マドリード|barcelona|バルセロナ/i, "ES"],
-  [/イタリア|italy|rome|ローマ/i, "IT"],
-  [/オーストラリア|australia|sydney|シドニー/i, "AU"],
-];
 
 
 // セクション見出しにアイコン
@@ -312,41 +190,6 @@ function rebuildDays(): void {
 }
 
 
-
-const MAPBOX_TOKEN = readGlobalTripConfig().geocoding?.mapboxToken || "";
-
-function geocodeSearch(query: string, context?: GeoContext, automatic = false): Promise<GeoResult[]> {
-  return searchLocations(query, context, { mapboxToken: MAPBOX_TOKEN, automatic });
-}
-
-
-function geocodeContextForDay(day: Day, item?: Item, target?: GeoTarget): GeoContext | undefined {
-  const city = cityForDate(day.date);
-  const cityName = (city?.name || day.area || "").trim();
-  const hasCityCoords = city ? hasLatLng(city.lat, city.lng) : false;
-  const endpointText = target === "from" ? item?.from : target === "to" ? item?.to : item?.place;
-  const endpointCountry = countryFromText(endpointText);
-  const isMoveEndpoint = target === "from" || target === "to";
-  // 国・都市を含む移動地点は旅行中の都市から独立して検索する。
-  // 例: 金門島の日程にある「羽田空港」へ金門島の座標を付けない。
-  if (isMoveEndpoint && endpointCountry) {
-    return { countryCode: endpointCountry, purpose: "move" };
-  }
-  const countryCode = endpointCountry || countryForCity(city);
-  if (!cityName && !hasCityCoords && !countryCode) return undefined;
-  return {
-    cityName,
-    cityAliases: cityAliasesFor(cityName),
-    lat: hasCityCoords ? num(city!.lat) : undefined,
-    lng: hasCityCoords ? num(city!.lng) : undefined,
-    countryCode: countryCode || undefined,
-    purpose: isMoveEndpoint ? "move" : "place",
-    requireNearby: item?.kind === "stay" && target === "place",
-    radiusKm: item?.kind === "stay" ? 60 : 120,
-  };
-}
-
-
 function stayNightLimits(item: Item): { cityMax: number; tripMax: number; cityName: string } {
   const found = findItem(item.id);
   if (!found) {
@@ -376,17 +219,6 @@ function stayNightOptions(item: Item): string {
       return `<option value="${n}"${item.nights === n ? " selected" : ""}>${n}泊${note}</option>`;
     })
     .join("");
-}
-
-function geoQueryForItem(item: Item, target: GeoTarget): string {
-  if (target === "from") return item.from.trim();
-  if (target === "to") return item.to.trim();
-  if (item.kind === "stay") return (item.place || item.mapQuery || item.title).trim();
-  return (item.mapQuery || item.place || item.title).trim();
-}
-
-function conciseGeoLabel(label: string): string {
-  return String(label || "").split(" / ")[0]?.trim() || String(label || "").trim();
 }
 
 /**
@@ -1627,17 +1459,6 @@ function refreshDayHeader(index: number): void {
   if (!article || !day) return;
   const head = article.querySelector(".pe-day-head");
   if (head) head.outerHTML = dayHeader(day, index);
-}
-
-function geoAppliedMessage(label: string): string {
-  const clean = label.trim();
-  return clean
-    ? `設定先: ${clean}。違う場合は再検索、または地図で指定し直してください。`
-    : "設定先: 住所未確認。違う場合は再検索、または地図で指定し直してください。";
-}
-
-function formatLatLng(lat: number, lng: number): string {
-  return `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
 }
 
 async function onMapClick(latlng: L.LatLng): Promise<void> {
