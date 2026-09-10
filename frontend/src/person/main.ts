@@ -14,14 +14,15 @@ import { getUser } from "../shared/user-store";
 import * as Backend from "../shared/backend";
 import { currentAccount } from "../shared/account-store";
 import { isHistoryPublic } from "../shared/history-privacy";
-import { personTrips, historyPins, type PersonTrip } from "../shared/travel-history";
-import { monthCalendarHtml, bandColor, stepMonth } from "../shared/calendar";
-import { personName, personId, $, today } from "./context";
+import { personTrips, historyPins } from "../shared/travel-history";
+import { stepMonth } from "../shared/calendar";
+import { personName, personId, $ } from "./context";
 import { renderFriendAction, handleFriendActionClick } from "./friend-action";
 import { renderCreatedPlans } from "./created-plans";
 import { renderStats } from "./stats";
 import { renderMap } from "./history-map";
 import { renderTrips } from "./trip-list";
+import { view, renderCalendar, drawCalendar } from "./history-calendar";
 
 // ---- 対象の名前 ---------------------------------------------------------
 
@@ -99,46 +100,6 @@ function renderHistory(): void {
 }
 
 // ---- カレンダー（旅行期間の帯） -----------------------------------------
-
-interface Band { plan: PersonTrip["plan"]; start: Date; end: Date; color: string }
-
-const view = { year: today.getFullYear(), month: today.getMonth() };
-let bands: Band[] = [];
-
-function renderCalendar(trips: PersonTrip[], allSlugs: string[]): void {
-  bands = trips
-    .filter((t): t is PersonTrip & { start: Date; end: Date } => Boolean(t.start && t.end))
-    .map((t) => ({ plan: t.plan, start: t.start, end: t.end, color: bandColor(t.plan.slug, allSlugs) }));
-
-  // 直近の旅行がある月を初期表示にする。
-  if (bands.length) {
-    const latest = bands.reduce((a, b) => (b.start.getTime() > a.start.getTime() ? b : a));
-    view.year = latest.start.getFullYear();
-    view.month = latest.start.getMonth();
-  }
-  drawCalendar();
-}
-
-function drawCalendar(): void {
-  const calEl = $("[data-cal]");
-  const titleEl = $("[data-cal-title]");
-  if (titleEl) titleEl.textContent = `${view.year}年${view.month + 1}月`;
-  if (!calEl) return;
-
-  calEl.innerHTML = monthCalendarHtml({
-    year: view.year,
-    month: view.month,
-    today,
-    classPrefix: "pv",
-    bands: bands.map((band) => ({
-      slug: band.plan.slug,
-      title: band.plan.title || "旅行",
-      start: band.start,
-      end: band.end,
-      color: band.color,
-    })),
-  });
-}
 
 $("[data-cal-prev]")?.addEventListener("click", () => { stepMonth(view, -1); drawCalendar(); });
 $("[data-cal-next]")?.addEventListener("click", () => { stepMonth(view, 1); drawCalendar(); });
