@@ -70,9 +70,6 @@ function canViewHistory(): boolean {
 
 friendActionEl?.addEventListener("click", (event) => handleFriendActionClick(friendActionEl, event));
 
-// 実際の描画はファイル末尾の boot() で行う。
-// renderMap/renderCalendar が参照するモジュール変数（allPins, today, view など）が
-// この位置より下で宣言されるため、ここで直接呼ぶと TDZ 参照エラーになる。
 function boot(): void {
   if (!canViewHistory()) {
     if (privateEl) privateEl.hidden = false;
