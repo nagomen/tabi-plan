@@ -11,7 +11,7 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import type { LocalPlanData, PlanMeta, PlanSource } from "../shared/plans-store";
 import { readGlobalTripConfig } from "../shared/config";
-import { escapeHtml, errorMessage, makeScopedQuery } from "../shared/dom";
+import { escapeHtml, errorMessage } from "../shared/dom";
 import { mdLabel, updatedTimestamp } from "../shared/date";
 import { mapsSearchUrl } from "../shared/maps";
 import { planDashboardHref } from "../shared/plan-url";
@@ -26,16 +26,42 @@ import { decodeInvite } from "../shared/invite";
 import { isIdentified, currentUserId } from "../shared/identity";
 import { canEditPlan, ownerNameOf, roleLabel, roleOf } from "../shared/membership";
 import { addBaseLayer } from "../shared/map-tiles";
+import {
+  qs,
+  hub,
+  gridMine,
+  gridPublic,
+  discoverSectionEl,
+  toolbarEl,
+  mineHeadEl,
+  publicHead,
+  countEl,
+  countMineEl,
+  countPublicEl,
+  filterEl,
+  createMainEl,
+  inviteStripEl,
+  inviteTitleEl,
+  inviteNoteEl,
+  rankingNewEl,
+  rankingViewsEl,
+  destinationsEl,
+  locationExplorerEl,
+  locationSideEl,
+  locationHeadEl,
+  locationPlansEl,
+  locationScheduleEl,
+  mapBoardEl,
+  newCountEl,
+  viewsTotalEl,
+  destinationCountEl,
+  mapCountEl,
+} from "./dom";
+import { state, planDataCache, getLastRankingLimit, setLastRankingLimit } from "./state";
 
 // ---- 補助型 -------------------------------------------------------------
 
 initPageTransitions();
-
-interface AppState {
-  filter: string;
-  selectedLocation: string;
-  selectedPlanSlug: string;
-}
 
 type PlanTiming = "current" | "upcoming" | "past" | "undated";
 type LocationTransition = "forward" | "back" | "swap";
@@ -64,41 +90,9 @@ mountAppHeader({
   ],
 });
 
-const { qs } = makeScopedQuery(document);
-
-const hub = qs<HTMLElement>(".hub");
-const gridMine = qs<HTMLElement>("[data-grid-mine]");
-const gridPublic = qs<HTMLElement>("[data-grid-public]");
-const discoverSectionEl = qs<HTMLElement>("[data-discover-section]");
-const toolbarEl = qs<HTMLElement>("[data-hub-toolbar]");
-const mineHeadEl = qs<HTMLElement>("[data-mine-head]");
-const publicHead = qs<HTMLElement>("[data-public-head]");
-const countEl = document.querySelector<HTMLElement>("[data-count]");
-const countMineEl = qs<HTMLElement>("[data-count-mine]");
-const countPublicEl = qs<HTMLElement>("[data-count-public]");
-const filterEl = qs<HTMLInputElement>("[data-filter]");
 const searchToggleEl = qs<HTMLButtonElement>("[data-toggle-search]");
-const createMainEl = qs<HTMLAnchorElement>("[data-create-main]");
-const inviteStripEl = qs<HTMLElement>("[data-invite-strip]");
-const inviteTitleEl = qs<HTMLElement>("[data-invite-title]");
-const inviteNoteEl = qs<HTMLElement>("[data-invite-note]");
-const rankingNewEl = qs<HTMLElement>("[data-ranking-new]");
-const rankingViewsEl = qs<HTMLElement>("[data-ranking-views]");
-const destinationsEl = qs<HTMLElement>("[data-destinations]");
-const locationExplorerEl = qs<HTMLElement>(".location-explorer");
-const locationSideEl = qs<HTMLElement>(".location-side");
-const locationHeadEl = qs<HTMLElement>("[data-location-head]");
-const locationPlansEl = qs<HTMLElement>("[data-location-plans]");
-const locationScheduleEl = qs<HTMLElement>("[data-location-schedule]");
-const mapBoardEl = qs<HTMLElement>("[data-map-board]");
-const newCountEl = qs<HTMLElement>("[data-new-count]");
-const viewsTotalEl = qs<HTMLElement>("[data-views-total]");
-const destinationCountEl = qs<HTMLElement>("[data-destination-count]");
-const mapCountEl = qs<HTMLElement>("[data-map-count]");
-const state: AppState = { filter: "", selectedLocation: "", selectedPlanSlug: "" };
 let pendingLocationTransition: LocationTransition | "" = "";
 let locationTransitionTimer = 0;
-let lastRankingLimit = 0;
 let rankingResizeTimer = 0;
 const locationMapState: { map: L.Map | null; layer: L.LayerGroup | null } = { map: null, layer: null };
 
@@ -247,8 +241,6 @@ function numeric(value: number | string | undefined): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-const planDataCache = new Map<string, LocalPlanData | null>();
-
 function dataForPlan(meta: PlanMeta): LocalPlanData | null {
   if (!planDataCache.has(meta.slug)) {
     planDataCache.set(meta.slug, TripPlans.getData(meta.slug));
@@ -334,7 +326,7 @@ function rankingCardLimit(): number {
 
 function renderRankings(plans: PlanMeta[]): void {
   const limit = rankingCardLimit();
-  lastRankingLimit = limit;
+  setLastRankingLimit(limit);
   const latest = [...plans].sort((a, b) => updatedTimestamp(b) - updatedTimestamp(a)).slice(0, limit);
   const byViews = [...plans].sort((a, b) => getViews(b.slug) - getViews(a.slug) || updatedTimestamp(b) - updatedTimestamp(a)).slice(0, limit);
   // 新着・ランキングも「自分の計画」と同じカードを使う。
@@ -1115,7 +1107,7 @@ window.addEventListener("trip-account-logout", () => {
 window.addEventListener("resize", () => {
   window.clearTimeout(rankingResizeTimer);
   rankingResizeTimer = window.setTimeout(() => {
-    if (rankingCardLimit() !== lastRankingLimit) render();
+    if (rankingCardLimit() !== getLastRankingLimit()) render();
   }, 120);
 });
 
