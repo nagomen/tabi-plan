@@ -9,7 +9,7 @@ import { initPageTransitions } from "../shared/page-transition";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { escapeHtml } from "../shared/dom";
-import { WEEKDAYS, updatedTimestamp } from "../shared/date";
+import { updatedTimestamp } from "../shared/date";
 import { registerServiceWorker } from "../shared/pwa";
 import { mountAppHeader } from "../shared/app-header";
 import { icon, type IconName } from "../shared/icons";
@@ -27,14 +27,13 @@ import { getViews } from "../shared/views-store";
 import { canEditPlan, canViewPlan, ownerNameOf } from "../shared/membership";
 import { addBaseLayer } from "../shared/map-tiles";
 import { monthCalendarHtml, bandColor, stepMonth } from "../shared/calendar";
+import { personName, personId, $, today } from "./context";
+import { fmtShort, fmtFull } from "./date-format";
+import { tripDays, tripFlags, tripYear, tripDateRange } from "./trip-summary";
 
 // ---- 対象の名前 ---------------------------------------------------------
 
 initPageTransitions();
-
-const params = new URLSearchParams(location.search);
-const personName = (params.get("name") || "").trim();
-const personId = (params.get("user") || "").trim();
 
 mountAppHeader({
   kicker: "Travel History",
@@ -43,22 +42,6 @@ mountAppHeader({
 });
 
 registerServiceWorker();
-
-const $ = <T extends HTMLElement = HTMLElement>(sel: string): T | null => document.querySelector<T>(sel);
-
-// ---- 日付ユーティリティ -------------------------------------------------
-
-function sameDay(a: Date, b: Date): boolean {
-  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
-}
-/** 地図ラベル用の短い日付（YY/M/D）。 */
-function fmtShort(d: Date): string {
-  return `${String(d.getFullYear()).slice(2)}/${d.getMonth() + 1}/${d.getDate()}`;
-}
-/** ポップアップ用の読みやすい日付（YYYY年M月D日(曜)）。 */
-function fmtFull(d: Date): string {
-  return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日(${WEEKDAYS[d.getDay()]})`;
-}
 
 // ---- 起動 ---------------------------------------------------------------
 
@@ -176,14 +159,6 @@ function boot(): void {
   if (privateEl) privateEl.hidden = true;
   if (contentEl) contentEl.hidden = false;
   renderHistory();
-}
-
-/** 旅行の日数（開始〜終了、両端含む）。日付不明は0。 */
-function tripDays(trip: PersonTrip): number {
-  if (!trip.start || !trip.end) return 0;
-  const s = new Date(trip.start.getFullYear(), trip.start.getMonth(), trip.start.getDate()).getTime();
-  const e = new Date(trip.end.getFullYear(), trip.end.getMonth(), trip.end.getDate()).getTime();
-  return Math.round((e - s) / 86400000) + 1;
 }
 
 function renderHistory(): void {
@@ -388,40 +363,6 @@ function updateMapMarkers(): void {
 
 // ---- 旅行の記録（リスト） -----------------------------------------------
 
-/** その旅行で訪れた国の国旗（重複なし・訪問順）。 */
-function tripFlags(trip: PersonTrip): string {
-  const seen = new Set<string>();
-  const flags: string[] = [];
-  for (const pt of trip.points) {
-    const c = countryOf(pt.lat, pt.lng);
-    if (c && !seen.has(c.name)) {
-      seen.add(c.name);
-      flags.push(c.flag);
-    }
-  }
-  return flags.join("");
-}
-
-/** その旅行の年（開始日、無ければ日程文字列の西暦）。 */
-function tripYear(trip: PersonTrip): string {
-  if (trip.start) return String(trip.start.getFullYear());
-  const m = /(\d{4})/.exec(String(trip.plan.dates || ""));
-  return m ? m[1] : "—";
-}
-
-function fmtMonthDay(d: Date): string {
-  return `${d.getMonth() + 1}/${d.getDate()}(${WEEKDAYS[d.getDay()]})`;
-}
-
-function tripDateRange(trip: PersonTrip): string {
-  if (!trip.start) return String(trip.plan.dates || "日付未定");
-  if (!trip.end || sameDay(trip.start, trip.end)) return fmtMonthDay(trip.start);
-  if (trip.start.getMonth() === trip.end.getMonth()) {
-    return `${fmtMonthDay(trip.start)}-${trip.end.getDate()}(${WEEKDAYS[trip.end.getDay()]})`;
-  }
-  return `${fmtMonthDay(trip.start)}-${fmtMonthDay(trip.end)}`;
-}
-
 function renderTrips(trips: PersonTrip[]): void {
   const listEl = $("[data-trips]");
   const countEl = $("[data-trips-count]");
@@ -472,7 +413,6 @@ function renderTrips(trips: PersonTrip[]): void {
 
 interface Band { plan: PersonTrip["plan"]; start: Date; end: Date; color: string }
 
-const today = new Date();
 const view = { year: today.getFullYear(), month: today.getMonth() };
 let bands: Band[] = [];
 
