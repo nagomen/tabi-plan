@@ -14,17 +14,14 @@ import { currentAccount } from "../shared/account-store";
 import { currentUserId, adoptLegacyIdentity, identifyByName } from "../shared/identity";
 import * as db from "../shared/db";
 import { incrementView } from "../shared/views-store";
-import { planCoverImageForLocation, type CoverPlace } from "../shared/cover";
 import { splitNames } from "../shared/friend-store";
 import { buildInviteLink } from "../shared/invite";
 import * as ExpenseStore from "../shared/expense-store";
 import { escapeHtml, errorMessage, safeHref } from "../shared/dom";
 import { requestPasswordGate } from "../shared/auth";
 import { loadData, normalizeDate, formatYen } from "./api-data-source";
-import { renderLeafletMap } from "./leaflet-map";
 import type { DayGroup } from "./types";
 import { registerServiceWorker } from "../shared/pwa";
-import { setAppHeaderHero } from "../shared/app-header";
 import { getPayLink, isPayUrl } from "../shared/payment-links";
 import { fetchDayWeather, weatherLabel } from "../shared/weather";
 import { buildItineraryShareText } from "../shared/itinerary-text";
@@ -35,12 +32,15 @@ import { mdLabel } from "../shared/date";
 import { buildGoogleMyMapsKml, googleMyMapsKmlFilename, mapsSearchUrl } from "../shared/maps";
 import { formatDurationMinutes, parseDurationMinutes } from "../shared/travel-duration";
 import { buildExternalAiRefinePrompt, copyExternalAiPrompt, openExternalAi, parseExternalAiRefineJson } from "../shared/external-ai";
-import type { TripData, TripLink, ItineraryItem, RouteCity, Settlement, SettlementTransfer, ExpenseDetail, LocalInfoItem } from "../shared/types";
+import type { TripData, TripLink, ItineraryItem, Settlement, SettlementTransfer, ExpenseDetail, LocalInfoItem } from "../shared/types";
 import { applyPlanConfig, CONFIG, getEditingExpenseId, getMobileView, hooks, isAccessDenied, isReadOnly, leafletState, linkByKey, SAMPLE, setAccessDenied, setEditingExpenseId, setMobileView, setReadOnly, setRenderHooks, state } from "./state";
-import { appHeaderEl, coverMeta, downloadTextFile, flashButton, flashLabel, qs, qsa, root, setHtml, setLoading, setText, subhead } from "./dom";
+import { downloadTextFile, flashButton, flashLabel, qs, qsa, root, setHtml, setLoading, setText, subhead } from "./dom";
 import { canUseWorkspaceView, computeAccessDenied, computeReadOnly, isEditableLocalPlan, isOpenEditingVisitor, memberIds, planId, tasksEditable } from "./plan-access";
 import { chooseActive, dayCoord, groupDays, nowHM, nowMinutes, timeToMinutes, todayISO, tripDateRange, untilLabel } from "./days";
 import { renderAccessDenied, showError } from "./errors";
+import { updateHeaderHero } from "./header-hero";
+import { mapsDir, projectPlaces, refreshMapLayout, renderMapEmbed, syncGoogleMapsLink } from "./map";
+import { applyMobileView, syncMobileNavLayout, syncStickyOffsets } from "./view-mode";
 
 initPageTransitions();
 
@@ -52,54 +52,11 @@ interface ProfileRecord {
   savedAt?: string;
 }
 
-/** 地図に投影したプレースポイント（x/y は SVG 用の割合座標） */
-type ProjectedPlace = ItineraryItem & { x: number; y: number };
-
-interface HeaderCoverMeta {
-  slug: string;
-  route?: string;
-  title: string;
-  cover?: string;
-}
-
 // セクション見出し・ボタンの heroicon を流し込む（HTML 側は data-ic="名前" のみ持つ）
 qsa<HTMLElement>("[data-ic]").forEach((el) => {
   const name = el.getAttribute("data-ic");
   if (name) el.innerHTML = icon(name as IconName);
 });
-
-function mapsDir(places: ItineraryItem[]): string {
-  const clean = places.map((p) => p.mapQuery || p.place).filter(Boolean) as string[];
-  if (clean.length < 2) return mapsSearchUrl(clean[0] || "");
-  const origin = clean[0];
-  const destination = clean[clean.length - 1];
-  const waypoints = clean.slice(1, -1).join("|");
-  return "https://www.google.com/maps/dir/?api=1&origin=" + encodeURIComponent(origin) +
-    "&destination=" + encodeURIComponent(destination) +
-    (waypoints ? "&waypoints=" + encodeURIComponent(waypoints) : "");
-}
-
-function syncGoogleMapsLink(places: ItineraryItem[]): void {
-  const link = qs<HTMLAnchorElement>("[data-my-maps]");
-  const configured = linkByKey("maps").url || "";
-  const fallbackPlaces = places.length ? places : projectPlaces(state.data.itinerary || []);
-  const fallback = mapsDir(fallbackPlaces);
-  link.href = configured || fallback;
-  link.setAttribute("aria-disabled", link.href.endsWith("#") ? "true" : "false");
-}
-
-function mapsEmbedDirections(places: ItineraryItem[]): string {
-  const clean = places.map((p) => p.mapQuery || p.place).filter(Boolean) as string[];
-  if (!CONFIG.mapEmbed.mapsEmbedApiKey || clean.length < 2) return "";
-  const origin = clean[0];
-  const destination = clean[clean.length - 1];
-  const waypoints = clean.slice(1, -1).join("|");
-  return "https://www.google.com/maps/embed/v1/directions?key=" + encodeURIComponent(CONFIG.mapEmbed.mapsEmbedApiKey) +
-    "&origin=" + encodeURIComponent(origin) +
-    "&destination=" + encodeURIComponent(destination) +
-    (waypoints ? "&waypoints=" + encodeURIComponent(waypoints) : "") +
-    "&mode=transit";
-}
 
 /** スマホの費用タブ。既定は精算する金額。PC では両方出すので使わない。 */
 let moneyTab: "settle" | "details" = "settle";
@@ -128,57 +85,6 @@ interface AiChatEntry {
 
 const aiChatEntries: AiChatEntry[] = [];
 let aiChatBusy = false;
-
-function activeDayCoverMeta(): HeaderCoverMeta {
-  const configuredCover = "cover" in coverMeta ? coverMeta.cover : "";
-  return {
-    ...coverMeta,
-    cover: configuredCover || state.data.trip?.cover || "",
-    route: coverMeta.route || "",
-    title: state.data.trip?.title || coverMeta.title || CONFIG.tripTitle,
-  };
-}
-
-/**
- * その日に「最初に」いる都市。都市メタデータ（cities の滞在期間）から、
- * 日付をカバーする都市のうち滞在開始が最も早いもの＝その日の朝いる都市を選ぶ。
- * 例: 台北 10/1〜10/3・東京 10/3〜10/5 なら、10/3 は台北（その後東京へ移動）。
- * ※ cityNameForDate は逆に「最後に到着した都市」を選ぶ（日ラベル用）。
- */
-function firstCityOnDate(data: TripData, date: string): RouteCity | null {
-  let best: RouteCity | null = null;
-  let bestFrom = "";
-  for (const city of data.cities || []) {
-    const from = normalizeDate(city.fromDate);
-    const to = normalizeDate(city.toDate);
-    if (!city.name || !from || !to || date < from || to < date) continue;
-    if (!best || from < bestFrom) {
-      best = city;
-      bestFrom = from;
-    }
-  }
-  return best;
-}
-
-/**
- * ヘッダー画像の場所候補：その日に最初にいる都市（DBの都市メタデータ。座標付き）
- * → 日のエリア名 → その日の代表座標。すべて計画データ由来なので、
- * リモートで旅行内容を変えてもコードに触らず表示が追従する。
- */
-function dayCoverPlaces(day: DayGroup): CoverPlace[] {
-  const places: CoverPlace[] = [];
-  const city = firstCityOnDate(state.data, day.date);
-  if (city) places.push({ name: city.name.trim(), lat: city.lat, lng: city.lng });
-  if (day.area) places.push({ name: day.area });
-  const coord = dayCoord(day);
-  if (coord) places.push(coord);
-  return places;
-}
-
-function updateHeaderHero(day: DayGroup): void {
-  const meta = activeDayCoverMeta();
-  setAppHeaderHero(appHeaderEl, planCoverImageForLocation(meta, dayCoverPlaces(day)));
-}
 
 // フォームは日本語ラベルを value に持つ。列挙へ寄せる変換をここに集約する。
 function categoryFromLabel(label: string): ExpenseStore.ExpenseCategory {
@@ -422,79 +328,6 @@ function linkIcon(key: string): string {
     case "reservations": return icon("calendarDays");
     default: return icon("arrowTopRightOnSquare");
   }
-}
-
-function uniquePlaces(items: ItineraryItem[]): ItineraryItem[] {
-  const seen = new Set<string>();
-  return items.filter((item) => {
-    const key = item.mapQuery || item.place || item.title;
-    if (!key || seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
-}
-
-function projectPlaces(items: ItineraryItem[]): ProjectedPlace[] {
-  const places = uniquePlaces(items);
-  const withLatLng = places.filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lng)) as (ItineraryItem & { lat: number; lng: number })[];
-  if (withLatLng.length >= 2) {
-    const lats = withLatLng.map((p) => p.lat);
-    const lngs = withLatLng.map((p) => p.lng);
-    const minLat = Math.min(...lats), maxLat = Math.max(...lats);
-    const minLng = Math.min(...lngs), maxLng = Math.max(...lngs);
-    const latSpan = maxLat - minLat || 1;
-    const lngSpan = maxLng - minLng || 1;
-    return places.map((p, index) => ({
-      ...p,
-      x: Number.isFinite(p.lng) ? 10 + ((Number(p.lng) - minLng) / lngSpan) * 80 : 15 + index * 16,
-      y: Number.isFinite(p.lat) ? 82 - ((Number(p.lat) - minLat) / latSpan) * 64 : 50,
-    }));
-  }
-  return places.map((p, index) => ({ ...p, x: 12 + index * (76 / Math.max(1, places.length - 1)), y: index % 2 ? 42 : 58 }));
-}
-
-// ---- 表示モード（モバイル / セクション） --------------------------------
-
-function applyMobileView(view?: string): void {
-  const mobileView = view || getMobileView() || "home";
-  setMobileView(mobileView);
-  if (mobileView === "map") leafletState.followActive = true;
-  root.dataset.sectionView = mobileView;
-  root.dataset.mobileView = mobileView;
-  root.classList.add("is-mobile-responsive");
-  syncStickyOffsets();
-  qsa<HTMLElement>("[data-mobile-view]").forEach((node) => {
-    const views = String(node.dataset.mobileView || "").split(/\s+/);
-    node.classList.toggle("is-mobile-active", views.includes(mobileView));
-  });
-  qsa<HTMLElement>("[data-section-nav]").forEach((button) => {
-    button.setAttribute("aria-selected", String(button.dataset.sectionNav === mobileView));
-  });
-  qsa<HTMLElement>("[data-mobile-nav]").forEach((button) => {
-    button.setAttribute("aria-selected", String(button.dataset.mobileNav === mobileView));
-  });
-  if (mobileView === "home" || mobileView === "map") {
-    setTimeout(() => {
-      refreshMapLayout();
-      if (getMobileView() === "map" && state.days.length && !leafletState.map) hooks.renderActive();
-    }, 80);
-  }
-}
-
-function syncStickyOffsets(): void {
-  const head = root.querySelector<HTMLElement>(".ah");
-  if (!head) return;
-  root.style.setProperty("--tl-head-height", `${Math.ceil(head.getBoundingClientRect().height)}px`);
-}
-
-function refreshMapLayout(): void {
-  const map = leafletState.map;
-  if (!map) return;
-  map.invalidateSize();
-  window.requestAnimationFrame(() => {
-    leafletState.map?.invalidateSize();
-    window.setTimeout(() => leafletState.map?.invalidateSize(), 120);
-  });
 }
 
 /** 費用入力ボトムシートの開閉。入力フォームは [data-expense-entry] にマウント済み。 */
@@ -1491,13 +1324,6 @@ function renderBase(): void {
 
 // ---- タスク（チェックリスト） -------------------------------------------
 
-function syncMobileNavLayout(): void {
-  const nav = root.querySelector<HTMLElement>(".tl-mobile-nav");
-  if (!nav) return;
-  const visibleCount = qsa<HTMLElement>("[data-mobile-nav]").filter((button) => !button.hidden).length;
-  nav.style.setProperty("--tl-mobile-nav-count", String(Math.max(1, visibleCount)));
-}
-
 /** ローカル計画のチェックリストを localStorage に保存する。 */
 function persistChecklist(): void {
   if (!tasksEditable()) return;
@@ -2378,44 +2204,6 @@ function renderActive(): void {
       if (event.key === "Enter") open();
     });
   });
-}
-
-// ---- 地図描画 -----------------------------------------------------------
-
-async function renderMapEmbed(activePlaces: ItineraryItem[], _day: DayGroup): Promise<void> {
-  const map = qs<HTMLElement>("[data-map]");
-  const existing = root.querySelector(".tl-map-iframe");
-  if (existing) existing.remove();
-  const existingLeaflet = root.querySelector(".tl-leaflet-map");
-  map.classList.remove("has-leaflet");
-
-  let src = "";
-  if (CONFIG.mapEmbed.mode === "myMaps" && CONFIG.mapEmbed.myMapsEmbedUrl) {
-    src = CONFIG.mapEmbed.myMapsEmbedUrl;
-  } else if (CONFIG.mapEmbed.mode === "mapsEmbedApi") {
-    src = mapsEmbedDirections(activePlaces);
-  } else if (CONFIG.mapEmbed.mode === "leaflet") {
-    try {
-      await renderLeafletMap(map, leafletState, state.days, state.active, CONFIG.mapDefaults);
-      refreshMapLayout();
-    } catch (error) {
-      console.warn(error);
-    }
-    return;
-  }
-
-  map.classList.toggle("has-embed", Boolean(src));
-  if (existingLeaflet) existingLeaflet.remove();
-  if (!src) return;
-
-  const iframe = document.createElement("iframe");
-  iframe.className = "tl-map-iframe";
-  iframe.src = src;
-  iframe.loading = "lazy";
-  iframe.referrerPolicy = "no-referrer-when-downgrade";
-  iframe.allowFullscreen = true;
-  iframe.title = "Google Map";
-  map.prepend(iframe);
 }
 
 // ---- 同期・初期化 -------------------------------------------------------
