@@ -41,7 +41,7 @@ test("招待作成・参加期間・友達申請の失敗が利用者に見え�
   const dashboard = read("src/dashboard/main.ts");
   assert.match(dashboard, /errorMessage\(error\) \|\| "作成できませんでした"/);
   const friendship = read("src/shared/friendship-store.ts");
-  const mypage = read("src/mypage/main.ts");
+  const mypage = read("src/mypage/friends.ts");
   assert.match(friendship, /await db\.saveFriendship/);
   assert.match(mypage, /await run\(\)/);
 });
