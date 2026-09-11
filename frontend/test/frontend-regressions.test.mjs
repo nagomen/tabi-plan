@@ -44,7 +44,7 @@ test("Service Workerは認証済みAPI応答をキャッシュしない", () => 
 });
 
 test("人物地図の再描画は既存Leafletインスタンスを再生成しない", () => {
-  const source = read("src/person/main.ts");
+  const source = read("src/person/history-map.ts");
   assert.match(source, /if \(!personMap\) \{/);
   assert.match(source, /if \(personMap\) personMap\.remove\(\)/);
   assert.match(source, /filterEl\.dataset\.bound/);

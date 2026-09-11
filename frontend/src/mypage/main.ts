@@ -4,25 +4,18 @@
 import "../shared/ui.css";
 import * as db from "../shared/db";
 import "./style.css";
-import { initPageTransitions, navigateWithPageTransition } from "../shared/page-transition";
+import { initPageTransitions } from "../shared/page-transition";
 import { icon, type IconName } from "../shared/icons";
-import { escapeHtml, makeScopedQuery, errorMessage } from "../shared/dom";
-import { mdOf, parseFlexibleDate } from "../shared/date";
-import { planDashboardHref } from "../shared/plan-url";
+import { makeScopedQuery } from "../shared/dom";
 import { registerServiceWorker } from "../shared/pwa";
 import * as Backend from "../shared/backend";
-import * as TripPlans from "../shared/plans-store";
-import type { PlanMeta } from "../shared/plans-store";
-import { getUser, setUserName } from "../shared/user-store";
-import { currentUserId } from "../shared/identity";
-import { isMemberOf } from "../shared/membership";
-import { getPayLink, setPayLink } from "../shared/payment-links";
-import { currentAccount, logOut, updateName, isLoggedIn, searchAccounts, searchAccountsRemote, type Account } from "../shared/account-store";
-import * as Friendships from "../shared/friendship-store";
-import { isHistoryPublic, setHistoryPublic } from "../shared/history-privacy";
 import { mountAppHeader } from "../shared/app-header";
-import { monthCalendarHtml, bandColor, stepMonth } from "../shared/calendar";
-import { showRecoveryCode } from "../shared/recovery-code";
+import { mountCalendar } from "./calendar-view";
+import { mountFriends } from "./friends";
+import { mountLoginMethods } from "./login-methods";
+import { mountPayLinks } from "./pay-links";
+import { mountPlansList } from "./plans-list";
+import { mountProfile } from "./profile";
 
 initPageTransitions();
 
@@ -60,171 +53,26 @@ ICONS.forEach(([sel, name]) => {
   if (el) el.insertAdjacentHTML("afterbegin", icon(name) + (el.tagName === "BUTTON" && el.textContent ? " " : ""));
 });
 
-// ---- 日付ユーティリティ -------------------------------------------------
+// ---- 計画リスト ---------------------------------------------------------
 
-interface PlanRange { start: Date; end: Date }
-
-/** 計画の期間を {start,end} で返す。行程の日付があれば最小〜最大、無ければ meta.dates を解析。 */
-function planRange(plan: PlanMeta): PlanRange | null {
-  const data = TripPlans.getData(plan.slug);
-  const dates = (data?.itinerary || [])
-    .map((it) => parseFlexibleDate(it.date))
-    .filter((d): d is Date => Boolean(d))
-    .sort((a, b) => a.getTime() - b.getTime());
-  if (dates.length) return { start: dates[0], end: dates[dates.length - 1] };
-  const parts = String(plan.dates || "")
-    .split(/[-–—〜~]/)
-    .map((s) => parseFlexibleDate(s.trim()))
-    .filter((d): d is Date => Boolean(d));
-  if (parts.length) return { start: parts[0], end: parts[parts.length - 1] };
-  return null;
-}
+const { renderPlans } = mountPlansList({
+  planMount: qs<HTMLElement>("[data-plans]"),
+  planCount: qs<HTMLElement>("[data-plan-count]"),
+});
 
 // ---- プロフィール -------------------------------------------------------
 
-const nameInput = qs<HTMLInputElement>("[data-name]");
-const avatarEl = qs<HTMLElement>("[data-avatar]");
-const noteEl = qs<HTMLElement>("[data-profile-note]");
-const accountEl = qs<HTMLElement>("[data-account]");
-
-function avatarText(name: string): string {
-  return (name.trim().slice(0, 1) || "?").toUpperCase();
-}
-
-function renderProfile(): void {
-  const user = getUser();
-  // LINE で登録した場合、この端末には名前が無い。サーバー側の表示名を引き継ぐ
-  // （以降はここで変えた名前が正。LINE 名で上書きはしない）。
-  if (!user.name.trim()) {
-    const serverName = db.nameOf(currentUserId());
-    if (serverName) {
-      setUserName(serverName);
-      user.name = serverName;
-    }
-  }
-  nameInput.value = user.name;
-  avatarEl.textContent = avatarText(user.name);
-  renderAccount();
-  renderHistorySetting();
-}
-
-// 旅行履歴の公開設定（名前キーで保存）。名前未設定なら無効化。
-const historyToggle = qs<HTMLInputElement>("[data-history-public]");
-const historyNote = qs<HTMLElement>("[data-history-note]");
-function renderHistorySetting(): void {
-  const name = getUser().name.trim();
-  const userId = currentUserId();
-  historyToggle.disabled = !name;
-  historyToggle.checked = name && userId ? isHistoryPublic(userId) : false;
-  historyNote.textContent = name
-    ? "あなたのアイコンから開くプロフィールに、行った場所やカレンダーを掲載します（共有計画内の参加者表示は変わりません）"
-    : "名前を設定すると、旅行履歴プロフィールへの掲載を選べます";
-}
-historyToggle.addEventListener("change", () => {
-  const name = getUser().name.trim();
-  const userId = currentUserId();
-  if (!name || !userId) return;
-  setHistoryPublic(userId, historyToggle.checked);
-});
-
-function renderAccount(): void {
-  const account = currentAccount();
-  if (account) {
-    // LINE で登録した場合はメールを持たない。その場合は表示名で伝える。
-    const who = account.email || account.name || "この端末";
-    accountEl.innerHTML =
-      `${icon("user")}<span>${escapeHtml(who)} でログイン中</span>` +
-      `<a href="plans.html" class="danger" data-logout data-no-transition="true">ログアウト</a>`;
-    const logout = accountEl.querySelector<HTMLAnchorElement>("[data-logout]");
-    logout?.addEventListener("click", (e) => {
-      e.preventDefault();
-      if (isEmbedded) {
-        try {
-          window.parent?.postMessage({ type: "trip-account-logout" }, location.origin);
-        } catch {
-          /* ignore */
-        }
-        return;
-      }
-      logOut();
-      navigateWithPageTransition("plans.html", { replace: true });
-    });
-  } else {
-    accountEl.innerHTML = `<a href="login.html">ログイン / 新規登録</a><span>すると別端末でも同じ旅行計画を使えます</span>`;
-  }
-}
-
-// 名前は自動保存（入力中はデバウンス、確定時は即時）。
-// 表示名は users テーブルの1列なので、変更はそこを更新するだけで済む。
-// 以前は名前が実質的な主キーだったため、計画のメンバー欄・費用の支払者・
-// 候補の票・送金リンクへ配り直す必要があった（shared/rename.ts）。
-let nameTimer = 0;
-let noteTimer = 0;
-
-function commitName(): void {
-  const user = setUserName(nameInput.value);
-  if (isLoggedIn()) updateName(user.name); // ログイン中はアカウントの表示名も更新
-  avatarEl.textContent = avatarText(user.name);
-  renderPlans();
-  renderHistorySetting();
-  noteEl.textContent = user.name ? "保存しました" : "入力すると自動で保存されます";
-  window.clearTimeout(noteTimer);
-  if (user.name) noteTimer = window.setTimeout(() => { noteEl.textContent = ""; }, 2000);
-}
-nameInput.addEventListener("input", () => {
-  window.clearTimeout(nameTimer);
-  nameTimer = window.setTimeout(commitName, 500);
-});
-nameInput.addEventListener("blur", () => { window.clearTimeout(nameTimer); commitName(); });
-nameInput.addEventListener("keydown", (e) => {
-  if (e.key === "Enter") { window.clearTimeout(nameTimer); commitName(); nameInput.blur(); }
-});
-
-// ---- 計画リスト ---------------------------------------------------------
-
-const planMount = qs<HTMLElement>("[data-plans]");
-const planCount = qs<HTMLElement>("[data-plan-count]");
-
-function planRow(plan: PlanMeta, allSlugs: string[]): string {
-  const meta = [plan.dates, plan.members].filter(Boolean).map(escapeHtml).join(" ・ ");
-  const draft = !TripPlans.isPublished(plan);
-  const href = draft
-    ? `plan-editor.html?plan=${encodeURIComponent(plan.slug)}`
-    : planDashboardHref(plan.slug);
-  const dotColor = draft ? "#b87418" : bandColor(plan.slug, allSlugs);
-  return (
-    `<a class="mp-row${draft ? " is-draft" : ""}" href="${href}">` +
-    `<span class="mp-dot" style="background:${dotColor}"></span>` +
-    `<span class="mp-row-body">` +
-    `<span class="mp-row-name">` +
-    `<span>${escapeHtml(plan.title || "無題の旅行")}</span>` +
-    (draft ? `<span class="mp-draft-badge">${icon("pencilSquare")}作成中</span>` : "") +
-    `</span>` +
-    (meta ? `<span class="mp-row-meta">${meta}</span>` : "") +
-    (draft ? `<span class="mp-row-meta mp-row-meta-draft">保存すると公開計画として扱われます</span>` : "") +
-    `</span>` +
-    `<span class="mp-chev">${icon("chevronRight")}</span>` +
-    `</a>`
-  );
-}
-
-// マイページは「自分が参加している計画のみ」を表示する。
-function renderPlans(): void {
-  const all = TripPlans.list();
-  const allSlugs = all.map((p) => p.slug); // 色は全計画基準で安定させる
-  const userName = getUser().name;
-  const list = all.filter(isMemberOf);
-  const draftCount = list.filter((p) => !TripPlans.isPublished(p)).length;
-  planCount.textContent = list.length ? `${list.length}件${draftCount ? `・作成中${draftCount}件` : ""}` : "";
-
-  if (list.length) {
-    planMount.innerHTML = list.map((p) => planRow(p, allSlugs)).join("");
-    return;
-  }
-  planMount.innerHTML = userName
-    ? `<div class="mp-empty"><b>参加している計画はありません</b><span>計画のメンバーに「${escapeHtml(userName)}」を追加すると表示されます</span></div>`
-    : `<div class="mp-empty"><b>名前を設定してください</b><span>上で名前を入力（またはログイン）すると、参加している計画が表示されます</span></div>`;
-}
+const { renderProfile } = mountProfile(
+  {
+    nameInput: qs<HTMLInputElement>("[data-name]"),
+    avatarEl: qs<HTMLElement>("[data-avatar]"),
+    noteEl: qs<HTMLElement>("[data-profile-note]"),
+    accountEl: qs<HTMLElement>("[data-account]"),
+    historyToggle: qs<HTMLInputElement>("[data-history-public]"),
+    historyNote: qs<HTMLElement>("[data-history-note]"),
+  },
+  { isEmbedded, renderPlans },
+);
 
 // ---- タブ ---------------------------------------------------------------
 
@@ -259,488 +107,42 @@ tabs.forEach((t) => t.addEventListener("click", () => showTab(t.dataset.tab || "
 
 // ---- カレンダー（全計画の日程） ----------------------------------------
 
-const calMount = qs<HTMLElement>("[data-cal]");
-const calTitle = qs<HTMLElement>("[data-cal-title]");
-const calLegend = qs<HTMLElement>("[data-cal-legend]");
-const today = new Date();
-const view = { year: today.getFullYear(), month: today.getMonth() };
-
-interface PlanBand { plan: PlanMeta; range: PlanRange; color: string }
-
-function renderCalendar(): void {
-  const all = TripPlans.list();
-  const allSlugs = all.map((p) => p.slug);
-  // カレンダーも「自分が参加している計画のみ」。
-  const mine = all.filter(isMemberOf);
-  const bands: PlanBand[] = mine
-    .map((plan) => {
-      const range = planRange(plan);
-      return range ? { plan, range, color: bandColor(plan.slug, allSlugs) } : null;
-    })
-    .filter((b): b is PlanBand => Boolean(b));
-
-  calTitle.textContent = `${view.year}年${view.month + 1}月`;
-
-  calMount.innerHTML = monthCalendarHtml({
-    year: view.year,
-    month: view.month,
-    today,
-    classPrefix: "mp",
-    bands: bands.map((band) => ({
-      slug: band.plan.slug,
-      title: band.plan.title || "旅行",
-      start: band.range.start,
-      end: band.range.end,
-      color: band.color,
-    })),
-  });
-
-  // 凡例: 表示中の月に重なる計画
-  const monthStart = new Date(view.year, view.month, 1).getTime();
-  const monthEnd = new Date(view.year, view.month + 1, 0).getTime();
-  const inMonth = bands.filter((b) => {
-    const s = new Date(b.range.start.getFullYear(), b.range.start.getMonth(), b.range.start.getDate()).getTime();
-    const e = new Date(b.range.end.getFullYear(), b.range.end.getMonth(), b.range.end.getDate()).getTime();
-    return e >= monthStart && s <= monthEnd;
-  });
-  calLegend.innerHTML = inMonth.length
-    ? inMonth
-        .map(
-          (b) =>
-            `<a class="mp-legend-row" href="index.html?plan=${encodeURIComponent(b.plan.slug)}">` +
-            `<span class="mp-legend-sw" style="background:${b.color}"></span>` +
-            `<span class="mp-legend-name">${escapeHtml(b.plan.title || "無題の旅行")}</span>` +
-            `<span class="mp-legend-dates">${mdOf(b.range.start)}〜${mdOf(b.range.end)}</span>` +
-            `</a>`,
-        )
-        .join("")
-    : `<div class="mp-empty"><b>この月の旅行はありません</b><span>前後の月も確認してください</span></div>`;
-}
-
-qs<HTMLButtonElement>("[data-cal-prev]").addEventListener("click", () => { stepMonth(view, -1); renderCalendar(); });
-qs<HTMLButtonElement>("[data-cal-next]").addEventListener("click", () => { stepMonth(view, 1); renderCalendar(); });
+const { renderCalendar } = mountCalendar({
+  calMount: qs<HTMLElement>("[data-cal]"),
+  calTitle: qs<HTMLElement>("[data-cal-title]"),
+  calLegend: qs<HTMLElement>("[data-cal-legend]"),
+  calPrev: qs<HTMLButtonElement>("[data-cal-prev]"),
+  calNext: qs<HTMLButtonElement>("[data-cal-next]"),
+});
 
 // ---- 送金リンク登録（PayPay 受取リンク/ID） ----------------------------
 
-const payMount = qs<HTMLElement>("[data-paylinks]");
-const payCount = qs<HTMLElement>("[data-pay-count]");
-
-/** 自分＋表示可能な計画のメンバーをuser_id単位で集める。 */
-function payPeople(): { id: string; name: string }[] {
-  const ids = new Set(db.members().filter((member) => member.status === "active").map((member) => member.user_id));
-  const me = currentUserId();
-  if (me) ids.add(me);
-  return [...ids].map((id) => ({ id, name: db.nameOf(id) })).filter((person) => person.name);
-}
+const { renderPayLinks } = mountPayLinks({
+  payMount: qs<HTMLElement>("[data-paylinks]"),
+  payCount: qs<HTMLElement>("[data-pay-count]"),
+});
 
 // ---- ログイン方法（メール / LINE） --------------------------------------
 
-const loginMethodsEl = document.querySelector<HTMLElement>("[data-login-methods]");
-const loginNoteEl = document.querySelector<HTMLElement>("[data-login-note]");
-
-/** 行の下に開いている入力欄（"password" | "email" | ""）。 */
-let openLoginForm: "password" | "email" = "password";
-let loginFormShown = false;
-
-function loginFormHtml(): string {
-  if (!loginFormShown) return "";
-  return openLoginForm === "password"
-    ? '<div class="mp-login-form" data-pw-form>' +
-      '<input type="password" autocomplete="current-password" placeholder="いまのパスワード" data-pw-current>' +
-      '<input type="password" autocomplete="new-password" placeholder="新しいパスワード（8文字以上）" data-pw-next>' +
-      '<button type="button" data-pw-save>変更する</button>' +
-      '<p class="mp-login-msg" data-login-msg>変更すると、他の端末のログインは切れます。</p></div>'
-    : '<div class="mp-login-form" data-mail-form>' +
-      '<input type="email" autocomplete="email" placeholder="メールアドレス" data-mail-address>' +
-      '<input type="password" autocomplete="new-password" placeholder="パスワード（8文字以上）" data-mail-password>' +
-      '<button type="button" data-mail-save>登録する</button>' +
-      '<p class="mp-login-msg" data-login-msg>LINEが使えなくなったときの入り口になります。</p></div>';
-}
-
-function renderLoginMethods(): void {
-  if (!loginMethodsEl || !loginNoteEl) return;
-  if (!db.isEnabled()) {
-    loginNoteEl.textContent = "この構成ではアカウント連携を使いません。";
-    loginMethodsEl.innerHTML = "";
-    return;
-  }
-  const line = db.identities().find((entry) => entry.provider === "line");
-  // bootstrap は自分の認証情報だけ返すので、行があればメール登録済み。
-  const mail = db.credentials()[0];
-  const hasMail = Boolean(mail);
-  loginNoteEl.textContent = line
-    ? "LINEアカウントでログインできます。表示名はここで変えても LINE 名に戻りません。"
-    : "LINEと連携すると、次回からメールアドレスの入力なしでログインできます。";
-  const name = line?.display_name ? `（${escapeHtml(line.display_name)}）` : "";
-
-  const mailRow = '<div class="mp-login-row"><span class="mp-login-mark is-mail">メール</span>' +
-    (hasMail
-      ? `<span class="mp-login-state">${escapeHtml(mail.email)}</span>` +
-        '<button class="mp-login-act" type="button" data-pw-open>パスワードを変更</button>' +
-        '<button class="mp-login-act" type="button" data-recovery-code>復旧コードを再発行</button>'
-      : '<span class="mp-login-state">未登録</span>' +
-        '<button class="mp-login-act is-primary" type="button" data-mail-open>登録する</button>') +
-    (loginFormShown && ((hasMail && openLoginForm === "password") || (!hasMail && openLoginForm === "email"))
-      ? loginFormHtml()
-      : "") +
-    "</div>";
-
-  const lineRow = line
-    ? '<div class="mp-login-row"><span class="mp-login-mark">LINE</span>' +
-      `<span class="mp-login-state">連携済み${name}</span>` +
-      (hasMail
-        ? '<button class="mp-login-act" type="button" data-line-unlink>解除する</button>'
-        : '<span class="mp-login-hint">解除するには、先にメールアドレスとパスワードを登録してください</span>') +
-      "</div>"
-    : '<div class="mp-login-row"><span class="mp-login-mark">LINE</span>' +
-      '<span class="mp-login-state">未連携</span>' +
-      '<button class="mp-login-act is-primary" type="button" data-line-link>LINEと連携する</button></div>';
-
-  // 端末を失くしたときに自分で切れるようにする（ログアウトは今の端末だけ）。
-  const devicesRow = '<div class="mp-login-row"><span class="mp-login-mark is-mail">端末</span>' +
-    '<span class="mp-login-state">他の端末のログイン</span>' +
-    '<button class="mp-login-act" type="button" data-revoke-others>すべて切る</button>' +
-    '<p class="mp-login-msg" data-devices-msg></p></div>';
-
-  loginMethodsEl.innerHTML = mailRow + lineRow + devicesRow;
-}
-
-function loginMsg(text: string, kind: "" | "error" | "done" = ""): void {
-  const el = loginMethodsEl?.querySelector<HTMLElement>("[data-login-msg]");
-  if (!el) return;
-  el.textContent = text;
-  el.classList.toggle("is-error", kind === "error");
-  el.classList.toggle("is-done", kind === "done");
-}
-
-loginMethodsEl?.addEventListener("click", (event) => {
-  const target = event.target;
-  if (!(target instanceof Element)) return;
-
-  if (target.closest("[data-pw-open]") || target.closest("[data-mail-open]")) {
-    openLoginForm = target.closest("[data-pw-open]") ? "password" : "email";
-    loginFormShown = !loginFormShown;
-    renderLoginMethods();
-    loginMethodsEl?.querySelector<HTMLInputElement>(".mp-login-form input")?.focus();
-    return;
-  }
-
-  if (target.closest("[data-pw-save]")) {
-    const button = target.closest<HTMLButtonElement>("[data-pw-save]");
-    const current = loginMethodsEl?.querySelector<HTMLInputElement>("[data-pw-current]")?.value || "";
-    const next = loginMethodsEl?.querySelector<HTMLInputElement>("[data-pw-next]")?.value || "";
-    if (next.length < 8) {
-      loginMsg("新しいパスワードは8文字以上にしてください", "error");
-      return;
-    }
-    if (button) button.disabled = true;
-    loginMsg("変更しています…");
-    void db.changePassword({ current_password: current, new_password: next })
-      .then((result) => {
-        loginFormShown = false;
-        renderLoginMethods();
-        showRecoveryCode(result.recovery_code);
-        const tail = result.revoked ? `他の端末（${result.revoked}件）のログインも切りました。` : "";
-        window.alert("パスワードを変更しました。" + tail);
-      })
-      .catch((error) => {
-        if (button) button.disabled = false;
-        loginMsg(errorMessage(error) || "変更できませんでした", "error");
-      });
-    return;
-  }
-
-  if (target.closest("[data-mail-save]")) {
-    const button = target.closest<HTMLButtonElement>("[data-mail-save]");
-    const email = loginMethodsEl?.querySelector<HTMLInputElement>("[data-mail-address]")?.value.trim() || "";
-    const password = loginMethodsEl?.querySelector<HTMLInputElement>("[data-mail-password]")?.value || "";
-    if (password.length < 8) {
-      loginMsg("パスワードは8文字以上にしてください", "error");
-      return;
-    }
-    if (button) button.disabled = true;
-    loginMsg("登録しています…");
-    void db.addCredentials({ email, password })
-      .then((result) => {
-        loginFormShown = false;
-        renderLoginMethods();
-        showRecoveryCode(result.recovery_code);
-        window.alert("メールアドレスとパスワードを登録しました。次回はどちらでもログインできます。");
-      })
-      .catch((error) => {
-        if (button) button.disabled = false;
-        loginMsg(errorMessage(error) || "登録できませんでした", "error");
-      });
-    return;
-  }
-
-  if (target.closest("[data-recovery-code]")) {
-    if (!window.confirm("古い復旧コードを無効にして、新しいコードを発行します。よろしいですか。")) return;
-    const button = target.closest<HTMLButtonElement>("[data-recovery-code]");
-    if (button) button.disabled = true;
-    void db.rotateRecoveryCode()
-      .then((code) => showRecoveryCode(code))
-      .catch((error) => window.alert(errorMessage(error) || "復旧コードを発行できませんでした"))
-      .finally(() => { if (button) button.disabled = false; });
-    return;
-  }
-
-  if (target.closest("[data-revoke-others]")) {
-    if (!window.confirm("この端末以外のログインを切ります。よろしいですか。")) return;
-    const msg = loginMethodsEl?.querySelector<HTMLElement>("[data-devices-msg]");
-    void db.revokeOtherSessions()
-      .then((revoked) => {
-        if (msg) msg.textContent = revoked ? `${revoked}件のログインを切りました。` : "他の端末のログインはありませんでした。";
-      })
-      .catch((error) => {
-        if (msg) {
-          msg.textContent = errorMessage(error) || "切れませんでした";
-          msg.classList.add("is-error");
-        }
-      });
-    return;
-  }
-
-  if (target.closest("[data-line-link]")) {
-    void db.lineAuthorizeUrl(new URL("mypage.html", location.href).toString())
-      .then((url) => {
-        if (url) location.href = url;
-        else window.alert("LINEとの連携を開始できませんでした");
-      })
-      .catch((error) => window.alert(errorMessage(error)));
-    return;
-  }
-  if (target.closest("[data-line-unlink]")) {
-    if (!window.confirm("LINEでのログインを解除します。よろしいですか。")) return;
-    void db.unlinkLine()
-      .then(() => renderLoginMethods())
-      .catch((error) => window.alert(errorMessage(error)));
-  }
-});
-
-function renderPayLinks(): void {
-  const meId = currentUserId();
-  const people = payPeople();
-  payCount.textContent = people.length ? `${people.length}人` : "";
-  if (!people.length) {
-    payMount.innerHTML = `<div class="mp-empty"><b>メンバーがいません</b><span>計画にメンバーを追加すると、ここで送金リンクを登録できます</span></div>`;
-    return;
-  }
-  payMount.innerHTML = people
-    .map(({ id, name }) => {
-      const link = getPayLink(id);
-      const self = Boolean(meId) && id === meId;
-      return (
-        `<div class="mp-pay-row">` +
-        `<span class="mp-pay-name">${self ? icon("user") : ""}${escapeHtml(name)}${self ? `<span class="mp-badge">自分</span>` : ""}</span>` +
-        `<input type="text" inputmode="url" data-pay-user="${escapeHtml(id)}" value="${escapeHtml(link?.paypay || "")}" placeholder="${self ? "https://qr.paypay.ne.jp/… または ID" : "本人が登録すると表示されます"}" aria-label="${escapeHtml(name)}の送金リンク"${self ? "" : " disabled"}>` +
-        `</div>`
-      );
-    })
-    .join("");
-}
-
-let payTimer = 0;
-payMount.addEventListener("input", (event) => {
-  const input = event.target;
-  if (!(input instanceof HTMLInputElement)) return;
-  const userId = input.dataset.payUser || "";
-  if (!userId || userId !== currentUserId()) return;
-  window.clearTimeout(payTimer);
-  const value = input.value;
-  payTimer = window.setTimeout(() => setPayLink(userId, value), 400);
+const { renderLoginMethods } = mountLoginMethods({
+  loginMethodsEl: document.querySelector<HTMLElement>("[data-login-methods]"),
+  loginNoteEl: document.querySelector<HTMLElement>("[data-login-note]"),
 });
 
 // ---- 友達（アカウント単位） ----------------------------------------------
 
-const friendNoteEl = qs<HTMLElement>("[data-friend-note]");
-const friendSearchForm = qs<HTMLFormElement>("[data-friend-search-form]");
-const friendSearchInput = qs<HTMLInputElement>("[data-friend-search-input]");
-const friendSearchResults = qs<HTMLElement>("[data-friend-search-results]");
-const friendIncomingMount = qs<HTMLElement>("[data-friend-incoming]");
-const friendIncomingCount = qs<HTMLElement>("[data-friend-incoming-count]");
-const friendListMount = qs<HTMLElement>("[data-friend-list]");
-const friendCount = qs<HTMLElement>("[data-friend-count]");
-const friendOutgoingMount = qs<HTMLElement>("[data-friend-outgoing]");
-const friendOutgoingCount = qs<HTMLElement>("[data-friend-outgoing-count]");
-const friendTabBadge = qs<HTMLElement>("[data-friend-tab-badge]");
-
-function friendNote(message: string): void {
-  friendNoteEl.textContent = message;
-}
-
-function accountRow(account: Account, action: string): string {
-  return (
-    `<div class="mp-row mp-row-static">` +
-    `<span class="mp-dot" style="background:#68746e"></span>` +
-    `<span class="mp-row-body">` +
-    `<span class="mp-row-name">${icon("user")}<span>${escapeHtml(account.name || account.email)}</span></span>` +
-    `<span class="mp-row-meta">${escapeHtml(account.email)}</span>` +
-    `</span>` +
-    action +
-    `</div>`
-  );
-}
-
-function requestRow(name: string, email: string, action: string): string {
-  return (
-    `<div class="mp-row mp-row-static">` +
-    `<span class="mp-dot" style="background:#68746e"></span>` +
-    `<span class="mp-row-body">` +
-    `<span class="mp-row-name">${icon("user")}<span>${escapeHtml(name)}</span></span>` +
-    `<span class="mp-row-meta">${escapeHtml(email)}</span>` +
-    `</span>` +
-    action +
-    `</div>`
-  );
-}
-
-function renderFriendSearchResults(results: Account[]): void {
-  if (!results.length) {
-    friendSearchResults.innerHTML = "";
-    return;
-  }
-  friendSearchResults.innerHTML = results
-    .map((account) => {
-      const status = Friendships.statusWith(account.id);
-      const action =
-        status === "friends"
-          ? `<span class="mp-badge">友達</span>`
-          : status === "outgoing_pending"
-            ? `<span class="mp-badge">申請中</span>`
-            : status === "incoming_pending"
-              ? `<span class="mp-badge">申請が届いています</span>`
-              : `<button type="button" class="mp-friend-btn" data-friend-request="${escapeHtml(account.id)}">${icon("plus")}申請を送る</button>`;
-      return accountRow(account, action);
-    })
-    .join("");
-}
-
-function renderFriends(): void {
-  if (!isLoggedIn()) {
-    friendTabBadge.hidden = true;
-    friendTabBadge.textContent = "";
-    friendSearchResults.innerHTML = "";
-    friendIncomingMount.innerHTML = `<div class="mp-empty"><b>ログインすると友達を追加できます</b><span>マイページ上部からログイン / 新規登録してください</span></div>`;
-    friendIncomingCount.textContent = "";
-    friendListMount.innerHTML = "";
-    friendCount.textContent = "";
-    friendOutgoingMount.innerHTML = "";
-    friendOutgoingCount.textContent = "";
-    friendNote("");
-    return;
-  }
-
-  const incoming = Friendships.incomingRequests();
-  friendTabBadge.hidden = incoming.length === 0;
-  friendTabBadge.textContent = incoming.length ? String(incoming.length) : "";
-  friendIncomingCount.textContent = incoming.length ? `${incoming.length}件` : "";
-  friendIncomingMount.innerHTML = incoming.length
-    ? incoming
-        .map((row) =>
-          requestRow(
-            row.fromName,
-            row.fromEmail,
-            `<span class="mp-row-actions">` +
-              `<button type="button" class="mp-friend-btn" data-friend-accept="${escapeHtml(row.id)}">${icon("check")}承諾</button>` +
-              `<button type="button" class="mp-friend-btn danger" data-friend-decline="${escapeHtml(row.id)}">${icon("xMark")}拒否</button>` +
-              `</span>`,
-          ),
-        )
-        .join("")
-    : `<div class="mp-empty"><b>届いている申請はありません</b></div>`;
-
-  const friends = Friendships.listFriends();
-  friendCount.textContent = friends.length ? `${friends.length}人` : "";
-  friendListMount.innerHTML = friends.length
-    ? friends
-        .map((account) =>
-          accountRow(
-            account,
-            `<button type="button" class="mp-friend-btn danger" data-friend-remove="${escapeHtml(account.id)}">${icon("trash")}削除</button>`,
-          ),
-        )
-        .join("")
-    : `<div class="mp-empty"><b>友達はまだいません</b><span>上の検索から友達を探して申請を送りましょう</span></div>`;
-
-  const outgoing = Friendships.outgoingRequests();
-  friendOutgoingCount.textContent = outgoing.length ? `${outgoing.length}件` : "";
-  friendOutgoingMount.innerHTML = outgoing.length
-    ? outgoing
-        .map((row) =>
-          requestRow(
-            row.toName,
-            row.toEmail,
-            `<button type="button" class="mp-friend-btn" data-friend-cancel="${escapeHtml(row.id)}">${icon("xMark")}取り消す</button>`,
-          ),
-        )
-        .join("")
-    : "";
-}
-
-friendSearchForm.addEventListener("submit", async (event) => {
-  event.preventDefault();
-  const query = friendSearchInput.value.trim();
-  if (!query) {
-    friendSearchResults.innerHTML = "";
-    friendNote("");
-    return;
-  }
-  if (!isLoggedIn()) {
-    friendNote("検索するにはログインが必要です");
-    return;
-  }
-  const results = await searchAccountsRemote(query, { excludeSelf: true });
-  friendNote(results.length ? "" : "見つかりませんでした");
-  renderFriendSearchResults(results);
-});
-
-async function handleFriendAction(run: () => Promise<unknown>): Promise<void> {
-  const controls = Array.from(document.querySelectorAll<HTMLButtonElement>('[data-view="friends"] button'));
-  controls.forEach((button) => { button.disabled = true; });
-  try {
-    await run();
-    friendNote("");
-  } catch (err) {
-    friendNote(errorMessage(err) || "操作に失敗しました");
-  }
-  renderFriends();
-  const query = friendSearchInput.value.trim();
-  if (query) renderFriendSearchResults(searchAccounts(query, { excludeSelf: true }));
-}
-
-document.addEventListener("click", (event) => {
-  const target = event.target;
-  if (!(target instanceof HTMLElement)) return;
-  const requestBtn = target.closest<HTMLButtonElement>("[data-friend-request]");
-  if (requestBtn) {
-    const accountId = requestBtn.dataset.friendRequest || "";
-    void handleFriendAction(() => Friendships.sendFriendRequest({ accountId }));
-    return;
-  }
-  const acceptBtn = target.closest<HTMLButtonElement>("[data-friend-accept]");
-  if (acceptBtn) {
-    const requestId = acceptBtn.dataset.friendAccept || "";
-    void handleFriendAction(() => Friendships.acceptFriendRequest(requestId));
-    return;
-  }
-  const declineBtn = target.closest<HTMLButtonElement>("[data-friend-decline]");
-  if (declineBtn) {
-    const requestId = declineBtn.dataset.friendDecline || "";
-    void handleFriendAction(() => Friendships.declineFriendRequest(requestId));
-    return;
-  }
-  const cancelBtn = target.closest<HTMLButtonElement>("[data-friend-cancel]");
-  if (cancelBtn) {
-    const requestId = cancelBtn.dataset.friendCancel || "";
-    void handleFriendAction(() => Friendships.cancelFriendRequest(requestId));
-    return;
-  }
-  const removeBtn = target.closest<HTMLButtonElement>("[data-friend-remove]");
-  if (removeBtn) {
-    const accountId = removeBtn.dataset.friendRemove || "";
-    void handleFriendAction(() => Friendships.removeFriend(accountId));
-  }
+const { renderFriends } = mountFriends({
+  friendNoteEl: qs<HTMLElement>("[data-friend-note]"),
+  friendSearchForm: qs<HTMLFormElement>("[data-friend-search-form]"),
+  friendSearchInput: qs<HTMLInputElement>("[data-friend-search-input]"),
+  friendSearchResults: qs<HTMLElement>("[data-friend-search-results]"),
+  friendIncomingMount: qs<HTMLElement>("[data-friend-incoming]"),
+  friendIncomingCount: qs<HTMLElement>("[data-friend-incoming-count]"),
+  friendListMount: qs<HTMLElement>("[data-friend-list]"),
+  friendCount: qs<HTMLElement>("[data-friend-count]"),
+  friendOutgoingMount: qs<HTMLElement>("[data-friend-outgoing]"),
+  friendOutgoingCount: qs<HTMLElement>("[data-friend-outgoing-count]"),
+  friendTabBadge: qs<HTMLElement>("[data-friend-tab-badge]"),
 });
 
 // ---- 起動 ---------------------------------------------------------------
