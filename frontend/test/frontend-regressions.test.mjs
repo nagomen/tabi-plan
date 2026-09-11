@@ -6,13 +6,13 @@ const root = new URL("../", import.meta.url);
 const read = (path) => fs.readFileSync(new URL(path, root), "utf8");
 
 test("編集画面の期間と都市詳細をDB往復で保持する", () => {
-  const editor = read("src/plan-editor/main.ts");
+  const planLoad = read("src/plan-editor/plan-load.ts");
   const planData = read("src/plan-editor/plan-data.ts");
   const store = read("src/shared/plans-store.ts");
   const database = read("src/shared/db.ts");
   assert.match(planData, /startDate: model\.startDate, endDate: model\.endDate/);
-  assert.match(editor, /normalizeToISO\(trip\.startDate\)/);
-  assert.match(editor, /itineraryDates\[0\]/);
+  assert.match(planLoad, /normalizeToISO\(trip\.startDate\)/);
+  assert.match(planLoad, /itineraryDates\[0\]/);
   for (const field of ["from_date", "to_date", "lat", "lng"]) {
     assert.match(store, new RegExp(`${field}:`));
     assert.match(database, new RegExp(`${field}`));

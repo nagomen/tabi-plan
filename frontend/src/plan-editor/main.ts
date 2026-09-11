@@ -10,18 +10,15 @@ import "../shared/ui.css";
 import "./style.css";
 import { initPageTransitions, navigateWithPageTransition } from "../shared/page-transition";
 import "leaflet/dist/leaflet.css";
-import flatpickr from "flatpickr";
-import { Japanese } from "flatpickr/dist/l10n/ja.js";
 import "flatpickr/dist/flatpickr.css";
 
 import * as TripPlans from "../shared/plans-store";
 import type { PlanVisibility } from "../shared/plans-store";
 import { escapeHtml, errorMessage } from "../shared/dom";
-import { toISO } from "../shared/date";
 import { icon, type IconName } from "../shared/icons";
 import { registerServiceWorker } from "../shared/pwa";
 import { currentAccount } from "../shared/account-store";
-import { canEditPlan, canEditPlanMetadata, canManagePlan, planHasOwner } from "../shared/membership";
+import { canEditPlan, canEditPlanMetadata, canManagePlan } from "../shared/membership";
 import { validatePublishPlan } from "./validation";
 import { formatDurationMinutes } from "../shared/travel-duration";
 import { AiConsultationState, type AiStage } from "./ai-consultation-state";
@@ -33,14 +30,14 @@ import {
   type GeoResult,
 } from "../shared/geocoding";
 import {
-  type ItemKind, type Item, type Day, type GeoTarget,
-  params, isNew, state, model, newItem, datesString, normalizeToISO,
+  type ItemKind, type Item, type GeoTarget,
+  params, isNew, state, model, newItem,
   autoCoords, latLngKeys,
-  worthSaving, normalizeKind,
+  worthSaving,
 } from "./editor-state";
 import {
   root, qs, daysEl, statusEl, titleEcho, mapHeaderBtn, savebarNoteEl,
-  citiesEl, cityInput, rangeEl, rangeTrigger, rangeLabel, dayStripEl,
+  citiesEl, cityInput, rangeTrigger, dayStripEl,
   aiArea, aiNote, aiRun, aiRunLabel, aiRunIcon, aiBar, aiStatus, aiError, aiErrorTitle, aiErrorMessage,
   aiErrorAction, aiErrorReference, aiIntro, aiDialog, aiThread, aiCandidatesStage, aiPreferencesStage, aiDoneStage,
   aiCandidateList, aiSelection, aiToPreferences, aiBuild, aiWalking, aiTransport, aiExtra, aiImportDetails,
@@ -57,15 +54,18 @@ import { buildData, contentFingerprint } from "./plan-data";
 import { setPersistHooks, setLastSavedContentFingerprint, markDirty, persist } from "./persist";
 import { countryFromText } from "./move-transport";
 import { MAPBOX_TOKEN, geocodeSearch, geocodeContextForDay, geoQueryForItem, conciseGeoLabel } from "./geo-search";
-import { updateCoverPreview, onCoverInputChange, onCoverClearClick } from "./cover-image";
+import { onCoverInputChange, onCoverClearClick } from "./cover-image";
 import {
-  persistPendingMembers, renderMembers, renderMemberSelect, updateMemberVisibility, refreshMemberField,
+  persistPendingMembers, refreshMemberField,
   commitMemberSelect, commitMemberName, onMembersClick, onMembersChange, onActiveInvitesClick, onMemberNameKeydown,
 } from "./members";
-import { updateCalsync, onGcalClick, onIcsClick } from "./calendar-sync";
+import { onGcalClick, onIcsClick } from "./calendar-sync";
 import { rebuildDays, renderDays } from "./days-render";
 import { renderCities } from "./cities-render";
 import { renderCandidates, onCandidatesClick, commitCandInput, onCandInputKeydown } from "./candidates";
+import { lockEditor, applyEditorLock, applyMetadataLock } from "./editor-lock";
+import { onRangeTriggerClick } from "./date-range";
+import { syncBasicInputs, loadExisting } from "./plan-load";
 import { onMapClick, applyGeo } from "./place-geocode";
 import { onDaysClick, onDaysInput, onDaysKeydown, onDayStripClick } from "./days-actions";
 import { onCityInputKeydown, onCityAddClick, onCitiesChange, onCitiesClick, onCitiesInput } from "./cities";
@@ -102,66 +102,7 @@ ICON_MOUNTS.forEach(([selector, name]) => {
 });
 
 
-function lockEditor(message: string): false {
-  state.editorLocked = true;
-  statusEl.textContent = message;
-  statusEl.className = "is-dirty";
-  savebarNoteEl.textContent = message;
-  return false;
-}
-
-function applyEditorLock(): void {
-  root.classList.add("is-readonly");
-  root.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement | HTMLButtonElement>(
-    "input, select, textarea, button",
-  ).forEach((control) => {
-    control.disabled = true;
-  });
-}
-
-/** 公開共同編集者には、サーバーが許可する行程・都市だけを編集させる。 */
-function applyMetadataLock(): void {
-  root.classList.add("is-metadata-readonly");
-  root.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement | HTMLButtonElement>(
-    '[data-f="title"], [data-range-trigger], [data-f="note"], [data-member-field] input, ' +
-    '[data-member-field] select, [data-member-field] button, [data-cover-input], [data-cover-clear]',
-  ).forEach((control) => { control.disabled = true; });
-  savebarNoteEl.textContent = "公開共同編集では、行程と訪問地だけを編集できます。旅行名・期間・画像は正式メンバーが変更できます。";
-}
-
-// 期間レンジピッカー（flatpickr・カレンダーで開始日→終了日を一括選択）
-const fp = flatpickr(rangeEl, {
-  mode: "range",
-  dateFormat: "Y-m-d",
-  locale: Japanese,
-  clickOpens: false,
-  disableMobile: true,
-  onChange: (dates: Date[]) => {
-    model.startDate = dates[0] ? toISO(dates[0]) : "";
-    model.endDate = dates[1] ? toISO(dates[1]) : model.startDate;
-    updateRangeButton();
-    rebuildDays();
-    renderDays();
-    renderMembers(); // 参加期間の初期値・min/max・サマリ表示は旅行期間に依存する
-    refreshMap(false);
-    markDirty();
-  },
-  onOpen: () => {
-    rangeTrigger.setAttribute("aria-expanded", "true");
-  },
-  onClose: () => {
-    rangeTrigger.setAttribute("aria-expanded", "false");
-  },
-});
-
-function updateRangeButton(): void {
-  rangeLabel.textContent = datesString() || "期間を選択";
-  rangeTrigger.classList.toggle("is-empty", !model.startDate);
-}
-
-rangeTrigger.addEventListener("click", () => {
-  fp.open(undefined, rangeTrigger);
-});
+rangeTrigger.addEventListener("click", onRangeTriggerClick);
 
 // ---- レンダリング: 都市（ルート） ---------------------------------------
 
@@ -903,114 +844,6 @@ citiesEl.addEventListener("click", onCitiesClick);
 // 都市名の編集（フォーカス維持のため renderCities はしない）
 citiesEl.addEventListener("input", onCitiesInput);
 // ---- 保存・読み込み -----------------------------------------------------
-
-function syncBasicInputs(): void {
-  qs<HTMLInputElement>('[data-f="title"]').value = model.title || "";
-  qs<HTMLInputElement>('[data-f="note"]').value = model.note || "";
-  updateCoverPreview();
-  updateMemberVisibility();
-  renderMembers();
-  renderMemberSelect();
-  if (model.startDate && model.endDate) fp.setDate([model.startDate, model.endDate], false);
-  updateRangeButton();
-  titleEcho.textContent = model.title || "新しい計画";
-  updateCalsync();
-}
-
-function loadExisting(): boolean {
-  const meta = state.slug ? TripPlans.get(state.slug) : null;
-  if (meta && meta.source && meta.source !== "local") {
-    return lockEditor("この計画は外部連携のため、ここでは編集できません");
-  }
-  // 持ち主が居ない計画（権限行もメンバー名も無い）は、名前未設定の本人まで締め出さない。
-  // ダッシュボードの computeReadOnly と同じ判定に揃えている。
-  if (meta && planHasOwner(meta) && !canEditPlan(meta)) {
-    return lockEditor("この計画を編集する権限がありません");
-  }
-  const data = state.slug ? TripPlans.getData(state.slug) : null;
-  if (!data) return true;
-  const trip = data.trip || { title: "", dates: "", members: "", note: "" };
-  model.title = trip.title || "";
-  model.members = trip.members || "";
-  model.memberIds = meta?.memberIds ? [...meta.memberIds] : [];
-  model.memberDates = {};
-  if (meta?.id) {
-    for (const period of TripPlans.memberPeriods(meta.id)) {
-      model.memberDates[period.user_id] = { from: period.from_date, to: period.to_date };
-    }
-  }
-  model.note = trip.note || "";
-  model.cover = trip.cover || "";
-  model.candidates = Array.isArray(data.candidates) ? data.candidates : [];
-  model.visibility = meta?.visibility;
-  const parts = String(trip.dates || "").split(/\s+-\s+/);
-  model.startDate = normalizeToISO(trip.startDate) || normalizeToISO(parts[0]);
-  model.endDate = normalizeToISO(trip.endDate) || normalizeToISO(parts[1] || parts[0]);
-
-  const byDate: Record<string, Day> = {};
-  const cityNames = new Set<string>();
-  (data.itinerary || []).forEach((row) => {
-    const date = normalizeToISO(row.date);
-    if (!date) return;
-    const day = byDate[date] || (byDate[date] = { date, area: row.area || "", items: [], stay: null });
-    if (!day.area && row.area) day.area = row.area;
-    if (row.area) cityNames.add(row.area);
-    const kind = normalizeKind(row.type);
-    const it = newItem(kind, {
-      time: String(row.time || ""), title: String(row.title || ""), place: String(row.place || ""),
-      mapQuery: String(row.mapQuery || ""), note: String(row.note || ""),
-      lat: row.lat != null ? String(row.lat) : "", lng: row.lng != null ? String(row.lng) : "",
-      from: String(row.origin || ""), to: String(row.destination || ""),
-      fromLat: row.originLat != null ? String(row.originLat) : "", fromLng: row.originLng != null ? String(row.originLng) : "",
-      toLat: row.destinationLat != null ? String(row.destinationLat) : "", toLng: row.destinationLng != null ? String(row.destinationLng) : "",
-      transport: String(row.transport || ""), duration: String(row.duration || ""),
-      members: Array.isArray(row.members) ? row.members.filter((x): x is string => typeof x === "string" && Boolean(x)) : [],
-    });
-    if (kind === "stay") day.stay = it;
-    else day.items.push(it);
-  });
-  // 古い計画でplans側の期間が欠けていても、保存済み行程の日付から復旧する。
-  const itineraryDates = Object.keys(byDate).sort();
-  if (!model.startDate) model.startDate = itineraryDates[0] || "";
-  if (!model.endDate) model.endDate = itineraryDates[itineraryDates.length - 1] || model.startDate;
-  model.days = Object.keys(byDate).sort().map((d) => byDate[d]);
-  // 同名の宿が連日なら連泊として1つにまとめる（後ろから前へ畳む）
-  for (let i = model.days.length - 1; i >= 1; i--) {
-    const cur = model.days[i].stay;
-    const prev = model.days[i - 1].stay;
-    if (cur && prev && cur.title && cur.title === prev.title) {
-      prev.nights = Math.max(1, prev.nights) + Math.max(1, cur.nights);
-      model.days[i].stay = null;
-    }
-  }
-  if (data.cities && data.cities.length) {
-    // 保存済みの都市（期間つき）を復元
-    model.cities = data.cities.map((c) => {
-      const itineraryPoint = (data.itinerary || []).find((item) =>
-        item.area === c.name && String(item.lat ?? "").trim() !== "" && String(item.lng ?? "").trim() !== "" &&
-        Number.isFinite(Number(item.lat)) && Number.isFinite(Number(item.lng)),
-      );
-      const known = TripPlans.coordsFor(c.name || "");
-      return {
-        id: state.seq++, name: c.name || "",
-        fromDate: c.fromDate || itineraryDates.find((date) => byDate[date]?.area === c.name) || "",
-        toDate: c.toDate || [...itineraryDates].reverse().find((date) => byDate[date]?.area === c.name) || "",
-        lat: c.lat != null && String(c.lat) !== ""
-          ? String(c.lat) : itineraryPoint ? String(itineraryPoint.lat) : known ? String(known.lat) : "",
-        lng: c.lng != null && String(c.lng) !== ""
-          ? String(c.lng) : itineraryPoint ? String(itineraryPoint.lng) : known ? String(known.lng) : "",
-      };
-    });
-  } else {
-    // 旧データ：行程の area から都市名だけ拾う（期間は空）
-    model.cities = Array.from(cityNames).map((name) => {
-      const hit = TripPlans.coordsFor(name);
-      return { id: state.seq++, name, lat: hit ? String(hit.lat) : "", lng: hit ? String(hit.lng) : "", fromDate: "", toDate: "" };
-    });
-  }
-  return true;
-}
-
 
 async function save(): Promise<void> {
   if (state.editorLocked) {
