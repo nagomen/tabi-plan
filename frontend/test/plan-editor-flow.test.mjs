@@ -30,10 +30,11 @@ test("publish validation keeps incomplete plans as drafts", () => {
 
 test("editor separates draft save from publishing and waits before inviting", () => {
   const source = fs.readFileSync(new URL("src/plan-editor/main.ts", root), "utf8");
+  const savePublish = fs.readFileSync(new URL("src/plan-editor/save-publish.ts", root), "utf8");
   const persist = fs.readFileSync(new URL("src/plan-editor/persist.ts", root), "utf8");
   const members = fs.readFileSync(new URL("src/plan-editor/members.ts", root), "utf8");
-  assert.match(source, /async function save\(\)[\s\S]*await persist\(true\)/);
-  assert.doesNotMatch(source, /async function save\(\)[\s\S]{0,500}published: true/);
+  assert.match(savePublish, /async function save\(\)[\s\S]*await persist\(true\)/);
+  assert.doesNotMatch(savePublish, /async function save\(\)[\s\S]{0,500}published: true/);
   assert.match(members, /async function shareInvite[\s\S]*await persist\(true\)/);
   assert.match(persist, /contentChanged[\s\S]*TripPlans\.saveLocalPlan[\s\S]*TripPlans\.upsert/);
   assert.match(source, /strict: db\.isEnabled\(\)/);
