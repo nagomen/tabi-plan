@@ -71,11 +71,17 @@ test("Google My Maps filename removes unsafe filesystem characters", () => {
 
 test("dashboard Google Maps button falls back to generated directions", () => {
   const html = fs.readFileSync(new URL("index.html", root), "utf8");
-  const dashboard = fs.readFileSync(new URL("src/dashboard/main.ts", root), "utf8");
+  const map = fs.readFileSync(new URL("src/dashboard/map.ts", root), "utf8");
+  const render = fs.readFileSync(new URL("src/dashboard/render.ts", root), "utf8");
+  const dashboardDir = new URL("src/dashboard/", root);
+  const dashboard = fs.readdirSync(dashboardDir)
+    .filter((name) => name.endsWith(".ts"))
+    .map((name) => fs.readFileSync(new URL(name, dashboardDir), "utf8"))
+    .join("\n");
   assert.match(html, /data-my-maps[\s\S]*Google Mapsで開く/);
-  assert.match(dashboard, /function syncGoogleMapsLink\(places: ItineraryItem\[\]\)/);
-  assert.match(dashboard, /const configured = linkByKey\("maps"\)\.url \|\| ""/);
-  assert.match(dashboard, /const fallback = mapsDir\(fallbackPlaces\)/);
-  assert.match(dashboard, /syncGoogleMapsLink\(activePlaces\)/);
+  assert.match(map, /function syncGoogleMapsLink\(places: ItineraryItem\[\]\)/);
+  assert.match(map, /const configured = linkByKey\("maps"\)\.url \|\| ""/);
+  assert.match(map, /const fallback = mapsDir\(fallbackPlaces\)/);
+  assert.match(render, /syncGoogleMapsLink\(activePlaces\)/);
   assert.doesNotMatch(dashboard, /data-my-maps"\)\.href = linkByKey\("maps"\)\.url \|\| "#"/);
 });

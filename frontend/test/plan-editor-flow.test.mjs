@@ -89,11 +89,12 @@ test("LINEログインでも招待tokenを外部へ送らずブラウザ内で�
 test("招待参加後は最新セッションを解決し、旧端末用の空の本人選択を出さない", () => {
   const database = fs.readFileSync(new URL("src/shared/db.ts", root), "utf8");
   const dashboard = fs.readFileSync(new URL("src/dashboard/main.ts", root), "utf8");
+  const profile = fs.readFileSync(new URL("src/dashboard/profile.ts", root), "utf8");
   const html = fs.readFileSync(new URL("index.html", root), "utf8");
   assert.match(database, /sessionRequiresViewerResolution/);
   assert.match(database, /!options\.fresh && !sessionRequiresViewerResolution\(\)/);
   assert.match(dashboard, /db\.load\(\{ fresh: db\.isEnabled\(\), strict: db\.isEnabled\(\) \}\)/);
-  assert.match(dashboard, /if \(db\.isEnabled\(\)\)[\s\S]{0,300}login\.html\?returnTo=/);
+  assert.match(profile, /if \(db\.isEnabled\(\)\)[\s\S]{0,300}login\.html\?returnTo=/);
   assert.match(html, /招待リンクを発行して共有/);
   assert.match(html, /ブラウザに表示中のURLでは参加できません/);
 });
