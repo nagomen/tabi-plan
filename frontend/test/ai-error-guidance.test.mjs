@@ -10,11 +10,11 @@ test("AIエラーは復旧操作つきパネルとして表示する", () => {
   assert.match(html, /data-ai-error\b/);
   assert.match(html, /data-ai-error-action/);
   assert.match(html, /data-ai-error-reference/);
-  const editor = read("src/plan-editor/main.ts");
-  assert.match(editor, /showAiError\(error, "candidates"\)/);
-  assert.match(editor, /showAiError\(error, "itinerary"\)/);
-  assert.match(editor, /retryWaitLabel\(/);
-  assert.match(editor, /問い合わせ番号/);
+  const consultation = read("src/plan-editor/ai-consultation.ts");
+  assert.match(consultation, /showAiError\(error, "candidates"\)/);
+  assert.match(consultation, /showAiError\(error, "itinerary"\)/);
+  assert.match(consultation, /retryWaitLabel\(/);
+  assert.match(consultation, /問い合わせ番号/);
 });
 
 test("APIのエラー契約(code/action/retry_after/request_id)を画面操作へ変換する", () => {

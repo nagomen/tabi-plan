@@ -30,10 +30,13 @@ test("publish validation keeps incomplete plans as drafts", () => {
 
 test("editor separates draft save from publishing and waits before inviting", () => {
   const source = fs.readFileSync(new URL("src/plan-editor/main.ts", root), "utf8");
-  assert.match(source, /async function save\(\)[\s\S]*await persist\(true\)/);
-  assert.doesNotMatch(source, /async function save\(\)[\s\S]{0,500}published: true/);
-  assert.match(source, /async function shareInvite[\s\S]*await persist\(true\)/);
-  assert.match(source, /contentChanged[\s\S]*TripPlans\.saveLocalPlan[\s\S]*TripPlans\.upsert/);
+  const savePublish = fs.readFileSync(new URL("src/plan-editor/save-publish.ts", root), "utf8");
+  const persist = fs.readFileSync(new URL("src/plan-editor/persist.ts", root), "utf8");
+  const members = fs.readFileSync(new URL("src/plan-editor/members.ts", root), "utf8");
+  assert.match(savePublish, /async function save\(\)[\s\S]*await persist\(true\)/);
+  assert.doesNotMatch(savePublish, /async function save\(\)[\s\S]{0,500}published: true/);
+  assert.match(members, /async function shareInvite[\s\S]*await persist\(true\)/);
+  assert.match(persist, /contentChanged[\s\S]*TripPlans\.saveLocalPlan[\s\S]*TripPlans\.upsert/);
   assert.match(source, /strict: db\.isEnabled\(\)/);
 });
 
@@ -47,14 +50,14 @@ test("new-plan form respects database length contracts", () => {
 });
 
 test("slug競合時は入力内容を保ったまま別URLで保存を再試行する", () => {
-  const source = fs.readFileSync(new URL("src/plan-editor/main.ts", root), "utf8");
+  const source = fs.readFileSync(new URL("src/plan-editor/persist.ts", root), "utf8");
   assert.match(source, /error\.code === "ER_DUP_ENTRY"/);
   assert.match(source, /return performPersist\(explicit, slugRetry \+ 1\)/);
 });
 
 test("友達以外を名前で追加し、保存後に未登録メンバーとして招待できる", () => {
   const html = fs.readFileSync(new URL("plan-editor.html", root), "utf8");
-  const editor = fs.readFileSync(new URL("src/plan-editor/main.ts", root), "utf8");
+  const editor = fs.readFileSync(new URL("src/plan-editor/members.ts", root), "utf8");
   const plans = fs.readFileSync(new URL("src/plans/invite-join.ts", root), "utf8");
   assert.match(html, /data-member-name/);
   assert.match(html, /名前で追加/);
