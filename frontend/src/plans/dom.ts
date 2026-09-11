@@ -1,0 +1,32 @@
+import { makeScopedQuery } from "../shared/dom";
+
+export const { qs } = makeScopedQuery(document);
+
+export const hub = qs<HTMLElement>(".hub");
+export const gridMine = qs<HTMLElement>("[data-grid-mine]");
+export const gridPublic = qs<HTMLElement>("[data-grid-public]");
+export const discoverSectionEl = qs<HTMLElement>("[data-discover-section]");
+export const toolbarEl = qs<HTMLElement>("[data-hub-toolbar]");
+export const mineHeadEl = qs<HTMLElement>("[data-mine-head]");
+export const publicHead = qs<HTMLElement>("[data-public-head]");
+export const countEl = document.querySelector<HTMLElement>("[data-count]");
+export const countMineEl = qs<HTMLElement>("[data-count-mine]");
+export const countPublicEl = qs<HTMLElement>("[data-count-public]");
+export const filterEl = qs<HTMLInputElement>("[data-filter]");
+export const createMainEl = qs<HTMLAnchorElement>("[data-create-main]");
+export const inviteStripEl = qs<HTMLElement>("[data-invite-strip]");
+export const inviteTitleEl = qs<HTMLElement>("[data-invite-title]");
+export const inviteNoteEl = qs<HTMLElement>("[data-invite-note]");
+export const rankingNewEl = qs<HTMLElement>("[data-ranking-new]");
+export const rankingViewsEl = qs<HTMLElement>("[data-ranking-views]");
+export const destinationsEl = qs<HTMLElement>("[data-destinations]");
+export const locationExplorerEl = qs<HTMLElement>(".location-explorer");
+export const locationSideEl = qs<HTMLElement>(".location-side");
+export const locationHeadEl = qs<HTMLElement>("[data-location-head]");
+export const locationPlansEl = qs<HTMLElement>("[data-location-plans]");
+export const locationScheduleEl = qs<HTMLElement>("[data-location-schedule]");
+export const mapBoardEl = qs<HTMLElement>("[data-map-board]");
+export const newCountEl = qs<HTMLElement>("[data-new-count]");
+export const viewsTotalEl = qs<HTMLElement>("[data-views-total]");
+export const destinationCountEl = qs<HTMLElement>("[data-destination-count]");
+export const mapCountEl = qs<HTMLElement>("[data-map-count]");

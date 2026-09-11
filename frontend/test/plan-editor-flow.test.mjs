@@ -55,7 +55,7 @@ test("slug競合時は入力内容を保ったまま別URLで保存を再試行�
 test("友達以外を名前で追加し、保存後に未登録メンバーとして招待できる", () => {
   const html = fs.readFileSync(new URL("plan-editor.html", root), "utf8");
   const editor = fs.readFileSync(new URL("src/plan-editor/main.ts", root), "utf8");
-  const plans = fs.readFileSync(new URL("src/plans/main.ts", root), "utf8");
+  const plans = fs.readFileSync(new URL("src/plans/invite-join.ts", root), "utf8");
   assert.match(html, /data-member-name/);
   assert.match(html, /名前で追加/);
   assert.match(editor, /pendingMembers/);
