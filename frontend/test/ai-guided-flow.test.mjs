@@ -25,30 +25,33 @@ test("AI相談は候補・条件・完成の3段階で終了する", () => {
 
 test("候補選択と指定条件を1回の最終行程生成へ渡す", () => {
   const editor = read("src/plan-editor/main.ts");
+  const consultation = read("src/plan-editor/ai-consultation.ts");
+  const draftApply = read("src/plan-editor/ai-draft-apply.ts");
   const db = read("src/shared/db.ts");
   const state = read("src/plan-editor/ai-consultation-state.ts");
-  assert.match(editor, /await db\.suggestItineraryOptions\(input\)/);
-  assert.match(editor, /selected_candidate_ids: selected\.map/);
-  assert.match(editor, /consultation_token: aiConsultation\.options/);
-  assert.match(editor, /preferences: aiPreferences\(\)/);
-  assert.match(editor, /parseExternalAiCreateJson/);
-  assert.match(editor, /importExternalAiDraft/);
+  assert.match(consultation, /await db\.suggestItineraryOptions\(input\)/);
+  assert.match(consultation, /selected_candidate_ids: selected\.map/);
+  assert.match(consultation, /consultation_token: aiConsultation\.options/);
+  assert.match(consultation, /preferences: aiPreferences\(\)/);
+  assert.match(consultation, /parseExternalAiCreateJson/);
+  assert.match(consultation, /importExternalAiDraft/);
   assert.match(editor, /aiImportOpen\.addEventListener/);
-  assert.match(editor, /setAiStage\("done"\)/);
-  assert.match(editor, /function aiCandidateGroups\(\)/);
-  assert.match(editor, /function unselectedAiCities\(\)/);
-  assert.match(editor, /各都市から1件以上/);
+  assert.match(consultation, /setAiStage\("done"\)/);
+  assert.match(consultation, /function aiCandidateGroups\(\)/);
+  assert.match(consultation, /function unselectedAiCities\(\)/);
+  assert.match(consultation, /各都市から1件以上/);
   assert.match(db, /"POST", "\/api\/ai\/itinerary-options"/);
   assert.match(db, /"POST", "\/api\/ai\/itinerary"/);
   assert.match(state, /class AiConsultationState/);
   assert.match(state, /unselectedCities\(\)/);
-  assert.match(editor, /const saved = await persist\(true\)/);
-  assert.match(editor, /await registerAiDraftPlacesOnMap\(\)/);
-  assert.match(editor, /item\.mapQuery = result\.label/);
-  assert.match(editor, /mapQuery: item\.kind === "move"[\s\S]*item\.address/);
-  assert.match(editor, /lat: aiCoordinate\(item\.latitude/);
-  assert.match(editor, /setAiStatus\(saved \? ""/);
-  assert.doesNotMatch(editor, /地図住所の自動登録はMapbox未設定/);
+  assert.match(consultation, /const saved = await persist\(true\)/);
+  assert.match(consultation, /await registerAiDraftPlacesOnMap\(\)/);
+  assert.match(draftApply, /item\.mapQuery = result\.label/);
+  assert.match(draftApply, /mapQuery: item\.kind === "move"[\s\S]*item\.address/);
+  assert.match(draftApply, /lat: aiCoordinate\(item\.latitude/);
+  assert.match(consultation, /setAiStatus\(saved \? ""/);
+  assert.doesNotMatch(consultation, /地図住所の自動登録はMapbox未設定/);
+  assert.doesNotMatch(draftApply, /地図住所の自動登録はMapbox未設定/);
 });
 
 test("AIで登録した移動端点の座標もDB往復で保持する", () => {
