@@ -5,7 +5,6 @@
 //  - 折りたたみ行（タップで編集）＋ クイック追加 ＋ 編集内ライブ地図（ピン+ルート）。
 //  - 保存時は従来の LocalPlanData.itinerary（ItineraryItem[]）へフラット化し、ダッシュボード互換。
 
-import L from "leaflet";
 import * as db from "../shared/db";
 import "../shared/ui.css";
 import "./style.css";
@@ -33,20 +32,17 @@ import { resolveAiMapGeocodeJobs, type AiMapGeocodeSummary } from "./ai-map-geoc
 import { buildExternalAiCreatePrompt, copyExternalAiPrompt, openExternalAi, parseExternalAiCreateJson } from "../shared/external-ai";
 import {
   automaticGeocodingAvailable,
-  geocodingAttribution,
-  reverseCityName,
-  reverseLocation,
   type GeoResult,
 } from "../shared/geocoding";
 import {
-  type ItemKind, type ItemStrKey, type Item, type Day, type City, type GeoTarget,
-  params, isNew, state, model, newItem, datesString, timeOrder, normalizeToISO,
-  cityDateDefault, autoCoords, clearItemCoords, latLngKeys,
-  findItem, worthSaving, normalizeKind, cityForDate,
+  type ItemKind, type Item, type Day, type GeoTarget,
+  params, isNew, state, model, newItem, datesString, normalizeToISO,
+  autoCoords, latLngKeys,
+  worthSaving, normalizeKind, cityForDate,
 } from "./editor-state";
 import {
   root, qs, daysEl, statusEl, titleEcho, mapHeaderBtn, savebarNoteEl,
-  citiesEl, cityInput, cityOptions, mapEl, mapHintEl, rangeEl, rangeTrigger, rangeLabel, dayStripEl,
+  citiesEl, cityInput, rangeEl, rangeTrigger, rangeLabel, dayStripEl,
   aiArea, aiNote, aiRun, aiRunLabel, aiRunIcon, aiBar, aiStatus, aiError, aiErrorTitle, aiErrorMessage,
   aiErrorAction, aiErrorReference, aiIntro, aiDialog, aiThread, aiCandidatesStage, aiPreferencesStage, aiDoneStage,
   aiCandidateList, aiSelection, aiToPreferences, aiBuild, aiWalking, aiTransport, aiExtra, aiImportDetails,
@@ -57,22 +53,23 @@ import {
   saveBtn, publishBtn, stepNextBtn, localNoteEl, exportBtn, mapToggle, mapClose,
   toast, watchComposition, isComposingKey,
 } from "./editor-dom";
-import { setMapHandlers, ensureMap, showCandidates, clearCandidates, refreshMap, scheduleMapRefresh, setMapCollapsed, bindMapResizeGrip } from "./map";
+import { setMapHandlers, ensureMap, refreshMap, setMapCollapsed, bindMapResizeGrip } from "./map";
 import { stepCompletion, setViewStep } from "./steps";
 import { buildData, contentFingerprint } from "./plan-data";
 import { setPersistHooks, setLastSavedContentFingerprint, markDirty, persist } from "./persist";
-import { countryFromText, maybeDefaultMoveTransport, syncTransportSelect } from "./move-transport";
-import { MAPBOX_TOKEN, geocodeSearch, geocodeContextForDay, geoQueryForItem, conciseGeoLabel, geoAppliedMessage, formatLatLng } from "./geo-search";
+import { countryFromText } from "./move-transport";
+import { MAPBOX_TOKEN, geocodeSearch, geocodeContextForDay, geoQueryForItem, conciseGeoLabel } from "./geo-search";
 import { updateCoverPreview, onCoverInputChange, onCoverClearClick } from "./cover-image";
 import {
   persistPendingMembers, renderMembers, renderMemberSelect, updateMemberVisibility, refreshMemberField,
   commitMemberSelect, commitMemberName, onMembersClick, onMembersChange, onActiveInvitesClick, onMemberNameKeydown,
 } from "./members";
 import { updateCalsync, onGcalClick, onIcsClick } from "./calendar-sync";
-import {
-  rebuildDays, stayNightLimits, editTrackChoice, selectedEditTrack, renderDays, refreshNode, refreshDayHeader, focusOpenItem,
-} from "./days-render";
+import { rebuildDays, renderDays } from "./days-render";
 import { renderCities } from "./cities-render";
+import { onMapClick, applyGeo } from "./place-geocode";
+import { onDaysClick, onDaysInput, onDaysKeydown, onDayStripClick } from "./days-actions";
+import { onCityInputKeydown, onCityAddClick, onCitiesChange, onCitiesClick, onCitiesInput } from "./cities";
 
 initPageTransitions();
 
@@ -167,19 +164,6 @@ rangeTrigger.addEventListener("click", () => {
   fp.open(undefined, rangeTrigger);
 });
 
-/**
- * 都市検索の状態メッセージ。
- *
- * .pe-geo-results の見た目は中の button と small にしか付いていないので、
- * textContent で直に文字を入れると素のまま（余白も文字サイズも無し）に
- * なっていた。指定の当たる要素に包んで出す。
- */
-function showCityGeoMessage(target: HTMLElement, text: string, kind?: "warn"): void {
-  target.innerHTML =
-    '<p class="pe-geo-msg' + (kind === "warn" ? " is-warn" : "") + '">' + escapeHtml(text) + "</p>";
-}
-
-
 // ---- レンダリング: 都市（ルート） ---------------------------------------
 
 
@@ -200,48 +184,6 @@ document.querySelector<HTMLButtonElement>("[data-step-next]")?.addEventListener(
   if (!done[state.viewStep - 1]) return;
   setViewStep(state.viewStep + 1);
 });
-
-const cityGeoCache = new Map<number, GeoResult[]>();
-const cityGeoRequestSeq = new Map<number, number>();
-
-async function searchCity(city: City): Promise<void> {
-  const query = city.name.trim();
-  if (!query) return;
-  const requestId = (cityGeoRequestSeq.get(city.id) || 0) + 1;
-  cityGeoRequestSeq.set(city.id, requestId);
-  const originalName = city.name;
-  const resultsEl = citiesEl.querySelector<HTMLElement>(`[data-city-geores="${city.id}"]`);
-  const button = citiesEl.querySelector<HTMLButtonElement>(`[data-city-geo="${city.id}"]`);
-  if (button) button.setAttribute("aria-busy", "true");
-  if (resultsEl) {
-    resultsEl.hidden = false;
-    showCityGeoMessage(resultsEl, "候補を検索中…");
-  }
-  try {
-    const results = await geocodeSearch(query, {
-      countryCode: countryFromText(query) || undefined,
-      purpose: "city",
-    });
-    if (cityGeoRequestSeq.get(city.id) !== requestId || city.name !== originalName || !model.cities.includes(city)) return;
-    cityGeoCache.set(city.id, results);
-    if (!resultsEl) return;
-    if (!results.length) {
-      showCityGeoMessage(resultsEl, "都市候補が見つかりませんでした。国名を加えて再検索してください。", "warn");
-      return;
-    }
-    resultsEl.innerHTML = results.map((result, index) =>
-      `<button type="button" data-city-geo-pick="${city.id}" data-idx="${index}">` +
-      `<b>候補 ${index + 1}</b><small>${escapeHtml(result.label)}</small></button>`,
-    ).join("") + `<small class="pe-geo-attribution">${escapeHtml(geocodingAttribution(results))}</small>`;
-  } catch (error) {
-    if (cityGeoRequestSeq.get(city.id) === requestId && resultsEl) {
-      showCityGeoMessage(resultsEl, errorMessage(error) || "都市検索に失敗しました", "warn");
-    }
-  } finally {
-    if (cityGeoRequestSeq.get(city.id) === requestId && button) button.removeAttribute("aria-busy");
-  }
-}
-
 
 // ---- AI で下書きを作る ---------------------------------------------------
 
@@ -895,421 +837,10 @@ qs<HTMLButtonElement>("[data-ai-reset]").addEventListener("click", resetAiConsul
 aiBuild.addEventListener("click", () => { void runAiDraft(); });
 qs<HTMLButtonElement>("[data-ai-show-itinerary]").addEventListener("click", () => setViewStep(3));
 
-async function addCity(name: string): Promise<void> {
-  const trimmed = name.trim();
-  if (!trimmed) return;
-  const local = TripPlans.coordsFor(trimmed);
-  const fromDate = cityDateDefault(model.cities.length);
-  const city: City = {
-    id: state.seq++,
-    name: trimmed,
-    lat: local ? String(local.lat) : "",
-    lng: local ? String(local.lng) : "",
-    fromDate,
-    toDate: fromDate,
-  };
-  model.cities.push(city);
-  // 追加できた時点で入力欄を空にする。呼び出し側まかせだと
-  // 経路が増えたときに消し忘れる。
-  cityInput.value = "";
-  markDirty();
-  renderCities();
-  refreshMap(false);
-  if (!local) {
-    await searchCity(city);
-  } else {
-    refreshMap(true);
-  }
-}
-
-async function onMapClick(latlng: L.LatLng): Promise<void> {
-  if (state.armedCity !== null) { void applyCityPin(state.armedCity, latlng.lat, latlng.lng); return; }
-  if (!state.armed) return;
-  const itemId = state.armed.itemId;
-  const target = state.armed.target;
-  const found = findItem(itemId);
-  if (!found) return;
-  const lat = latlng.lat;
-  const lng = latlng.lng;
-  const [latKey, lngKey] = latLngKeys(target);
-  found.item[latKey] = lat.toFixed(6);
-  found.item[lngKey] = lng.toFixed(6);
-  if (target === "from" || target === "to") {
-    maybeDefaultMoveTransport(found.item, found.day, "", target);
-    syncTransportSelect(found.item);
-  }
-  setGeoStatus(itemId, target, "設定先の住所を確認中…", "ok");
-  disarm();
-  markDirty();
-  refreshMap(false);
-  try {
-    const label = await reverseLocation(lat, lng, MAPBOX_TOKEN);
-    setGeoStatus(itemId, target, geoAppliedMessage(label || formatLatLng(lat, lng)), "ok");
-  } catch {
-    setGeoStatus(itemId, target, geoAppliedMessage(formatLatLng(lat, lng)), "ok");
-  }
-}
-
-function disarm(): void {
-  state.armed = null;
-  state.armedCity = null;
-  mapHintEl.textContent = "";
-  mapEl.style.cursor = "";
-  daysEl.querySelectorAll(".pe-mini.is-armed").forEach((b) => b.classList.remove("is-armed"));
-  clearCandidates();
-}
-
-function arm(itemId: number, target: GeoTarget, button: HTMLElement): void {
-  if (state.armed && state.armed.itemId === itemId && state.armed.target === target) { disarm(); return; }
-  disarm();
-  state.armed = { itemId, target };
-  mapHintEl.textContent = "地図をクリックして位置を指定";
-  mapEl.style.cursor = "crosshair";
-  button.classList.add("is-armed");
-  // 地図が閉じていると指定しようがないので開く。
-  // スマホでは地図がボトムシートなので、開けばそのまま操作できる。
-  if (root?.classList.contains("map-collapsed")) setMapCollapsed(false);
-  root?.querySelector(".pe-mapwrap")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-}
-
-/**
- * 訪問地の位置を地図のクリックで決める待受に入る。
- * 名前で見つからない土地でも、ピンさえ置けば登録できるようにするため。
- */
-function armCity(cityId: number, button: HTMLElement): void {
-  if (state.armedCity === cityId) { disarm(); return; }
-  disarm();
-  state.armedCity = cityId;
-  mapHintEl.textContent = "地図をクリックすると、その場所の都市名で登録します";
-  mapEl.style.cursor = "crosshair";
-  button.classList.add("is-armed");
-  if (root?.classList.contains("map-collapsed")) setMapCollapsed(false);
-  root?.querySelector(".pe-mapwrap")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-}
-
-/** 地図で置いたピンから訪問地を確定する。 */
-async function applyCityPin(cityId: number, lat: number, lng: number): Promise<void> {
-  const city = model.cities.find((c) => c.id === cityId);
-  if (!city) return;
-  city.lat = lat.toFixed(6);
-  city.lng = lng.toFixed(6);
-  disarm();
-  markDirty();
-  renderCities();
-  refreshMap(false);
-  const notice = citiesEl.querySelector<HTMLElement>(`[data-city-nogeo="${cityId}"]`);
-  if (notice) notice.textContent = "この地点の地名を確認中…";
-  try {
-    const name = await reverseCityName(lat, lng);
-    const current = model.cities.find((c) => c.id === cityId);
-    if (!current) return;
-    if (name) current.name = name;
-    markDirty();
-    renderCities();
-    refreshMap(false);
-    toast(name ? `「${name}」で登録しました` : "位置を登録しました（地名は取得できませんでした）");
-  } catch {
-    toast("位置は登録しましたが、地名を取得できませんでした");
-  }
-}
-
-// ---- ジオコーディング状態表示 -------------------------------------------
-
-function setGeoStatus(itemId: number, target: GeoTarget, text: string, kind?: "ok" | "warn"): void {
-  const el = daysEl.querySelector<HTMLElement>(`[data-geo="${itemId}-${target}"]`);
-  if (!el) return;
-  const mark = kind === "ok" ? icon("checkCircle") : kind === "warn" ? icon("exclamationTriangle") : "";
-  el.innerHTML = mark + "<span>" + escapeHtml(text) + "</span>";
-  el.className = "pe-geo-status" + (kind ? " is-" + kind : "");
-}
-
-function setPlaceLoading(itemId: number, target: GeoTarget, loading: boolean): void {
-  const field = daysEl.querySelector<HTMLElement>(`[data-place-field="${itemId}-${target}"]`);
-  if (!field) return;
-  field.classList.toggle("is-loading", loading);
-  if (loading) field.setAttribute("aria-busy", "true");
-  else field.removeAttribute("aria-busy");
-}
-
-async function runGeocode(
-  itemId: number,
-  target: GeoTarget,
-  options: { autoApplySingle?: boolean; quiet?: boolean; automatic?: boolean } = {},
-): Promise<void> {
-  const autoApplySingle = options.autoApplySingle === true;
-  const found = findItem(itemId);
-  if (!found) return;
-  const item = found.item;
-  const query = geoQueryForItem(item, target);
-  const context = geocodeContextForDay(found.day, item, target);
-  const key = `${itemId}-${target}`;
-  const resultsEl = daysEl.querySelector<HTMLElement>(`[data-geores="${itemId}-${target}"]`);
-  if (!query) { if (!options.quiet) setGeoStatus(itemId, target, "場所名を入力してください", "warn"); return; }
-  const requestId = (geoRequestSeq.get(key) || 0) + 1;
-  geoRequestSeq.set(key, requestId);
-  const isCurrent = (): boolean => geoRequestSeq.get(key) === requestId;
-  setPlaceLoading(itemId, target, true);
-  setGeoStatus(itemId, target, context?.cityName ? `${context.cityName}を優先して検索中…` : "検索中…");
-  clearCandidates();
-  if (resultsEl) { resultsEl.hidden = true; resultsEl.innerHTML = ""; }
-  try {
-    const results = await geocodeSearch(query, context, Boolean(options.automatic));
-    if (!isCurrent()) return;
-    if (!results.length) {
-      const area = context?.requireNearby && context.cityName ? `${context.cityName}周辺で` : "";
-      setGeoStatus(itemId, target, `${area}見つかりませんでした。ホテル名や英字表記を変えて再検索を`, "warn");
-      return;
-    }
-    if (results.length === 1 && autoApplySingle) { applyGeo(itemId, target, results[0]); return; }
-    geoCache.set(`${itemId}-${target}`, results);
-    showCandidates(itemId, target, results);
-    if (resultsEl) {
-      resultsEl.innerHTML = results
-        .map((r, i) => `<button type="button" data-act="geo-pick" data-item="${itemId}" data-target="${target}" data-idx="${i}"><b>候補 ${i + 1}</b><small>${escapeHtml(r.label)}</small></button>`)
-        .join("") + `<small class="pe-geo-attribution">${escapeHtml(geocodingAttribution(results))}</small>`;
-      resultsEl.hidden = false;
-      setGeoStatus(itemId, target, "地図のピン、または下の候補から選んでください");
-    }
-  } catch (e) {
-    if (!isCurrent()) return;
-    setGeoStatus(itemId, target, e instanceof Error ? e.message : "検索に失敗しました", "warn");
-  } finally {
-    if (isCurrent()) setPlaceLoading(itemId, target, false);
-  }
-}
-
-const geoCache = new Map<string, GeoResult[]>();
-const geoSuggestTimers = new Map<number, number>();
-const geoRequestSeq = new Map<string, number>();
-
-function invalidateGeoRequest(itemId: number, target: GeoTarget): void {
-  const key = `${itemId}-${target}`;
-  geoRequestSeq.set(key, (geoRequestSeq.get(key) || 0) + 1);
-  setPlaceLoading(itemId, target, false);
-}
-
-function clearGeoResults(itemId: number, target: GeoTarget): void {
-  invalidateGeoRequest(itemId, target);
-  const resultsEl = daysEl.querySelector<HTMLElement>(`[data-geores="${itemId}-${target}"]`);
-  if (resultsEl) { resultsEl.hidden = true; resultsEl.innerHTML = ""; }
-  geoCache.delete(`${itemId}-${target}`);
-}
-
-function scheduleNamePlaceSuggest(item: Item): void {
-  const existing = geoSuggestTimers.get(item.id);
-  if (existing) window.clearTimeout(existing);
-  invalidateGeoRequest(item.id, "place");
-  if (!automaticGeocodingAvailable(MAPBOX_TOKEN) || !["sight", "stay"].includes(item.kind) || item.place.trim() || item.title.trim().length < 2) {
-    clearGeoResults(item.id, "place");
-    return;
-  }
-  const timer = window.setTimeout(() => {
-    geoSuggestTimers.delete(item.id);
-    void runGeocode(item.id, "place", { autoApplySingle: false, quiet: true, automatic: true });
-  }, 650);
-  geoSuggestTimers.set(item.id, timer);
-}
-
-function applyGeo(itemId: number, target: GeoTarget, r: GeoResult): void {
-  const found = findItem(itemId);
-  if (!found) return;
-  const [latKey, lngKey] = latLngKeys(target);
-  found.item[latKey] = String(r.lat);
-  found.item[lngKey] = String(r.lng);
-  if (target === "from" || target === "to") {
-    maybeDefaultMoveTransport(found.item, found.day, r.label, target);
-    syncTransportSelect(found.item);
-  }
-  if (target === "place") {
-    found.item.mapQuery = r.label;
-    if (!found.item.place.trim()) found.item.place = conciseGeoLabel(r.label);
-    const placeInput = daysEl.querySelector<HTMLInputElement>(`[data-field="place"][data-item="${itemId}"]`);
-    if (placeInput) placeInput.value = found.item.place;
-  }
-  const resultsEl = daysEl.querySelector<HTMLElement>(`[data-geores="${itemId}-${target}"]`);
-  if (resultsEl) { resultsEl.hidden = true; resultsEl.innerHTML = ""; }
-  clearCandidates();
-  mapHintEl.textContent = "";
-  setGeoStatus(itemId, target, geoAppliedMessage(r.label || formatLatLng(r.lat, r.lng)), "ok");
-  markDirty();
-  refreshNode(found.item);
-  refreshDayHeader(model.days.indexOf(found.day));
-  refreshMap(true);
-}
-
 // ---- イベント委譲 -------------------------------------------------------
 
-daysEl.addEventListener("click", (event) => {
-  const target = event.target;
-  if (!(target instanceof Element)) return;
-  if (target.closest("[data-grip]")) return; // ドラッグハンドルのクリックは無視
-  const actEl = target.closest<HTMLElement>("[data-act]");
-  if (!actEl) return;
-  const act = actEl.dataset.act;
-  const itemId = Number(actEl.dataset.item || actEl.closest<HTMLElement>("[data-node]")?.dataset.node || 0);
-  const dayIndex = Number(actEl.dataset.day || 0);
-
-  if (act === "toggle") {
-    state.openItemId = state.openItemId === itemId ? null : itemId;
-    disarm();
-    renderDays();
-    focusOpenItem();
-    return;
-  }
-  if (act === "close") { state.openItemId = null; disarm(); renderDays(); return; }
-  if (act === "remove") {
-    const found = findItem(itemId);
-    if (found) {
-      if (found.item.kind === "stay") found.day.stay = null;
-      else found.day.items = found.day.items.filter((x) => x.id !== itemId);
-      markDirty(); renderDays(); refreshMap(false);
-    }
-    return;
-  }
-  if (act === "track") {
-    const day = model.days[dayIndex];
-    if (day) {
-      editTrackChoice.set(day.date, actEl.dataset.track || "");
-      renderDays();
-      refreshMap(false);
-    }
-    return;
-  }
-  if (act === "add") {
-    const kind = (actEl.dataset.kind || "sight") as ItemKind;
-    const day = model.days[dayIndex];
-    if (!day) return;
-    const it = newItem(kind);
-    maybeDefaultMoveTransport(it, day, "", undefined, true);
-    // 班タブを選んでいる日は、追加した予定をその班のものにする
-    // （全員の予定にしたければ、予定を開いて対象メンバーを「全員」に戻せる）
-    const track = selectedEditTrack(day);
-    if (track && kind !== "stay") it.members = [...track.memberIds];
-    if (kind === "stay") day.stay = it;
-    else day.items.push(it);
-    state.openItemId = it.id;
-    markDirty(); renderDays(); refreshMap(false); focusOpenItem();
-    return;
-  }
-  if (act === "members-all") {
-    const found = findItem(itemId);
-    if (found && found.item.members.length) {
-      found.item.members = [];
-      markDirty(); renderDays();
-    }
-    return;
-  }
-  if (act === "member-toggle") {
-    const found = findItem(itemId);
-    const uid = actEl.dataset.member || "";
-    if (found && uid) {
-      const set = new Set(found.item.members);
-      if (set.has(uid)) set.delete(uid);
-      else set.add(uid);
-      // 全員を選んだ状態は「全員（空）」と同じ意味なので空へ正規化する
-      const ids = model.memberIds.filter((id) => id && db.nameOf(id));
-      found.item.members = ids.length && ids.every((id) => set.has(id)) ? [] : [...set];
-      markDirty(); renderDays();
-    }
-    return;
-  }
-  if (act === "copy-prev") {
-    const day = model.days[dayIndex];
-    const prev = model.days[dayIndex - 1];
-    if (!day || !prev) return;
-    day.area = day.area || prev.area;
-    prev.items.forEach((it) => day.items.push(newItem(it.kind, it)));
-    if (prev.stay && !day.stay) day.stay = newItem("stay", prev.stay);
-    markDirty(); renderDays(); refreshMap(true);
-    return;
-  }
-  if (act === "sort-time") {
-    const day = model.days[dayIndex];
-    if (day) {
-      day.items = day.items
-        .map((it, i) => ({ it, i }))
-        .sort((a, b) => timeOrder(a.it.time) - timeOrder(b.it.time) || a.i - b.i)
-        .map((x) => x.it);
-      markDirty(); renderDays(); refreshMap(false);
-    }
-    return;
-  }
-  if (act === "geo") { void runGeocode(itemId, (actEl.dataset.target || "place") as GeoTarget); return; }
-  if (act === "geo-arm") { arm(itemId, (actEl.dataset.target || "place") as GeoTarget, actEl); return; }
-  if (act === "geo-pick") {
-    const key = `${itemId}-${actEl.dataset.target}`;
-    const list = geoCache.get(key);
-    const r = list && list[Number(actEl.dataset.idx || 0)];
-    if (r) applyGeo(itemId, (actEl.dataset.target || "place") as GeoTarget, r);
-    return;
-  }
-});
-
-daysEl.addEventListener("input", (event) => {
-  const target = event.target;
-  if (!(target instanceof HTMLInputElement) && !(target instanceof HTMLTextAreaElement) && !(target instanceof HTMLSelectElement)) return;
-
-  // 日の拠点エリア
-  const areaIdx = target.getAttribute("data-area");
-  if (areaIdx !== null) {
-    const day = model.days[Number(areaIdx)];
-    if (day) { day.area = target.value; refreshDayHeader(Number(areaIdx)); markDirty(); }
-    return;
-  }
-
-  const fieldName = target.getAttribute("data-field");
-  const itemId = Number(target.getAttribute("data-item") || 0);
-  if (!fieldName || !itemId) return;
-  const found = findItem(itemId);
-  if (!found) return;
-
-  // 泊数（数値・連泊範囲が変わるので全再描画）
-  if (fieldName === "nights") {
-    found.item.nights = Math.max(1, Math.min(stayNightLimits(found.item).tripMax, Number(target.value) || 1));
-    markDirty();
-    renderDays();
-    refreshMap(false);
-    return;
-  }
-
-  const field = fieldName as ItemStrKey;
-  const previousValue = found.item[field];
-  found.item[field] = target.value;
-
-  // 入力名と座標は一組として扱う。名前だけ変わったのに以前の座標が残る状態を作らない。
-  if (previousValue !== target.value && (field === "place" || field === "mapQuery")) {
-    clearItemCoords(found.item, "place");
-    if (field === "place") found.item.mapQuery = "";
-    autoCoords(found.item, "place");
-  }
-  if (previousValue !== target.value && field === "from") {
-    clearGeoResults(found.item.id, "from");
-    clearItemCoords(found.item, "from");
-    autoCoords(found.item, "from");
-  }
-  if (previousValue !== target.value && field === "to") {
-    clearGeoResults(found.item.id, "to");
-    clearItemCoords(found.item, "to");
-    autoCoords(found.item, "to");
-  }
-  if (field === "from" || field === "to") {
-    maybeDefaultMoveTransport(found.item, found.day, "", field);
-    syncTransportSelect(found.item);
-  }
-  if (field === "title") scheduleNamePlaceSuggest(found.item);
-  if (field === "place") {
-    const timer = geoSuggestTimers.get(found.item.id);
-    if (timer) window.clearTimeout(timer);
-    geoSuggestTimers.delete(found.item.id);
-    clearGeoResults(found.item.id, "place");
-  }
-
-  refreshNode(found.item);
-  const di = model.days.indexOf(found.day);
-  if (found.item.kind === "stay" || field === "place" || field === "from" || field === "to") refreshDayHeader(di);
-  markDirty();
-  scheduleMapRefresh();
-});
+daysEl.addEventListener("click", onDaysClick);
+daysEl.addEventListener("input", onDaysInput);
 
 // ---- 基本情報の入力バインド ---------------------------------------------
 
@@ -1527,103 +1058,14 @@ gcalBtn.addEventListener("click", onGcalClick);
 icsBtn.addEventListener("click", onIcsClick);
 
 watchComposition(cityInput);
-cityInput.addEventListener("keydown", (e) => {
-  // 日本語入力の変換確定も Enter で来る。ここで追加してしまうと、
-  // 追加のあとに確定した文字が入力欄へ書き戻されて残ってしまう。
-  if (isComposingKey(e)) return;
-  if (e.key === "Enter") { e.preventDefault(); void addCity(cityInput.value); }
-});
-qs<HTMLButtonElement>("[data-city-add]").addEventListener("click", () => {
-  void addCity(cityInput.value);
-});
-
+cityInput.addEventListener("keydown", onCityInputKeydown);
+qs<HTMLButtonElement>("[data-city-add]").addEventListener("click", onCityAddClick);
 // 都市の滞在期間（開始/終了日）の割り当て
-citiesEl.addEventListener("change", (event) => {
-  const t = event.target;
-  if (!(t instanceof HTMLSelectElement)) return;
-  const fromId = t.getAttribute("data-city-from");
-  const toId = t.getAttribute("data-city-to");
-  const city = model.cities.find((c) => c.id === Number(fromId || toId || 0));
-  if (!city) return;
-  if (fromId) { city.fromDate = t.value; if (!city.toDate || city.toDate < city.fromDate) city.toDate = city.fromDate; }
-  if (toId) { city.toDate = t.value; if (!city.fromDate || city.fromDate > city.toDate) city.fromDate = city.toDate; }
-  markDirty();
-  renderCities();
-  renderDays();
-  refreshMap(false);
-});
-
+citiesEl.addEventListener("change", onCitiesChange);
 // 都市の削除・地図検索
-citiesEl.addEventListener("click", (event) => {
-  const t = event.target;
-  if (!(t instanceof Element)) return;
-  const pickBtn = t.closest<HTMLElement>("[data-city-geo-pick]");
-  if (pickBtn) {
-    const id = Number(pickBtn.dataset.cityGeoPick || 0);
-    const city = model.cities.find((entry) => entry.id === id);
-    const result = cityGeoCache.get(id)?.[Number(pickBtn.dataset.idx || 0)];
-    if (!city || !result) return;
-    city.lat = String(result.lat);
-    city.lng = String(result.lng);
-    cityGeoRequestSeq.set(id, (cityGeoRequestSeq.get(id) || 0) + 1);
-    cityGeoCache.delete(id);
-    markDirty();
-    renderCities();
-    renderDays();
-    refreshMap(true);
-    return;
-  }
-  const delBtn = t.closest<HTMLElement>("[data-city-del]");
-  if (delBtn) {
-    const id = Number(delBtn.dataset.cityDel || 0);
-    cityGeoRequestSeq.set(id, (cityGeoRequestSeq.get(id) || 0) + 1);
-    cityGeoCache.delete(id);
-    model.cities = model.cities.filter((c) => c.id !== id);
-    markDirty();
-    renderCities();
-    renderDays();
-    refreshMap(true);
-    return;
-  }
-  const pinBtn = t.closest<HTMLElement>("[data-city-pin]");
-  if (pinBtn) {
-    armCity(Number(pinBtn.dataset.cityPin || 0), pinBtn);
-    return;
-  }
-  const geoBtn = t.closest<HTMLElement>("[data-city-geo]");
-  if (geoBtn) {
-    const city = model.cities.find((c) => c.id === Number(geoBtn.dataset.cityGeo || 0));
-    if (!city || !city.name.trim()) return;
-    void searchCity(city);
-  }
-});
-
+citiesEl.addEventListener("click", onCitiesClick);
 // 都市名の編集（フォーカス維持のため renderCities はしない）
-citiesEl.addEventListener("input", (event) => {
-  const t = event.target;
-  if (!(t instanceof HTMLInputElement)) return;
-  const id = t.getAttribute("data-city-name");
-  if (id === null) return;
-  const city = model.cities.find((c) => c.id === Number(id));
-  if (!city) return;
-  const previousName = city.name;
-  city.name = t.value;
-  if (previousName !== city.name) {
-    city.lat = "";
-    city.lng = "";
-    cityGeoRequestSeq.set(city.id, (cityGeoRequestSeq.get(city.id) || 0) + 1);
-    cityGeoCache.delete(city.id);
-    const resultsEl = citiesEl.querySelector<HTMLElement>(`[data-city-geores="${city.id}"]`);
-    if (resultsEl) { resultsEl.hidden = true; resultsEl.innerHTML = ""; }
-  }
-  const hit = TripPlans.coordsFor(city.name);
-  if (hit) { city.lat = String(hit.lat); city.lng = String(hit.lng); }
-  cityOptions.innerHTML = model.cities.map((c) => `<option value="${escapeHtml(c.name)}">`).join("");
-  markDirty();
-  renderDays();
-  scheduleMapRefresh();
-});
-
+citiesEl.addEventListener("input", onCitiesInput);
 // ---- 保存・読み込み -----------------------------------------------------
 
 function syncBasicInputs(): void {
@@ -1934,30 +1376,10 @@ mapClose.addEventListener("click", (event) => { event.stopPropagation(); setMapC
 bindMapResizeGrip();
 
 // 行のキーボード操作（Enter/Space で開閉）
-daysEl.addEventListener("keydown", (event) => {
-  const t = event.target;
-  if (!(t instanceof Element)) return;
-  const row = t.closest<HTMLElement>('.pe-row[data-act="toggle"]');
-  if (!row) return;
-  if (event.key === "Enter" || event.key === " ") {
-    event.preventDefault();
-    const id = Number(row.dataset.item || 0);
-    state.openItemId = state.openItemId === id ? null : id;
-    disarm();
-    renderDays();
-    focusOpenItem();
-  }
-});
+daysEl.addEventListener("keydown", onDaysKeydown);
 
 // 日へジャンプ
-dayStripEl.addEventListener("click", (event) => {
-  const t = event.target;
-  if (!(t instanceof Element)) return;
-  const chip = t.closest<HTMLElement>("[data-jump]");
-  if (!chip) return;
-  daysEl.querySelector<HTMLElement>(`article[data-day="${chip.dataset.jump}"]`)?.scrollIntoView({ behavior: "smooth", block: "start" });
-});
-
+dayStripEl.addEventListener("click", onDayStripClick);
 window.addEventListener("beforeunload", (event) => {
   if (state.editorLocked) return;
   if (state.dirty) { event.preventDefault(); event.returnValue = ""; }

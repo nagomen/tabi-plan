@@ -139,12 +139,14 @@ test("airport intent ranks an aerodrome above unrelated provider results", async
 });
 
 test("editor invalidates coordinates when place or city names change", () => {
-  const source = fs.readFileSync(new URL("src/plan-editor/main.ts", root), "utf8");
+  const daysActions = fs.readFileSync(new URL("src/plan-editor/days-actions.ts", root), "utf8");
+  const cities = fs.readFileSync(new URL("src/plan-editor/cities.ts", root), "utf8");
+  const placeGeocode = fs.readFileSync(new URL("src/plan-editor/place-geocode.ts", root), "utf8");
   const geoSearch = fs.readFileSync(new URL("src/plan-editor/geo-search.ts", root), "utf8");
-  assert.match(source, /previousValue !== target\.value[\s\S]*clearItemCoords\(found\.item, "place"\)/);
-  assert.match(source, /previousName !== city\.name[\s\S]*city\.lat = "";[\s\S]*city\.lng = "";/);
-  assert.doesNotMatch(source, /if \(results\[0\]\) \{ city\.lat/);
-  assert.match(source, /const autoApplySingle = options\.autoApplySingle === true/);
+  assert.match(daysActions, /previousValue !== target\.value[\s\S]*clearItemCoords\(found\.item, "place"\)/);
+  assert.match(cities, /previousName !== city\.name[\s\S]*city\.lat = "";[\s\S]*city\.lng = "";/);
+  assert.doesNotMatch(cities, /if \(results\[0\]\) \{ city\.lat/);
+  assert.match(placeGeocode, /const autoApplySingle = options\.autoApplySingle === true/);
   assert.match(geoSearch, /if \(isMoveEndpoint && endpointCountry\)[\s\S]*purpose: "move"/);
 });
 
