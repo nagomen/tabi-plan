@@ -1,0 +1,6 @@
+
+# 1 行目: type: 要約(50 文字以内、句点なし)
+#   type は feat / fix / docs / refactor / test / chore のいずれか
+# 2 行目: 空行
+# 3 行目以降: なぜ変えたか(差分を見れば分かることは書かない)
+#   関連 Issue があれば Refs #123 / Closes #123
