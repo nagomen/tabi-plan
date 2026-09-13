@@ -1,4 +1,5 @@
 import * as TripPlans from "../shared/plans-store";
+import * as db from "../shared/db";
 import { canEditPlan, planHasOwner } from "../shared/membership";
 import { type Day, state, model, newItem, normalizeToISO, normalizeKind } from "./editor-state";
 import { qs, titleEcho } from "./editor-dom";
@@ -37,8 +38,12 @@ export function loadExisting(): boolean {
   model.title = trip.title || "";
   model.members = trip.members || "";
   model.memberIds = meta?.memberIds ? [...meta.memberIds] : [];
+  model.memberRoles = {};
   model.memberDates = {};
   if (meta?.id) {
+    for (const member of db.members().filter((row) => row.plan_id === meta.id && row.status === "active")) {
+      model.memberRoles[member.user_id] = member.role;
+    }
     for (const period of TripPlans.memberPeriods(meta.id)) {
       model.memberDates[period.user_id] = { from: period.from_date, to: period.to_date };
     }

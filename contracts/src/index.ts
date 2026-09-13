@@ -39,6 +39,8 @@ export interface PlanMemberRow {
   user_id: string;
   role: "owner" | "editor" | "viewer";
   status: "active" | "left" | "revoked";
+  /** この参加者アカウントの計画アクセス。null は未登録者または招待受諾前。 */
+  access_status: "active" | "revoked" | null;
   /** 旅行内の参加開始日（YYYY-MM-DD）。null は初日から参加。 */
   from_date: string | null;
   /** 旅行内の参加終了日（YYYY-MM-DD）。null は最終日まで参加。 */

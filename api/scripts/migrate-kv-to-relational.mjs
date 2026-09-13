@@ -182,9 +182,10 @@ try {
     await conn.query("SET FOREIGN_KEY_CHECKS = 0");
     for (const t of [
       "expense_audit_logs", "expense_shares", "expenses", "settlements", "plan_candidate_votes", "plan_candidates",
-      "plan_checklist_items", "plan_links", "plan_cities", "itinerary_items", "plan_view_daily",
-      "plan_invites", "plan_members", "plans", "user_settings", "user_payment_links",
-      "friendships", "user_sessions", "user_credentials", "users",
+      "plan_checklist_items", "plan_links", "plan_cities", "itinerary_items", "plan_view_daily", "plan_flight_notes",
+      "plan_invites", "plan_member_placeholders", "plan_access_grants", "plan_members", "plans",
+      "ai_usage_daily", "user_settings", "user_payment_links", "friendships", "user_sessions",
+      "user_identities", "user_credentials", "users",
     ]) await conn.query(`DELETE FROM ${t}`);
     await conn.query("SET FOREIGN_KEY_CHECKS = 1");
   }
@@ -287,6 +288,22 @@ try {
     putMember(r.planSlug, uid, r.role);
   }
   await insert("INSERT INTO plan_members (plan_id, user_id, role, status) VALUES ?", [...memberRows.values()]);
+
+  // 旅行参加者とは別に、ログイン可能な既存アカウントへアクセス権を引き継ぐ。
+  // 名前だけの参加者は認証主体ではないため、招待を受諾するまで権限を作らない。
+  await conn.query(`INSERT INTO plan_access_grants (plan_id, user_id, role, status, granted_by_id)
+    SELECT pm.plan_id, pm.user_id,
+           CASE WHEN p.owner_user_id = pm.user_id THEN 'owner' ELSE pm.role END,
+           'active', p.owner_user_id
+      FROM plan_members pm
+      JOIN plans p ON p.id = pm.plan_id
+     WHERE pm.status = 'active'
+       AND EXISTS (SELECT 1 FROM user_credentials c WHERE c.user_id = pm.user_id)
+    ON DUPLICATE KEY UPDATE role = VALUES(role), status = 'active', granted_by_id = VALUES(granted_by_id)`);
+  await conn.query(`INSERT INTO plan_access_grants (plan_id, user_id, role, status, granted_by_id)
+    SELECT id, owner_user_id, 'owner', 'active', owner_user_id
+      FROM plans WHERE owner_user_id IS NOT NULL
+    ON DUPLICATE KEY UPDATE role = 'owner', status = 'active', granted_by_id = VALUES(granted_by_id)`);
 
   // 計画本体（行程・都市・リンク・チェックリスト・候補）
   const itinRows = [], cityRows = [], linkRows = [], checkRows = [], candRows = [], voteRows = [];

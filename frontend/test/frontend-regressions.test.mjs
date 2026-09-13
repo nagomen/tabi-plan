@@ -50,6 +50,32 @@ test("人物地図の再描画は既存Leafletインスタンスを再生成し�
   assert.match(source, /filterEl\.dataset\.bound/);
 });
 
+test("人物地図の初期表示は直近の旅行に寄せ、以降は表示範囲を戻さない", () => {
+  const map = read("src/person/history-map.ts");
+  const main = read("src/person/main.ts");
+  // ピンは全件描いたうえで、最初の表示範囲だけ直近の旅行に合わせる。
+  assert.match(map, /const isFirstDraw = !personMap/);
+  assert.match(map, /updateMapMarkers\(isFirstDraw \? "focus" : "keep"\)/);
+  assert.match(map, /visit\.tripSlug === focusTripSlug/);
+  assert.match(map, /if \(fit === "keep"\) return/);
+  // 期間フィルタはその期間の全ピンに引き直す。
+  assert.match(map, /updateMapMarkers\("all"\)/);
+  // personTrips は新しい順なので先頭が直近の旅行。
+  assert.match(main, /renderMap\(allPins, trips\[0\]\?\.plan\.slug \|\| ""\)/);
+});
+
+test("人物ページは名前ではなくuser_idで本人と作成計画を同定する", () => {
+  const friendAction = read("src/person/friend-action.ts");
+  const createdPlans = read("src/person/created-plans.ts");
+  const membership = read("src/shared/membership.ts");
+  // ?user= が来ていれば、同名アカウントが複数あっても申請先を決められる。
+  assert.match(friendAction, /if \(personId\) \{\s*\n\s*const known = findAccountById\(personId\)/);
+  assert.match(friendAction, /if \(personId\) return account\.id === personId/);
+  // 作成した計画も owner の user_id で絞る。
+  assert.match(createdPlans, /if \(personId\) return ownerIdOf\(meta\) === personId/);
+  assert.match(membership, /export function ownerIdOf/);
+});
+
 test("fresh loadとセッション通知の優先度を守る", () => {
   const database = read("src/shared/db.ts");
   const notice = read("src/shared/session-notice.ts");

@@ -38,7 +38,8 @@ export async function createPlaceholderMember(
   planId: string,
   displayName: string,
   actorUserId: string,
-): Promise<{ user: { id: string; display_name: string }; member: { plan_id: string; user_id: string; role: "editor"; status: "active" }; version: number }> {
+  role: "editor" | "viewer" = "editor",
+): Promise<{ user: { id: string; display_name: string }; member: { plan_id: string; user_id: string; role: "editor" | "viewer"; status: "active"; access_status: null }; version: number }> {
   const name = String(displayName || "").trim().slice(0, 64);
   if (!name) throw new BadRequest("メンバー名を入力してください");
   const userId = newId("gst");
@@ -55,8 +56,8 @@ export async function createPlaceholderMember(
     );
     await conn.query(
       `INSERT INTO plan_members (plan_id, user_id, role, status, invited_by_id)
-       VALUES (?, ?, 'editor', 'active', ?)`,
-      [planId, userId, actorUserId],
+       VALUES (?, ?, ?, 'active', ?)`,
+      [planId, userId, role, actorUserId],
     );
     await conn.query(
       `INSERT INTO plan_member_placeholders
@@ -69,7 +70,7 @@ export async function createPlaceholderMember(
   });
   return {
     user: { id: userId, display_name: name },
-    member: { plan_id: planId, user_id: userId, role: "editor", status: "active" },
+    member: { plan_id: planId, user_id: userId, role, status: "active", access_status: null },
     version,
   };
 }
@@ -152,7 +153,7 @@ export async function replaceMembers(
       .map((row) => row.user_id)
       .filter((id) => !nextIds.has(id));
     if (await memberReferenceCount(conn, planId, removedIds) > 0) {
-      throw new BadRequest("費用・負担・精算に使われているメンバーは削除できません。先に該当データを修正してください");
+      throw new BadRequest("費用・負担・精算に使われているメンバーは削除できません。会計履歴を残して権限だけ外す場合は、アクセス停止を使ってください");
     }
     await conn.query(
       `UPDATE plan_members SET status = 'revoked'
@@ -165,6 +166,19 @@ export async function replaceMembers(
         WHERE plan_id = ? AND status = 'unclaimed' AND user_id NOT IN (${activeIn.sql})`,
       [planId, ...activeIn.params],
     );
+    if (removedIds.length) {
+      const removedIn = inClause(removedIds);
+      await conn.query(
+        `UPDATE plan_access_grants SET status = 'revoked'
+          WHERE plan_id = ? AND user_id IN (${removedIn.sql}) AND status = 'active'`,
+        [planId, ...removedIn.params],
+      );
+      await conn.query(
+        `UPDATE plan_invites SET status = 'revoked', revoked_at = CURRENT_TIMESTAMP
+          WHERE plan_id = ? AND invited_user_id IN (${removedIn.sql}) AND status = 'pending'`,
+        [planId, ...removedIn.params],
+      );
+    }
     const rows = normalized.map((member) =>
       [planId, member.user_id, member.role, "active", member.from_date, member.to_date]);
     await conn.query(
@@ -180,6 +194,27 @@ export async function replaceMembers(
        updated_at = CURRENT_TIMESTAMP
        WHERE id = ?`,
       [owner.user_id, planId],
+    );
+    await conn.query(
+      `INSERT INTO plan_access_grants (plan_id, user_id, role, status, granted_by_id)
+       VALUES (?, ?, 'owner', 'active', ?)
+       ON DUPLICATE KEY UPDATE role = 'owner', status = 'active'`,
+      [planId, owner.user_id, actorUserId],
+    );
+    await conn.query(
+      `UPDATE plan_access_grants pag
+       JOIN plan_members pm ON pm.plan_id = pag.plan_id AND pm.user_id = pag.user_id
+          SET pag.role = pm.role
+        WHERE pag.plan_id = ? AND pag.status = 'active' AND pm.status = 'active'`,
+      [planId],
+    );
+    // 未受諾の対象者別リンクも、画面で選んだ最新ロールへ揃える。
+    await conn.query(
+      `UPDATE plan_invites i
+       JOIN plan_members pm ON pm.plan_id = i.plan_id AND pm.user_id = i.invited_user_id
+          SET i.role = pm.role
+        WHERE i.plan_id = ? AND i.status = 'pending' AND pm.status = 'active'`,
+      [planId],
     );
     return currentVersion + 1;
   });
@@ -197,12 +232,60 @@ export async function leavePlan(planId: string, userId: string): Promise<void> {
     if (plan.owner_user_id === userId || member.role === "owner") {
       throw new BadRequest("所有者は脱退できません。先に所有権を移譲してください");
     }
-    if (await memberReferenceCount(conn, planId, [userId]) > 0) {
-      throw new BadRequest("費用・負担・精算に記録があるため脱退できません。計画のownerにデータ整理を依頼してください");
+    // 会計履歴から参照されている人は、金額と表示名を壊さないよう旅行上の参加者として残す。
+    // アプリへのアクセス権は別テーブルなので、履歴の有無にかかわらず即時に脱退できる。
+    if (await memberReferenceCount(conn, planId, [userId]) === 0) {
+      await conn.query(
+        "UPDATE plan_members SET status = 'left' WHERE plan_id = ? AND user_id = ? AND status = 'active'",
+        [planId, userId],
+      );
     }
     await conn.query(
-      "UPDATE plan_members SET status = 'left' WHERE plan_id = ? AND user_id = ? AND status = 'active'",
+      "UPDATE plan_access_grants SET status = 'revoked' WHERE plan_id = ? AND user_id = ? AND status = 'active'",
       [planId, userId],
+    );
+    await conn.query(
+      `UPDATE plan_invites SET status = 'revoked', revoked_at = CURRENT_TIMESTAMP
+        WHERE plan_id = ? AND invited_user_id = ? AND status = 'pending'`,
+      [planId, userId],
+    );
+    await conn.query("UPDATE plans SET version = version + 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?", [planId]);
+  });
+}
+
+/** ownerが会計上の参加者を残したまま、対象アカウントの閲覧・編集権だけを即時停止する。 */
+export async function revokeMemberAccess(
+  planId: string,
+  targetUserId: string,
+  actorUserId: string,
+): Promise<void> {
+  if (!targetUserId || targetUserId === actorUserId) throw new BadRequest("自分自身のアクセスは停止できません");
+  await withTransaction(async (conn) => {
+    const plan = await firstRow<{ owner_user_id: string | null }>(
+      conn,
+      "SELECT owner_user_id FROM plans WHERE id = ? AND deleted_at IS NULL LIMIT 1 FOR UPDATE",
+      [planId],
+    );
+    if (!plan || plan.owner_user_id !== actorUserId) {
+      throw new BadRequest("アクセスを停止できるのは現在のownerだけです");
+    }
+    if (plan.owner_user_id === targetUserId) throw new BadRequest("ownerのアクセスは停止できません");
+    const member = await firstRow<{ status: string }>(
+      conn,
+      "SELECT status FROM plan_members WHERE plan_id = ? AND user_id = ? LIMIT 1 FOR UPDATE",
+      [planId, targetUserId],
+    );
+    if (member?.status !== "active") throw new BadRequest("対象の旅行参加者が見つかりません");
+    const [result] = await conn.query<mysql.ResultSetHeader>(
+      `UPDATE plan_access_grants SET status = 'revoked'
+        WHERE plan_id = ? AND user_id = ? AND status = 'active'`,
+      [planId, targetUserId],
+    );
+    if (result.affectedRows !== 1) throw new BadRequest("対象者の有効なアクセス権が見つかりません");
+    await conn.query(
+      `UPDATE plan_invites SET status = 'revoked', revoked_at = CURRENT_TIMESTAMP
+        WHERE plan_id = ? AND invited_user_id = ? AND status = 'pending'`,
+      [planId, targetUserId],
     );
     await conn.query("UPDATE plans SET version = version + 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?", [planId]);
   });
@@ -216,8 +299,10 @@ export async function transferPlanOwnership(
   if (!targetUserId || targetUserId === actorUserId) throw new BadRequest("移譲先の参加者を指定してください");
   await withTransaction(async (conn) => {
     const [rows] = await conn.query<Row[]>(
-      `SELECT user_id, role FROM plan_members
-       WHERE plan_id = ? AND user_id IN (?, ?) AND status = 'active'
+      `SELECT pm.user_id, pm.role FROM plan_members pm
+       JOIN plan_access_grants pag
+         ON pag.plan_id = pm.plan_id AND pag.user_id = pm.user_id AND pag.status = 'active'
+       WHERE pm.plan_id = ? AND pm.user_id IN (?, ?) AND pm.status = 'active'
        FOR UPDATE`,
       [planId, actorUserId, targetUserId],
     );
@@ -226,7 +311,7 @@ export async function transferPlanOwnership(
       throw new BadRequest("所有権を移譲できるのは現在の owner だけです");
     }
     if (!members.some((member) => member.user_id === targetUserId)) {
-      throw new BadRequest("移譲先は有効な計画参加者である必要があります");
+      throw new BadRequest("移譲先は招待を受諾済みの計画参加者である必要があります");
     }
     const placeholder = await firstRow<{ user_id: string }>(
       conn,
@@ -240,6 +325,17 @@ export async function transferPlanOwnership(
        SET role = CASE WHEN user_id = ? THEN 'owner' ELSE 'editor' END
        WHERE plan_id = ? AND (role = 'owner' OR user_id = ?)`,
       [targetUserId, planId, targetUserId],
+    );
+    await conn.query(
+      `INSERT INTO plan_access_grants (plan_id, user_id, role, status, granted_by_id)
+       VALUES (?, ?, 'owner', 'active', ?)
+       ON DUPLICATE KEY UPDATE role = 'owner', status = 'active', granted_by_id = VALUES(granted_by_id)`,
+      [planId, targetUserId, actorUserId],
+    );
+    await conn.query(
+      `UPDATE plan_access_grants SET role = 'editor'
+        WHERE plan_id = ? AND user_id = ? AND status = 'active'`,
+      [planId, actorUserId],
     );
     await conn.query(
       "UPDATE plans SET owner_user_id = ?, version = version + 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
@@ -288,6 +384,12 @@ export async function undoPlaceholderClaim(
     );
     await conn.query("UPDATE plan_members SET status = 'active' WHERE plan_id = ? AND user_id = ?", [planId, placeholderUserId]);
     await conn.query("UPDATE plan_members SET status = 'revoked' WHERE plan_id = ? AND user_id = ?", [planId, claimedUserId]);
+    await conn.query("UPDATE plan_access_grants SET status = 'revoked' WHERE plan_id = ? AND user_id = ?", [planId, claimedUserId]);
+    await conn.query(
+      `UPDATE plan_invites SET status = 'revoked', revoked_at = CURRENT_TIMESTAMP
+        WHERE plan_id = ? AND invited_user_id = ? AND status = 'pending'`,
+      [planId, claimedUserId],
+    );
     await conn.query(
       "UPDATE plans SET version = version + 1, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND owner_user_id = ?",
       [planId, actorUserId],

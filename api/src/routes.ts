@@ -13,6 +13,7 @@
 //   POST   /api/plans/<id>/placeholder-members 名前だけの未登録参加者を追加
 //   POST   /api/plans/<id>/owner-transfer    所有権を参加者へ移譲
 //   DELETE /api/plans/<id>/members/me        自分が計画から脱退
+//   DELETE /api/plans/<id>/members/<user>/access 会計履歴を残してアクセスだけ停止
 //   PUT    /api/plans/<id>/content           行程・都市・リンク・チェックリスト・候補を一括置換
 //   PUT    /api/plans/<id>/flight-notes/<便名> 自分の便メモ（リンク・予約番号・座席・QR）を保存
 //   POST   /api/plans/<id>/views             閲覧を1加算
@@ -378,7 +379,9 @@ export async function route(method: string, path: string, body: Body, actorUserI
     if (denied) return denied;
     return {
       status: 200,
-      body: await memberRepo.createPlaceholderMember(m[1], str(body.display_name), actorUserId),
+      body: await memberRepo.createPlaceholderMember(
+        m[1], str(body.display_name), actorUserId, str(body.role) === "viewer" ? "viewer" : "editor",
+      ),
     };
   }
   m = /^\/api\/plans\/([\w-]{1,32})\/placeholder-members\/([\w-]{1,32})\/unclaim$/.exec(path);
@@ -443,6 +446,13 @@ export async function route(method: string, path: string, body: Body, actorUserI
   if (m && method === "DELETE") {
     if (!actorUserId) return forbidden();
     await memberRepo.leavePlan(m[1], actorUserId);
+    return { status: 200, body: { ok: true } };
+  }
+  m = /^\/api\/plans\/([\w-]{1,32})\/members\/([\w-]{1,32})\/access$/.exec(path);
+  if (m && method === "DELETE") {
+    const denied = await forbiddenUnless(accessRepo.canManagePlan(m[1], actorUserId));
+    if (denied) return denied;
+    await memberRepo.revokeMemberAccess(m[1], m[2], actorUserId);
     return { status: 200, body: { ok: true } };
   }
   m = /^\/api\/plans\/([\w-]{1,32})\/owner-transfer$/.exec(path);
@@ -705,6 +715,9 @@ export async function route(method: string, path: string, body: Body, actorUserI
     const b = str(body.b);
     const requestedBy = str(body.requested_by_id);
     const status = str(body.status) || "pending";
+    if (!a || !b || a.length > 32 || b.length > 32 || a === b || ![a, b].includes(requestedBy)) {
+      return badRequest("友達申請の相手が正しくありません");
+    }
     if (![a, b].includes(actorUserId)) return forbidden();
     const existing = await userRepo.friendshipBetween(a, b);
     if (status === "pending") {
@@ -714,6 +727,26 @@ export async function route(method: string, path: string, body: Body, actorUserI
           status: 400,
           body: { error: "already_friends", message: "既に友達です", retryable: false, action: "reload" },
         };
+      }
+      // 画面更新と入れ違いで相手から申請が来ていた場合は、再申請ではなく承諾として扱う。
+      if (existing?.status === "pending" && existing.requested_by_id !== actorUserId) {
+        return {
+          status: 200,
+          body: await userRepo.upsertFriendship({
+            a, b, requested_by_id: existing.requested_by_id, actor_user_id: actorUserId, status: "accepted",
+          }),
+        };
+      }
+      if (existing?.status === "declined" && existing.responded_at &&
+          Date.now() - new Date(existing.responded_at).getTime() < 24 * 60 * 60 * 1000) {
+        return badRequest("辞退後24時間は再申請できません");
+      }
+      const otherUserId = a === actorUserId ? b : a;
+      if (!(await userRepo.canReceiveFriendRequest(otherUserId))) {
+        return badRequest("友達申請の相手が見つかりません");
+      }
+      if (existing?.status !== "pending" && await userRepo.outgoingPendingFriendRequestCount(actorUserId) >= 50) {
+        return badRequest("申請中の友達リクエストが多すぎます。不要な申請を取り消してからお試しください");
       }
     } else if (status === "accepted" || status === "declined") {
       if (!existing || existing.status !== "pending" || existing.requested_by_id === actorUserId) {
@@ -731,7 +764,7 @@ export async function route(method: string, path: string, body: Body, actorUserI
     return {
       status: 200,
       body: await userRepo.upsertFriendship({
-        a, b, requested_by_id: requestedBy, status,
+        a, b, requested_by_id: requestedBy, actor_user_id: actorUserId, status,
       }),
     };
   }

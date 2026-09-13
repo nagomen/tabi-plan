@@ -525,12 +525,34 @@
   }
   .pe-chip-ic:hover { background: rgba(0, 0, 0, .05); color: var(--ink); }
   .pe-chip-ic.invite:hover { color: var(--green); }
+  .pe-chip-ic.access:hover { color: var(--red); }
   .pe-chip-ic.del:hover { color: var(--red); }
   .pe-chip-ic .hi { width: 15px; height: 15px; vertical-align: 0; }
 
   .pe-member-add { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; margin-top: 2px; max-width: 380px; }
   .pe-member-hint { margin: 8px 0 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
   .pe-member-hint a { color: var(--green); font-weight: 700; }
+  .pe-member-role {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: fit-content;
+    margin-top: 8px;
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 650;
+  }
+  .pe-member-role select {
+    min-height: 36px;
+    padding: 4px 24px 4px 6px;
+    border: 0;
+    border-bottom: 1px solid var(--line-strong);
+    border-radius: 0;
+    background: transparent;
+    color: var(--ink);
+    font: inherit;
+  }
+  .pe-member-role select:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
   .pe-member-inputwrap { position: relative; min-width: 0; }
   .pe-member-inputwrap select,
   .pe-member-inputwrap input {
@@ -554,6 +576,19 @@
   .pe-member-free { margin-top: 8px; }
   .pe-member-free .pe-mini { white-space: nowrap; }
   .pe-chip-pending { color: var(--amber); font-size: 10px; font-weight: 700; }
+  .pe-chip-role {
+    min-height: 30px;
+    padding: 2px 20px 2px 5px;
+    border: 0;
+    border-bottom: 1px solid var(--line-strong);
+    border-radius: 0;
+    background: transparent;
+    color: var(--muted);
+    font: inherit;
+    font-size: 11px;
+    cursor: pointer;
+  }
+  .pe-chip-role:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
 
   /* 名前登録モーダル */
   .pe-modal { position: fixed; inset: 0; z-index: 9999; display: grid; place-items: center; padding: 18px; background: rgba(17, 25, 22, .45); }

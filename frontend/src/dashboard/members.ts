@@ -92,10 +92,26 @@ export async function shareTripInvite(): Promise<void> {
   }
   const nameInput = root.querySelector<HTMLInputElement>("[data-invite-name]");
   const name = (nameInput?.value || "").trim();
+  const roleInput = root.querySelector<HTMLSelectElement>("[data-invite-role]");
+  const role = roleInput?.value === "viewer" ? "viewer" : "editor";
+  let planId = "";
+  let createdInviteId = "";
+  const revokeCreatedInvite = async (successLabel: string): Promise<boolean> => {
+    if (!planId || !createdInviteId) return true;
+    try {
+      await db.revokeInvite(planId, createdInviteId);
+      if (btn) flashButton(btn, successLabel);
+      return true;
+    } catch (error) {
+      if (btn) flashButton(btn, errorMessage(error) || "招待の取消に失敗しました");
+      return false;
+    }
+  };
   try {
-    const planId = TripPlans.planIdOf(meta.slug);
+    planId = TripPlans.planIdOf(meta.slug);
     if (!planId) throw new Error("計画IDが見つかりません");
-    const invite = await db.createInvite(planId, { invited_name: name || undefined, role: "editor" });
+    const invite = await db.createInvite(planId, { invited_name: name || undefined, role });
+    createdInviteId = invite.id;
     const link = await buildInviteLink({
       v: 1,
       meta: {
@@ -108,7 +124,7 @@ export async function shareTripInvite(): Promise<void> {
       },
       token: invite.token,
       invitedName: name || undefined,
-      role: "editor",
+      role,
     });
     const shareData = {
       title: meta.title || "旅行計画",
@@ -119,18 +135,26 @@ export async function shareTripInvite(): Promise<void> {
       try {
         await navigator.share(shareData);
       } catch {
-        /* 共有キャンセル */
+        await revokeCreatedInvite("共有をキャンセルしました");
+        return;
       }
+      if (nameInput) nameInput.value = "";
+      if (btn) flashButton(btn, "共有しました");
       return;
     }
     try {
       await navigator.clipboard.writeText(link);
       if (btn) flashButton(btn, "リンクをコピーしました");
     } catch {
-      window.prompt("招待リンクをコピーしてください", link);
+      const copied = window.prompt("招待リンクをコピーしてください", link);
+      if (copied === null) {
+        await revokeCreatedInvite("招待を取り消しました");
+        return;
+      }
     }
     if (nameInput) nameInput.value = "";
   } catch (error) {
+    if (!(await revokeCreatedInvite("招待を取り消しました"))) return;
     // 権限なし・回数制限・期限切れを見分けられるよう、サーバーの説明をそのまま出す
     if (btn) flashButton(btn, errorMessage(error) || "作成できませんでした");
   }

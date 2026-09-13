@@ -59,19 +59,42 @@ export async function setUserSettings(userId: string, historyPublic: boolean): P
 // ---- 友達 ---------------------------------------------------------------
 
 export async function friendshipBetween(a: string, b: string): Promise<{
-  id: string; requested_by_id: string; status: string;
+  id: string; requested_by_id: string; status: string; responded_at: string | null;
 } | null> {
   const [low, high] = friendshipPair(a, b);
-  const rows = await all<{ id: string; requested_by_id: string; status: string }>(
-    "SELECT id, requested_by_id, status FROM friendships WHERE user_low_id = ? AND user_high_id = ? LIMIT 1",
+  const rows = await all<{ id: string; requested_by_id: string; status: string; responded_at: string | null }>(
+    "SELECT id, requested_by_id, status, responded_at FROM friendships WHERE user_low_id = ? AND user_high_id = ? LIMIT 1",
     [low, high],
   );
   return rows[0] || null;
 }
 
+/** placeholder ではない実在アカウントだけを友達申請の対象にする。 */
+export async function canReceiveFriendRequest(userId: string): Promise<boolean> {
+  const rows = await all<{ id: string }>(
+    `SELECT u.id FROM users u
+      WHERE u.id = ?
+        AND NOT EXISTS (SELECT 1 FROM plan_member_placeholders pmp WHERE pmp.user_id = u.id)
+        AND (EXISTS (SELECT 1 FROM user_credentials uc WHERE uc.user_id = u.id)
+          OR EXISTS (SELECT 1 FROM user_identities ui WHERE ui.user_id = u.id))
+      LIMIT 1`,
+    [userId],
+  );
+  return Boolean(rows[0]);
+}
+
+/** 送信中の申請を無制限に積めないよう、アカウント単位で上限を設ける。 */
+export async function outgoingPendingFriendRequestCount(userId: string): Promise<number> {
+  const rows = await all<{ total: number }>(
+    "SELECT COUNT(*) AS total FROM friendships WHERE requested_by_id = ? AND status = 'pending'",
+    [userId],
+  );
+  return Number(rows[0]?.total || 0);
+}
+
 export async function upsertFriendship(input: {
-  a: string; b: string; requested_by_id: string; status?: string;
-}): Promise<{ id: string }> {
+  a: string; b: string; requested_by_id: string; actor_user_id: string; status?: string;
+}): Promise<{ id: string; status: string }> {
   const [low, high] = friendshipPair(input.a, input.b);
   const existing = await all<{ id: string }>(
     "SELECT id FROM friendships WHERE user_low_id = ? AND user_high_id = ? LIMIT 1", [low, high],
@@ -91,14 +114,14 @@ export async function upsertFriendship(input: {
         )`,
       [
         targetStatus, targetStatus, input.requested_by_id, targetStatus, existing[0].id,
-        targetStatus, input.requested_by_id,
-        targetStatus, input.requested_by_id,
-        targetStatus, input.requested_by_id,
+        targetStatus, input.actor_user_id,
+        targetStatus, input.actor_user_id,
+        targetStatus, input.actor_user_id,
         targetStatus,
       ],
     );
     if (updated.affectedRows !== 1) throw new BadRequest("友達関係が別の端末で変更されました。読み込み直してください");
-    return existing[0];
+    return { id: existing[0].id, status: targetStatus };
   }
   const id = newId("frd");
   try {
@@ -109,12 +132,22 @@ export async function upsertFriendship(input: {
   } catch (error) {
     // 双方から同時に申請すると SELECT→INSERT の間で衝突する。既存行を成立とみなす。
     if ((error as { code?: string }).code === "ER_DUP_ENTRY") {
-      const raced = await all<{ id: string }>(
-        "SELECT id FROM friendships WHERE user_low_id = ? AND user_high_id = ? LIMIT 1", [low, high],
+      const raced = await all<{ id: string; requested_by_id: string; status: string }>(
+        "SELECT id, requested_by_id, status FROM friendships WHERE user_low_id = ? AND user_high_id = ? LIMIT 1", [low, high],
       );
-      if (raced[0]) return raced[0];
+      if (raced[0]) {
+        // 双方が同時に申請したなら相互の意思が揃っているため、その場で友達にする。
+        const mutualRequest = raced[0].status === "pending" && raced[0].requested_by_id !== input.requested_by_id;
+        if (mutualRequest) {
+          await pool.query(
+            "UPDATE friendships SET status = 'accepted', responded_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'pending'",
+            [raced[0].id],
+          );
+        }
+        return { id: raced[0].id, status: mutualRequest ? "accepted" : raced[0].status };
+      }
     }
     throw error;
   }
-  return { id };
+  return { id, status: input.status || "pending" };
 }

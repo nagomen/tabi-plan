@@ -32,7 +32,7 @@ async function assertWorkspaceEditor(conn: mysql.PoolConnection, planId: string,
   const access = await firstRow<{ role: string; source: string }>(
     conn,
     `SELECT pm.role, p.source FROM plans p
-       JOIN plan_members pm ON pm.plan_id = p.id AND pm.user_id = ? AND pm.status = 'active'
+       JOIN plan_access_grants pm ON pm.plan_id = p.id AND pm.user_id = ? AND pm.status = 'active'
       WHERE p.id = ? AND p.deleted_at IS NULL LIMIT 1 FOR UPDATE`,
     [actorUserId, planId],
   );

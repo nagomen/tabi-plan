@@ -171,15 +171,6 @@ export async function inspectInvite(token: string): Promise<{
       [invite.plan_id],
     )
       : [];
-  if (invite.invited_user_id && !targetPlaceholder) {
-    const isRegularTarget = await firstRow<{ user_id: string }>(
-      pool,
-      `SELECT user_id FROM plan_members
-        WHERE plan_id = ? AND user_id = ? AND status = 'active' LIMIT 1`,
-      [invite.plan_id, invite.invited_user_id],
-    );
-    if (!isRegularTarget) throw new BadRequest("招待対象のメンバーは既に紐付け済みか、旅行から外れています");
-  }
   return {
     planSlug: invite.slug,
     planTitle: invite.title,
@@ -225,6 +216,12 @@ async function claimPlaceholder(
        invited_by_id = VALUES(invited_by_id), from_date = VALUES(from_date), to_date = VALUES(to_date)`,
     [invite.plan_id, userId, invite.role, invite.created_by_id, placeholder.from_date, placeholder.to_date],
   );
+  await conn.query(
+    `INSERT INTO plan_access_grants (plan_id, user_id, role, status, granted_by_id)
+     VALUES (?, ?, ?, 'active', ?)
+     ON DUPLICATE KEY UPDATE role = VALUES(role), status = 'active', granted_by_id = VALUES(granted_by_id)`,
+    [invite.plan_id, userId, invite.role, invite.created_by_id],
+  );
   await reassignPlanMemberReferences(conn, invite.plan_id, placeholderUserId, userId);
   await conn.query(
     `UPDATE plan_member_placeholders
@@ -259,10 +256,11 @@ export async function acceptInvite(token: string, userId: string, selectedMember
       accepted_by_id: string | null;
       expires_at: string | null;
       slug: string;
+      owner_user_id: string | null;
     }>(
       conn,
       `SELECT i.id, i.plan_id, i.role, i.status, i.created_by_id, i.invited_user_id,
-              i.accepted_by_id, i.expires_at, p.slug
+              i.accepted_by_id, i.expires_at, p.slug, p.owner_user_id
          FROM plan_invites i
          JOIN plans p ON p.id = i.plan_id AND p.deleted_at IS NULL
         WHERE i.token_hash = ?
@@ -316,17 +314,27 @@ export async function acceptInvite(token: string, userId: string, selectedMember
         "SELECT role, status FROM plan_members WHERE plan_id = ? AND user_id = ? LIMIT 1 FOR UPDATE",
         [invite.plan_id, userId],
       );
-      if (existing?.status === "active") {
-        // 招待の承諾だけで既存権限を昇格・降格させない。
-      } else {
+      const acceptedRole = invite.owner_user_id === userId ? "owner" : invite.role;
+      if (existing?.status !== "active") {
         await conn.query(
           `INSERT INTO plan_members (plan_id, user_id, role, status, invited_by_id)
            VALUES (?, ?, ?, 'active', ?)
            ON DUPLICATE KEY UPDATE role = VALUES(role), status = 'active', invited_by_id = VALUES(invited_by_id)`,
-          [invite.plan_id, userId, invite.role, invite.created_by_id],
+          [invite.plan_id, userId, acceptedRole, invite.created_by_id],
         );
-        membershipChanged = true;
+      } else if (existing.role !== "owner" && existing.role !== acceptedRole) {
+        await conn.query(
+          "UPDATE plan_members SET role = ? WHERE plan_id = ? AND user_id = ? AND status = 'active'",
+          [acceptedRole, invite.plan_id, userId],
+        );
       }
+      await conn.query(
+        `INSERT INTO plan_access_grants (plan_id, user_id, role, status, granted_by_id)
+         VALUES (?, ?, ?, 'active', ?)
+         ON DUPLICATE KEY UPDATE role = VALUES(role), status = 'active', granted_by_id = VALUES(granted_by_id)`,
+        [invite.plan_id, userId, acceptedRole, invite.created_by_id],
+      );
+      membershipChanged = true;
     }
     const [updated] = await conn.query<mysql.ResultSetHeader>(
       `UPDATE plan_invites

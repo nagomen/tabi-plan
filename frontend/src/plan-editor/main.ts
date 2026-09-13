@@ -25,7 +25,7 @@ import {
   aiArea, aiRun, aiRunIcon, aiErrorAction, aiCandidateList, aiToPreferences, aiBuild,
   aiImportOpen, aiImportApply,
   coverInput, coverClearBtn,
-  membersMount, memberSelect, memberAddBtn, memberNameInput, memberNameAddBtn, activeInvitesMount,
+  membersMount, memberAddBtn, memberNameInput, memberNameAddBtn, activeInvitesMount,
   candMount, candInput, gcalBtn, icsBtn,
   saveBtn, publishBtn, localNoteEl, exportBtn, mapToggle, mapClose,
   watchComposition,
@@ -54,6 +54,7 @@ import {
 import { onMapClick, applyGeo } from "./place-geocode";
 import { onDaysClick, onDaysInput, onDaysKeydown, onDayStripClick } from "./days-actions";
 import { onCityInputKeydown, onCityAddClick, onCitiesChange, onCitiesClick, onCitiesInput } from "./cities";
+import { restoreRecoveryDraft } from "./draft-recovery";
 
 initPageTransitions();
 
@@ -164,7 +165,6 @@ membersMount.addEventListener("click", onMembersClick);
 // 途中合流/離脱の日付入力。確定した時点で参加期間を保存する。
 membersMount.addEventListener("change", onMembersChange);
 memberAddBtn.addEventListener("click", commitMemberSelect);
-memberSelect.addEventListener("change", commitMemberSelect);
 memberNameAddBtn.addEventListener("click", commitMemberName);
 memberNameInput.addEventListener("keydown", onMemberNameKeydown);
 
@@ -242,9 +242,11 @@ function bootstrapEditor(): void {
     return;
   }
   const editable = loadExisting();
+  const loadedContentFingerprint = contentFingerprint(buildData());
+  const restored = editable && !state.editorLocked && restoreRecoveryDraft();
   syncBasicInputs();
   rebuildDays();
-  setLastSavedContentFingerprint(contentFingerprint(buildData()));
+  setLastSavedContentFingerprint(loadedContentFingerprint);
   renderCities();
   renderDays();
   renderCandidates();
@@ -266,6 +268,7 @@ function bootstrapEditor(): void {
   publishBtn.hidden = Boolean(meta && !canManagePlan(meta));
   if (!editable || state.editorLocked) applyEditorLock();
   else if (state.metadataLocked) applyMetadataLock();
+  if (restored) markDirty();
   // ダッシュボードの「AIサポート」から来たとき（?ai=1）は、AI相談ブロックへ案内する。
   if (params.get("ai") === "1" && editable && !state.editorLocked) {
     const aiBlock = root.querySelector<HTMLElement>("[data-ai-block]");

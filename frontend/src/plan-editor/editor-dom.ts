@@ -91,6 +91,7 @@ export const coverPreview = qs<HTMLElement>("[data-cover-preview]");
 export const membersMount = qs<HTMLElement>("[data-members]");
 export const memberField = qs<HTMLElement>("[data-member-field]");
 export const memberSelect = qs<HTMLSelectElement>("[data-member-select]");
+export const memberRoleSelect = qs<HTMLSelectElement>("[data-member-role]");
 export const memberAddBtn = qs<HTMLButtonElement>("[data-member-add]");
 export const memberNameInput = qs<HTMLInputElement>("[data-member-name]");
 export const memberNameAddBtn = qs<HTMLButtonElement>("[data-member-name-add]");

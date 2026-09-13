@@ -1,3 +1,17 @@
+/*
+ * 旅行履歴（人物）ページのスタイル。
+ *
+ * 設計方針: アプリ共通の「罫線で構成する」エディトリアル路線に揃える。
+ *  - 角丸・影は使わない（例外はアバターの円だけ）。面は白、区切りは 1px 罫線。
+ *  - 見出しは kicker(緑の小さな英字) + タイトル + 件数の三点セット。
+ *  - 情報の順序は 名前 → 集計 → 地図 → 旅行の記録 / 作成した計画 → カレンダー。
+ *    広い画面では「旅行の記録」と「作成した計画」だけを 2 カラムに割る
+ *    （地図とカレンダーは横幅が要るので全幅のまま）。
+ *
+ * クラス名は person/*.ts と shared/calendar.ts が生成するものが含まれる。
+ * 追加・改名するときは生成側と合わせて変更すること。
+ */
+
 :root {
   --ink: #111916;
   --muted: #66716b;
@@ -6,11 +20,21 @@
   --paper: #ffffff;
   --wash: #f7f9f7;
   --green: #0b5a42;
+  --green-deep: #094835;
   --green-soft: #e7f1ec;
+  --green-line: rgba(11, 90, 66, .26);
   --blue: #22719d;
   --amber: #b87418;
   --red: #cf4f3d;
   --violet: #6246a6;
+  /* 貼り紙（マストヘッド）用。掲示板の面と、そこに貼る紙の色。 */
+  --board: #edefea;
+  --sheet: #fffdf7;
+  --sans: "Avenir Next", "Hiragino Sans", "Yu Gothic", Meiryo, sans-serif;
+  /* 画面端の余白。ヒーロー・集計・各セクションで共有し、縦のラインをそろえる。 */
+  --gutter: 26px;
+  /* 貼り紙の幅。名前も集計もこの紙幅に収め、広い画面で間延びさせない。 */
+  --sheet-width: 860px;
 }
 
 * {
@@ -25,7 +49,7 @@ body {
   margin: 0;
   background: #fff;
   color: var(--ink);
-  font-family: "Avenir Next", "Hiragino Sans", "Yu Gothic", Meiryo, sans-serif;
+  font-family: var(--sans);
   line-height: 1.55;
   overflow-x: hidden;
 }
@@ -40,116 +64,175 @@ a {
   min-height: 100vh;
 }
 
+/* shared/ui.css の [hidden] 打ち消しに合わせた保険（読み込み順が崩れても消えるように）。 */
 .pv-stats[hidden],
 .pv-flags[hidden],
 .pv-private[hidden],
-.pv-created-panel[hidden],
+.pv-sec--created[hidden],
 [data-content][hidden] {
   display: none;
 }
 
-.pv-head {
-  position: relative;
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  align-items: center;
-  gap: 14px;
-  padding: 26px 22px 22px;
+/* ---- マストヘッド: 掲示板に貼った紙 -------------------------------------
+   名前と集計を紙一枚（.pv-sheet）に収める。左に名前、縦罫を挟んで右に
+   四つの数字を上から積む。広い画面でも紙幅は変わらないので間延びしない。 */
+
+.pv-masthead {
+  padding: 28px var(--gutter) 32px;
   border-bottom: 1px solid var(--line);
   background:
-    linear-gradient(90deg, rgba(11, 90, 66, .055), rgba(255, 255, 255, 0) 64%),
-    #fff;
+    repeating-linear-gradient(90deg, rgba(17, 25, 22, .035) 0 1px, rgba(255, 255, 255, 0) 1px 40px),
+    repeating-linear-gradient(0deg, rgba(17, 25, 22, .035) 0 1px, rgba(255, 255, 255, 0) 1px 40px),
+    var(--board);
 }
 
-.pv-head::before {
+.pv-sheet {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(230px, .44fr);
+  max-width: var(--sheet-width);
+  margin: 0 auto;
+  border: 1px solid var(--ink);
+  /* 内側にもう一本の罫。印刷物の縁取り。 */
+  box-shadow:
+    inset 0 0 0 4px var(--sheet),
+    inset 0 0 0 5px rgba(17, 25, 22, .22);
+  background: var(--sheet);
+}
+
+/* 集計がまだ出ていない（非公開・読み込み前）ときは一段組みに畳む。 */
+.pv-sheet:has(.pv-stats[hidden]) {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* 上端の留めテープ。貼ってある感じを出す最小限の装飾。 */
+.pv-sheet::before,
+.pv-sheet::after {
   content: "";
   position: absolute;
-  left: 22px;
-  right: 22px;
-  bottom: -1px;
-  height: 2px;
-  background: linear-gradient(90deg, var(--green), rgba(11, 90, 66, 0));
+  top: -9px;
+  width: 72px;
+  height: 17px;
+  border: 1px solid rgba(184, 116, 24, .16);
+  background: rgba(184, 116, 24, .12);
 }
 
-.pv-avatar {
+.pv-sheet::before {
+  left: 26px;
+  transform: rotate(-2.2deg);
+}
+
+.pv-sheet::after {
+  right: 26px;
+  transform: rotate(1.8deg);
+}
+
+.pv-hero {
   display: grid;
-  place-items: center;
-  width: 54px;
-  height: 54px;
-  border: 1px solid rgba(11, 90, 66, .22);
-  border-radius: 50%;
-  background: var(--green);
-  color: #fff;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .18);
-  font-size: 21px;
-  font-weight: 850;
-  line-height: 1;
-}
-
-.pv-head-main {
+  align-content: center;
+  justify-items: center;
   min-width: 0;
+  padding: 34px 30px 32px;
+  text-align: center;
 }
 
-@media (min-width: 860px) {
-  .pv-head {
-    grid-template-columns: auto minmax(300px, .72fr) minmax(360px, 1.28fr);
-    gap: 22px;
-    align-items: stretch;
-  }
-
-  .pv-head:has(.pv-created-panel[hidden]) {
-    grid-template-columns: auto minmax(0, 1fr);
-  }
-}
-
+/* 両側に罫を引いた見出し（掲示物の肩書き）。 */
 .pv-eyebrow {
-  margin: 0 0 4px;
-  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  margin: 0 0 18px;
+  color: var(--green);
   font-size: 10.5px;
   font-weight: 750;
-  letter-spacing: .14em;
+  letter-spacing: .26em;
+  text-indent: .26em;
   text-transform: uppercase;
 }
 
+.pv-eyebrow::before,
+.pv-eyebrow::after {
+  content: "";
+  width: 30px;
+  height: 1px;
+  background: currentColor;
+  opacity: .45;
+}
+
+/* 押印のようなアバター。 */
+.pv-avatar {
+  display: grid;
+  place-items: center;
+  width: 60px;
+  height: 60px;
+  margin-bottom: 16px;
+  border-radius: 50%;
+  background: var(--green);
+  color: #fff;
+  box-shadow:
+    0 0 0 1px var(--sheet),
+    0 0 0 3px rgba(11, 90, 66, .5);
+  font-size: 25px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+/* 書体はアプリ共通のゴシックのまま。字間だけ少し開けて掲示物らしく組む。 */
 .pv-name {
   margin: 0;
-  font-size: clamp(26px, 3.7vw, 38px);
-  font-weight: 780;
-  line-height: 1.14;
-  letter-spacing: 0;
+  font-size: clamp(24px, 2.5vw, 33px);
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: .04em;
   overflow-wrap: anywhere;
 }
 
+/* 「あなた」はゴム印。傾けて押した体。 */
 .pv-self {
   display: inline-flex;
   align-items: center;
-  min-height: 22px;
-  margin-left: 10px;
-  padding: 0 8px;
-  border: 1px solid rgba(11, 90, 66, .28);
-  background: var(--green-soft);
-  color: var(--green);
+  margin-left: 12px;
+  padding: 3px 9px;
+  border: 1.5px solid var(--red);
+  background: transparent;
+  color: var(--red);
   font-size: 11px;
   font-weight: 750;
-  vertical-align: .18em;
+  letter-spacing: .12em;
+  line-height: 1.2;
+  vertical-align: .3em;
+  transform: rotate(-4deg);
 }
 
+/* 国旗は貼った切手のように小さな枠で並べる。 */
 .pv-flags {
   display: flex;
   flex-wrap: wrap;
-  gap: 5px;
-  margin-top: 9px;
-  font-size: 17px;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 16px;
+  font-size: 16px;
   line-height: 1;
+}
+
+.pv-flag {
+  display: inline-grid;
+  place-items: center;
+  width: 29px;
+  height: 23px;
+  border: 1px solid rgba(17, 25, 22, .14);
+  background: #fff;
+  cursor: default;
 }
 
 .pv-friend-action {
   display: flex;
   flex-wrap: wrap;
+  justify-content: center;
   align-items: center;
   gap: 8px;
-  min-height: 30px;
-  margin-top: 12px;
+  min-height: 34px;
+  margin-top: 20px;
 }
 
 .pv-friend-btn,
@@ -158,30 +241,35 @@ a {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  min-height: 32px;
-  padding: 0 11px;
+  min-height: 34px;
+  padding: 0 15px;
   border: 1px solid var(--line-strong);
   background: #fff;
   color: var(--ink);
   font: inherit;
-  font-size: 12px;
-  font-weight: 760;
+  font-size: 12.5px;
+  font-weight: 720;
+  letter-spacing: .04em;
   text-decoration: none;
 }
 
+/* 申請系は主要導線なので塗りつぶし。 */
 .pv-friend-btn {
+  border-color: var(--green);
+  background: var(--green);
+  color: #fff;
   cursor: pointer;
 }
 
 .pv-friend-btn:hover,
 .pv-friend-btn:focus-visible {
-  border-color: var(--green);
-  color: var(--green);
+  border-color: var(--green-deep);
+  background: var(--green-deep);
   outline: none;
 }
 
 .pv-friend-badge {
-  border-color: rgba(11, 90, 66, .24);
+  border-color: var(--green-line);
   background: var(--green-soft);
   color: var(--green);
 }
@@ -194,12 +282,13 @@ a {
 
 .pv-friend-note {
   color: var(--muted);
+  font-weight: 620;
 }
 
 .pv-friend-message {
   color: var(--green);
   font-size: 12px;
-  font-weight: 720;
+  font-weight: 700;
 }
 
 .pv-friend-message.is-error {
@@ -212,136 +301,118 @@ a {
   vertical-align: 0;
 }
 
-.pv-flag {
-  display: inline-grid;
-  place-items: center;
-  width: 27px;
-  height: 23px;
-  border: 1px solid rgba(17, 25, 22, .08);
-  background: rgba(255, 255, 255, .78);
-  cursor: default;
-}
+/* ---- 集計（紙の右半分。上から四つ積む記録票） -------------------------- */
 
 .pv-stats {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  padding: 0 22px;
-  border-bottom: 1px solid var(--line);
-  background: #fff;
+  grid-template-rows: repeat(4, minmax(0, 1fr));
+  min-width: 0;
+  margin: 5px 5px 5px 0;
+  border-left: 1px solid rgba(17, 25, 22, .2);
 }
 
+/* 1行 = アイコン＋項目名（左）と数字（右）。数字は桁をそろえて右端に。 */
 .pv-stat {
-  position: relative;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
-  gap: 7px;
+  gap: 10px;
   min-width: 0;
-  padding: 15px 18px 15px 0;
+  padding: 14px 22px;
 }
 
 .pv-stat + .pv-stat {
-  padding-left: 18px;
-}
-
-.pv-stat + .pv-stat::before {
-  content: "";
-  position: absolute;
-  top: 17px;
-  bottom: 17px;
-  left: 0;
-  width: 1px;
-  background: var(--line);
-}
-
-.pv-stat:last-child {
-  border-right: 0;
+  border-top: 1px solid rgba(17, 25, 22, .12);
 }
 
 .pv-stat-icon {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  color: var(--muted);
+  color: var(--green);
+  opacity: .5;
 }
 
 .pv-stat-icon .hi {
-  width: 18px;
-  height: 18px;
+  width: 15px;
+  height: 15px;
   vertical-align: 0;
 }
 
 .pv-stat-body {
-  display: grid;
-  gap: 2px;
+  display: flex;
+  flex-direction: row-reverse;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
   min-width: 0;
 }
 
 .pv-stat-num {
-  display: block;
-  font-size: clamp(22px, 2.8vw, 30px);
-  font-weight: 650;
-  line-height: 1;
-  letter-spacing: 0;
+  font-size: clamp(21px, 1.9vw, 27px);
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -.01em;
   font-variant-numeric: tabular-nums;
 }
 
 .pv-stat-label {
-  display: block;
   color: var(--muted);
-  font-size: 11px;
-  font-weight: 560;
+  font-size: 11.5px;
+  font-weight: 650;
   line-height: 1.2;
+  letter-spacing: .08em;
   white-space: nowrap;
 }
 
+/* ---- 非公開・名前未指定 ------------------------------------------------ */
+
 .pv-private {
-  position: relative;
   display: grid;
-  gap: 5px;
-  margin: 26px 22px 30px;
-  padding: 20px 22px 20px 82px;
+  justify-items: start;
+  gap: 6px;
+  margin: 26px var(--gutter) 34px;
+  padding: 22px 24px;
   border: 1px solid var(--line);
-  border-left: 4px solid var(--green);
-  background:
-    linear-gradient(90deg, rgba(231, 241, 236, .78), rgba(255, 255, 255, .98) 74%),
-    #fff;
+  border-left: 3px solid var(--green);
+  background: var(--wash);
   color: var(--muted);
-  text-align: left;
   font-size: 13px;
 }
 
 .pv-private::before {
   content: "非公開";
-  position: absolute;
-  left: 20px;
-  top: 22px;
-  display: inline-grid;
-  place-items: center;
-  min-width: 42px;
-  height: 24px;
-  padding: 0 8px;
+  padding: 3px 9px;
   background: var(--green);
   color: #fff;
-  font-size: 11px;
-  font-weight: 780;
+  font-size: 10.5px;
+  font-weight: 750;
+  letter-spacing: .1em;
+}
+
+/* ?name= が無いときは「非公開」ではなく未指定として出す（main.ts が付ける）。 */
+.pv-private.is-missing::before {
+  content: "未指定";
+  background: var(--muted);
 }
 
 .pv-private b {
   color: var(--ink);
   font-size: 17px;
-  font-weight: 780;
+  font-weight: 750;
   line-height: 1.35;
 }
 
-.pv-sec {
-  padding: 24px 22px 28px;
-  border-bottom: 1px solid var(--line);
-  background: #fff;
+/* ---- セクション共通 ---------------------------------------------------- */
+
+.pv-content {
+  display: grid;
 }
 
-.pv-sec:last-child {
-  border-bottom: 0;
+.pv-sec {
+  min-width: 0;
+  padding: 26px var(--gutter) 30px;
+  border-bottom: 1px solid var(--line);
+  background: #fff;
 }
 
 .pv-sec-head {
@@ -349,38 +420,56 @@ a {
   align-items: flex-end;
   justify-content: space-between;
   gap: 14px;
-  margin-bottom: 14px;
+  margin-bottom: 18px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.pv-sec-title-box {
+  min-width: 0;
 }
 
 .pv-kicker {
-  display: block;
-  margin-bottom: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 5px;
   color: var(--green);
-  font-size: 11px;
+  font-size: 10.5px;
   font-weight: 750;
-  letter-spacing: .13em;
+  letter-spacing: .18em;
   text-transform: uppercase;
+}
+
+.pv-kicker::before {
+  content: "";
+  width: 14px;
+  height: 2px;
+  background: var(--green);
 }
 
 .pv-sec-title {
   margin: 0;
-  font-size: 22px;
-  font-weight: 800;
-  line-height: 1.2;
-  letter-spacing: 0;
+  font-size: 20px;
+  font-weight: 720;
+  line-height: 1.25;
+  letter-spacing: -.01em;
 }
 
 .pv-sec-count {
-  margin-left: 8px;
+  margin-left: 9px;
   color: var(--muted);
   font-size: 12px;
   font-weight: 650;
+  font-variant-numeric: tabular-nums;
 }
+
+/* ---- 地図 -------------------------------------------------------------- */
 
 .pv-filter {
   appearance: none;
   -webkit-appearance: none;
-  min-height: 38px;
+  min-height: 36px;
   border: 1px solid var(--line-strong);
   background:
     #fff
@@ -389,7 +478,7 @@ a {
   color: var(--ink);
   padding: 0 32px 0 12px;
   font: inherit;
-  font-size: 13px;
+  font-size: 12.5px;
   font-weight: 700;
   cursor: pointer;
 }
@@ -401,8 +490,8 @@ a {
 
 .pv-map {
   width: 100%;
-  height: min(52vh, 480px);
-  min-height: 360px;
+  height: min(54vh, 480px);
+  min-height: 320px;
   border: 1px solid var(--line);
   background: var(--wash);
   overflow: hidden;
@@ -419,13 +508,15 @@ a {
 }
 
 .pv-map-date {
-  border: 1px solid rgba(17, 25, 22, .12);
-  background: rgba(255, 255, 255, .92);
-  box-shadow: 0 1px 5px rgba(17, 25, 22, .14);
+  border: 1px solid rgba(17, 25, 22, .14);
+  border-radius: 0;
+  background: rgba(255, 255, 255, .94);
+  box-shadow: none;
   color: var(--ink);
   padding: 2px 5px;
   font-size: 10px;
-  font-weight: 800;
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
@@ -434,9 +525,11 @@ a {
 }
 
 .pv-pop-place {
-  margin-bottom: 8px;
+  margin-bottom: 9px;
+  padding-bottom: 7px;
+  border-bottom: 1px solid var(--line);
   font-size: 15px;
-  font-weight: 800;
+  font-weight: 750;
 }
 
 .pv-pop-flag {
@@ -451,7 +544,7 @@ a {
 
 .pv-pop-trip {
   font-size: 13px;
-  font-weight: 800;
+  font-weight: 750;
 }
 
 .pv-pop-date,
@@ -462,6 +555,7 @@ a {
 
 .pv-pop-date {
   margin: 1px 0 2px;
+  font-variant-numeric: tabular-nums;
 }
 
 .pv-pop-seq .pv-pop-next {
@@ -469,166 +563,40 @@ a {
   font-weight: 700;
 }
 
+/* ---- 旅行の記録 -------------------------------------------------------- */
+
 .pv-trips {
   display: grid;
-  gap: 24px;
-  border-top: 1px solid var(--line);
-  padding-top: 18px;
+  gap: 26px;
 }
 
-.pv-created-panel {
-  min-width: 0;
-  align-self: stretch;
-  display: grid;
-  align-content: center;
-  gap: 10px;
-  padding-left: 22px;
-  border-left: 1px solid var(--line);
-}
-
-.pv-created-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 10px;
-  min-width: 0;
-}
-
-.pv-created-heading {
-  margin: 0;
-  color: var(--ink);
-  font-size: 18px;
-  font-weight: 640;
-  line-height: 1.25;
-}
-
-.pv-created-plans {
-  display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: minmax(190px, 220px);
-  grid-template-columns: none;
-  gap: 13px;
-  min-width: 0;
-  overflow-x: auto;
-  overscroll-behavior-inline: contain;
-  scroll-snap-type: inline proximity;
-  padding: 2px 2px 10px 0;
-}
-
-.pv-created-card {
-  display: grid;
-  gap: 7px;
-  min-width: 0;
-  scroll-snap-align: start;
-  color: inherit;
-  text-decoration: none;
-}
-
-.pv-created-card:hover,
-.pv-created-card:focus-visible {
-  outline: none;
-}
-
-.pv-created-card:hover .pv-created-cover img,
-.pv-created-card:focus-visible .pv-created-cover img {
-  transform: scale(1.03);
-}
-
-.pv-created-cover {
-  position: relative;
-  display: block;
-  aspect-ratio: 16 / 9;
-  overflow: hidden;
-  border: 1px solid var(--line);
-  background: var(--wash);
-}
-
-.pv-created-cover img {
-  display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  transition: transform .18s ease;
-}
-
-.pv-created-views {
-  position: absolute;
-  right: 9px;
-  bottom: 9px;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 3px 7px;
-  background: rgba(17, 25, 22, .62);
-  color: #fff;
-  font-size: 11px;
-  font-weight: 560;
-  font-variant-numeric: tabular-nums;
-}
-
-.pv-created-views .hi {
-  width: 13px;
-  height: 13px;
-}
-
-.pv-created-body {
-  display: grid;
-  gap: 5px;
-  min-width: 0;
-}
-
-.pv-created-title {
-  overflow: hidden;
-  color: var(--ink);
-  font-size: 14px;
-  font-weight: 640;
-  line-height: 1.3;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.pv-created-meta {
-  display: grid;
-  gap: 3px;
-  color: var(--muted);
-  font-size: 11px;
-  font-weight: 520;
-  line-height: 1.4;
-}
-
-.pv-created-meta span {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.pv-created-meta .hi {
-  flex: none;
-  width: 13px;
-  height: 13px;
-}
-
+/* 年を左の柱に立て、右に旅行を積む（年表の見え方）。 */
 .pv-trip-year-group {
   display: grid;
-  grid-template-columns: 72px minmax(0, 1fr);
+  grid-template-columns: 86px minmax(0, 1fr);
   gap: 18px;
 }
 
 .pv-trip-year {
   position: sticky;
-  top: 14px;
+  top: 16px;
   align-self: start;
   margin: 0;
   color: var(--green);
-  font-size: 17px;
-  font-weight: 760;
+  font-size: 26px;
+  font-weight: 700;
   line-height: 1;
-  letter-spacing: .02em;
+  letter-spacing: -.02em;
   font-variant-numeric: tabular-nums;
+}
+
+.pv-trip-year::after {
+  content: "";
+  display: block;
+  width: 28px;
+  height: 2px;
+  margin-top: 9px;
+  background: var(--green-line);
 }
 
 .pv-trip-year-list {
@@ -638,15 +606,31 @@ a {
 }
 
 .pv-trip {
+  position: relative;
   display: grid;
   grid-template-columns: max-content minmax(0, 1fr) auto;
-  align-items: start;
-  gap: 12px 18px;
-  min-height: 82px;
-  padding: 14px 4px 15px 0;
+  align-items: center;
+  gap: 10px 18px;
+  min-height: 84px;
+  padding: 16px 6px 16px 14px;
   border-bottom: 1px solid var(--line);
   color: inherit;
   text-decoration: none;
+  transition: background .15s ease;
+}
+
+/* hover で左端に緑の栞が伸びる。 */
+.pv-trip::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--green);
+  transform: scaleY(0);
+  transform-origin: top;
+  transition: transform .18s ease;
 }
 
 .pv-trip:hover,
@@ -655,24 +639,33 @@ a {
   outline: none;
 }
 
+.pv-trip:hover::before,
+.pv-trip:focus-visible::before {
+  transform: scaleY(1);
+}
+
 .pv-trip-date {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
   min-width: max-content;
+  padding: 5px 10px;
+  border: 1px solid var(--line);
+  background: #fff;
   color: var(--green);
-  font-size: 12px;
-  font-weight: 680;
-  line-height: 1.35;
+  font-size: 11.5px;
+  font-weight: 700;
+  line-height: 1.3;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
 .pv-trip-date .hi {
-  width: 15px;
-  height: 15px;
+  width: 14px;
+  height: 14px;
   flex: none;
-  color: var(--muted);
+  color: var(--green);
+  opacity: .7;
 }
 
 .pv-trip-main {
@@ -684,12 +677,13 @@ a {
 .pv-trip-name {
   display: flex;
   align-items: baseline;
-  gap: 7px;
+  gap: 8px;
   min-width: 0;
   overflow-wrap: anywhere;
   font-size: 17px;
-  font-weight: 760;
+  font-weight: 740;
   line-height: 1.35;
+  letter-spacing: -.01em;
 }
 
 .pv-trip-flags {
@@ -709,7 +703,7 @@ a {
 .pv-trip-meta span {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
   min-width: 0;
   overflow: hidden;
 }
@@ -730,9 +724,10 @@ a {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
-  color: var(--muted);
+  width: 26px;
+  height: 26px;
+  color: var(--line-strong);
+  transition: color .15s ease, transform .15s ease;
 }
 
 .pv-trip-open .hi {
@@ -743,41 +738,161 @@ a {
 .pv-trip:hover .pv-trip-open,
 .pv-trip:focus-visible .pv-trip-open {
   color: var(--green);
+  transform: translateX(2px);
 }
 
-.pv-cal-head {
+/* ---- 作成した計画 ------------------------------------------------------ */
+
+.pv-created-plans {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 12px;
+  min-width: 0;
+}
+
+/* サムネイルを左に置いた横並びカード。縦に積んでも視線が乱れない。 */
+.pv-created-card {
+  display: grid;
+  grid-template-columns: 116px minmax(0, 1fr);
+  gap: 13px;
+  align-items: start;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--line);
+  background: #fff;
+  color: inherit;
+  text-decoration: none;
+  transition: border-color .15s ease, background .15s ease;
+}
+
+.pv-created-card:hover,
+.pv-created-card:focus-visible {
+  border-color: var(--green-line);
+  background: var(--wash);
+  outline: none;
+}
+
+.pv-created-card:hover .pv-created-cover img,
+.pv-created-card:focus-visible .pv-created-cover img {
+  transform: scale(1.04);
+}
+
+.pv-created-cover {
+  position: relative;
+  display: block;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background: var(--wash);
+}
+
+.pv-created-cover img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform .18s ease;
+}
+
+.pv-created-views {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  background: rgba(17, 25, 22, .66);
+  color: #fff;
+  font-size: 10.5px;
+  font-weight: 620;
+  font-variant-numeric: tabular-nums;
+}
+
+.pv-created-views .hi {
+  width: 12px;
+  height: 12px;
+}
+
+.pv-created-body {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  padding-top: 2px;
+}
+
+.pv-created-title {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.pv-created-meta {
+  display: grid;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 11.5px;
+  font-weight: 540;
+  line-height: 1.4;
+}
+
+.pv-created-meta span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pv-created-meta .hi {
+  flex: none;
+  width: 13px;
+  height: 13px;
+}
+
+/* ---- カレンダー -------------------------------------------------------- */
+
+.pv-cal-nav-group {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 14px;
-  margin-bottom: 12px;
+  gap: 8px;
 }
 
-.pv-cal-head b {
-  min-width: 130px;
-  font-size: 16px;
-  font-weight: 750;
-  text-align: center;
+.pv-cal-nav-group b {
+  margin-right: 4px;
+  font-size: 17px;
+  font-weight: 720;
+  letter-spacing: -.01em;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .pv-cal-nav {
   display: inline-grid;
   place-items: center;
-  width: 38px;
-  height: 38px;
+  width: 34px;
+  height: 34px;
   border: 1px solid var(--line-strong);
-  border-radius: 50%;
   background: #fff;
   color: var(--ink);
   cursor: pointer;
   font: inherit;
-  font-size: 22px;
+  font-size: 20px;
   line-height: 1;
 }
 
 .pv-cal-nav:hover,
 .pv-cal-nav:focus-visible {
   border-color: var(--green);
+  background: var(--green-soft);
   color: var(--green);
 }
 
@@ -791,12 +906,13 @@ a {
 }
 
 .pv-cal-dow {
-  background: #fff;
+  background: var(--wash);
   color: var(--muted);
-  padding: 7px 0;
+  padding: 8px 0;
   text-align: center;
-  font-size: 11px;
+  font-size: 10.5px;
   font-weight: 750;
+  letter-spacing: .08em;
 }
 
 .pv-cal-dow.sun {
@@ -810,29 +926,38 @@ a {
 .pv-cell {
   display: flex;
   flex-direction: column;
-  gap: 3px;
-  min-height: 64px;
+  gap: 4px;
+  min-height: 78px;
   min-width: 0;
-  padding: 5px 5px 4px;
+  padding: 6px 6px 5px;
   background: #fff;
+}
+
+.pv-cell.is-out {
+  background: #fcfdfc;
 }
 
 .pv-cell-n {
   color: var(--ink);
   font-size: 11.5px;
   font-weight: 650;
+  font-variant-numeric: tabular-nums;
 }
 
 .pv-cell.is-out .pv-cell-n {
   color: var(--line-strong);
 }
 
+/* 今日は丸ではなく角の立ったバッジ（ページ全体の形に合わせる）。 */
+.pv-cell.is-today {
+  background: rgba(11, 90, 66, .05);
+}
+
 .pv-cell.is-today .pv-cell-n {
   display: inline-grid;
   place-items: center;
-  width: 20px;
+  width: 22px;
   height: 20px;
-  border-radius: 50%;
   background: var(--green);
   color: #fff;
 }
@@ -845,13 +970,13 @@ a {
 }
 
 .pv-bar {
-  min-height: 14px;
+  min-height: 15px;
   padding: 0 5px;
   overflow: hidden;
   color: #fff;
   font-size: 10px;
-  font-weight: 750;
-  line-height: 14px;
+  font-weight: 700;
+  line-height: 15px;
   text-decoration: none;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -860,257 +985,547 @@ a {
 .pv-bar-more {
   color: var(--muted);
   font-size: 10px;
-  font-weight: 750;
+  font-weight: 700;
 }
+
+/* ---- 空状態 ------------------------------------------------------------ */
 
 .pv-empty {
   display: grid;
-  justify-items: center;
-  gap: 5px;
-  padding: 30px 18px;
-  border: 1px dashed var(--line-strong);
-  background: #fff;
+  gap: 6px;
+  padding: 26px 22px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--green-line);
+  background: var(--wash);
   color: var(--muted);
-  text-align: center;
   font-size: 13px;
 }
 
 .pv-empty b {
   color: var(--ink);
   font-size: 15px;
-  font-weight: 750;
+  font-weight: 720;
 }
 
-@media (min-width: 860px) {
-  [data-content] {
-    display: grid;
-    grid-template-columns: minmax(0, 1.1fr) minmax(320px, .9fr);
-    align-items: start;
+/* ---- 広い画面: 記録と作成した計画を 2 カラムに ------------------------- */
+
+@media (min-width: 1080px) {
+  .pv-content {
+    grid-template-columns: minmax(0, 1fr) minmax(330px, .58fr);
   }
 
-  .pv-sec:first-child {
+  /* 地図とカレンダーは横幅が要るので全幅に伸ばす。 */
+  .pv-sec--map,
+  .pv-sec--cal {
     grid-column: 1 / -1;
   }
 
-  .pv-sec:nth-child(2) {
+  .pv-sec--trips {
     border-right: 1px solid var(--line);
-    min-height: 560px;
+  }
+
+  /* 作成した計画が無い人は 1 カラムに畳む。 */
+  .pv-content:has(.pv-sec--created[hidden]) .pv-sec--trips {
+    grid-column: 1 / -1;
+    border-right: 0;
+  }
+
+  .pv-sec--created .pv-created-plans {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
-@media (max-width: 720px) {
-  .pv-head {
-    grid-template-columns: auto minmax(0, 1fr);
-    gap: 12px;
-    padding: 18px 14px;
+/* ---- 中間幅 ------------------------------------------------------------ */
+
+@media (max-width: 900px) {
+  :root {
+    --gutter: 18px;
+  }
+
+  .pv-masthead {
+    padding: 20px var(--gutter) 24px;
+  }
+
+  .pv-hero {
+    padding: 28px 20px 26px;
+  }
+
+  .pv-sheet::before,
+  .pv-sheet::after {
+    width: 56px;
+    height: 15px;
+    top: -7px;
   }
 
   .pv-avatar {
-    width: 52px;
-    height: 52px;
-    font-size: 20px;
-  }
-
-  .pv-eyebrow {
-    display: none;
+    width: 54px;
+    height: 54px;
+    margin-bottom: 14px;
+    font-size: 22px;
   }
 
   .pv-name {
-    font-size: 25px;
-  }
-
-  .pv-stats {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    padding: 0 10px;
+    font-size: clamp(23px, 5.4vw, 30px);
   }
 
   .pv-stat {
-    gap: 6px;
-    padding: 12px 8px 12px 0;
-  }
-
-  .pv-stat + .pv-stat {
-    padding-left: 8px;
-  }
-
-  .pv-stat + .pv-stat::before {
-    display: block;
-    top: 14px;
-    bottom: 14px;
-  }
-
-  .pv-stat:nth-child(n + 3) {
-    border-top: 0;
-  }
-
-  .pv-stat-icon {
-    align-self: center;
-  }
-
-  .pv-stat-icon .hi {
-    width: 15px;
-    height: 15px;
-  }
-
-  .pv-stat-num {
-    font-size: 21px;
-  }
-
-  .pv-stat-label {
-    font-size: 10px;
-  }
-
-  .pv-private {
-    margin: 20px 14px 24px;
-    padding: 18px 16px 18px 16px;
-  }
-
-  .pv-private::before {
-    position: static;
-    justify-self: start;
-    margin-bottom: 4px;
+    padding: 12px 18px;
   }
 
   .pv-sec {
-    padding: 22px 14px 26px;
-  }
-
-  .pv-sec-head {
-    align-items: stretch;
-    flex-direction: column;
-    gap: 10px;
-  }
-
-  .pv-filter {
-    width: 100%;
+    padding: 22px var(--gutter) 26px;
   }
 
   .pv-map {
-    height: 340px;
+    height: min(46vh, 380px);
     min-height: 300px;
   }
 
-  .pv-trips {
-    gap: 20px;
-    padding-top: 14px;
-  }
-
-  .pv-created-panel {
-    grid-column: 1 / -1;
-    align-content: start;
-    padding: 14px 0 0;
-    border-left: 0;
-    border-top: 1px solid var(--line);
-  }
-
-  .pv-created-plans {
-    grid-auto-columns: minmax(180px, 58vw);
-    grid-template-columns: none;
-    gap: 14px;
-  }
-
-  .pv-created-title {
-    font-size: 14px;
-  }
-
-  .pv-created-meta {
-    font-size: 11px;
-  }
-
+  /* 年は柱をやめて行見出しにする。 */
   .pv-trip-year-group {
-    grid-template-columns: 1fr;
-    gap: 8px;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
   }
 
   .pv-trip-year {
     position: static;
-    font-size: 14px;
+    font-size: 22px;
   }
 
-  .pv-trip {
-    grid-template-columns: max-content minmax(0, 1fr) auto;
-    gap: 9px;
-    min-height: 74px;
-    padding: 12px 2px 13px 0;
+  .pv-trip-year::after {
+    display: none;
   }
 
-  .pv-trip-date {
-    font-size: 11px;
-  }
-
-  .pv-trip-name {
-    font-size: 15px;
-  }
-
-  .pv-trip-meta {
-    font-size: 11.5px;
+  .pv-created-plans {
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
   }
 
   .pv-cell {
-    min-height: 56px;
-    padding: 4px 3px;
+    min-height: 62px;
   }
 
   .pv-bar {
     min-height: 13px;
-    padding: 0 3px;
-    font-size: 9px;
+    font-size: 9.5px;
     line-height: 13px;
   }
 }
 
-@media (max-width: 380px) {
-  .pv-stats {
-    padding: 0 8px;
+/* ---- 小さい画面でも紙は二段組みのまま、全体を詰める -------------------- */
+
+@media (max-width: 680px) {
+  .pv-sheet {
+    grid-template-columns: minmax(0, 1fr) minmax(126px, .42fr);
   }
 
-  .pv-stat {
-    grid-template-columns: auto minmax(0, 1fr);
-    align-content: start;
+  .pv-hero {
+    padding: 22px 14px 20px;
+  }
+
+  .pv-eyebrow {
+    gap: 7px;
+    margin-bottom: 13px;
+    font-size: 9.5px;
+    letter-spacing: .16em;
+    text-indent: .16em;
+  }
+
+  .pv-eyebrow::before,
+  .pv-eyebrow::after {
+    width: 14px;
+  }
+
+  .pv-avatar {
+    width: 46px;
+    height: 46px;
+    margin-bottom: 11px;
+    font-size: 19px;
+    box-shadow:
+      0 0 0 1px var(--sheet),
+      0 0 0 2px rgba(11, 90, 66, .5);
+  }
+
+  .pv-name {
+    font-size: clamp(19px, 5.2vw, 26px);
+    letter-spacing: .02em;
+  }
+
+  .pv-self {
+    margin-left: 8px;
+    padding: 2px 6px;
+    border-width: 1px;
+    font-size: 9.5px;
+    letter-spacing: .08em;
+  }
+
+  .pv-flags {
     gap: 4px;
-    padding-right: 6px;
+    margin-top: 12px;
+    font-size: 14px;
   }
 
-  .pv-stat + .pv-stat {
-    padding-left: 6px;
+  .pv-flag {
+    width: 25px;
+    height: 20px;
   }
 
-  .pv-trip {
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: 7px 10px;
+  .pv-friend-action {
+    margin-top: 14px;
+    min-height: 32px;
   }
 
-  .pv-created-plans {
-    grid-auto-columns: minmax(170px, 78vw);
+  .pv-friend-btn,
+  .pv-friend-badge,
+  .pv-friend-note {
+    min-height: 32px;
+    padding: 0 11px;
+    font-size: 11.5px;
   }
 
-  .pv-trip-date {
-    grid-column: 1 / -1;
-    grid-row: 1;
-  }
-
-  .pv-trip-main {
-    grid-column: 1;
-    grid-row: 2;
-  }
-
-  .pv-trip-open {
-    grid-column: 2;
-    grid-row: 2;
-  }
-
-  .pv-trip-date .hi,
-  .pv-trip-meta .hi {
+  .pv-friend-action .hi {
     width: 13px;
     height: 13px;
   }
+
+  .pv-stat {
+    gap: 7px;
+    padding: 9px 12px;
+  }
+
+  .pv-stat-icon .hi {
+    width: 13px;
+    height: 13px;
+  }
+
+  .pv-stat-body {
+    gap: 6px;
+  }
+
+  .pv-stat-num {
+    font-size: clamp(17px, 4.6vw, 22px);
+  }
+
+  .pv-stat-label {
+    font-size: 10px;
+    letter-spacing: .02em;
+  }
 }
 
-/* PC は左右の余白をもう少し取る。中のセクションが 22px を持っているので、
-   外側に 26px 足して中身の左端を 48px にそろえる。 */
-@media (min-width: 861px) {
-  .pv {
-    padding-left: 26px;
-    padding-right: 26px;
+/* ---- 狭い画面 ---------------------------------------------------------- */
+
+@media (max-width: 560px) {
+  .pv-sheet {
+    grid-template-columns: minmax(0, 1fr) minmax(112px, .4fr);
+  }
+
+  .pv-hero {
+    padding: 20px 10px 18px;
+  }
+
+  /* テープは幅が無いと窮屈なので外す。 */
+  .pv-sheet::before,
+  .pv-sheet::after {
+    display: none;
+  }
+
+  /* 項目名と数字を優先し、飾りのアイコンは落とす。 */
+  .pv-stat-icon {
+    display: none;
+  }
+
+  .pv-stat {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 8px 11px;
+  }
+
+  .pv-stat-num {
+    font-size: 19px;
+  }
+
+  .pv-stat-label {
+    font-size: 9.5px;
+  }
+
+  .pv-eyebrow {
+    gap: 8px;
+    letter-spacing: .2em;
+    text-indent: .2em;
+  }
+
+  .pv-eyebrow::before,
+  .pv-eyebrow::after {
+    width: 20px;
+  }
+
+  .pv-sec-head {
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+
+  .pv-cal-nav-group {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .pv-cal-nav-group b {
+    margin-right: auto;
+  }
+
+  /* 日付を上に出し、タイトルと矢印を下段に並べる。 */
+  .pv-trip {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px 12px;
+    min-height: 0;
+    padding: 14px 4px 14px 12px;
+  }
+
+  .pv-trip-date {
+    grid-row: 1;
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+
+  .pv-trip-main {
+    grid-row: 2;
+    grid-column: 1;
+  }
+
+  .pv-trip-open {
+    grid-row: 2;
+    grid-column: 2;
+    align-self: center;
+  }
+
+  /* ---- ここから下は紙の外（地図・記録・計画・カレンダー）の圧縮 ---- */
+
+  .pv-sec {
+    padding: 18px var(--gutter) 22px;
+  }
+
+  .pv-sec-head {
+    margin-bottom: 14px;
+    padding-bottom: 10px;
+  }
+
+  .pv-kicker {
+    margin-bottom: 3px;
+    font-size: 9.5px;
+    letter-spacing: .14em;
+  }
+
+  .pv-kicker::before {
+    width: 11px;
+  }
+
+  .pv-sec-title {
+    font-size: 17px;
+  }
+
+  .pv-sec-count {
+    margin-left: 7px;
+    font-size: 11px;
+  }
+
+  .pv-filter {
+    min-height: 34px;
+    padding: 0 28px 0 10px;
+    font-size: 11.5px;
+  }
+
+  .pv-map {
+    height: min(38vh, 300px);
+    min-height: 240px;
+  }
+
+  .pv-trips {
+    gap: 18px;
+  }
+
+  .pv-trip-year {
+    font-size: 19px;
+  }
+
+  .pv-trip {
+    gap: 8px 10px;
+    padding: 12px 4px 12px 11px;
+  }
+
+  .pv-trip-date {
+    padding: 4px 8px;
+    font-size: 10.5px;
+  }
+
+  .pv-trip-name {
+    gap: 6px;
+    font-size: 15px;
+  }
+
+  /* 行き先と日数は、入るなら1行に並べて行数を稼ぐ。 */
+  .pv-trip-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3px 12px;
+    font-size: 11.5px;
+  }
+
+  /* 狭い幅では行き先を途中で切らず折り返す（省略記号が出ない書式なので、
+     切ると文字が欠けたように見えるため）。 */
+  .pv-trip-meta span {
+    align-items: flex-start;
+  }
+
+  .pv-trip-meta span:first-child {
+    overflow: visible;
+    white-space: normal;
+  }
+
+  .pv-trip-meta .hi {
+    width: 13px;
+    height: 13px;
+    margin-top: 2px;
+  }
+
+  .pv-trip-open {
+    width: 20px;
+    height: 20px;
+  }
+
+  .pv-trip-open .hi {
+    width: 15px;
+    height: 15px;
+  }
+
+  .pv-created-plans {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+  }
+
+  .pv-created-card {
+    grid-template-columns: 88px minmax(0, 1fr);
+    gap: 10px;
+    padding: 8px;
+  }
+
+  .pv-created-body {
+    gap: 5px;
+  }
+
+  .pv-created-title {
+    font-size: 13px;
+  }
+
+  .pv-created-meta {
+    gap: 3px;
+    font-size: 10.5px;
+  }
+
+  .pv-created-views {
+    right: 4px;
+    bottom: 4px;
+    padding: 1px 5px;
+    font-size: 10px;
+  }
+
+  .pv-cal-nav-group b {
+    font-size: 15px;
+  }
+
+  .pv-cal-dow {
+    padding: 6px 0;
+    font-size: 10px;
+  }
+
+  .pv-cell {
+    min-height: 56px;
+    padding: 4px 4px 3px;
+  }
+
+  .pv-bar {
+    min-height: 12px;
+    padding: 0 3px;
+    font-size: 9px;
+    line-height: 12px;
+  }
+
+  .pv-empty {
+    padding: 20px 16px;
+    font-size: 12.5px;
+  }
+
+  .pv-empty b {
+    font-size: 14px;
+  }
+
+  .pv-private {
+    margin: 18px var(--gutter) 24px;
+    padding: 18px 16px;
+  }
+
+  .pv-private b {
+    font-size: 15px;
+  }
+}
+
+@media (max-width: 380px) {
+  .pv-sheet {
+    grid-template-columns: minmax(0, 1fr) minmax(100px, .38fr);
+  }
+
+  /* 肩書きが2行に折れるので、両側の罫を落として1行に収める。 */
+  .pv-eyebrow {
+    font-size: 9px;
+    letter-spacing: .12em;
+    text-indent: .12em;
+  }
+
+  .pv-eyebrow::before,
+  .pv-eyebrow::after {
+    display: none;
+  }
+
+  .pv-avatar {
+    width: 42px;
+    height: 42px;
+    margin-bottom: 9px;
+    font-size: 17px;
+  }
+
+  .pv-stat {
+    padding: 7px 9px;
+  }
+
+  .pv-stat-num {
+    font-size: 17px;
+  }
+
+  .pv-stat-label {
+    font-size: 9px;
+    letter-spacing: 0;
+  }
+
+  .pv-self {
+    margin-left: 6px;
+  }
+
+  .pv-cell {
+    min-height: 54px;
+    padding: 4px 3px;
+  }
+
+  .pv-cell-n {
+    font-size: 10.5px;
+  }
+}
+
+/* タッチ端末では操作要素を押しやすい大きさに。 */
+@media (pointer: coarse) {
+  .pv-friend-btn,
+  .pv-cal-nav,
+  .pv-filter {
+    min-height: 44px;
+  }
+
+  .pv-cal-nav {
+    width: 44px;
   }
 }

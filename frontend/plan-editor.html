@@ -39,13 +39,20 @@
               <input data-range type="text" tabindex="-1" aria-hidden="true" hidden>
             </div>
             <div class="pe-field pe-member-field c6" data-member-field hidden>
-              <span data-ic-members>メンバー <em>友達または名前から追加・任意</em></span>
+              <span data-ic-members>メンバー <em>参加者の登録と招待・任意</em></span>
               <div class="pe-members" data-members></div>
+              <label class="pe-member-role">
+                <span>招待後の権限</span>
+                <select data-member-role aria-label="招待後の権限">
+                  <option value="editor">編集できる</option>
+                  <option value="viewer">閲覧のみ</option>
+                </select>
+              </label>
               <div class="pe-member-add">
                 <div class="pe-member-inputwrap">
-                  <select data-member-select aria-label="追加するメンバーを選択"></select>
+                  <select data-member-select aria-label="招待する友達を選択"></select>
                 </div>
-                <button class="pe-mini" type="button" data-member-add data-ic-memberadd>追加</button>
+                <button class="pe-mini" type="button" data-member-add data-ic-memberadd>追加して招待</button>
               </div>
               <div class="pe-member-add pe-member-free">
                 <div class="pe-member-inputwrap">
@@ -53,7 +60,7 @@
                 </div>
                 <button class="pe-mini" type="button" data-member-name-add>名前で追加</button>
               </div>
-              <p class="pe-member-hint" data-member-hint>友達以外や、まだアカウントを持っていない人も名前だけで追加できます。</p>
+              <p class="pe-member-hint" data-member-hint>友達はリンクを受諾するまで限定情報にアクセスできません。未登録の人は名前だけ先に登録できます。</p>
               <div class="pe-active-invites" data-active-invites></div>
             </div>
             <label class="pe-field pe-soft-field c6">

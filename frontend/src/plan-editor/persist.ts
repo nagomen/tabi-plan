@@ -5,6 +5,7 @@ import { state, model, hasContent, worthSaving, UNTITLED, nowHM, datesString } f
 import { statusEl, savebarNoteEl } from "./editor-dom";
 import { buildData, contentFingerprint } from "./plan-data";
 import { updateSteps } from "./steps";
+import { clearRecoveryDraft, saveRecoveryDraftNow, scheduleRecoveryDraft } from "./draft-recovery";
 
 let lastSavedContentFingerprint = "";
 let persistRunning: Promise<boolean> | null = null;
@@ -36,6 +37,7 @@ export function markDirty(): void {
     : "旅行名か行程を入れると自動保存されます";
   statusEl.className = "is-dirty";
   window.clearTimeout(persistTimer);
+  scheduleRecoveryDraft();
   persistTimer = window.setTimeout(() => { void persist(); }, 900);
   updateSteps();
 }
@@ -82,20 +84,23 @@ async function performPersist(explicit = false, slugRetry = 0): Promise<boolean>
   if (!state.slug) {
     state.slug = TripPlans.uniqueSlug(model.title.trim() || UNTITLED);
     model.slug = state.slug;
+    // 失敗時も生成済みURLから端末内下書きを復元できるよう、新しいキーへ即時保存する。
+    saveRecoveryDraftNow();
     try { history.replaceState(null, "", "plan-editor.html?plan=" + encodeURIComponent(state.slug)); } catch { /* ignore */ }
   }
   const data = buildData();
   const nextContentFingerprint = contentFingerprint(data);
   const contentChanged = nextContentFingerprint !== lastSavedContentFingerprint;
   const existing = TripPlans.get(state.slug);
-  const saved = contentChanged
-    ? TripPlans.saveLocalPlan(state.slug, data, model.memberIds)
+  const saved = !existing || contentChanged
+    ? TripPlans.saveLocalPlan(state.slug, data, model.memberIds, model.memberRoles)
     : TripPlans.upsert({
       slug: state.slug,
       title: model.title.trim() || UNTITLED,
       dates: datesString(),
       members: model.members,
       memberIds: model.memberIds,
+      memberRoles: model.memberRoles,
       note: model.note,
       cover: model.cover,
       ...(!existing ? { source: "local" as const, published: false } : {}),
@@ -113,6 +118,7 @@ async function performPersist(explicit = false, slugRetry = 0): Promise<boolean>
     if (contentChanged) lastSavedContentFingerprint = nextContentFingerprint;
     if (revision !== state.editRevision) return true;
     state.dirty = false;
+    clearRecoveryDraft();
     statusEl.textContent = explicit
       ? `下書きを保存しました ${nowHM()}`
       : model.title.trim()
@@ -154,6 +160,8 @@ export async function persist(explicit = false): Promise<boolean> {
   }
   persistRunning = performPersist(explicit);
   const result = await persistRunning.finally(() => { persistRunning = null; });
+  // 明示保存（公開・招待を含む）は、保存中に入った編集まで確実に取り切る。
+  if (explicit && result && state.dirty) return persist(true);
   if (persistRequested) {
     persistRequested = false;
     void persist();

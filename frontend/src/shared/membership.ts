@@ -1,11 +1,12 @@
-// 計画の「参加者か」「編集できるか」を plan_members で判定する。
+// 計画の「参加者か」「編集できるか」を、旅行参加者 plan_members と
+// 受諾済みアクセス plan_access_grants の結合結果で判定する。
 //
 // 旧構造は2系統で判定していた:
 //   - PlanMeta.members（表示名の連結文字列）に自分の名前が含まれるか
 //   - planPermissions（subjectType "account" | "name"）に行があるか
 // 実データではこの2つが噛み合わず（メンバー13名中アカウントと一致は1名）、
 // ログイン前後で別 principal になるなどの不具合の温床だった。
-// いまは plan_members 1枚が正で、判定はここに集約する。
+// いまは参加実態とアクセス権を分離し、access_status が active の人だけを認可する。
 
 import { isPublished, planVisibility, type PlanMeta } from "./plans-store";
 import * as db from "./db";
@@ -16,7 +17,9 @@ function memberRow(plan: PlanMeta): db.PlanMemberRow | undefined {
   if (!me) return undefined;
   const planId = plan.id || db.planBySlug(plan.slug)?.id;
   if (!planId) return undefined;
-  return db.members().find((m) => m.plan_id === planId && m.user_id === me && m.status === "active");
+  return db.members().find((m) =>
+    m.plan_id === planId && m.user_id === me && m.status === "active" && m.access_status === "active"
+  );
 }
 
 function effectiveRole(plan: PlanMeta): db.PlanMemberRow["role"] | null {
@@ -38,12 +41,18 @@ export function roleLabel(role: db.PlanMemberRow["role"] | null): string {
   return "Guest";
 }
 
-export function ownerNameOf(plan: PlanMeta): string {
+/** 計画の持ち主の user_id（不明なら空文字）。表示名ではなくこちらで同定する。 */
+export function ownerIdOf(plan: PlanMeta): string {
   const planId = plan.id || db.planBySlug(plan.slug)?.id;
-  const stored = planId ? db.planById(planId) : undefined;
-  const ownerId = stored?.owner_user_id || db.members().find(
+  if (!planId) return "";
+  const stored = db.planById(planId);
+  return stored?.owner_user_id || db.members().find(
     (member) => member.plan_id === planId && member.role === "owner" && member.status === "active",
-  )?.user_id;
+  )?.user_id || "";
+}
+
+export function ownerNameOf(plan: PlanMeta): string {
+  const ownerId = ownerIdOf(plan);
   return ownerId ? db.nameOf(ownerId) : "";
 }
 
@@ -71,10 +80,7 @@ export function canEditPlan(plan: PlanMeta): boolean {
   const stored = planId ? db.planById(planId) : undefined;
   if (stored?.source === "sample") return false;
   const role = effectiveRole(plan);
-  if (role) return role === "owner" || role === "editor";
-  return Boolean(
-    currentUserId() && stored?.open_editing && stored.visibility === "public" && stored.status === "published"
-  );
+  return role === "owner" || role === "editor";
 }
 
 /** 旅行名・期間・画像など、計画メタ情報を変更できる正式な編集メンバーか。 */

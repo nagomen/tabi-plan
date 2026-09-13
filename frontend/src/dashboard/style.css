@@ -416,7 +416,8 @@
 
   .tl-members-field { display: grid; gap: 4px; }
   .tl-members-field span { color: var(--muted); font-size: 11.5px; font-weight: 600; }
-  .tl-members-field input {
+  .tl-members-field input,
+  .tl-members-field select {
     min-height: 40px;
     padding: 0 2px;
     border: 0;
@@ -425,7 +426,8 @@
     font: inherit;
     font-size: 14px;
   }
-  .tl-members-field input:focus-visible { outline: none; border-bottom-color: var(--green); }
+  .tl-members-field input:focus-visible,
+  .tl-members-field select:focus-visible { outline: none; border-bottom-color: var(--green); }
 
   .tl-members-invite-note { margin: 2px 0 0; color: var(--muted); font-size: 11.5px; line-height: 1.6; }
 

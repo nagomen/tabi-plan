@@ -16,6 +16,16 @@ function loadValidation() {
   return module.exports;
 }
 
+function loadTypeScriptModule(path) {
+  const source = fs.readFileSync(new URL(path, root), "utf8");
+  const javascript = ts.transpileModule(source, {
+    compilerOptions: { target: ts.ScriptTarget.ES2020, module: ts.ModuleKind.CommonJS },
+  }).outputText;
+  const module = { exports: {} };
+  vm.runInNewContext(javascript, { module, exports: module.exports, Promise });
+  return module.exports;
+}
+
 test("publish validation keeps incomplete plans as drafts", () => {
   const { validatePublishPlan } = loadValidation();
   assert.equal(validatePublishPlan({ title: "", startDate: "", endDate: "", cities: [] }).field, "title");
@@ -26,6 +36,9 @@ test("publish validation keeps incomplete plans as drafts", () => {
   assert.equal(validatePublishPlan({
     title: "台湾旅行", startDate: "2026-10-08", endDate: "2026-10-13", cities: [{ name: "金門島" }],
   }), null);
+  assert.equal(validatePublishPlan({
+    title: "台湾旅行", startDate: "2026-02-31", endDate: "2026-03-02", cities: [{ name: "台北" }],
+  }).field, "dates");
 });
 
 test("editor separates draft save from publishing and waits before inviting", () => {
@@ -55,6 +68,26 @@ test("slug競合時は入力内容を保ったまま別URLで保存を再試行�
   assert.match(source, /return performPersist\(explicit, slugRetry \+ 1\)/);
 });
 
+test("公開前の保存中に編集されても最新revisionまで保存を繰り返す", async () => {
+  const { saveLatestRevision } = loadTypeScriptModule("src/plan-editor/save-stability.ts");
+  let revision = 1;
+  let calls = 0;
+  const saved = await saveLatestRevision(async () => {
+    calls += 1;
+    if (calls === 1) revision += 1;
+    return true;
+  }, () => revision);
+  assert.equal(saved, true);
+  assert.equal(calls, 2);
+});
+
+test("新規計画はメンバーと本文を作成POSTへ同梱する", () => {
+  const database = fs.readFileSync(new URL("src/shared/db.ts", root), "utf8");
+  const plans = fs.readFileSync(new URL("src/shared/plans-store.ts", root), "utf8");
+  assert.match(database, /createPlanBundleLocal[\s\S]*send\("POST", "\/api\/plans", \{ \.\.\.row, members, content \}\)/);
+  assert.match(plans, /!existing && db\.isEnabled\(\)[\s\S]*createPlanBundleLocal/);
+});
+
 test("友達以外を名前で追加し、保存後に未登録メンバーとして招待できる", () => {
   const html = fs.readFileSync(new URL("plan-editor.html", root), "utf8");
   const editor = fs.readFileSync(new URL("src/plan-editor/members.ts", root), "utf8");
@@ -70,6 +103,24 @@ test("友達以外を名前で追加し、保存後に未登録メンバーと�
   assert.match(editor, /data-revoke-invite/);
   assert.match(editor, /navigator\.share[\s\S]*db\.revokeInvite/);
   assert.match(editor, /undoPlaceholderClaim/);
+  assert.match(html, /data-member-role/);
+  assert.match(html, /編集できる/);
+  assert.match(html, /閲覧のみ/);
+  assert.match(editor, /access_status === "active"/);
+  assert.match(editor, /data-member-role-id/);
+  assert.match(editor, /data-revoke-access/);
+  assert.match(editor, /db\.revokeMemberAccess/);
+  assert.match(editor, /data-transfer-owner[\s\S]{0,300}access_status === "active"|access_status === "active"[\s\S]{0,300}data-transfer-owner/);
+});
+
+test("共通招待は対象者を限定しないことを明示し、共有キャンセル時に失効する", () => {
+  const html = fs.readFileSync(new URL("index.html", root), "utf8");
+  const dashboard = fs.readFileSync(new URL("src/dashboard/members.ts", root), "utf8");
+  assert.match(html, /招待リンクの表示名/);
+  assert.match(html, /招待相手のアカウントを限定しません/);
+  assert.match(dashboard, /revokeCreatedInvite[\s\S]*db\.revokeInvite\(planId, createdInviteId\)/);
+  assert.match(dashboard, /navigator\.share[\s\S]*revokeCreatedInvite\("共有をキャンセルしました"\)/);
+  assert.match(dashboard, /window\.prompt[\s\S]*copied === null[\s\S]*revokeCreatedInvite/);
 });
 
 test("API利用時は表示名だけでグローバルユーザーを自動作成しない", () => {

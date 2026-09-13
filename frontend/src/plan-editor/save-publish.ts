@@ -7,10 +7,11 @@ import { navigateWithPageTransition } from "../shared/page-transition";
 import { canManagePlan } from "../shared/membership";
 import { validatePublishPlan } from "./validation";
 import { state, model } from "./editor-state";
-import { qs, statusEl, savebarNoteEl, rangeTrigger, cityInput, saveBtn, publishBtn, stepNextBtn } from "./editor-dom";
+import { root, qs, statusEl, savebarNoteEl, rangeTrigger, cityInput, saveBtn, publishBtn, stepNextBtn } from "./editor-dom";
 import { stepCompletion, setViewStep } from "./steps";
 import { persist } from "./persist";
 import { buildData } from "./plan-data";
+import { saveLatestRevision } from "./save-stability";
 
 function setSaveActionsBusy(busy: boolean): void {
   state.saveActionsBusy = busy;
@@ -69,28 +70,36 @@ async function doPublish(visibility: PlanVisibility): Promise<void> {
     return;
   }
   setSaveActionsBusy(true);
-  if (!(await persist(true))) {
-    setSaveActionsBusy(false);
-    return;
-  }
-  const mutationCheckpoint = db.mutationCheckpoint();
-  model.visibility = visibility;
-  if (!TripPlans.upsert({ slug: state.slug, visibility, published: true })) {
-    statusEl.textContent = "ログインしてから保存してください";
-    statusEl.className = "is-dirty";
-    setSaveActionsBusy(false);
-    return;
-  }
-  TripPlans.setActiveSlug(state.slug);
+  root.inert = true;
+  root.setAttribute("aria-busy", "true");
   try {
+    // 公開中は入力を一時停止し、保存開始後の変更もpersist側で取り切ってから状態を変える。
+    if (!(await saveLatestRevision(() => persist(true), () => state.editRevision))) return;
+    const mutationCheckpoint = db.mutationCheckpoint();
+    model.visibility = visibility;
+    if (!TripPlans.upsert({ slug: state.slug, visibility, published: true })) {
+      statusEl.textContent = "ログインしてから保存してください";
+      statusEl.className = "is-dirty";
+      return;
+    }
+    TripPlans.setActiveSlug(state.slug);
     await db.flushMutations(mutationCheckpoint);
+    // 地図検索など、公開開始前から走っていた非同期処理の変更も遷移前に保存する。
+    if (state.dirty && !(await saveLatestRevision(() => persist(true), () => state.editRevision))) {
+      statusEl.textContent = "公開しましたが、直前の編集内容を保存できませんでした";
+      statusEl.className = "is-dirty";
+      return;
+    }
   } catch (error) {
     state.dirty = true;
     statusEl.textContent = "保存できませんでした";
     statusEl.className = "is-dirty";
     savebarNoteEl.textContent = errorMessage(error);
-    setSaveActionsBusy(false);
     return;
+  } finally {
+    root.inert = false;
+    root.removeAttribute("aria-busy");
+    setSaveActionsBusy(false);
   }
   state.dirty = false;
   const visLabel = visibility === "invite" ? "招待制" : "公開";
@@ -98,7 +107,6 @@ async function doPublish(visibility: PlanVisibility): Promise<void> {
   statusEl.className = "is-ok";
   savebarNoteEl.textContent = `保存しました（${visLabel}）。右上の「表示」でダッシュボードを確認できます。`;
   try { history.replaceState(null, "", "plan-editor.html?plan=" + encodeURIComponent(state.slug)); } catch { /* ignore */ }
-  setSaveActionsBusy(false);
   navigateWithPageTransition("index.html?plan=" + encodeURIComponent(state.slug));
 }
 
@@ -110,16 +118,22 @@ async function doUnpublish(): Promise<void> {
     setSaveActionsBusy(false);
     return;
   }
+  let unpublished = false;
   try {
     await db.flushMutations(mutationCheckpoint);
+    unpublished = true;
     if (!(await persist(true))) throw new Error("下書きの内容を保存できませんでした");
     statusEl.textContent = "下書きに戻しました";
     statusEl.className = "is-ok";
     savebarNoteEl.textContent = "この計画は公開一覧に表示されません。";
   } catch (error) {
-    statusEl.textContent = "下書きに戻せませんでした";
+    statusEl.textContent = unpublished
+      ? "下書きには戻しましたが、編集中の内容を保存できませんでした"
+      : "下書きに戻せませんでした";
     statusEl.className = "is-dirty";
-    savebarNoteEl.textContent = errorMessage(error);
+    savebarNoteEl.textContent = unpublished
+      ? `${errorMessage(error)} 入力内容はこの端末に一時保存しています。通信を確認してもう一度保存してください。`
+      : errorMessage(error);
   } finally {
     setSaveActionsBusy(false);
   }

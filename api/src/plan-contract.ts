@@ -1,3 +1,5 @@
+import { safeDate } from "./coerce.js";
+
 /** 計画APIで受け付けるフィールドの唯一の定義。HTTP層と永続化層で共有する。 */
 export const PLAN_EDIT_FIELDS = new Set([
   "title", "note", "start_date", "end_date", "dates_label", "cover_url",
@@ -28,17 +30,37 @@ export function planFieldError(input: Record<string, unknown>): string {
       !/^[a-z0-9][a-z0-9-]{0,63}$/.test(String(input.slug || ""))) {
     return "URLスラッグは英小文字・数字・ハイフン64文字以内で指定してください";
   }
-  if (Object.prototype.hasOwnProperty.call(input, "title") && String(input.title || "").trim().length > 120) {
-    return "旅行名は120文字以内にしてください";
+  if (Object.prototype.hasOwnProperty.call(input, "title")) {
+    const title = String(input.title || "").trim();
+    if (!title) return "旅行名を入力してください";
+    if (title.length > 120) return "旅行名は120文字以内にしてください";
   }
-  // 日付はDBのDATE型に入る前に検査する。厳格モードでは不正値が500になるため。
+  if (Object.prototype.hasOwnProperty.call(input, "visibility") &&
+      !["public", "invite"].includes(String(input.visibility))) {
+    return "公開範囲は public または invite で指定してください";
+  }
+  if (Object.prototype.hasOwnProperty.call(input, "status") &&
+      !["draft", "published"].includes(String(input.status))) {
+    return "公開状態は draft または published で指定してください";
+  }
+  if (Object.prototype.hasOwnProperty.call(input, "open_editing") &&
+      ![true, false, 0, 1].includes(input.open_editing as boolean | number)) {
+    return "共同編集設定は真偽値で指定してください";
+  }
+  if (Object.prototype.hasOwnProperty.call(input, "dates_label") && String(input.dates_label || "").length > 64) {
+    return "旅行期間の表示は64文字以内にしてください";
+  }
+  // 日付はDBのDATE型に入る前に、形式だけでなく実在日も検査する。
   for (const field of ["start_date", "end_date"] as const) {
     if (!Object.prototype.hasOwnProperty.call(input, field)) continue;
     const value = String(input[field] ?? "");
-    if (value && !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    if (value && !safeDate(value)) {
       return "旅行期間の日付形式が正しくありません";
     }
   }
+  const start = String(input.start_date || "");
+  const end = String(input.end_date || "");
+  if (start && end && end < start) return "旅行開始日は旅行終了日以前にしてください";
   if (Object.prototype.hasOwnProperty.call(input, "note") && String(input.note || "").length > 5000) {
     return "共有メモは5000文字以内にしてください";
   }
