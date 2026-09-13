@@ -19,6 +19,7 @@ test("plan repository delegates bootstrap, access, invites and membership", () =
   assert.match(source("routes.ts"), /accessRepo\.getPlanAccess/);
   assert.match(source("routes.ts"), /inviteRepo\.createInvite/);
   assert.match(source("routes.ts"), /memberRepo\.replaceMembers/);
+  assert.match(source("routes.ts"), /memberRepo\.revokeMemberAccess/);
 });
 
 test("AI route distinguishes an expired login session from missing plan permission", () => {
@@ -85,7 +86,7 @@ test("mutable repositories recheck current membership inside their transactions"
   const members = source("plan-member-repo.ts");
   const invites = source("plan-invite-repo.ts");
   const expenses = source("expense-repo.ts");
-  assert.match(plans, /SELECT role FROM plan_members[\s\S]*FOR UPDATE/);
+  assert.match(plans, /SELECT role FROM plan_access_grants[\s\S]*FOR UPDATE/);
   assert.match(plans, /source === "sample"/);
   assert.match(members, /SELECT owner_user_id, version FROM plans[\s\S]*FOR UPDATE/);
   assert.match(invites, /招待を作成できるのは現在のownerだけです/);

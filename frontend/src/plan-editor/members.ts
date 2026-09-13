@@ -10,7 +10,7 @@ import { listFriends } from "../shared/friendship-store";
 import { canManagePlan } from "../shared/membership";
 import { state, model, datesString } from "./editor-state";
 import {
-  root, membersMount, memberField, memberSelect, memberAddBtn, memberNameInput, memberHint, activeInvitesMount, toast,
+  root, membersMount, memberField, memberSelect, memberRoleSelect, memberAddBtn, memberNameInput, memberHint, activeInvitesMount, toast,
 } from "./editor-dom";
 import { markDirty, persist } from "./persist";
 import { buildData } from "./plan-data";
@@ -36,17 +36,22 @@ function setMembers(ids: string[]): void {
   renderMembers();
   renderMemberSelect();
 }
-function addMember(userId: string): void {
+function selectedRole(): "editor" | "viewer" {
+  return memberRoleSelect.value === "viewer" ? "viewer" : "editor";
+}
+function addMember(userId: string, role: "editor" | "viewer" = selectedRole()): void {
   if (!userId) return;
+  model.memberRoles[userId] = role;
   setMembers([...model.memberIds, userId]);
 }
 function removeMember(userId: string): void {
+  delete model.memberRoles[userId];
   setMembers(model.memberIds.filter((id) => id !== userId));
 }
-function addPendingMember(name: string): void {
+function addPendingMember(name: string, role: "editor" | "viewer" = selectedRole()): void {
   const displayName = name.trim().slice(0, 64);
   if (!displayName) return;
-  model.pendingMembers.push({ key: `pending-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, name: displayName });
+  model.pendingMembers.push({ key: `pending-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, name: displayName, role });
   syncMemberNames();
   markDirty();
   renderMembers();
@@ -71,8 +76,9 @@ export async function persistPendingMembers(): Promise<void> {
   const pending = [...model.pendingMembers];
   try {
     for (const entry of pending) {
-      const created = await db.createPlaceholderMember(planId, entry.name);
+      const created = await db.createPlaceholderMember(planId, entry.name, entry.role);
       model.memberIds.push(created.user.id);
+      model.memberRoles[created.user.id] = entry.role;
       model.pendingMembers = model.pendingMembers.filter((member) => member.key !== entry.key);
     }
   } finally {
@@ -104,26 +110,43 @@ export function renderMembers(): void {
   const memberChips = displayMembers
     .map((member) => {
       const self = account?.id ? member.id === account.id : Boolean(me) && member.name === me;
+      const storedMember = member.id && planId
+        ? db.members().find((row) => row.plan_id === planId && row.user_id === member.id && row.status === "active")
+        : undefined;
       const placeholder = Boolean(member.id && planId && db.isPlaceholderMember(planId, member.id));
       const claimedPlaceholder = member.id && planId ? db.claimedPlaceholderFor(planId, member.id) : undefined;
+      const accessLabel = storedMember?.access_status === "active"
+        ? "アクセス中"
+        : storedMember?.access_status === "revoked" ? "停止中" : "招待待ち";
       return (
         `<span class="pe-chip-m${self ? " is-self" : ""}">` +
         `<span>${escapeHtml(member.name)}</span>` +
         (self ? `<span class="pe-chip-self">自分</span>` : "") +
         (member.id === ownerId ? `<span class="pe-chip-self">Owner</span>` : "") +
+        (member.id && member.id !== ownerId && !placeholder
+          ? `<span class="pe-chip-pending">${accessLabel}</span>`
+          : "") +
         (member.pendingKey ? `<span class="pe-chip-pending">保存前</span>` : "") +
         (placeholder ? `<span class="pe-chip-pending">未登録</span>` : "") +
         (claimedPlaceholder ? `<span class="pe-chip-pending">本人紐付済み</span>` : "") +
-        (meta && canManagePlan(meta) && member.id && !placeholder && !self && member.id !== ownerId
+        (meta && canManagePlan(meta) && member.id && !placeholder && !self && member.id !== ownerId && storedMember?.access_status === "active"
           ? `<button class="pe-chip-ic" type="button" data-transfer-owner="${escapeHtml(member.id)}" data-transfer-name="${escapeHtml(member.name)}" title="所有権を移譲" aria-label="${escapeHtml(member.name)}へ所有権を移譲">${icon("arrowsRightLeft")}</button>`
           : "") +
-        (!account || self || member.pendingKey
+        (meta && canManagePlan(meta) && member.id && member.id !== ownerId
+          ? `<select class="pe-chip-role" data-member-role-id="${escapeHtml(member.id)}" aria-label="${escapeHtml(member.name)}の権限">` +
+            `<option value="editor"${(model.memberRoles[member.id] || storedMember?.role) !== "viewer" ? " selected" : ""}>編集</option>` +
+            `<option value="viewer"${(model.memberRoles[member.id] || storedMember?.role) === "viewer" ? " selected" : ""}>閲覧</option></select>`
+          : "") +
+        (meta && canManagePlan(meta) && member.id && !placeholder && !self && member.id !== ownerId && storedMember?.access_status === "active"
+          ? `<button class="pe-chip-ic access" type="button" data-revoke-access="${escapeHtml(member.id)}" data-revoke-name="${escapeHtml(member.name)}" title="アクセスを停止" aria-label="${escapeHtml(member.name)}のアクセスを停止">${icon("xCircle")}</button>`
+          : "") +
+        (!account || self || member.pendingKey || storedMember?.access_status === "active" || (meta && !canManagePlan(meta))
           ? ""
-          : `<button class="pe-chip-ic invite" type="button" data-invite="${escapeHtml(member.name)}" data-invite-user="${escapeHtml(member.id)}" title="招待リンクを送る" aria-label="${escapeHtml(member.name)}を招待">${icon("paperAirplane")}</button>`) +
+          : `<button class="pe-chip-ic invite" type="button" data-invite="${escapeHtml(member.name)}" data-invite-user="${escapeHtml(member.id)}" data-invite-role="${escapeHtml(model.memberRoles[member.id] || storedMember?.role || "editor")}" title="招待リンクを送る" aria-label="${escapeHtml(member.name)}を招待">${icon("paperAirplane")}</button>`) +
         (member.pendingKey
           ? `<button class="pe-chip-ic del" type="button" data-rm-pending="${escapeHtml(member.pendingKey)}" title="削除" aria-label="${escapeHtml(member.name)}を削除">${icon("xMark")}</button>`
           : member.id && member.id !== ownerId
-          ? `<button class="pe-chip-ic del" type="button" data-rm="${escapeHtml(member.id)}" title="削除" aria-label="${escapeHtml(member.name)}を削除">${icon("xMark")}</button>`
+          ? `<button class="pe-chip-ic del" type="button" data-rm="${escapeHtml(member.id)}" data-rm-name="${escapeHtml(member.name)}" title="旅行参加者から削除" aria-label="${escapeHtml(member.name)}を旅行参加者から削除">${icon("xMark")}</button>`
           : "") +
         (claimedPlaceholder && meta && canManagePlan(meta) && member.id !== ownerId
           ? `<button class="pe-chip-ic del" type="button" data-unclaim="${escapeHtml(claimedPlaceholder.user_id)}" title="本人紐付けを取り消す" aria-label="${escapeHtml(member.name)}の本人紐付けを取り消す">${icon("arrowPath")}</button>`
@@ -269,7 +292,7 @@ function persistMemberDates(): void {
     const dates = model.memberDates[id] || { from: null, to: null };
     return {
       user_id: id,
-      role: id === ownerId ? "owner" : current?.role === "viewer" ? "viewer" : "editor",
+      role: id === ownerId ? "owner" : model.memberRoles[id] || current?.role || "editor",
       from_date: dates.from,
       to_date: dates.to,
     };
@@ -336,7 +359,18 @@ export function onMembersClick(event: MouseEvent): void {
   const t = event.target;
   if (!(t instanceof Element)) return;
   const rm = t.closest<HTMLElement>("[data-rm]");
-  if (rm) { removeMember(rm.dataset.rm || ""); return; }
+  if (rm) {
+    const name = rm.dataset.rmName || "このメンバー";
+    if (window.confirm(`${name}さんを旅行参加者から削除しますか？費用・精算の履歴がある場合は削除できません。`)) {
+      removeMember(rm.dataset.rm || "");
+    }
+    return;
+  }
+  const revokeAccess = t.closest<HTMLElement>("[data-revoke-access]");
+  if (revokeAccess) {
+    void stopMemberAccess(revokeAccess.dataset.revokeAccess || "", revokeAccess.dataset.revokeName || "このメンバー");
+    return;
+  }
   const unclaim = t.closest<HTMLElement>("[data-unclaim]");
   if (unclaim) {
     const meta = state.slug ? TripPlans.get(state.slug) : null;
@@ -366,12 +400,42 @@ export function onMembersClick(event: MouseEvent): void {
     return;
   }
   const inv = t.closest<HTMLElement>("[data-invite]");
-  if (inv) { void shareInvite(inv.dataset.invite || "", inv.dataset.inviteUser || ""); }
+  if (inv) {
+    void shareInvite(
+      inv.dataset.invite || "",
+      inv.dataset.inviteUser || "",
+      inv.dataset.inviteRole === "viewer" ? "viewer" : "editor",
+    );
+  }
+}
+
+async function stopMemberAccess(userId: string, name: string): Promise<void> {
+  const meta = state.slug ? TripPlans.get(state.slug) : null;
+  if (!meta?.id || !userId || !canManagePlan(meta)) return;
+  if (!window.confirm(`${name}さんの閲覧・編集アクセスを停止しますか？費用や精算の履歴、参加者としての記録は残ります。`)) return;
+  if (!(await persist(true))) {
+    toast("未保存の変更があるため、アクセスを停止できませんでした");
+    return;
+  }
+  try {
+    await db.revokeMemberAccess(meta.id, userId);
+    renderMembers();
+    toast(`${name}さんのアクセスを停止しました`);
+  } catch (error) {
+    toast(errorMessage(error) || "アクセスを停止できませんでした");
+  }
 }
 
 // 途中合流/離脱の日付入力。確定した時点で参加期間を保存する。
 export function onMembersChange(event: Event): void {
   const input = event.target;
+  if (input instanceof HTMLSelectElement && input.dataset.memberRoleId) {
+    const id = input.dataset.memberRoleId;
+    model.memberRoles[id] = input.value === "viewer" ? "viewer" : "editor";
+    persistMemberDates();
+    renderMembers();
+    return;
+  }
   if (!(input instanceof HTMLInputElement)) return;
   const fromId = input.dataset.memberFrom;
   const toId = input.dataset.memberTo;
@@ -407,10 +471,14 @@ async function transferOwnership(userId: string, name: string): Promise<void> {
   }
 }
 
-export function commitMemberSelect(): void {
+export async function commitMemberSelect(): Promise<void> {
   const v = memberSelect.value.trim();
   if (!v) return;
-  addMember(v);
+  const role = selectedRole();
+  const name = db.nameOf(v);
+  addMember(v, role);
+  memberSelect.value = "";
+  await shareInvite(name, v, role);
 }
 export function commitMemberName(): void {
   const name = memberNameInput.value;
@@ -424,7 +492,11 @@ export function onMemberNameKeydown(event: KeyboardEvent): void {
   event.preventDefault();
   commitMemberName();
 }
-export async function shareInvite(name: string, userId = ""): Promise<void> {
+export async function shareInvite(
+  name: string,
+  userId = "",
+  role: "editor" | "viewer" = selectedRole(),
+): Promise<void> {
   if (state.editorLocked) return;
   if (!model.title.trim()) { toast("先に旅行名を入力してください"); return; }
   if (!state.slug) { state.slug = TripPlans.uniqueSlug(model.title); model.slug = state.slug; }
@@ -441,7 +513,7 @@ export async function shareInvite(name: string, userId = ""): Promise<void> {
   let createdInviteId = "";
   try {
     const invite = await db.createInvite(planId, {
-      invited_name: name, invited_user_id: userId || undefined, role: "editor",
+      invited_name: name, invited_user_id: userId || undefined, role,
     });
     createdInviteId = invite.id;
     link = await buildInviteLink({
@@ -456,7 +528,7 @@ export async function shareInvite(name: string, userId = ""): Promise<void> {
       },
       token: invite.token,
       invitedName: name,
-      role: "editor",
+      role,
     });
   } catch (error) {
     // 権限なし・回数制限・期限切れが黙って失敗にならないよう、理由ごと知らせる

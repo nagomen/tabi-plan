@@ -370,6 +370,54 @@ async function migrate014() {
   ) ENGINE=InnoDB`);
 }
 
+async function migrate015() {
+  // 旅行上の参加者と、アプリへ入れるアカウント権限を分離する。
+  await conn.query(`CREATE TABLE IF NOT EXISTS plan_access_grants (
+    plan_id       VARCHAR(32) NOT NULL,
+    user_id       VARCHAR(32) NOT NULL,
+    role          ENUM('owner','editor','viewer') NOT NULL DEFAULT 'viewer',
+    status        ENUM('active','revoked') NOT NULL DEFAULT 'active',
+    granted_by_id VARCHAR(32) NULL,
+    granted_at    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (plan_id, user_id),
+    KEY idx_plan_access_user (user_id, status),
+    CONSTRAINT fk_plan_access_plan FOREIGN KEY (plan_id) REFERENCES plans (id) ON DELETE CASCADE,
+    CONSTRAINT fk_plan_access_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+    CONSTRAINT fk_plan_access_granter FOREIGN KEY (granted_by_id) REFERENCES users (id) ON DELETE SET NULL
+  ) ENGINE=InnoDB`);
+
+  // 既存のログイン可能メンバーは、サービス継続のため現在のロールを引き継ぐ。
+  // placeholder は認証主体ではないのでアクセス権へ移さない。
+  await conn.query(`INSERT INTO plan_access_grants (plan_id, user_id, role, status, granted_by_id)
+    SELECT pm.plan_id, pm.user_id,
+           CASE WHEN p.owner_user_id = pm.user_id THEN 'owner' ELSE pm.role END,
+           'active', p.owner_user_id
+      FROM plan_members pm
+      JOIN plans p ON p.id = pm.plan_id AND p.deleted_at IS NULL
+     WHERE pm.status = 'active'
+       AND (EXISTS (SELECT 1 FROM user_credentials c WHERE c.user_id = pm.user_id)
+         OR EXISTS (SELECT 1 FROM user_identities i WHERE i.user_id = pm.user_id))
+    ON DUPLICATE KEY UPDATE role = VALUES(role), status = 'active'`);
+
+  // owner は認証方式にかかわらず必ずアクセス権を持つ。
+  await conn.query(`INSERT INTO plan_access_grants (plan_id, user_id, role, status, granted_by_id)
+    SELECT id, owner_user_id, 'owner', 'active', owner_user_id
+      FROM plans WHERE owner_user_id IS NOT NULL AND deleted_at IS NULL
+    ON DUPLICATE KEY UPDATE role = 'owner', status = 'active'`);
+
+  // 既に外された相手へ残っている個人宛て招待は再参加に使わせない。
+  await conn.query(`UPDATE plan_invites i
+    LEFT JOIN plan_members pm ON pm.plan_id = i.plan_id AND pm.user_id = i.invited_user_id
+       SET i.status = 'revoked', i.revoked_at = CURRENT_TIMESTAMP
+     WHERE i.status = 'pending' AND i.invited_user_id IS NOT NULL
+       AND NOT EXISTS (
+         SELECT 1 FROM plan_member_placeholders pmp
+          WHERE pmp.plan_id = i.plan_id AND pmp.user_id = i.invited_user_id AND pmp.status = 'unclaimed'
+       )
+       AND (pm.user_id IS NULL OR pm.status <> 'active')`);
+}
+
 async function main() {
   await conn.query(`CREATE TABLE IF NOT EXISTS schema_migrations (
     id VARCHAR(64) NOT NULL PRIMARY KEY,
@@ -388,6 +436,7 @@ async function main() {
   await applyMigration("012_account_recovery_and_settlement_audit", migrate012);
   await applyMigration("013_plan_city_details", migrate013);
   await applyMigration("014_plan_flight_notes", migrate014);
+  await applyMigration("015_separate_plan_access", migrate015);
 }
 
 // 同時デプロイが同じDDLを並走させないよう、DB側の advisory lock で直列化する。

@@ -34,9 +34,9 @@ test("viewer cannot edit and editor cannot manage", () => {
   assert.equal(canManagePlanRole("owner"), true);
 });
 
-test("open editing requires login and a public published plan", () => {
+test("open editing does not bypass an accepted owner/editor grant", () => {
   assert.equal(canEditPlanPolicy(plan({ openEditing: true })), false);
-  assert.equal(canEditPlanPolicy(plan({ openEditing: true, loggedIn: true })), true);
+  assert.equal(canEditPlanPolicy(plan({ openEditing: true, loggedIn: true })), false);
   assert.equal(canEditPlanPolicy(plan({ openEditing: true, loggedIn: true, visibility: "invite" })), false);
   assert.equal(canEditPlanPolicy(plan({ openEditing: true, loggedIn: true, status: "draft" })), false);
 });

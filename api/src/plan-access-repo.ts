@@ -30,7 +30,7 @@ export async function getPlanAccess(planId: string, userId: string): Promise<Pla
   const rows = await all<PlanAccessRow>(
     `SELECT p.source, p.visibility, p.status, p.open_editing, p.owner_user_id, pm.role
        FROM plans p
-       LEFT JOIN plan_members pm
+       LEFT JOIN plan_access_grants pm
          ON pm.plan_id = p.id AND pm.user_id = ? AND pm.status = 'active'
       WHERE p.id = ? AND p.deleted_at IS NULL
       LIMIT 1`,

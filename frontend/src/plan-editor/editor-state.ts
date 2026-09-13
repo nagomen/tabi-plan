@@ -77,7 +77,8 @@ export interface Model {
   title: string;
   members: string;
   memberIds: string[];
-  pendingMembers: { key: string; name: string }[];
+  pendingMembers: { key: string; name: string; role: "editor" | "viewer" }[];
+  memberRoles: Record<string, "owner" | "editor" | "viewer">;
   /** メンバーごとの旅行内参加期間（途中合流/離脱）。null 端は全日程。 */
   memberDates: Record<string, { from: string | null; to: string | null }>;
   note: string;
@@ -147,7 +148,7 @@ export const state = {
 };
 
 export const model: Model = {
-  slug: state.slug, title: "", members: "", memberIds: [], pendingMembers: [], memberDates: {}, note: "", cover: "", startDate: "", endDate: "", cities: [], days: [], candidates: [],
+  slug: state.slug, title: "", members: "", memberIds: [], pendingMembers: [], memberRoles: {}, memberDates: {}, note: "", cover: "", startDate: "", endDate: "", cities: [], days: [], candidates: [],
 };
 
 export function newItem(kind: ItemKind, seed?: Partial<Item>): Item {

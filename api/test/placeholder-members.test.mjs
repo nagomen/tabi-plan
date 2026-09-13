@@ -6,7 +6,7 @@ process.env.DB_USER = "test";
 process.env.DB_PASSWORD = "test";
 
 const { pool } = await import("../dist/db.js");
-const { createPlaceholderMember } = await import("../dist/plan-member-repo.js");
+const { createPlaceholderMember, leavePlan, revokeMemberAccess } = await import("../dist/plan-member-repo.js");
 const { acceptInvite, inspectInvite } = await import("../dist/plan-invite-repo.js");
 
 function result(affectedRows = 1) {
@@ -104,6 +104,7 @@ test("招待承諾は仮メンバーの旅行内データをアカウントへ�
   assert.match(sql, /UPDATE settlements SET from_user_id/);
   assert.match(sql, /UPDATE settlements SET to_user_id/);
   assert.match(sql, /UPDATE plan_candidates SET proposed_by_id/);
+  assert.match(sql, /INSERT INTO plan_access_grants/);
   assert.match(sql, /INSERT IGNORE INTO plan_candidate_votes/);
   const itineraryUpdate = statements.find(({ sql: statement }) => statement.includes("UPDATE itinerary_items SET member_ids"));
   assert.deepEqual(JSON.parse(itineraryUpdate.params[0]), ["usr_takashi", "usr_other"]);
@@ -170,4 +171,96 @@ test("共通招待は未登録メンバー候補があるとき本人選択を�
     /旅行メンバーの中から自分を選択してください/,
   );
   assert.deepEqual(statements, ["ROLLBACK"]);
+});
+
+test("通常の招待は受諾時に初めて参加者行とアクセス権を有効化する", async (t) => {
+  const originalGetConnection = pool.getConnection;
+  const originalQuery = pool.query;
+  const statements = [];
+  const connection = {
+    beginTransaction: async () => {},
+    commit: async () => {},
+    rollback: async () => {},
+    release: () => {},
+    query: async (sql, params = []) => {
+      statements.push({ sql: String(sql), params });
+      if (String(sql).includes("FROM plan_invites i")) return [[{
+        id: "inv_direct", plan_id: "pln_1", role: "viewer", status: "pending",
+        created_by_id: "usr_owner", invited_user_id: "usr_guest", accepted_by_id: null,
+        expires_at: "2099-01-01 00:00:00", slug: "summer", owner_user_id: "usr_owner",
+      }]];
+      if (String(sql).includes("FROM plan_member_placeholders WHERE")) return [[]];
+      if (String(sql).includes("SELECT role, status FROM plan_members")) return [[]];
+      return result();
+    },
+  };
+  pool.query = async () => result();
+  pool.getConnection = async () => connection;
+  t.after(() => { pool.query = originalQuery; pool.getConnection = originalGetConnection; });
+
+  assert.deepEqual(await acceptInvite("direct-token", "usr_guest"), { planSlug: "summer" });
+  const accessInsert = statements.find(({ sql }) => sql.includes("INSERT INTO plan_access_grants"));
+  assert.ok(accessInsert, "受諾したアカウントへアクセス権を付与する");
+  assert.deepEqual(accessInsert.params, ["pln_1", "usr_guest", "viewer", "usr_owner"]);
+  assert.ok(statements.some(({ sql }) => sql.includes("INSERT INTO plan_members")));
+  assert.ok(statements.some(({ sql }) => sql.includes("SET status = 'accepted'")));
+});
+
+test("ownerは会計上の参加者を残したままアクセスだけを停止できる", async (t) => {
+  const originalGetConnection = pool.getConnection;
+  const statements = [];
+  const connection = {
+    beginTransaction: async () => {},
+    commit: async () => {},
+    rollback: async () => {},
+    release: () => {},
+    query: async (sql, params = []) => {
+      statements.push({ sql: String(sql), params });
+      if (String(sql).includes("SELECT owner_user_id FROM plans")) {
+        return [[{ owner_user_id: "usr_owner" }]];
+      }
+      if (String(sql).includes("SELECT status FROM plan_members")) {
+        return [[{ status: "active" }]];
+      }
+      return result();
+    },
+  };
+  pool.getConnection = async () => connection;
+  t.after(() => { pool.getConnection = originalGetConnection; });
+
+  await revokeMemberAccess("pln_1", "usr_guest", "usr_owner");
+  const sql = statements.map(({ sql }) => sql).join("\n");
+  assert.match(sql, /UPDATE plan_access_grants SET status = 'revoked'/);
+  assert.match(sql, /UPDATE plan_invites SET status = 'revoked'/);
+  assert.doesNotMatch(sql, /UPDATE plan_members SET status/);
+  assert.doesNotMatch(sql, /FROM expenses/);
+});
+
+test("会計履歴がある本人の脱退は参加者記録を残してアクセスを失効する", async (t) => {
+  const originalGetConnection = pool.getConnection;
+  const statements = [];
+  const connection = {
+    beginTransaction: async () => {},
+    commit: async () => {},
+    rollback: async () => {},
+    release: () => {},
+    query: async (sql, params = []) => {
+      statements.push({ sql: String(sql), params });
+      if (String(sql).includes("SELECT owner_user_id FROM plans")) {
+        return [[{ owner_user_id: "usr_owner" }]];
+      }
+      if (String(sql).includes("SELECT role, status FROM plan_members")) {
+        return [[{ role: "editor", status: "active" }]];
+      }
+      if (String(sql).includes("AS total")) return [[{ total: 2 }]];
+      return result();
+    },
+  };
+  pool.getConnection = async () => connection;
+  t.after(() => { pool.getConnection = originalGetConnection; });
+
+  await leavePlan("pln_1", "usr_guest");
+  const sql = statements.map(({ sql }) => sql).join("\n");
+  assert.match(sql, /UPDATE plan_access_grants SET status = 'revoked'/);
+  assert.doesNotMatch(sql, /UPDATE plan_members SET status = 'left'/);
 });

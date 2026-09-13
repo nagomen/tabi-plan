@@ -75,6 +75,8 @@ function boot(): void {
     if (privateEl) privateEl.hidden = false;
     if (contentEl) contentEl.hidden = true;
     if (!personName && privateEl) {
+      // 「非公開」ではなく「未指定」として見せる（見出しバッジは CSS 側で切り替える）。
+      privateEl.classList.add("is-missing");
       privateEl.innerHTML = `<b>名前が指定されていません</b><span>メンバーのアイコンから開いてください。</span>`;
     }
     return;
@@ -90,7 +92,9 @@ function renderHistory(): void {
   const allPins = historyPins(trips);
 
   renderStats(statsEl, trips, allPins);
-  renderMap(allPins);
+  // personTrips は新しい順。地図の初期表示はその先頭＝直近の旅行に合わせる
+  // （旅行の記録・カレンダーの初期位置と同じ基準）。
+  renderMap(allPins, trips[0]?.plan.slug || "");
   renderCreatedPlans();
   renderTrips(trips);
   renderCalendar(trips, allSlugs);

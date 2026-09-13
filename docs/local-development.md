@@ -37,3 +37,5 @@ npm run dev:full
 node api/scripts/migrate-kv-to-relational.mjs --dry-run
 node api/scripts/migrate-kv-to-relational.mjs --reset
 ```
+
+移行では旅行参加者とアクセス権を別々に復元します。`--reset` は既存の関係テーブルを空にするため、対象DBとバックアップを確認してから実行してください。

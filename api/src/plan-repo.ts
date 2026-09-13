@@ -42,6 +42,74 @@ export async function createPlan(input: Record<string, unknown>): Promise<{ id: 
          ON DUPLICATE KEY UPDATE role = 'owner', status = 'active'`,
         [id, owner],
       );
+      await conn.query(
+        `INSERT INTO plan_access_grants (plan_id, user_id, role, status, granted_by_id)
+         VALUES (?, ?, 'owner', 'active', ?)
+         ON DUPLICATE KEY UPDATE role = 'owner', status = 'active'`,
+        [id, owner, owner],
+      );
+    }
+    if (Object.prototype.hasOwnProperty.call(input, "members")) {
+      if (!Array.isArray(input.members)) throw new BadRequest("members は配列で指定してください");
+      if (!owner) throw new BadRequest("計画のownerが必要です");
+      const byUser = new Map<string, {
+        user_id: string; role: "owner" | "editor" | "viewer"; from_date: string | null; to_date: string | null;
+      }>();
+      byUser.set(owner, { user_id: owner, role: "owner", from_date: null, to_date: null });
+      for (const raw of input.members) {
+        if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new BadRequest("members の各要素はオブジェクトで指定してください");
+        const member = raw as Record<string, unknown>;
+        const userId = String(member.user_id || "").trim();
+        if (!/^[\w-]{1,32}$/.test(userId)) throw new BadRequest("メンバーIDの形式が正しくありません");
+        if (userId === owner) continue;
+        const fromDate = member.from_date ? safeDate(member.from_date) : null;
+        const toDate = member.to_date ? safeDate(member.to_date) : null;
+        if ((member.from_date && !fromDate) || (member.to_date && !toDate)) {
+          throw new BadRequest("メンバーの参加日が正しくありません");
+        }
+        if (fromDate && toDate && fromDate > toDate) throw new BadRequest("参加開始日は参加終了日以前にしてください");
+        byUser.set(userId, {
+          user_id: userId,
+          role: member.role === "viewer" ? "viewer" : "editor",
+          from_date: fromDate,
+          to_date: toDate,
+        });
+      }
+      const initialMembers = [...byUser.values()];
+      if (initialMembers.length > 100) throw new BadRequest("旅行メンバーは100人以内にしてください");
+      const planStart = safeDate(input.start_date);
+      const planEnd = safeDate(input.end_date);
+      for (const member of initialMembers) {
+        if (planStart && member.from_date && member.from_date < planStart) throw new BadRequest("参加開始日は旅行開始日以降にしてください");
+        if (planEnd && member.from_date && member.from_date > planEnd) throw new BadRequest("参加開始日は旅行終了日以前にしてください");
+        if (planStart && member.to_date && member.to_date < planStart) throw new BadRequest("参加終了日は旅行開始日以降にしてください");
+        if (planEnd && member.to_date && member.to_date > planEnd) throw new BadRequest("参加終了日は旅行終了日以前にしてください");
+      }
+      const placeholders = initialMembers.map(() => "?").join(",");
+      const [knownRows] = await conn.query<mysql.RowDataPacket[]>(
+        `SELECT id FROM users WHERE id IN (${placeholders}) FOR UPDATE`,
+        initialMembers.map((member) => member.user_id),
+      );
+      if (knownRows.length !== initialMembers.length) throw new BadRequest("存在しないユーザーがメンバーに含まれています");
+      await conn.query(
+        `INSERT INTO plan_members (plan_id, user_id, role, status, from_date, to_date) VALUES ?
+         ON DUPLICATE KEY UPDATE role = VALUES(role), status = 'active',
+           from_date = VALUES(from_date), to_date = VALUES(to_date)`,
+        [initialMembers.map((member) => [id, member.user_id, member.role, "active", member.from_date, member.to_date])],
+      );
+    }
+    if (Object.prototype.hasOwnProperty.call(input, "content")) {
+      if (!input.content || typeof input.content !== "object" || Array.isArray(input.content)) {
+        throw new BadRequest("content はオブジェクトで指定してください");
+      }
+      await replacePlanContent(
+        id,
+        input.content as Parameters<typeof replacePlanContent>[1],
+        1,
+        owner,
+        conn,
+        false,
+      );
     }
   });
   return { id };
@@ -74,6 +142,9 @@ export async function updatePlan(
     const title = String(input.title ?? current.title ?? "").trim();
     const startDate = String(input.start_date ?? current.start_date ?? "");
     const endDate = String(input.end_date ?? current.end_date ?? "");
+    if (startDate && endDate && endDate < startDate) {
+      throw new BadRequest("旅行開始日は旅行終了日以前にしてください");
+    }
     if (targetStatus === "published" && (
       !title || !/^\d{4}-\d{2}-\d{2}/.test(startDate) || !/^\d{4}-\d{2}-\d{2}/.test(endDate) || endDate < startDate
     )) {
@@ -95,12 +166,12 @@ export async function updatePlan(
   }
   const accessSql = scope === "manage"
     ? "owner_user_id = ?"
-    : `EXISTS (SELECT 1 FROM plan_members pm
-        WHERE pm.plan_id = plans.id AND pm.user_id = ? AND pm.status = 'active' AND pm.role IN ('owner','editor'))`;
+    : `(owner_user_id = ? OR EXISTS (SELECT 1 FROM plan_access_grants pag
+        WHERE pag.plan_id = plans.id AND pag.user_id = ? AND pag.status = 'active' AND pag.role IN ('owner','editor')))`;
   if (!sets.length) {
     const rows = await all<{ version: number }>(
       `SELECT version FROM plans WHERE id = ? AND deleted_at IS NULL AND source <> 'sample' AND (${accessSql}) LIMIT 1`,
-      [id, actorUserId],
+      scope === "manage" ? [id, actorUserId] : [id, actorUserId, actorUserId],
     );
     if (!rows.length) throw new BadRequest("この計画を変更する権限がありません");
     const currentVersion = Number(rows[0]?.version || 0);
@@ -113,6 +184,7 @@ export async function updatePlan(
   sets.push("version = version + 1");
   vals.push(id);
   vals.push(actorUserId);
+  if (scope === "edit") vals.push(actorUserId);
   let sql = `UPDATE plans SET ${sets.join(", ")} WHERE id = ? AND deleted_at IS NULL
     AND source <> 'sample' AND (${accessSql})`;
   sql += " AND version = ?";
@@ -127,7 +199,7 @@ export async function updatePlan(
     if (!rows.length) throw new BadRequest("計画が見つかりません");
     const permitted = await all<{ id: string }>(
       `SELECT id FROM plans WHERE id = ? AND deleted_at IS NULL AND source <> 'sample' AND (${accessSql}) LIMIT 1`,
-      [id, actorUserId],
+      scope === "manage" ? [id, actorUserId] : [id, actorUserId, actorUserId],
     );
     if (!permitted.length) throw new BadRequest("この計画を変更する権限がありません");
     throw new VersionConflict("計画が別の端末で更新されています", Number(rows[0]?.version || 0));
@@ -144,6 +216,141 @@ export async function deletePlan(id: string, actorUserId: string): Promise<void>
   if (result.affectedRows !== 1) throw new BadRequest("削除できる計画が見つからないか、ownerではありません");
 }
 
+const CONTENT_COLLECTION_LIMITS: Record<string, number> = {
+  itinerary: 1000,
+  cities: 100,
+  links: 100,
+  checklist: 500,
+  candidates: 500,
+};
+const ITINERARY_KINDS = new Set(["sight", "move", "food", "stay", "todo", "form"]);
+const CHECKLIST_STATUSES = new Set(["todo", "doing", "done"]);
+const CONTENT_ITEM_FIELDS = {
+  itinerary: new Set([
+    "item_date", "day_index", "kind", "start_time", "title", "place", "area", "note", "map_query",
+    "lat", "lng", "from_place", "from_lat", "from_lng", "to_place", "to_lat", "to_lng", "transport",
+    "duration_minutes", "member_ids",
+  ]),
+  cities: new Set(["name", "from_date", "to_date", "lat", "lng"]),
+  links: new Set(["link_key", "label", "url", "caption"]),
+  checklist: new Set(["label", "status"]),
+  candidates: new Set(["id", "title", "place", "proposed_by_id", "adopted", "votes"]),
+};
+
+function assertLength(value: unknown, maximum: number, label: string): void {
+  if (String(value || "").length > maximum) throw new BadRequest(`${label}は${maximum}文字以内にしてください`);
+}
+
+function assertOptionalDate(value: unknown, label: string): void {
+  if (value !== null && value !== undefined && value !== "" && !safeDate(value)) {
+    throw new BadRequest(`${label}の日付が正しくありません`);
+  }
+}
+
+function assertOptionalNumber(value: unknown, minimum: number, maximum: number, label: string): void {
+  if (value === null || value === undefined || value === "") return;
+  if (boundedNumber(value, minimum, maximum) === null) {
+    throw new BadRequest(`${label}は${minimum}〜${maximum}の数値で指定してください`);
+  }
+}
+
+function assertKnownFields(item: Record<string, unknown>, allowed: Set<string>, label: string): void {
+  const unknown = Object.keys(item).filter((key) => !allowed.has(key));
+  if (unknown.length) throw new BadRequest(`${label}に更新できない項目があります: ${unknown.join(", ")}`);
+}
+
+/** 全削除を始める前に本文全体を検査し、どの行が不正かを利用者へ返す。 */
+export function validatePlanContent(body: Record<string, unknown>): void {
+  const unknown = Object.keys(body).filter((key) => !Object.prototype.hasOwnProperty.call(CONTENT_COLLECTION_LIMITS, key));
+  if (unknown.length) throw new BadRequest(`content に更新できない項目があります: ${unknown.join(", ")}`);
+  for (const [key, limit] of Object.entries(CONTENT_COLLECTION_LIMITS)) {
+    if (!Object.prototype.hasOwnProperty.call(body, key)) continue;
+    const value = body[key];
+    if (!Array.isArray(value) || value.some((item) => !item || typeof item !== "object" || Array.isArray(item))) {
+      throw new BadRequest(`${key} はオブジェクトの配列で指定してください`);
+    }
+    if (value.length > limit) throw new BadRequest(`${key} は${limit}件以内にしてください`);
+  }
+
+  ((body.itinerary || []) as Record<string, unknown>[]).forEach((item, index) => {
+    const row = `行程${index + 1}件目の`;
+    assertKnownFields(item, CONTENT_ITEM_FIELDS.itinerary, `行程${index + 1}件目`);
+    const kind = String(item.kind || "sight");
+    if (!ITINERARY_KINDS.has(kind)) throw new BadRequest(`${row}種別が正しくありません`);
+    assertOptionalDate(item.item_date, `${row}日付`);
+    assertOptionalNumber(item.day_index, 0, 1000, `${row}日番号`);
+    if (item.start_time !== null && item.start_time !== undefined && item.start_time !== "" &&
+        !/^(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/.test(String(item.start_time))) {
+      throw new BadRequest(`${row}時刻が正しくありません`);
+    }
+    assertLength(item.title, 200, `${row}タイトル`);
+    assertLength(item.place, 200, `${row}場所`);
+    assertLength(item.area, 100, `${row}エリア`);
+    assertLength(item.note, 5000, `${row}メモ`);
+    assertLength(item.map_query, 200, `${row}地図検索語`);
+    assertLength(item.from_place, 200, `${row}出発地`);
+    assertLength(item.to_place, 200, `${row}到着地`);
+    assertLength(item.transport, 60, `${row}移動手段`);
+    for (const [field, min, max, label] of [
+      ["lat", -90, 90, "緯度"], ["lng", -180, 180, "経度"],
+      ["from_lat", -90, 90, "出発地の緯度"], ["from_lng", -180, 180, "出発地の経度"],
+      ["to_lat", -90, 90, "到着地の緯度"], ["to_lng", -180, 180, "到着地の経度"],
+      ["duration_minutes", 0, 65_535, "所要時間"],
+    ] as const) assertOptionalNumber(item[field], min, max, `${row}${label}`);
+    if (item.member_ids !== null && item.member_ids !== undefined) {
+      if (!Array.isArray(item.member_ids) || item.member_ids.length > 50 ||
+          item.member_ids.some((id) => typeof id !== "string" || !/^[\w-]{1,32}$/.test(id))) {
+        throw new BadRequest(`${row}対象メンバーが正しくありません`);
+      }
+    }
+  });
+
+  ((body.cities || []) as Record<string, unknown>[]).forEach((city, index) => {
+    const row = `訪問地${index + 1}件目の`;
+    assertKnownFields(city, CONTENT_ITEM_FIELDS.cities, `訪問地${index + 1}件目`);
+    const name = String(city.name || "").trim();
+    if (!name) throw new BadRequest(`${row}名前を入力してください`);
+    assertLength(name, 100, `${row}名前`);
+    assertOptionalDate(city.from_date, `${row}開始日`);
+    assertOptionalDate(city.to_date, `${row}終了日`);
+    const from = safeDate(city.from_date);
+    const to = safeDate(city.to_date);
+    if (from && to && from > to) throw new BadRequest(`${row}開始日は終了日以前にしてください`);
+    assertOptionalNumber(city.lat, -90, 90, `${row}緯度`);
+    assertOptionalNumber(city.lng, -180, 180, `${row}経度`);
+  });
+
+  ((body.links || []) as Record<string, unknown>[]).forEach((link, index) => {
+    const row = `リンク${index + 1}件目の`;
+    assertKnownFields(link, CONTENT_ITEM_FIELDS.links, `リンク${index + 1}件目`);
+    assertLength(link.link_key, 40, `${row}キー`);
+    assertLength(link.label, 80, `${row}表示名`);
+    assertLength(link.caption, 80, `${row}説明`);
+    if (link.url && !safeUrl(link.url)) throw new BadRequest(`${row}URLが正しくありません`);
+  });
+  ((body.checklist || []) as Record<string, unknown>[]).forEach((item, index) => {
+    assertKnownFields(item, CONTENT_ITEM_FIELDS.checklist, `チェックリスト${index + 1}件目`);
+    if (!String(item.label || "").trim()) throw new BadRequest(`チェックリスト${index + 1}件目の内容を入力してください`);
+    assertLength(item.label, 200, `チェックリスト${index + 1}件目の内容`);
+    if (item.status !== undefined && !CHECKLIST_STATUSES.has(String(item.status))) {
+      throw new BadRequest(`チェックリスト${index + 1}件目の状態が正しくありません`);
+    }
+  });
+  ((body.candidates || []) as Record<string, unknown>[]).forEach((candidate, index) => {
+    assertKnownFields(candidate, CONTENT_ITEM_FIELDS.candidates, `候補${index + 1}件目`);
+    if (!String(candidate.title || "").trim()) throw new BadRequest(`候補${index + 1}件目のタイトルを入力してください`);
+    assertLength(candidate.title, 200, `候補${index + 1}件目のタイトル`);
+    assertLength(candidate.place, 200, `候補${index + 1}件目の場所`);
+    if (candidate.id && !/^[\w-]{1,32}$/.test(String(candidate.id))) {
+      throw new BadRequest(`候補${index + 1}件目のIDが正しくありません`);
+    }
+    if (candidate.votes !== undefined && (!Array.isArray(candidate.votes) || candidate.votes.length > 100 ||
+        candidate.votes.some((id) => typeof id !== "string" || !/^[\w-]{1,32}$/.test(id)))) {
+      throw new BadRequest(`候補${index + 1}件目の投票者が正しくありません`);
+    }
+  });
+}
+
 /** 計画本文（行程・都市・リンク・チェックリスト・候補）を一括置換する。 */
 export async function replacePlanContent(planId: string, body: {
   itinerary?: Record<string, unknown>[];
@@ -151,8 +358,10 @@ export async function replacePlanContent(planId: string, body: {
   links?: Record<string, unknown>[];
   checklist?: { label: string; status?: string }[];
   candidates?: { id?: string; title: string; place?: string | null; proposed_by_id?: string | null; adopted?: boolean; votes?: string[] }[];
-  }, expectedVersion: number, actorUserId: string): Promise<number> {
-  return withTransaction(async (conn) => {
+  }, expectedVersion: number, actorUserId: string, existingConnection?: mysql.PoolConnection,
+  incrementVersion = true): Promise<number> {
+  const work = async (conn: mysql.PoolConnection): Promise<number> => {
+    validatePlanContent(body as Record<string, unknown>);
     const planRow = await firstRow<{
       version: number; source: string; visibility: string; status: string; open_editing: number;
     }>(
@@ -165,18 +374,34 @@ export async function replacePlanContent(planId: string, body: {
     const currentVersion = Number(planRow.version || 0);
     const actorMember = actorUserId ? await firstRow<{ role: string }>(
       conn,
-      `SELECT role FROM plan_members
+      `SELECT role FROM plan_access_grants
         WHERE plan_id = ? AND user_id = ? AND status = 'active' LIMIT 1 FOR UPDATE`,
       [planId, actorUserId],
     ) : null;
     const workspaceEditor = actorMember?.role === "owner" || actorMember?.role === "editor";
-    const publicCollaborator = Boolean(actorUserId && planRow.source !== "sample" && planRow.open_editing &&
-      planRow.visibility === "public" && planRow.status === "published");
-    if (planRow.source === "sample" || (!workspaceEditor && !publicCollaborator)) {
+    if (planRow.source === "sample" || !workspaceEditor) {
       throw new BadRequest("この計画を変更する権限がありません");
     }
     if (currentVersion !== expectedVersion) {
       throw new VersionConflict("計画が別の端末で更新されています", currentVersion);
+    }
+
+    const requestedMemberIds = new Set<string>();
+    for (const item of body.itinerary || []) {
+      if (Array.isArray(item.member_ids)) {
+        for (const userId of item.member_ids) requestedMemberIds.add(String(userId));
+      }
+    }
+    if (requestedMemberIds.size) {
+      const placeholders = [...requestedMemberIds].map(() => "?").join(",");
+      const [memberRows] = await conn.query<mysql.RowDataPacket[]>(
+        `SELECT user_id FROM plan_members
+          WHERE plan_id = ? AND status = 'active' AND user_id IN (${placeholders}) FOR UPDATE`,
+        [planId, ...requestedMemberIds],
+      );
+      if (memberRows.length !== requestedMemberIds.size) {
+        throw new BadRequest("行程の対象メンバーには、この旅行の有効な参加者だけを指定してください");
+      }
     }
 
     if (body.cities) {
@@ -190,7 +415,7 @@ export async function replacePlanContent(planId: string, body: {
       await conn.query("DELETE FROM itinerary_items WHERE plan_id = ?", [planId]);
       // 日付・時刻・座標・分数は、DBの厳格モードで500になる前に安全な値へ丸める。
       const timeOrNull = (v: unknown): string | null =>
-        /^\d{1,2}:\d{2}(:\d{2})?$/.test(String(v || "")) ? String(v) : null;
+        /^(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/.test(String(v || "")) ? String(v) : null;
       // 対象メンバー。user_id の配列だけ受け付け、それ以外や空は NULL（＝全員）に落とす。
       const memberIdsOrNull = (v: unknown): string | null => {
         if (!Array.isArray(v)) return null;
@@ -204,7 +429,7 @@ export async function replacePlanContent(planId: string, body: {
         boundedNumber(it.lat, -90, 90), boundedNumber(it.lng, -180, 180),
         it.from_place || null, boundedNumber(it.from_lat, -90, 90), boundedNumber(it.from_lng, -180, 180),
         it.to_place || null, boundedNumber(it.to_lat, -90, 90), boundedNumber(it.to_lng, -180, 180),
-        it.transport || null, boundedNumber(it.duration_minutes, 0, 100_000),
+        it.transport || null, boundedNumber(it.duration_minutes, 0, 65_535),
         memberIdsOrNull(it.member_ids),
       ]);
       if (rows.length) {
@@ -302,9 +527,12 @@ export async function replacePlanContent(planId: string, body: {
       }
     }
 
-    await conn.query("UPDATE plans SET version = version + 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?", [planId]);
-    return currentVersion + 1;
-  });
+    if (incrementVersion) {
+      await conn.query("UPDATE plans SET version = version + 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?", [planId]);
+    }
+    return currentVersion + (incrementVersion ? 1 : 0);
+  };
+  return existingConnection ? work(existingConnection) : withTransaction(work);
 }
 
 export async function countView(planId: string): Promise<void> {

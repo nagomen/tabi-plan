@@ -11,6 +11,7 @@ let personMap: L.Map | null = null;
 let markersLayer: L.LayerGroup | null = null;
 let allPins: HistoryPin[] = [];
 let filterMonths = 0; // 0 = 全期間
+let focusTripSlug = ""; // 初期表示で寄せる旅行
 
 /** filterMonths に基づき、過去N ヶ月以内に訪れたピンだけに絞る（0 は全件）。 */
 function filteredPins(): HistoryPin[] {
@@ -42,8 +43,14 @@ function pinPopupHtml(pin: HistoryPin): string {
   return `<div class="pv-pop"><div class="pv-pop-place">${flag}${escapeHtml(pin.place)}</div>${visits}</div>`;
 }
 
-export function renderMap(pins: HistoryPin[]): void {
+/**
+ * @param focusSlug 初期表示で寄せる旅行（直近の旅行）の slug。
+ *   ピンは全期間ぶん描いたうえで、最初の表示範囲だけこの旅行に合わせる。
+ *   縮小すれば他の旅行のピンもそのまま見える。
+ */
+export function renderMap(pins: HistoryPin[], focusSlug = ""): void {
   allPins = pins;
+  focusTripSlug = focusSlug;
   const mapEl = $("[data-map]");
   if (!mapEl) return;
 
@@ -54,7 +61,8 @@ export function renderMap(pins: HistoryPin[]): void {
       filterEl.dataset.bound = "true";
       filterEl.addEventListener("change", () => {
         filterMonths = Number(filterEl.value) || 0;
-        updateMapMarkers();
+        // 期間を変えたときは、その期間の全ピンが入るように引き直す。
+        updateMapMarkers("all");
       });
     }
   }
@@ -67,16 +75,32 @@ export function renderMap(pins: HistoryPin[]): void {
     return;
   }
 
+  // 地図を作ったときだけ直近の旅行へ寄せる。以降の描き直し（裏の再取得）では
+  // 表示範囲を触らない＝利用者が動かした位置を勝手に戻さない。
+  const isFirstDraw = !personMap;
   if (!personMap) {
     mapEl.innerHTML = "";
     personMap = L.map(mapEl, { scrollWheelZoom: false, attributionControl: true });
     addBaseLayer(L, personMap);
     markersLayer = L.layerGroup().addTo(personMap);
   }
-  updateMapMarkers();
+  updateMapMarkers(isFirstDraw ? "focus" : "keep");
 }
 
-function updateMapMarkers(): void {
+/** 直近の旅行で訪れたピン（表示中の期間に限る）。 */
+function focusPins(): HistoryPin[] {
+  if (!focusTripSlug) return [];
+  return filteredPins().filter((pin) => pin.visits.some((visit) => visit.tripSlug === focusTripSlug));
+}
+
+function fitTo(pins: HistoryPin[], maxZoom?: number): void {
+  if (!personMap || !pins.length) return;
+  const latlngs: L.LatLngExpression[] = pins.map((pin) => [pin.lat, pin.lng]);
+  if (latlngs.length === 1) personMap.setView(latlngs[0], 9);
+  else personMap.fitBounds(L.latLngBounds(latlngs), { padding: [40, 40], maxZoom });
+}
+
+function updateMapMarkers(fit: "focus" | "all" | "keep" = "all"): void {
   const countEl = $("[data-map-count]");
   if (!personMap || !markersLayer) return;
   const pins = filteredPins();
@@ -85,9 +109,7 @@ function updateMapMarkers(): void {
   }
 
   markersLayer.clearLayers();
-  const latlngs: L.LatLngExpression[] = [];
   pins.forEach((pin) => {
-    latlngs.push([pin.lat, pin.lng]);
     const marker = L.circleMarker([pin.lat, pin.lng], {
       radius: 6,
       color: "#fff",
@@ -103,6 +125,10 @@ function updateMapMarkers(): void {
     }
   });
 
-  if (latlngs.length === 1) personMap.setView(latlngs[0], 9);
-  else if (latlngs.length > 1) personMap.fitBounds(L.latLngBounds(latlngs), { padding: [40, 40] });
+  if (fit === "keep") return;
+  // 初期表示は直近の旅行だけに寄せる（寄せすぎないよう最大ズームを抑える）。
+  // その旅行のピンが無いときは全ピンに合わせる。
+  const focused = fit === "focus" ? focusPins() : [];
+  if (focused.length) fitTo(focused, 11);
+  else fitTo(pins);
 }

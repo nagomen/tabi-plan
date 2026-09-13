@@ -37,11 +37,11 @@ test("計画アクセス判定は計画の状態とロールから一貫して�
   assert.equal(await canManagePlan("pln_own", "usr_owner"), true);
   assert.equal(await canEditPlanWorkspace("pln_own", "usr_owner"), true);
 
-  // 公開・公開中の計画は匿名でも閲覧でき、open_editingならログイン者は本文編集できる
+  // 公開・公開中の計画は匿名でも閲覧できるが、open_editingだけでは編集できない
   pool.query = async () => planRow({ open_editing: 1 });
   assert.equal(await canViewPlan("pln_pub", ""), true);
   const collaborator = await getPlanAccess("pln_pub", "usr_other");
-  assert.equal(collaborator.canEdit, true);
+  assert.equal(collaborator.canEdit, false);
   assert.equal(collaborator.canEditWorkspace, false);
   assert.equal(collaborator.canManage, false);
 

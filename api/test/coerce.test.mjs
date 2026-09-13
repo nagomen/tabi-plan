@@ -33,6 +33,8 @@ test("範囲付き数値と日付は空・不正・範囲外をnullへ落とす"
   assert.equal(safeDate("2026-10-09"), "2026-10-09");
   assert.equal(safeDate(" 2026-10-09 "), "2026-10-09");
   assert.equal(safeDate("2026/10/09"), null);
+  assert.equal(safeDate("2026-02-31"), null);
+  assert.equal(safeDate("2028-02-29"), "2028-02-29");
   assert.equal(safeDate(""), null);
   assert.equal(safeDate(null), null);
 });

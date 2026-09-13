@@ -5,19 +5,18 @@ import * as TripPlans from "../shared/plans-store";
 import type { PlanMeta } from "../shared/plans-store";
 import { planCoverThumbnail } from "../shared/cover";
 import { getViews } from "../shared/views-store";
-import { canEditPlan, canViewPlan, ownerNameOf } from "../shared/membership";
-import { personName, $ } from "./context";
+import { canEditPlan, canViewPlan, ownerIdOf, ownerNameOf } from "../shared/membership";
+import { personName, personId, $ } from "./context";
 
 function samePerson(a: string | undefined, b: string): boolean {
   return String(a || "").trim().toLowerCase() === b.trim().toLowerCase();
 }
 
-function planCreatorName(meta: PlanMeta): string {
-  return ownerNameOf(meta);
-}
-
+// user_id が分かっているときは ID で同定する（同名の別人が作った計画を拾わないため）。
+// 旧リンク（?name= だけ）から開かれた場合の表示名一致は後方互換の保険。
 function isCreatedByPerson(meta: PlanMeta): boolean {
-  return samePerson(planCreatorName(meta), personName);
+  if (personId) return ownerIdOf(meta) === personId;
+  return samePerson(ownerNameOf(meta), personName);
 }
 
 function canShowCreatedPlan(meta: PlanMeta): boolean {

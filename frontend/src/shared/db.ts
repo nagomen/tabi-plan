@@ -650,6 +650,9 @@ function readCache(): Snapshot | null {
     if (!parsed || !Array.isArray(parsed.plans) || !Array.isArray(parsed.users)) return null;
     // version 導入前のキャッシュは競合検知に使えないので破棄する。
     if (parsed.plans.some((plan) => !plan || typeof plan.version !== "number")) return null;
+    // 参加者とアクセス権を分離する前のキャッシュは、招待前の人を誤って
+    // ログイン済みメンバー扱いするため破棄する。
+    if (!Array.isArray(parsed.members) || parsed.members.some((member) => !("access_status" in member))) return null;
     return { ...emptySnapshot(), ...parsed } as Snapshot;
   } catch {
     return null;
@@ -1060,7 +1063,11 @@ export async function revokeInvite(planId: string, inviteId: string): Promise<vo
   await request("DELETE", `/api/plans/${encodeURIComponent(planId)}/invites/${encodeURIComponent(inviteId)}`);
 }
 
-export async function createPlaceholderMember(planId: string, displayName: string): Promise<{
+export async function createPlaceholderMember(
+  planId: string,
+  displayName: string,
+  role: "editor" | "viewer" = "editor",
+): Promise<{
   user: UserRow;
   member: PlanMemberRow;
   version: number;
@@ -1068,7 +1075,7 @@ export async function createPlaceholderMember(planId: string, displayName: strin
   const result = await request<{ user: UserRow; member: PlanMemberRow; version: number }>(
     "POST",
     `/api/plans/${encodeURIComponent(planId)}/placeholder-members`,
-    { display_name: displayName },
+    { display_name: displayName, role },
   );
   if (!snap.users.some((row) => row.id === result.user.id)) snap.users.push(result.user);
   snap.members.push(result.member);
@@ -1128,6 +1135,14 @@ export async function leavePlan(planId: string): Promise<void> {
   await reload();
 }
 
+export async function revokeMemberAccess(planId: string, userId: string): Promise<void> {
+  await request(
+    "DELETE",
+    `/api/plans/${encodeURIComponent(planId)}/members/${encodeURIComponent(userId)}/access`,
+  );
+  await reload();
+}
+
 export async function transferPlanOwnership(planId: string, userId: string): Promise<void> {
   await request("POST", `/api/plans/${encodeURIComponent(planId)}/owner-transfer`, { user_id: userId });
   await reload();
@@ -1152,6 +1167,36 @@ export function createPlanLocal(input: Partial<PlanRow> & { slug: string }): Pla
   return row;
 }
 
+/** 新規計画をメタ情報・参加者・本文まで1つのサーバートランザクションで作る。 */
+export function createPlanBundleLocal(
+  input: Partial<PlanRow> & { slug: string },
+  members: { user_id: string; role?: PlanMemberRow["role"]; from_date?: string | null; to_date?: string | null }[],
+  content: PlanContent,
+): PlanRow {
+  const row: PlanRow = {
+    id: localId("pln"), slug: input.slug, title: input.title || "無題の旅行", note: input.note ?? null,
+    start_date: input.start_date ?? null, end_date: input.end_date ?? null, dates_label: input.dates_label ?? null,
+    cover_url: input.cover_url ?? null, base_currency: input.base_currency || "JPY",
+    source: input.source || "local", visibility: input.visibility || "public",
+    status: "draft", version: 1, open_editing: input.open_editing || 0,
+    owner_user_id: input.owner_user_id ?? null,
+    created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+  };
+  snap.plans.push(row);
+  snap.members = snap.members.concat(members.filter((member) => member.user_id).map((member) => ({
+    plan_id: row.id,
+    user_id: member.user_id,
+    role: member.user_id === row.owner_user_id ? "owner" : member.role || "editor",
+    status: "active" as const,
+    access_status: member.user_id === row.owner_user_id ? "active" as const : null,
+    from_date: member.from_date ?? null,
+    to_date: member.to_date ?? null,
+  })));
+  applyPlanContentLocal(row.id, content);
+  send("POST", "/api/plans", { ...row, members, content });
+  return row;
+}
+
 export function updatePlan(planId: string, patch: Partial<PlanRow>): void {
   const row = planById(planId);
   if (!row || !Object.keys(patch).length) return;
@@ -1171,9 +1216,13 @@ export function replaceMembers(planId: string, list: {
   const plan = planById(planId);
   if (!plan) return;
   const expectedVersion = plan.version;
+  const currentMembers = new Map(
+    snap.members.filter((member) => member.plan_id === planId).map((member) => [member.user_id, member]),
+  );
   snap.members = snap.members.filter((m) => m.plan_id !== planId).concat(
     list.filter((m) => m.user_id).map((m) => ({
       plan_id: planId, user_id: m.user_id, role: m.role || "editor", status: "active" as const,
+      access_status: currentMembers.get(m.user_id)?.access_status ?? null,
       from_date: m.from_date ?? null, to_date: m.to_date ?? null,
     })),
   );
@@ -1193,11 +1242,7 @@ export interface PlanContent {
   candidates?: { id?: string; title: string; place?: string | null; proposed_by_id?: string | null; adopted?: boolean; votes?: string[] }[];
 }
 
-/** 行程・都市・リンク・チェックリスト・候補を一括置換（エディタの保存に対応）。 */
-export function replacePlanContent(planId: string, content: PlanContent): void {
-  const plan = planById(planId);
-  if (!plan) return;
-  const expectedVersion = plan.version;
+function applyPlanContentLocal(planId: string, content: PlanContent): void {
   if (content.itinerary) {
     snap.itinerary = snap.itinerary.filter((i) => i.plan_id !== planId).concat(
       content.itinerary.map((it, i) => ({ ...it, id: localId("itm"), plan_id: planId, sort_order: i })),
@@ -1237,6 +1282,14 @@ export function replacePlanContent(planId: string, content: PlanContent): void {
       for (const uid of new Set(c.votes || [])) snap.candidateVotes.push({ candidate_id: id, user_id: uid });
     }
   }
+}
+
+/** 行程・都市・リンク・チェックリスト・候補を一括置換（エディタの保存に対応）。 */
+export function replacePlanContent(planId: string, content: PlanContent): void {
+  const plan = planById(planId);
+  if (!plan) return;
+  const expectedVersion = plan.version;
+  applyPlanContentLocal(planId, content);
   plan.version = expectedVersion + 1;
   send("PUT", `/api/plans/${encodeURIComponent(planId)}/content`, { ...content, expected_version: expectedVersion });
 }
@@ -1340,16 +1393,18 @@ export async function removeSettlement(settlementId: string): Promise<void> {
 }
 
 export async function saveFriendship(input: { a: string; b: string; requested_by_id: string; status?: string }): Promise<void> {
-  const res = await request<{ id: string }>("POST", "/api/friendships", input);
+  const res = await request<{ id: string; status?: string }>("POST", "/api/friendships", input);
+  const savedStatus = res.status || input.status || "pending";
   const [low, high] = input.a < input.b ? [input.a, input.b] : [input.b, input.a];
   const row = snap.friendships.find((f) => f.user_low_id === low && f.user_high_id === high);
   if (row) {
-    row.status = input.status || "pending";
-    row.responded_at = new Date().toISOString();
+    row.status = savedStatus;
+    if (savedStatus === "pending") row.requested_by_id = input.requested_by_id;
+    row.responded_at = savedStatus === "pending" ? null : new Date().toISOString();
   } else {
     snap.friendships.push({
       id: res.id, user_low_id: low, user_high_id: high, requested_by_id: input.requested_by_id,
-      status: input.status || "pending", created_at: new Date().toISOString(), responded_at: null,
+      status: savedStatus, created_at: new Date().toISOString(), responded_at: savedStatus === "pending" ? null : new Date().toISOString(),
     });
   }
   scheduleCacheWrite();

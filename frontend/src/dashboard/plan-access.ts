@@ -2,17 +2,11 @@ import * as TripPlans from "../shared/plans-store";
 import { isPublished } from "../shared/plans-store";
 import { canEditPlan, canViewPlan, isMemberOf, planHasOwner } from "../shared/membership";
 import { currentUserId } from "../shared/identity";
-import * as db from "../shared/db";
 import { CONFIG, isReadOnly } from "./state";
 
-/** 正式メンバーではない、ログイン済みの公開共同編集者か。 */
+/** 旧 open_editing 互換。招待未受諾の利用者には編集権限を与えない。 */
 export function isOpenEditingVisitor(): boolean {
-  const meta = TripPlans.get(CONFIG.tripSlug);
-  const row = db.planBySlug(CONFIG.tripSlug);
-  return Boolean(
-    meta && row && currentUserId() && !isMemberOf(meta) && row.open_editing &&
-    row.visibility === "public" && row.status === "published"
-  );
+  return false;
 }
 
 /** この計画の DB 上の id。無ければ空文字。 */
@@ -55,8 +49,6 @@ export function canUseWorkspaceView(): boolean {
  * 持ち主が居ない計画は、名前未設定の本人までロックしないよう planHasOwner でガードする。
  */
 export function computeReadOnly(): boolean {
-  // 公開共同編集はログイン済み利用者だけ。正式メンバー権限とは分離する。
-  if (isOpenEditingVisitor()) return false;
   const forcedView = new URLSearchParams(location.search).get("view") === "1";
   if (forcedView) return true;
   const meta = TripPlans.get(CONFIG.tripSlug);

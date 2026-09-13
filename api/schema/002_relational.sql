@@ -12,8 +12,8 @@
 -- 設計方針:
 --   - 人は users に一本化する。ログイン情報が無い参加者も users 行を持つ
 --     （招待前でも実体を持たせる方針）。認証情報は user_credentials に分離。
---   - メンバーシップと権限を plan_members 1枚に統合する
---     （旧 members 文字列 + planPermissions の二重管理をやめる）
+--   - 旅行上の参加者は plan_members、受諾済みアカウントのアクセス権は
+--     plan_access_grants に分け、招待前の参加予定者へ限定情報を見せない。
 --   - 費用は expenses（1件=1行）+ expense_shares（誰がいくら負担）に正規化。
 --     INSERT で追加できるので同時追加の衝突が消える。
 --   - 金額は最小通貨単位の整数で持つ（浮動小数を使わない）。
@@ -171,8 +171,7 @@ CREATE TABLE plans (
   visibility      ENUM('public','invite') NOT NULL DEFAULT 'public',
   status          ENUM('draft','published') NOT NULL DEFAULT 'draft',
   version         BIGINT UNSIGNED NOT NULL DEFAULT 1, -- 本文・メタ保存の楽観ロック
-  -- 公開済み計画の本文を、ログイン済み利用者が共同編集できる設定。
-  -- メンバー・費用・精算・公開設定の権限は付与しない。
+  -- 旧公開共同編集設定。互換性のため保持するが、現在の認可では使用しない。
   open_editing    TINYINT(1)  NOT NULL DEFAULT 0,
   owner_user_id   VARCHAR(32) NULL,              -- 作成者。plan_members の owner と重複するが引きやすさのため保持
   created_at      TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -185,8 +184,8 @@ CREATE TABLE plans (
   CONSTRAINT fk_plans_owner FOREIGN KEY (owner_user_id) REFERENCES users (id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
--- 参加者＝権限。旧 members 文字列と planPermissions を1枚に統合する。
--- 「メンバーだから編集できる」「権限行があるから編集できる」の二重判定をやめる。
+-- 旅行上の参加者。費用分担・参加期間・表示対象を表す。
+-- 実際の閲覧・編集権限は plan_access_grants を正とする。
 CREATE TABLE plan_members (
   plan_id     VARCHAR(32) NOT NULL,
   user_id     VARCHAR(32) NOT NULL,
@@ -204,6 +203,24 @@ CREATE TABLE plan_members (
   CONSTRAINT fk_plan_members_plan FOREIGN KEY (plan_id) REFERENCES plans (id) ON DELETE CASCADE,
   CONSTRAINT fk_plan_members_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
   CONSTRAINT fk_plan_members_inviter FOREIGN KEY (invited_by_id) REFERENCES users (id) ON DELETE SET NULL
+) ENGINE=InnoDB;
+
+-- 計画へのアクセス権。plan_members は旅行上の参加者（費用・日程の対象）、
+-- こちらは実際にログインして閲覧・編集できるアカウントだけを表す。
+-- 招待を受諾するまでは行を作らず、参加予定者の登録と権限付与を分離する。
+CREATE TABLE plan_access_grants (
+  plan_id       VARCHAR(32) NOT NULL,
+  user_id       VARCHAR(32) NOT NULL,
+  role          ENUM('owner','editor','viewer') NOT NULL DEFAULT 'viewer',
+  status        ENUM('active','revoked') NOT NULL DEFAULT 'active',
+  granted_by_id VARCHAR(32) NULL,
+  granted_at    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (plan_id, user_id),
+  KEY idx_plan_access_user (user_id, status),
+  CONSTRAINT fk_plan_access_plan FOREIGN KEY (plan_id) REFERENCES plans (id) ON DELETE CASCADE,
+  CONSTRAINT fk_plan_access_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+  CONSTRAINT fk_plan_access_granter FOREIGN KEY (granted_by_id) REFERENCES users (id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
 -- アプリ未登録・友達ではない人を、旅行内の仮メンバーとして先に扱う。

@@ -20,10 +20,10 @@ test("sourceは作成後にsampleへ変更できない", async () => {
   assert.equal(result.body.action, "revise_input");
 });
 
-test("公開共同編集者は旅行名・期間などのメタデータを変更できない", async (t) => {
+test("公開計画でも受諾済み権限がなければメタデータを変更できない", async (t) => {
   const originalQuery = pool.query;
   pool.query = async (sql) => {
-    if (String(sql).includes("FROM plans p") && String(sql).includes("LEFT JOIN plan_members")) {
+    if (String(sql).includes("FROM plans p") && String(sql).includes("LEFT JOIN plan_access_grants")) {
       return [[{
         source: "local",
         visibility: "public",
@@ -117,6 +117,12 @@ test("友達関係の不正なstatusは契約どおりbad_request", async (t) =>
   }, "usr_3");
   assert.equal(notParty.status, 403);
   assert.equal(notParty.body.error, "forbidden");
+
+  const self = await route("POST", "/api/friendships", {
+    a: "usr_1", b: "usr_1", requested_by_id: "usr_1",
+  }, "usr_1");
+  assert.equal(self.status, 400);
+  assert.match(self.body.message, /相手が正しくありません/);
 });
 
 test("クライアント指定の計画idはURLで扱える形式だけ受け付ける", async () => {

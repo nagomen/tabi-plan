@@ -4,13 +4,13 @@ import type { Bootstrap, ExpenseRow, ExpenseShareRow, PlanMemberPlaceholderRow, 
 
 export async function bootstrapForUser(userId = ""): Promise<Bootstrap> {
   const actorJoin = userId
-    ? "LEFT JOIN plan_members pm ON pm.plan_id = p.id AND pm.user_id = ? AND pm.status = 'active'"
+    ? "LEFT JOIN plan_access_grants pag ON pag.plan_id = p.id AND pag.user_id = ? AND pag.status = 'active'"
     : "";
-  const actorParams = userId ? [userId] : [];
+  const actorParams = userId ? [userId, userId] : [];
   const publicPredicate = "(p.visibility = 'public' AND p.status = 'published')";
-  // open_editing は公開済み計画の本文をログイン利用者が編集するための権限。
-  // メンバー・費用・精算を含むワークスペース情報は正式な参加者だけに返す。
-  const memberPredicate = userId ? "pm.user_id IS NOT NULL" : "FALSE";
+  // 公開部分は誰でも見られるが、メンバー・費用・精算を含むワークスペース情報は
+  // 受諾済みのアクセス権を持つ利用者だけに返す。旧 open_editing は認可に使わない。
+  const memberPredicate = userId ? "(pag.user_id IS NOT NULL OR p.owner_user_id = ?)" : "FALSE";
   const visibleWhere = `p.deleted_at IS NULL AND (${publicPredicate} OR ${memberPredicate})`;
   const workspaceWhere = `p.deleted_at IS NULL AND ${memberPredicate}`;
 
@@ -42,6 +42,7 @@ export async function bootstrapForUser(userId = ""): Promise<Bootstrap> {
   const workspacePlanIdSet = new Set(workspaceRows.map((row) => row.id));
   const workspacePlanIds = visiblePlanIds.filter((id) => workspacePlanIdSet.has(id));
   const publicOnlyPlanIds = visiblePlanIds.filter((id) => !workspacePlanIdSet.has(id));
+  const publicOnlyPlanIdSet = new Set(publicOnlyPlanIds);
 
   const visibleIn = inClause(visiblePlanIds);
   const [itinerary, cities, views] = visiblePlanIds.length
@@ -61,8 +62,10 @@ export async function bootstrapForUser(userId = ""): Promise<Bootstrap> {
     ])
     : [[], [], []];
 
-  // member_ids は TEXT に JSON で保存している。応答では配列へ戻す（壊れた値は全員扱いの null）。
-  for (const row of itinerary as { member_ids?: unknown }[]) {
+  // member_ids は内部user IDを含むため、権限のない公開閲覧では返さない。
+  // ワークスペース利用者だけJSON配列へ戻す（壊れた値は全員扱いの null）。
+  for (const row of itinerary as { plan_id: string; member_ids?: unknown }[]) {
+    if (publicOnlyPlanIdSet.has(row.plan_id)) { row.member_ids = null; continue; }
     const raw = row.member_ids;
     if (typeof raw !== "string" || !raw) { row.member_ids = null; continue; }
     try {
@@ -76,8 +79,12 @@ export async function bootstrapForUser(userId = ""): Promise<Bootstrap> {
   const workspaceIn = inClause(workspacePlanIds);
   const [members, memberPlaceholders, checklist, candidates, expenses, expenseShares, settlements] = workspacePlanIds.length
     ? await Promise.all([
-      all<PlanMemberRow>(`SELECT plan_id, user_id, role, status, from_date, to_date FROM plan_members
-         WHERE status = 'active' AND plan_id IN (${workspaceIn.sql})`, workspaceIn.params),
+      all<PlanMemberRow>(`SELECT pm.plan_id, pm.user_id, pm.role, pm.status, pm.from_date, pm.to_date,
+             CASE WHEN p.owner_user_id = pm.user_id THEN 'active' ELSE pag.status END AS access_status
+           FROM plan_members pm
+           JOIN plans p ON p.id = pm.plan_id
+           LEFT JOIN plan_access_grants pag ON pag.plan_id = pm.plan_id AND pag.user_id = pm.user_id
+          WHERE pm.status = 'active' AND pm.plan_id IN (${workspaceIn.sql})`, workspaceIn.params),
       all<PlanMemberPlaceholderRow>(`SELECT plan_id, user_id, original_name, status, claimed_by_user_id, claimed_at
          FROM plan_member_placeholders
          WHERE plan_id IN (${workspaceIn.sql})`, workspaceIn.params),
