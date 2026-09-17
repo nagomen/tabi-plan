@@ -23,7 +23,7 @@ api/dist/
 # ローカル開発用のドメインデータ。
 # 本番の正は MySQL（共有ストア API）なので、git で配らない。
 # 手元では dev サーバーがここに読み書きし、DB への投入は
-# api/scripts/seed-from-data.mjs で行う。
+# ローカル開発ストアは Vite の開発用 API が必要に応じて作成する。
 data/plans/*.json
 data/store/*.json
 

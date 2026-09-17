@@ -1,16 +1,9 @@
 // Vite がバンドルする JS/CSS（assets/*.HASH.js）は内容ハッシュ付きなのでcache-first。
 // 固定名のHTML・設定・画像は必ずネットワークで再検証し、成功時だけキャッシュを更新する。
-const CACHE_NAME = "travel-dashboard-v20";
+const CACHE_NAME = "travel-dashboard-__CACHE_VERSION__";
 const APP_SHELL = [
   "./",
-  "./index.html",
   "./trip-config.js",
-  "./plans.html",
-  "./plan-editor.html",
-  "./mypage.html",
-  "./person.html",
-  "./login.html",
-  "./casino-guide.html",
   "./asset-manifest.json",
   "./site.webmanifest",
   "./icon-32.webp",
@@ -24,23 +17,38 @@ self.addEventListener("install", (event) => {
       // addAll は1件でも失敗すると install ごと失敗し、オフライン対応が
       // 永久に効かなくなる。1件ずつ入れて、失敗した分だけ諦める。
       .then(async (cache) => {
-        let generatedAssets = [];
+        let pages = [];
         try {
           const response = await fetch(new Request("./asset-manifest.json", { cache: "reload" }));
           if (response.ok) {
             await cache.put("./asset-manifest.json", response.clone());
             const manifest = await response.json();
-            if (Array.isArray(manifest.assets)) generatedAssets = manifest.assets.filter((path) => typeof path === "string");
+            if (Array.isArray(manifest.pages)) pages = manifest.pages.filter((path) => typeof path === "string");
           }
         } catch { /* HTMLだけでもオフライン起動できる範囲を保存する */ }
-        return Promise.allSettled(
-          [...new Set([...APP_SHELL, ...generatedAssets])]
+        await Promise.allSettled(
+          [...new Set([...APP_SHELL, ...pages])]
             .map((path) => cache.add(new Request(path, { cache: "reload" })))
         );
+        // 全画面のバンドルを先読みせず、入口の計画一覧だけを完全に起動可能にする。
+        // それ以外の画面のハッシュ付きassetは、訪問時にcacheFirstで保存される。
+        await cachePageDependencies(cache, "./plans.html");
       })
       .then(() => self.skipWaiting())
   );
 });
+
+async function cachePageDependencies(cache, pagePath) {
+  try {
+    const response = await cache.match(pagePath);
+    if (!response) return;
+    const html = await response.text();
+    const paths = [...html.matchAll(/(?:src|href)=["']([^"']+\.(?:js|css))["']/g)]
+      .map((match) => match[1])
+      .filter((path) => !path.startsWith("http"));
+    await Promise.allSettled(paths.map((path) => cache.add(new Request(path, { cache: "reload" }))));
+  } catch { /* ページ本体があれば部分的なオフライン表示は維持する */ }
+}
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(

@@ -6,6 +6,9 @@ on:
       - main
     paths:
       - "frontend/**"
+      - "contracts/**"
+      - "package.json"
+      - "package-lock.json"
       - "tools/build-trip-config.js"
       - ".github/workflows/deploy-pages.yml"
   workflow_dispatch:

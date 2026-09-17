@@ -56,10 +56,7 @@ export interface TripConfig {
   refreshOnFocus: boolean;
   minRefreshSeconds: number;
   auth: AuthConfig;
-  /**
-   * 公開済み計画の本文をログイン済み利用者が共同編集できるようにする。
-   * true でも正式な参加者にはならず、メンバー・費用・精算・公開設定は操作できない。
-   */
+  /** 旧設定との読み込み互換のためだけに残す。認可判定には使用しない。 */
   openEditing: boolean;
   profile: { storageKey: string };
   expenseCache: { storageKey: string };

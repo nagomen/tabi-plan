@@ -6,7 +6,7 @@ import { citiesEl, cityInput, cityOptions, isComposingKey } from "./editor-dom";
 import { countryFromText } from "./move-transport";
 import { geocodeSearch } from "./geo-search";
 import { markDirty } from "./persist";
-import { refreshMap, scheduleMapRefresh } from "./map";
+import { refreshMap, scheduleMapRefresh } from "./map-controller";
 import { renderDays } from "./days-render";
 import { renderCities } from "./cities-render";
 import { armCity } from "./place-geocode";

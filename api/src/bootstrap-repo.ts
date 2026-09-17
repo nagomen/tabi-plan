@@ -1,6 +1,7 @@
 // フロントエンド起動時に必要な、認可済みデータ一式を1往復で組み立てる。
 import { all, inClause } from "./db.js";
 import type { Bootstrap, ExpenseRow, ExpenseShareRow, PlanMemberPlaceholderRow, PlanMemberRow, PlanRow, SettlementRow } from "./types.js";
+import { PUBLIC_PLAN_LINK_KEYS } from "./public-plan-policy.js";
 
 export async function bootstrapForUser(userId = ""): Promise<Bootstrap> {
   const actorJoin = userId
@@ -123,8 +124,9 @@ export async function bootstrapForUser(userId = ""): Promise<Bootstrap> {
     linkParams.push(...workspaceIn.params);
   }
   if (publicOnlyPlanIds.length) {
-    linkClauses.push(`(plan_id IN (${publicOnlyIn.sql}) AND link_key IN ('itinerary', 'maps', 'photos', 'casinoGuide'))`);
-    linkParams.push(...publicOnlyIn.params);
+    const publicLinkKeysIn = inClause([...PUBLIC_PLAN_LINK_KEYS]);
+    linkClauses.push(`(plan_id IN (${publicOnlyIn.sql}) AND link_key IN (${publicLinkKeysIn.sql}))`);
+    linkParams.push(...publicOnlyIn.params, ...publicLinkKeysIn.params);
   }
   const links = linkClauses.length
     ? await all(`SELECT id, plan_id, link_key, label, url, caption, sort_order FROM plan_links

@@ -4,6 +4,10 @@ import { fileURLToPath } from "node:url";
 import fs from "node:fs";
 
 const rootDir = dirname(fileURLToPath(import.meta.url));
+const htmlFiles = fs.readdirSync(rootDir).filter((file) => file.endsWith(".html")).sort();
+const htmlInput = Object.fromEntries(
+  htmlFiles.map((file) => [file.replace(/\.html$/, "").replace(/[^a-zA-Z0-9]+(.)/g, (_m, char: string) => char.toUpperCase()), resolve(rootDir, file)]),
+);
 const localApiProxyTarget = process.env.LOCAL_API_PROXY_TARGET?.trim() || "";
 // プラン以外のドメインデータ（ユーザー・費用・送金リンク）の保存先。
 // backend.ts が write-through する。1キー=1ファイル（data/store/<key>.json）。
@@ -190,7 +194,7 @@ function securityMetaHead(): Plugin {
   };
 }
 
-/** Service Worker が初回install時から、生成されたハッシュ付きJS/CSSを保存できる一覧。 */
+/** Service Workerへ、ビルド対象HTMLを単一の台帳として渡す。 */
 function serviceWorkerAssetManifest(): Plugin {
   return {
     name: "service-worker-asset-manifest",
@@ -203,14 +207,13 @@ function serviceWorkerAssetManifest(): Plugin {
       this.emitFile({
         type: "asset",
         fileName: "asset-manifest.json",
-        source: JSON.stringify({ assets }),
+        source: JSON.stringify({ pages: htmlFiles.map((file) => `./${file}`), assets }),
       });
     },
   };
 }
 
-// 複数ページ（ダッシュボード / 計画一覧 / 計画エディタなど）を
-// それぞれ独立した HTML エントリとしてビルドする。
+// ルート直下のHTMLを自動検出し、それぞれ独立したエントリとしてビルドする。
 // GitHub Pages のプロジェクトサイトでも動くよう base は相対パスにする。
 export default defineConfig({
   base: "./",
@@ -241,15 +244,7 @@ export default defineConfig({
     outDir: "dist",
     emptyOutDir: true,
     rollupOptions: {
-      input: {
-        index: resolve(rootDir, "index.html"),
-        plans: resolve(rootDir, "plans.html"),
-        mypage: resolve(rootDir, "mypage.html"),
-        person: resolve(rootDir, "person.html"),
-        login: resolve(rootDir, "login.html"),
-        planEditor: resolve(rootDir, "plan-editor.html"),
-        casinoGuide: resolve(rootDir, "casino-guide.html"),
-      },
+      input: htmlInput,
     },
   },
 });

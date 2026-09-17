@@ -15,7 +15,7 @@ import {
   MAPBOX_TOKEN, geocodeSearch, geocodeContextForDay, geoQueryForItem, conciseGeoLabel, geoAppliedMessage, formatLatLng,
 } from "./geo-search";
 import { markDirty } from "./persist";
-import { refreshMap, clearCandidates, showCandidates, setMapCollapsed } from "./map";
+import { refreshMap, clearCandidates, showCandidates, setMapCollapsed } from "./map-controller";
 import { refreshNode, refreshDayHeader } from "./days-render";
 import { renderCities } from "./cities-render";
 

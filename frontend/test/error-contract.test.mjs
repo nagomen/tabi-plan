@@ -54,7 +54,8 @@ test("ページ初期化の失敗が白画面・空表示のままにならな�
 test("Service Workerは1件の取得失敗でオフライン対応を失わない", () => {
   const sw = read("public/sw.js");
   assert.match(sw, /Promise\.allSettled\(/);
-  assert.match(sw, /\.\.\.APP_SHELL, \.\.\.generatedAssets/);
+  assert.match(sw, /\.\.\.APP_SHELL, \.\.\.pages/);
+  assert.match(sw, /cachePageDependencies\(cache, "\.\/plans\.html"\)/);
   assert.match(sw, /statusText: "offline"/);
 });
 
@@ -62,12 +63,18 @@ test("固定名の設定と画像は再検証し、内容ハッシュ付きasset
   const sw = read("public/sw.js");
   assert.match(sw, /cache: "no-cache"/);
   assert.match(sw, /hashedAsset \? cacheFirst\(request\) : networkFirst\(request, false\)/);
-  assert.match(sw, /travel-dashboard-v20/);
-  assert.match(sw, /\.\/casino-guide\.html/);
+  assert.match(sw, /travel-dashboard-__CACHE_VERSION__/);
   assert.match(sw, /asset-manifest\.json/);
   const pwa = read("src/shared/pwa.ts");
   assert.match(pwa, /updateViaCache: "none"/);
   assert.match(pwa, /registration\.update\(\)/);
+});
+
+test("HTMLエントリとService Worker対象ページはルートHTMLから自動生成する", () => {
+  const vite = read("vite.config.ts");
+  assert.match(vite, /readdirSync\(rootDir\).*endsWith\("\.html"\)/);
+  assert.match(vite, /pages: htmlFiles\.map/);
+  assert.match(vite, /input: htmlInput/);
 });
 
 test("Pages向けHTMLにCSPとreferrer policyを注入する", () => {

@@ -8,7 +8,7 @@ import { state, model, newItem, normalizeKind, cityForDate } from "./editor-stat
 import { candMount, candInput, candCountEl, toast, isComposingKey } from "./editor-dom";
 import { markDirty } from "./persist";
 import { renderDays } from "./days-render";
-import { refreshMap } from "./map";
+import { refreshMap } from "./map-controller";
 
 function candId(): string {
   return "cand_" + state.seq++ + "_" + Math.random().toString(36).slice(2, 6);
