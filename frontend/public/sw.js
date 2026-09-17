@@ -1,6 +1,6 @@
 // Vite がバンドルする JS/CSS（assets/*.HASH.js）は内容ハッシュ付きなのでcache-first。
 // 固定名のHTML・設定・画像は必ずネットワークで再検証し、成功時だけキャッシュを更新する。
-const CACHE_NAME = "travel-dashboard-v19";
+const CACHE_NAME = "travel-dashboard-v20";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -10,6 +10,7 @@ const APP_SHELL = [
   "./mypage.html",
   "./person.html",
   "./login.html",
+  "./casino-guide.html",
   "./asset-manifest.json",
   "./site.webmanifest",
   "./icon-32.webp",

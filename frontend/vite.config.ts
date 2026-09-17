@@ -248,6 +248,7 @@ export default defineConfig({
         person: resolve(rootDir, "person.html"),
         login: resolve(rootDir, "login.html"),
         planEditor: resolve(rootDir, "plan-editor.html"),
+        casinoGuide: resolve(rootDir, "casino-guide.html"),
       },
     },
   },

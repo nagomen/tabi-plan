@@ -62,7 +62,8 @@ test("固定名の設定と画像は再検証し、内容ハッシュ付きasset
   const sw = read("public/sw.js");
   assert.match(sw, /cache: "no-cache"/);
   assert.match(sw, /hashedAsset \? cacheFirst\(request\) : networkFirst\(request, false\)/);
-  assert.match(sw, /travel-dashboard-v19/);
+  assert.match(sw, /travel-dashboard-v20/);
+  assert.match(sw, /\.\/casino-guide\.html/);
   assert.match(sw, /asset-manifest\.json/);
   const pwa = read("src/shared/pwa.ts");
   assert.match(pwa, /updateViaCache: "none"/);
