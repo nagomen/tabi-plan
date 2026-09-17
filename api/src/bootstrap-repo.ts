@@ -123,7 +123,7 @@ export async function bootstrapForUser(userId = ""): Promise<Bootstrap> {
     linkParams.push(...workspaceIn.params);
   }
   if (publicOnlyPlanIds.length) {
-    linkClauses.push(`(plan_id IN (${publicOnlyIn.sql}) AND link_key IN ('itinerary', 'maps', 'photos'))`);
+    linkClauses.push(`(plan_id IN (${publicOnlyIn.sql}) AND link_key IN ('itinerary', 'maps', 'photos', 'casinoGuide'))`);
     linkParams.push(...publicOnlyIn.params);
   }
   const links = linkClauses.length
