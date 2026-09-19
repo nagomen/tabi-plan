@@ -18,7 +18,7 @@ import { setViewStep } from "./steps";
 import { markDirty, persist } from "./persist";
 import { rebuildDays, renderDays } from "./days-render";
 import { renderCities } from "./cities-render";
-import { refreshMap } from "./map";
+import { refreshMap } from "./map-controller";
 import { syncBasicInputs } from "./plan-load";
 import { applyItineraryDraft, registerAiDraftPlacesOnMap } from "./ai-draft-apply";
 

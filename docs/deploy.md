@@ -4,7 +4,7 @@
 | --- | --- | --- | --- |
 | `CI`(`ci.yml`) | 検証 | PR / `main` への push | なし |
 | `Deploy Frontend`(`deploy-pages.yml`) | production | `main` への push / 手動 | GitHub Pages |
-| `Deploy API`(`deploy-api.yml`) | production | 手動 | API VPS |
+| `Deploy API`(`deploy-api.yml`) | production | `main` のAPI関連変更／手動 | API VPS |
 
 ## フロント
 
@@ -15,7 +15,7 @@
 
 ## API
 
-`.github/workflows/deploy-api.yml` は手動実行です。テスト後にソースを VPS へ同期し、DB マイグレーション、API 再起動、日次バックアップタイマーの更新を行います。
+`.github/workflows/deploy-api.yml` は `main` の `api/`・`contracts/`・`infra/`・依存関係変更で自動実行されます。必要なら手動でも実行できます。テスト後にソースを VPS へ同期し、DB マイグレーション、API 再起動、日次バックアップタイマーの更新を行います。
 必要な Secrets / Variables は [../infra/README.md](../infra/README.md) を参照してください。
 
 ## ワンコマンドで全てデプロイ

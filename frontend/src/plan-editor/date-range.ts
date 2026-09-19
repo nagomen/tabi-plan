@@ -4,7 +4,7 @@ import { toISO } from "../shared/date";
 import { model, datesString } from "./editor-state";
 import { rangeEl, rangeTrigger, rangeLabel } from "./editor-dom";
 import { markDirty } from "./persist";
-import { refreshMap } from "./map";
+import { refreshMap } from "./map-controller";
 import { rebuildDays, renderDays } from "./days-render";
 import { renderMembers } from "./members";
 

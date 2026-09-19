@@ -1,6 +1,8 @@
 import L from "leaflet";
+import "leaflet/dist/leaflet.css";
 import { escapeHtml } from "../shared/dom";
 import { addBaseLayer } from "../shared/map-tiles";
+import { resolvedTripConfig } from "../shared/config";
 import type { GeoResult } from "../shared/geocoding";
 import { type GeoTarget, KINDS, KIND_COLOR, model, num, hasLatLng, stayCovering } from "./editor-state";
 import { root, mapEl, mapHintEl, mapHeaderBtn, mapToggle } from "./editor-dom";
@@ -12,7 +14,7 @@ let pinLayer: L.LayerGroup | null = null;
 let routeLayer: L.LayerGroup | null = null;
 let candidateLayer: L.LayerGroup | null = null;
 
-interface MapHandlers {
+export interface MapHandlers {
   onMapClick: (latlng: L.LatLng) => void | Promise<void>;
   applyGeo: (itemId: number, target: GeoTarget, r: GeoResult) => void;
 }
@@ -40,7 +42,12 @@ export function ensureMap(): void {
 }
 
 function initMap(): void {
-  map = L.map(mapEl, { zoomControl: true, attributionControl: true }).setView([39.6, 140.6], 6);
+  const firstCity = model.cities.find((city) => hasLatLng(city.lat, city.lng));
+  const defaults = resolvedTripConfig().mapDefaults;
+  const center: L.LatLngTuple = firstCity
+    ? [num(firstCity.lat), num(firstCity.lng)]
+    : [defaults.center[0], defaults.center[1]];
+  map = L.map(mapEl, { zoomControl: true, attributionControl: true }).setView(center, firstCity ? 8 : defaults.zoom);
   addBaseLayer(L, map);
   pinLayer = L.layerGroup().addTo(map);
   routeLayer = L.layerGroup().addTo(map);
@@ -145,49 +152,6 @@ export function setMapCollapsed(collapsed: boolean): void {
   if (!collapsed) window.setTimeout(() => { if (map) { map.invalidateSize(); refreshMap(true); } }, 60);
 }
 
-// スマホ: 地図ボトムシートの境界をドラッグして高さを変更
-export function bindMapResizeGrip(): void {
-  const mapGrip = root.querySelector<HTMLElement>("[data-map-grip]");
-  const mapWrapEl = root.querySelector<HTMLElement>(".pe-mapwrap");
-  if (mapGrip && mapWrapEl) {
-    const MIN_MAP_H = 180;
-    const maxMapH = (): number => Math.round(window.innerHeight * 0.92);
-    let resizeRaf = 0;
-    let dragging = false;
-    const applyMapHeight = (height: number, persist = true): void => {
-      const h = Math.max(MIN_MAP_H, Math.min(maxMapH(), Math.round(height)));
-      root.style.setProperty("--pe-map-h", `${h}px`);
-      if (resizeRaf) cancelAnimationFrame(resizeRaf);
-      resizeRaf = requestAnimationFrame(() => { if (map) map.invalidateSize({ animate: false }); });
-      if (persist) { try { localStorage.setItem("pe-map-h", String(h)); } catch { /* ignore */ } }
-    };
-    mapGrip.addEventListener("pointerdown", (e) => {
-      dragging = true;
-      root.classList.add("is-map-resizing");
-      try { mapGrip.setPointerCapture(e.pointerId); } catch { /* ignore */ }
-      e.preventDefault();
-    });
-    mapGrip.addEventListener("pointermove", (e) => {
-      if (!dragging) return;
-      applyMapHeight(window.innerHeight - e.clientY);
-    });
-    const endMapDrag = (e: PointerEvent): void => {
-      if (!dragging) return;
-      dragging = false;
-      root.classList.remove("is-map-resizing");
-      try { mapGrip.releasePointerCapture(e.pointerId); } catch { /* ignore */ }
-      if (map) map.invalidateSize();
-    };
-    mapGrip.addEventListener("pointerup", endMapDrag);
-    mapGrip.addEventListener("pointercancel", endMapDrag);
-    mapGrip.addEventListener("keydown", (e) => {
-      const cur = mapWrapEl.getBoundingClientRect().height;
-      if (e.key === "ArrowUp") { applyMapHeight(cur + 24); e.preventDefault(); }
-      else if (e.key === "ArrowDown") { applyMapHeight(cur - 24); e.preventDefault(); }
-    });
-    try {
-      const saved = Number(localStorage.getItem("pe-map-h"));
-      if (saved && saved >= MIN_MAP_H) applyMapHeight(saved, false);
-    } catch { /* ignore */ }
-  }
+export function invalidateMap(): void {
+  map?.invalidateSize({ animate: false });
 }

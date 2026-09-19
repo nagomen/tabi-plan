@@ -9,7 +9,6 @@ import * as db from "../shared/db";
 import "../shared/ui.css";
 import "./style.css";
 import { initPageTransitions, navigateWithPageTransition } from "../shared/page-transition";
-import "leaflet/dist/leaflet.css";
 import "flatpickr/dist/flatpickr.css";
 
 import * as TripPlans from "../shared/plans-store";
@@ -30,7 +29,7 @@ import {
   saveBtn, publishBtn, localNoteEl, exportBtn, mapToggle, mapClose,
   watchComposition,
 } from "./editor-dom";
-import { setMapHandlers, ensureMap, setMapCollapsed, bindMapResizeGrip } from "./map";
+import { setMapHandlers, ensureMap, setMapCollapsed, bindMapResizeGrip } from "./map-controller";
 import { stepCompletion, setViewStep } from "./steps";
 import { buildData, contentFingerprint } from "./plan-data";
 import { setPersistHooks, setLastSavedContentFingerprint, markDirty, persist } from "./persist";

@@ -5,7 +5,7 @@ import {
 import { daysEl } from "./editor-dom";
 import { maybeDefaultMoveTransport, syncTransportSelect } from "./move-transport";
 import { markDirty } from "./persist";
-import { refreshMap, scheduleMapRefresh } from "./map";
+import { refreshMap, scheduleMapRefresh } from "./map-controller";
 import {
   editTrackChoice, selectedEditTrack, renderDays, refreshNode, refreshDayHeader, focusOpenItem, stayNightLimits,
 } from "./days-render";

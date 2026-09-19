@@ -168,12 +168,34 @@ function dayTrackTabsHtml(day: DayGroup): string {
     `</div>`;
 }
 
+/** 予定と旅行固有の特集ページを結ぶ、行程内の補助導線。 */
+function relatedCasinoGuideHtml(item: ItineraryItem): string {
+  const itemText = [item.title, item.place, item.typeLabel].filter(Boolean).join(" ");
+  if (String(item.type) !== "sight" || !/(?:casino|カジノ)/i.test(itemText)) return "";
+
+  const guide = state.data.links.find((link) => link.key === "casinoGuide" && link.url);
+  if (!guide) return "";
+
+  const label = guide.label?.trim() || "カジノガイド";
+  const caption = guide.caption?.trim();
+  return `<a class="tl-related-guide" data-casino-guide-link href="${escapeHtml(guide.url)}" aria-label="${escapeHtml(label)}を開く">
+    <span class="tl-related-guide-ic" aria-hidden="true">${icon("documentText")}</span>
+    <span class="tl-related-guide-copy">
+      <span class="tl-related-guide-kicker">プレイ前に確認</span>
+      <strong>${escapeHtml(label)}</strong>
+      ${caption ? `<small>${escapeHtml(caption)}</small>` : ""}
+    </span>
+    <span class="tl-related-guide-arrow" aria-hidden="true">${icon("chevronRight")}</span>
+  </a>`;
+}
+
 function timelineHtmlForDay(idx: number): string {
   const day = state.days[idx];
   if (!day) return "";
   // 予定ごとに対象メンバー名は書かない。行程が班に分かれる日は
   // dayTrackTabsHtml の帯タブで切り替え、名前はタブにだけ出す。
   const track = selectedTrack(day);
+  let casinoGuideShown = false;
   return trackItems(day, track).filter((i) => String(i.type) !== "stay").map((item) => {
     const type = String(item.type || "todo");
     let segA = item.origin || "";
@@ -194,6 +216,8 @@ function timelineHtmlForDay(idx: number): string {
     const title = type === "move" && (segA || segB)
       ? `<div class="tl-seg"><span>${escapeHtml(segA || "出発")}</span><span class="tl-seg-arr">${icon("arrowLongRight")}</span><span>${escapeHtml(segB || "到着")}</span></div>`
       : `<h3>${escapeHtml(item.title || "")}</h3>`;
+    const casinoGuide = casinoGuideShown ? "" : relatedCasinoGuideHtml(item);
+    if (casinoGuide) casinoGuideShown = true;
 
     return `<article class="tl-item" data-kind="${escapeHtml(type)}">
       <time class="tl-time">${escapeHtml(item.time || "")}</time>
@@ -202,6 +226,7 @@ function timelineHtmlForDay(idx: number): string {
         <div class="tl-plan-line">${label}${title}</div>
         ${flight ? flightTicketHtml(flight, item.duration, segA, segB) : train ? trainTicketHtml(train, item.duration, segA, segB, item.time) : ""}
         ${item.needed ? `<p class="tl-needed">${escapeHtml(item.needed)}</p>` : ""}
+        ${casinoGuide}
         <p class="tl-meta">${metaText ? `<span class="tl-meta-text">${escapeHtml(metaText)}</span>` : ""}<a class="tl-maplink" href="${mapsSearchUrl(item.mapQuery || item.place || item.title)}" target="_blank" rel="noopener">地図 ${icon("arrowTopRightOnSquare")}</a></p>
       </div>
     </article>`;

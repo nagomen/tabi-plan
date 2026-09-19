@@ -14,7 +14,7 @@ import { daysEl, warnEl, dayCountEl, dayStripEl, tripSummaryEl } from "./editor-
 import { updateSteps } from "./steps";
 import { updateCalsync } from "./calendar-sync";
 import { markDirty } from "./persist";
-import { refreshMap } from "./map";
+import { refreshMap } from "./map-controller";
 
 export function rebuildDays(): void {
   const a = parseISO(model.startDate);

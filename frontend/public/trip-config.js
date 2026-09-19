@@ -9,6 +9,7 @@ window.TRIP_CONFIG = {
     enabled: false
   },
   // 公開ページは閲覧のみ。編集は plan_members で許可された参加者に限定する。
+  // 旧設定との互換項目。現在の編集権限は所有者・メンバー・招待で決まり、この値は無視される。
   openEditing: false,
   mapDefaults: {
     center: [30, 120],

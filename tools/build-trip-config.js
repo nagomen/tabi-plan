@@ -25,7 +25,9 @@ if (!config || typeof config !== "object" || Array.isArray(config)) {
   throw new Error("TRIP_CONFIG_JSON must be a JSON object.");
 }
 
-const requiredFields = ["tripSlug", "tripTitle", "mode", "schema"];
+// `schema` は過去の外部スプレッドシート連携で使っていた値で、現在の
+// TripConfig には存在しない。実際にランタイムが必要とする最小項目だけを検証する。
+const requiredFields = ["tripSlug", "tripTitle", "mode"];
 const missingFields = requiredFields.filter((field) => !String(config[field] || "").trim());
 if (missingFields.length > 0) {
   throw new Error(`TRIP_CONFIG_JSON is missing required field(s): ${missingFields.join(", ")}`);
