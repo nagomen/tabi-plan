@@ -13,7 +13,7 @@ const COMPARISON_ROWS: ReadonlyArray<{ label: string; field: ComparisonField }> 
 
 function comparisonCells(venues: readonly CasinoVenue[], field: ComparisonField): string {
   return venues.map((venue) =>
-    `<span>${escapeHtml(venue.comparison[field])}</span>`,
+    `<span data-venue="${escapeHtml(venue.matrixName)}">${escapeHtml(venue.comparison[field])}</span>`,
   ).join("");
 }
 

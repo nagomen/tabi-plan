@@ -40,3 +40,30 @@ test("カジノページのエントリーは機能別モジュールを組み�
   assert.match(app, /initializePreparationChecklist/);
   assert.doesNotMatch(main, /L\.map|localStorage|querySelectorAll/);
 });
+
+test("バカラの詳細解説は両ページで共通ソースから段階表示する", () => {
+  const korea = read("casino-guide.html");
+  const macau = read("macau-casino-guide.html");
+  const details = read("src/casino-guide/game-details.ts");
+  assert.match(korea, /data-game-detail="baccarat"/);
+  assert.match(macau, /data-game-detail="baccarat"/);
+  assert.doesNotMatch(korea, /FIRST THING TO KNOW/);
+  assert.doesNotMatch(macau, /FIRST THING TO KNOW/);
+  assert.match(details, /<details class="cg-game-more">/);
+  assert.match(details, /点数は合計の「1の位」だけ/);
+  assert.match(details, /第3カード/);
+  assert.match(details, /Player \/ Bankerのどちらか/);
+});
+
+test("ブラックジャック詳細はルール差と期待損失を誤解なく説明する", () => {
+  const korea = read("casino-guide.html");
+  const macau = read("macau-casino-guide.html");
+  const details = read("src/casino-guide/game-details.ts");
+  assert.match(korea, /data-game-detail="blackjack"/);
+  assert.match(macau, /data-game-detail="blackjack"/);
+  assert.match(details, /ハウスエッジは「1回の負ける確率」ではない/);
+  assert.match(details, /6 : 5で約−1\.39pt/);
+  assert.match(details, /期待損失 ＝ 総賭け額 × ハウスエッジ/);
+  assert.match(details, /正しい基本戦略を使った場合の長期平均/);
+  assert.match(details, /そのルール専用の基本戦略表/);
+});

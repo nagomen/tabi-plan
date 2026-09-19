@@ -2,6 +2,7 @@ import { initPageTransitions } from "../shared/page-transition";
 import { registerServiceWorker } from "../shared/pwa";
 import { initializeBudgetCalculator, type BudgetCalculatorOptions } from "./budget";
 import type { CasinoGuideContext } from "./context";
+import { renderGameDetails } from "./game-details";
 import { initializeBackToTop, initializeSectionNavigation } from "./navigation";
 import { initializePageShell, type CasinoGuideShellOptions } from "./page-shell";
 import { initializePreparationChecklist } from "./preparation";
@@ -30,6 +31,7 @@ export function initializeCasinoGuidePage(options: CasinoGuidePageOptions): void
   initializePreparationChecklist(context.preparationStorageKey);
   initializeBudgetCalculator(options.budget);
   renderVenueGuide(venues);
+  renderGameDetails();
 
   let mapController: Promise<VenueMapController | null> | null = null;
 
