@@ -44,5 +44,18 @@ test("旧KV移行はアクセス権も再構築し、reset時に孤立行を残�
 
 test("公開閲覧者へ行程の内部メンバーIDを返さない", () => {
   const bootstrap = read("src/bootstrap-repo.ts");
-  assert.match(bootstrap, /publicOnlyPlanIdSet\.has\(row\.plan_id\)[\s\S]*row\.member_ids = null/);
+  const anonymizer = read("src/public-itinerary-groups.ts");
+  assert.match(bootstrap, /anonymizePublicItineraryGroups\(itinerary, publicOnlyPlanIdSet, publicMemberPeriods\)/);
+  assert.match(anonymizer, /row\.member_ids = null/);
+  assert.match(anonymizer, /public_track_key/);
+  assert.doesNotMatch(anonymizer, /public_member_ids/);
+});
+
+test("本人のAIキーは専用テーブルへ暗号文だけ保存する", () => {
+  const schema = read("schema/002_relational.sql");
+  const migration = read("scripts/migrate.mjs");
+  assert.match(schema, /CREATE TABLE user_ai_credentials[\s\S]*encrypted_key\s+VARBINARY/);
+  assert.match(schema, /auth_tag\s+VARBINARY\(16\)/);
+  assert.doesNotMatch(schema, /user_ai_credentials[\s\S]*api_key\s+VARCHAR/);
+  assert.match(migration, /016_user_ai_credentials/);
 });

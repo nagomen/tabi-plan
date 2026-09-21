@@ -10,6 +10,17 @@ export interface DayTrack {
 /** どの班の予定にも入っていない在籍メンバーの班キー。 */
 export const REST_TRACK_KEY = "@rest";
 
+/** 公開APIが返した匿名班キーを、人物情報を持たない表示用タブへ変換する。 */
+export function publicDayTracks(dayTrackKeys: (readonly string[] | undefined)[]): DayTrack[] {
+  const keys = [...new Set(dayTrackKeys.flatMap((entry) => entry || []).filter(Boolean))];
+  return keys.map((key) => ({ key, memberIds: [] }));
+}
+
+/** 公開予定は班キー未指定なら全班共通、指定ありなら一致する班だけへ表示する。 */
+export function isPublicItemInTrack(itemTrackKey: string | undefined, track: DayTrack): boolean {
+  return !itemTrackKey || itemTrackKey === track.key;
+}
+
 /** 予定の対象メンバー集合を正規化したキー。空＝全員対象は null。 */
 export function memberSetKey(members: readonly string[] | undefined): string | null {
   const ids = [...new Set((members || []).filter(Boolean))].sort();
@@ -22,6 +33,30 @@ function coversEveryone(memberIds: readonly string[], everyone: readonly string[
   if (!all.length) return false;
   const ids = new Set(memberIds);
   return all.every((id) => ids.has(id));
+}
+
+/** 未指定またはその日の全員を含む予定か。班表示上はすべてのタブへ共通表示する。 */
+export function isEveryoneItem(
+  members: readonly string[] | undefined,
+  everyone: readonly string[],
+): boolean {
+  const key = memberSetKey(members);
+  return !key || coversEveryone(key.split(","), everyone);
+}
+
+/** 別行動のあと最初に全員共通へ戻る位置。1日に複数回分岐する場合も各合流を返す。 */
+export function rejoinIndexes(specificItems: readonly boolean[]): number[] {
+  const indexes: number[] = [];
+  let apart = false;
+  specificItems.forEach((specific, index) => {
+    if (specific) {
+      apart = true;
+    } else if (apart) {
+      indexes.push(index);
+      apart = false;
+    }
+  });
+  return indexes;
 }
 
 /**
@@ -63,7 +98,9 @@ export function dayTracks(
   if (!subsets.size) return [];
   const covered = new Set([...subsets.values()].flat());
   const tracks: DayTrack[] = [...subsets.entries()].map(([key, memberIds]) => ({ key, memberIds }));
-  const rest = presentIds.filter((id) => id && !covered.has(id));
+  // 公開閲覧ではplan_membersを受け取らないが、全員予定に匿名ID一式が入る。
+  // everyoneから残りを求めれば、実IDを公開せず「別行動しない残り班」も作れる。
+  const rest = everyone.filter((id) => id && !covered.has(id));
   if (rest.length) tracks.push({ key: REST_TRACK_KEY, memberIds: [...new Set(rest)] });
   return tracks.length >= 2 ? tracks : [];
 }
@@ -90,7 +127,6 @@ export function isItemInTrack(
   everyone: readonly string[] = [],
 ): boolean {
   const key = memberSetKey(members);
-  if (!key) return true;
-  if (coversEveryone(key.split(","), everyone)) return true;
+  if (isEveryoneItem(members, everyone)) return true;
   return key === track.key;
 }

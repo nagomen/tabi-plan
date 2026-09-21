@@ -1151,7 +1151,7 @@
   .tl-ai-message {
     display: flex;
     flex-direction: column;
-    align-items: flex-start;
+    align-items: flex-end;
     gap: 9px;
     max-width: min(78%, 680px);
     padding: 10px 13px;
@@ -2062,9 +2062,7 @@
   .tl-day-presence.is-join { background: var(--green-soft); color: var(--green); }
   .tl-day-presence.is-leave { background: var(--amber-soft); color: var(--amber); }
 
-  /* 参加者で行程が分かれる日：セクション横幅いっぱいのフラットな帯で班を切り替える。
-     カードにはせず、タブ同士は仕切り線で分け、選択中はグレー地に白文字。
-     予定ごとに名前は書かず、名前はこの帯のタブにだけ出す。 */
+  /* 班の切替は常に見えるフラットなタブを維持する。 */
   .tl-day-tabs {
     display: flex;
     width: 100%;
@@ -2100,6 +2098,117 @@
     color: #fff;
   }
 
+  /* 別経路はレールを少し外側へ振り、合流はグラフのmerge nodeだけで示す。 */
+  .tl-item.is-branch-specific .tl-dot { translate: 6px 0; box-shadow: 0 0 0 3px #fff; }
+  .tl-item.is-branch-specific .tl-rail::before { translate: 6px 0; background: rgba(35, 126, 170, .3); }
+  .tl-merge {
+    display: grid;
+    grid-template-columns: 50px 24px minmax(0, 1fr);
+    align-items: center;
+    gap: 9px;
+    min-width: 0;
+    height: 34px;
+    margin: -8px 0 5px;
+  }
+  .tl-merge-graph {
+    position: relative;
+    width: 100%;
+    height: 34px;
+    color: var(--green);
+  }
+  .tl-merge-graph svg {
+    position: absolute;
+    top: 0;
+    left: 50%;
+    display: block;
+    width: 28px;
+    height: 100%;
+    overflow: visible;
+    transform: translateX(-50%);
+  }
+  .tl-merge-graph path,
+  .tl-merge-graph circle {
+    fill: #fff;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    vector-effect: non-scaling-stroke;
+  }
+  .tl-merge-node {
+    position: absolute;
+    z-index: 1;
+    top: 21px;
+    left: 50%;
+    display: inline-flex;
+    min-width: 36px;
+    min-height: 18px;
+    align-items: center;
+    justify-content: center;
+    padding: 1px 5px;
+    border: 2px solid var(--green);
+    border-radius: 999px;
+    background: #fff;
+    color: var(--green);
+    font-size: 8px;
+    font-weight: 850;
+    line-height: 1;
+    letter-spacing: .04em;
+    white-space: nowrap;
+    transform: translate(-50%, -50%);
+  }
+  .tl-merge-copy {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    min-width: 0;
+    overflow: visible;
+  }
+  .tl-merge-link-line {
+    flex: 0 1 42px;
+    width: 42px;
+    min-width: 18px;
+    margin-left: -8px;
+    border-top: 2px solid var(--blue);
+  }
+  .tl-merge-branches {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+    max-width: min(220px, 45vw);
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .tl-merge-branches::-webkit-scrollbar { display: none; }
+  .tl-merge-branch {
+    position: relative;
+    display: block;
+    flex: none;
+    max-width: 92px;
+    min-height: 22px;
+    padding: 2px 6px;
+    overflow: hidden;
+    border: 0;
+    border-radius: 999px;
+    background: #fff;
+    color: var(--blue);
+    font: inherit;
+    font-size: 8.5px;
+    font-weight: 800;
+    line-height: 1.2;
+    text-align: left;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    cursor: pointer;
+    box-shadow: 0 0 0 1px rgba(35, 126, 170, .22);
+  }
+  .tl-merge-branch:hover,
+  .tl-merge-branch:focus-visible {
+    background: #edf7fb;
+    outline: 2px solid rgba(35, 126, 170, .25);
+    outline-offset: 1px;
+  }
   /* 旅行中の「いま / 次の予定」— 箱で囲わず、小見出し＋罫線で構成する */
   .tl-now { margin: 0 0 6px; }
   .tl-now-head {
@@ -3657,6 +3766,10 @@
       gap: 11px;
       padding-bottom: 20px;
     }
+    .tl-merge {
+      grid-template-columns: 58px 28px minmax(0, 1fr);
+      gap: 11px;
+    }
 
     .tl-time {
       font-size: 15px;
@@ -3911,6 +4024,14 @@
       gap: 6px;
       padding: 10px 0;
     }
+    .tl-merge {
+      grid-template-columns: 42px 22px minmax(0, 1fr);
+      gap: 6px;
+      margin: 2px 0 4px;
+    }
+    .tl-merge-link-line { flex-basis: 26px; width: 26px; min-width: 12px; }
+    .tl-merge-branches { max-width: min(132px, 36vw); }
+    .tl-merge-branch { max-width: 72px; min-height: 20px; padding: 2px 5px; font-size: 8px; }
     .tl-time {
       font-size: 11px;
       font-weight: 560;

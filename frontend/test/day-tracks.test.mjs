@@ -16,7 +16,10 @@ function load(relativePath) {
   return module.exports;
 }
 
-const { memberSetKey, dayTracks, pickTrack, isItemInTrack, everyoneIds, REST_TRACK_KEY } = load("src/shared/day-tracks.ts");
+const {
+  memberSetKey, dayTracks, publicDayTracks, pickTrack, isItemInTrack, isPublicItemInTrack, isEveryoneItem,
+  rejoinIndexes, everyoneIds, REST_TRACK_KEY,
+} = load("src/shared/day-tracks.ts");
 
 test("memberSetKey normalizes order/duplicates and treats empty as everyone", () => {
   assert.equal(memberSetKey(["b", "a", "b"]), "a,b");
@@ -94,4 +97,24 @@ test("isItemInTrack shows everyone-items in every track and subset-items only in
   assert.equal(isItemInTrack(undefined, rest), true);
   assert.equal(isItemInTrack(["b", "a"], groupAB), true);
   assert.equal(isItemInTrack(["a", "b"], rest), false);
+});
+
+test("public track keys create anonymous tabs without exposing members", () => {
+  const tracks = publicDayTracks([["public-group-1", "public-group-2"], ["public-group-1"]]);
+  assert.equal(tracks.length, 2);
+  assert.deepEqual([...tracks.map((track) => track.key)], ["public-group-1", "public-group-2"]);
+  assert.deepEqual([...tracks[0].memberIds], []);
+  assert.equal(isPublicItemInTrack(undefined, tracks[1]), true);
+  assert.equal(isPublicItemInTrack("public-group-1", tracks[0]), true);
+  assert.equal(isPublicItemInTrack("public-group-1", tracks[1]), false);
+});
+
+test("rejoin markers appear on the first common item after each split", () => {
+  assert.deepEqual([...rejoinIndexes([false, true, true, false, false])], [3]);
+  assert.deepEqual([...rejoinIndexes([true, false, true, false])], [1, 3]);
+  assert.deepEqual([...rejoinIndexes([false, false])], []);
+  assert.deepEqual([...rejoinIndexes([true, true])], []);
+  assert.equal(isEveryoneItem(undefined, ["a", "b"]), true);
+  assert.equal(isEveryoneItem(["b", "a"], ["a", "b"]), true);
+  assert.equal(isEveryoneItem(["a"], ["a", "b"]), false);
 });

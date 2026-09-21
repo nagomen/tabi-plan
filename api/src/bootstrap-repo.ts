@@ -2,6 +2,7 @@
 import { all, inClause } from "./db.js";
 import type { Bootstrap, ExpenseRow, ExpenseShareRow, PlanMemberPlaceholderRow, PlanMemberRow, PlanRow, SettlementRow } from "./types.js";
 import { PUBLIC_PLAN_LINK_KEYS } from "./public-plan-policy.js";
+import { anonymizePublicItineraryGroups } from "./public-itinerary-groups.js";
 
 export async function bootstrapForUser(userId = ""): Promise<Bootstrap> {
   const actorJoin = userId
@@ -46,7 +47,8 @@ export async function bootstrapForUser(userId = ""): Promise<Bootstrap> {
   const publicOnlyPlanIdSet = new Set(publicOnlyPlanIds);
 
   const visibleIn = inClause(visiblePlanIds);
-  const [itinerary, cities, views] = visiblePlanIds.length
+  const publicOnlyIn = inClause(publicOnlyPlanIds);
+  const [itinerary, cities, views, publicMemberPeriods] = visiblePlanIds.length
     ? await Promise.all([
       all<Bootstrap["itinerary"][number]>(`SELECT id, plan_id, item_date, day_index, sort_order, kind, start_time, title, place,
            area, note, map_query, lat, lng, from_place, from_lat, from_lng,
@@ -60,13 +62,19 @@ export async function bootstrapForUser(userId = ""): Promise<Bootstrap> {
       all<Bootstrap["views"][number]>(`SELECT plan_id, CAST(SUM(view_count) AS SIGNED) AS view_count FROM plan_view_daily
          WHERE plan_id IN (${visibleIn.sql})
          GROUP BY plan_id`, visibleIn.params),
+      publicOnlyPlanIds.length
+        ? all<{ plan_id: string; user_id: string; from_date: string | null; to_date: string | null }>(
+          `SELECT plan_id, user_id, from_date, to_date FROM plan_members
+            WHERE status = 'active' AND plan_id IN (${publicOnlyIn.sql})`, publicOnlyIn.params)
+        : [],
     ])
-    : [[], [], []];
+    : [[], [], [], []];
 
-  // member_ids は内部user IDを含むため、権限のない公開閲覧では返さない。
-  // ワークスペース利用者だけJSON配列へ戻す（壊れた値は全員扱いの null）。
+  // 公開閲覧では実user IDを日付内だけの匿名IDへ変換し、班構成だけを保持する。
+  // ワークスペース利用者には従来どおり実IDのJSON配列を戻す。
+  anonymizePublicItineraryGroups(itinerary, publicOnlyPlanIdSet, publicMemberPeriods);
   for (const row of itinerary as { plan_id: string; member_ids?: unknown }[]) {
-    if (publicOnlyPlanIdSet.has(row.plan_id)) { row.member_ids = null; continue; }
+    if (publicOnlyPlanIdSet.has(row.plan_id)) continue;
     const raw = row.member_ids;
     if (typeof raw !== "string" || !raw) { row.member_ids = null; continue; }
     try {
@@ -116,7 +124,6 @@ export async function bootstrapForUser(userId = ""): Promise<Bootstrap> {
     ? await all(`SELECT candidate_id, user_id FROM plan_candidate_votes WHERE candidate_id IN (${candidateIn.sql})`, candidateIn.params)
     : [];
 
-  const publicOnlyIn = inClause(publicOnlyPlanIds);
   const linkClauses: string[] = [];
   const linkParams: string[] = [];
   if (workspacePlanIds.length) {

@@ -83,6 +83,10 @@ export interface ItineraryRow {
   duration_minutes: number | null;
   /** この項目の対象メンバー（user_id）。null/空 = その日の在籍メンバー全員。途中合流の個人移動などに使う。 */
   member_ids: string[] | null;
+  /** 公開閲覧専用。この予定が属する匿名班。nullは全班共通。 */
+  public_track_key?: string | null;
+  /** 公開閲覧専用。その日に表示する匿名班キー。人物IDや人数は含まない。 */
+  public_day_track_keys?: string[] | null;
 }
 
 // ---- AI旅行相談の通信DTO -----------------------------------------------

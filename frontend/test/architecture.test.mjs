@@ -76,8 +76,36 @@ test("カジノ予定は旅行データの特集ページへ行程内から遷�
   assert.match(style, /\.tl-related-guide\s*\{[^}]*min-height:\s*44px/s);
 });
 
+test("別行動は常設タブを保ち、タイムラインをGit graph型のbranchとmergeで表示する", () => {
+  const itinerary = read("src/dashboard/itinerary-feed.ts");
+  const style = read("src/dashboard/style.css");
+  assert.match(itinerary, /class="tl-day-tabs" role="tablist"/);
+  assert.match(itinerary, /class="tl-day-tab" type="button" role="tab"/);
+  assert.match(itinerary, /class="tl-merge"/);
+  assert.match(itinerary, /class="tl-merge-node">合流/);
+  assert.match(itinerary, />合流<\/span>/);
+  assert.match(itinerary, /class="tl-merge-branch"[^>]*data-track-day=/);
+  assert.match(itinerary, /aria-label="\$\{escapeHtml\(label\)\}の別行動を表示"/);
+  assert.doesNotMatch(itinerary, /ここで合流|この先は全員共通|tl-branch-switch/);
+  assert.doesNotMatch(itinerary, /tl-merge-label|tl-merge-out/);
+  assert.match(style, /\.tl-item\.is-branch-specific \.tl-dot/);
+  assert.match(style, /\.tl-day-tab\[aria-selected="true"\]/);
+});
+
 test("デプロイ設定生成は実在するTripConfig項目だけを必須にする", () => {
   const source = fs.readFileSync(new URL("tools/build-trip-config.js", repoRoot), "utf8");
   assert.match(source, /\["tripSlug", "tripTitle", "mode"\]/);
   assert.doesNotMatch(source, /requiredFields = \[[^\]]*"schema"/);
+});
+
+test("マイページのAIキー設定は生キーをキャッシュせず専用APIだけを使う", () => {
+  const html = read("mypage.html");
+  const ui = read("src/mypage/ai-key.ts");
+  const db = read("src/shared/db.ts");
+  assert.match(html, /data-ai-key-form/);
+  assert.match(html, /autocomplete="new-password"/);
+  assert.match(ui, /saveAiCredential\(apiKey\)/);
+  assert.match(ui, /input\.value = ""/);
+  assert.match(db, /\/api\/account\/ai-credential/);
+  assert.doesNotMatch(ui, /localStorage|sessionStorage/);
 });

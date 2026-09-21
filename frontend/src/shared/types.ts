@@ -31,6 +31,10 @@ export interface ItineraryItem {
   destinationLng?: number;
   /** この予定の対象メンバー（user_id）。未指定/空 = その日の在籍メンバー全員。途中合流の個人移動などに使う。 */
   members?: string[];
+  /** 公開閲覧時の匿名班キー。未指定なら全班共通の予定。 */
+  publicTrackKey?: string;
+  /** 公開閲覧時にその日へ表示する匿名班キー。人物情報や人数は含まない。 */
+  publicDayTrackKeys?: string[];
 }
 
 export interface TripInfo {
