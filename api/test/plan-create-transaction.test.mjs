@@ -31,6 +31,8 @@ function fakeConnection(statements) {
       if (statement.includes("SELECT user_id FROM plan_members") && statement.includes("user_id IN")) {
         return [[{ user_id: "usr_friend" }]];
       }
+      if (statement.includes("FROM itinerary_items WHERE plan_id")) return [[]];
+      if (statement.includes("FROM itinerary_items WHERE id IN")) return [[]];
       return result();
     },
   };

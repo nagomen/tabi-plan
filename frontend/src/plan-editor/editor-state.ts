@@ -15,6 +15,8 @@ export type ItemStrKey =
 
 export interface Item {
   id: number;
+  /** 連泊は夜ごとにDB行があるため、日付順に複数IDを保持する。 */
+  storageIds: string[];
   kind: ItemKind;
   time: string;
   title: string;
@@ -151,9 +153,19 @@ export const model: Model = {
   slug: state.slug, title: "", members: "", memberIds: [], pendingMembers: [], memberRoles: {}, memberDates: {}, note: "", cover: "", startDate: "", endDate: "", cities: [], days: [], candidates: [],
 };
 
+let storageIdSequence = 0;
+
+/** 保存前から安定した行程IDを持たせ、初回保存の直後から差分更新できるようにする。 */
+export function newItineraryStorageId(): string {
+  storageIdSequence = (storageIdSequence + 1) % 46_656;
+  const random = Math.random().toString(36).slice(2, 10);
+  return `itm_${Date.now().toString(36)}${random}${storageIdSequence.toString(36).padStart(3, "0")}`;
+}
+
 export function newItem(kind: ItemKind, seed?: Partial<Item>): Item {
   return {
     id: state.seq++, kind,
+    storageIds: seed?.storageIds ? [...seed.storageIds] : [],
     time: seed?.time ?? "", title: seed?.title ?? "", place: seed?.place ?? "",
     mapQuery: seed?.mapQuery ?? "", note: seed?.note ?? "",
     lat: seed?.lat ?? "", lng: seed?.lng ?? "",

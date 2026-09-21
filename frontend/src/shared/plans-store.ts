@@ -182,6 +182,7 @@ export function getData(slug: string): LocalPlanData | null {
       cover: row.cover_url || "",
     } as TripInfo,
     itinerary: db.itinerary().filter((i) => i.plan_id === row.id).map((it) => ({
+      itemId: it.id,
       day: it.day_index ?? undefined,
       date: it.item_date || "",
       time: (it.start_time || "").slice(0, 5),
@@ -388,6 +389,7 @@ export function saveLocalPlan(
       const kind = String(item.type || "sight");
       const time = String(item.time || "");
       return {
+        ...(typeof item.itemId === "string" && item.itemId ? { id: item.itemId } : {}),
         item_date: /^\d{4}-\d{2}-\d{2}/.test(String(item.date || "")) ? String(item.date).slice(0, 10) : null,
         day_index: num(item.day),
         kind: (KINDS.has(kind) ? kind : "sight") as ItemType,

@@ -84,8 +84,21 @@ test("公開前の保存中に編集されても最新revisionまで保存を繰
 test("新規計画はメンバーと本文を作成POSTへ同梱する", () => {
   const database = fs.readFileSync(new URL("src/shared/db.ts", root), "utf8");
   const plans = fs.readFileSync(new URL("src/shared/plans-store.ts", root), "utf8");
-  assert.match(database, /createPlanBundleLocal[\s\S]*send\("POST", "\/api\/plans", \{ \.\.\.row, members, content \}\)/);
+  assert.match(database, /createPlanBundleLocal[\s\S]*send\("POST", "\/api\/plans", \{ \.\.\.row, members, content: identifiedContent \}\)/);
   assert.match(plans, /!existing && db\.isEnabled\(\)[\s\S]*createPlanBundleLocal/);
+});
+
+test("ブラウザ版の行程保存はDB行IDを保持して差分更新できる", () => {
+  const types = fs.readFileSync(new URL("src/shared/types.ts", root), "utf8");
+  const load = fs.readFileSync(new URL("src/plan-editor/plan-load.ts", root), "utf8");
+  const data = fs.readFileSync(new URL("src/plan-editor/plan-data.ts", root), "utf8");
+  const database = fs.readFileSync(new URL("src/shared/db.ts", root), "utf8");
+  assert.match(types, /itemId\?: string/);
+  assert.match(load, /storageIds: row\.itemId \? \[row\.itemId\] : \[\]/);
+  assert.match(load, /prev\.storageIds\.push\(\.\.\.cur\.storageIds\)/);
+  assert.match(data, /newItineraryStorageId/);
+  assert.match(data, /di - cover\.startIndex/);
+  assert.match(database, /id: it\.id \|\| localId\("itm"\)/);
 });
 
 test("友達以外を名前で追加し、保存後に未登録メンバーとして招待できる", () => {

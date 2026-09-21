@@ -107,8 +107,8 @@ export function onDaysClick(event: MouseEvent): void {
     const prev = model.days[dayIndex - 1];
     if (!day || !prev) return;
     day.area = day.area || prev.area;
-    prev.items.forEach((it) => day.items.push(newItem(it.kind, it)));
-    if (prev.stay && !day.stay) day.stay = newItem("stay", prev.stay);
+    prev.items.forEach((it) => day.items.push(newItem(it.kind, { ...it, storageIds: [] })));
+    if (prev.stay && !day.stay) day.stay = newItem("stay", { ...prev.stay, storageIds: [] });
     markDirty(); renderDays(); refreshMap(true);
     return;
   }

@@ -66,6 +66,7 @@ export function loadExisting(): boolean {
     if (row.area) cityNames.add(row.area);
     const kind = normalizeKind(row.type);
     const it = newItem(kind, {
+      storageIds: row.itemId ? [row.itemId] : [],
       time: String(row.time || ""), title: String(row.title || ""), place: String(row.place || ""),
       mapQuery: String(row.mapQuery || ""), note: String(row.note || ""),
       lat: row.lat != null ? String(row.lat) : "", lng: row.lng != null ? String(row.lng) : "",
@@ -89,6 +90,7 @@ export function loadExisting(): boolean {
     const prev = model.days[i - 1].stay;
     if (cur && prev && cur.title && cur.title === prev.title) {
       prev.nights = Math.max(1, prev.nights) + Math.max(1, cur.nights);
+      prev.storageIds.push(...cur.storageIds);
       model.days[i].stay = null;
     }
   }
