@@ -275,7 +275,8 @@ try {
     const rank = { viewer: 1, editor: 2, owner: 3 };
     const prev = memberRows.get(key);
     if (prev && rank[prev[2]] >= rank[role]) return;
-    memberRows.set(key, [planId, userId, role, "active"]);
+    const memberName = allUsers.get(userId)?.display_name || "メンバー";
+    memberRows.set(key, [planId, userId, memberName, role, "active"]);
   };
   for (const p of planMetas) {
     for (const n of splitNames(p.members)) putMember(p.slug, userIdByName(n), "editor");
@@ -287,7 +288,7 @@ try {
     const uid = r.subjectType === "account" ? r.subjectId : userIdByName(r.subjectId);
     putMember(r.planSlug, uid, r.role);
   }
-  await insert("INSERT INTO plan_members (plan_id, user_id, role, status) VALUES ?", [...memberRows.values()]);
+  await insert("INSERT INTO plan_members (plan_id, user_id, display_name, role, status) VALUES ?", [...memberRows.values()]);
 
   // 旅行参加者とは別に、ログイン可能な既存アカウントへアクセス権を引き継ぐ。
   // 名前だけの参加者は認証主体ではないため、招待を受諾するまで権限を作らない。

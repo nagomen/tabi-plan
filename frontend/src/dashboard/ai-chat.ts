@@ -127,7 +127,7 @@ function membersForAiRefinement(): db.ItineraryRefineMember[] {
     .filter((member) => member.plan_id === id && member.status === "active")
     .map((member) => ({
       user_id: member.user_id,
-      name: db.nameOf(member.user_id),
+      name: db.planMemberName(id, member.user_id),
       from_date: member.from_date ? normalizeDate(member.from_date) : null,
       to_date: member.to_date ? normalizeDate(member.to_date) : null,
     }))

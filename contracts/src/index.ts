@@ -37,6 +37,8 @@ export interface PlanRow {
 export interface PlanMemberRow {
   plan_id: string;
   user_id: string;
+  /** この旅行の中だけで使う表示名。アカウント名とは独立して変更できる。 */
+  display_name: string;
   role: "owner" | "editor" | "viewer";
   status: "active" | "left" | "revoked";
   /** この参加者アカウントの計画アクセス。null は未登録者または招待受諾前。 */
@@ -85,6 +87,8 @@ export interface ItineraryRow {
   member_ids: string[] | null;
   /** 公開閲覧専用。この予定が属する匿名班。nullは全班共通。 */
   public_track_key?: string | null;
+  /** 公開閲覧専用。行動パターンが重なる予定は複数班へ表示する。 */
+  public_track_keys?: string[] | null;
   /** 公開閲覧専用。その日に表示する匿名班キー。人物IDや人数は含まない。 */
   public_day_track_keys?: string[] | null;
 }

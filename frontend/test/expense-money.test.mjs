@@ -140,6 +140,7 @@ test("負担額の集計は user_id で持つ（同名メンバーで潰れな�
     settlements: () => [],
     // 2人とも同じ表示名。名前をキーにすると片方が消える。
     nameOf: () => "たろう",
+    planMemberName: () => "たろう",
   });
   const settlement = store.computeSettlement("p1", ["u1", "u2"], "u1");
   assert.deepEqual({ ...settlement.expenseByPerson }, { u1: 500, u2: 500 });
@@ -160,6 +161,7 @@ test("費用明細も同名メンバーをuser_idで区別できる", () => {
     expenseShares: () => shares,
     settlements: () => [],
     nameOf: () => "たろう",
+    planMemberName: () => "たろう",
   });
   const detail = store.computeSettlement("p1", ["u1", "u2"], "u2").expenseDetails[0];
   assert.equal(detail.payerId, "u1");

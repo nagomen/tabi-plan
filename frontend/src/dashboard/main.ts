@@ -21,7 +21,7 @@ import { setExpenseSheet } from "./expense-entry";
 import { applyMoneyTab } from "./settlement";
 import { setupPhotoAlbumEditor } from "./photo-album";
 import { bindChecklist } from "./checklist";
-import { leaveTrip, removeTripMember, shareExistingMemberInvite, shareTripInvite } from "./members";
+import { leaveTrip, removeTripMember, saveOwnMemberName, shareExistingMemberInvite, shareTripInvite } from "./members";
 import { shareSchedule } from "./itinerary-feed";
 import { setupAiChat } from "./ai-chat";
 import { copyPlanToMine } from "./plan-copy";
@@ -91,6 +91,11 @@ async function init(): Promise<void> {
       }
     });
   }
+  const memberNameSetting = root.querySelector<HTMLFormElement>("[data-member-name-setting]");
+  memberNameSetting?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    void saveOwnMemberName(memberNameSetting);
+  });
   // 脱退（この旅行のメンバーから自分を外す）
   const leaveBtn = root.querySelector<HTMLButtonElement>("[data-leave-trip]");
   if (leaveBtn) {

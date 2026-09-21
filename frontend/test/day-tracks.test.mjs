@@ -99,6 +99,25 @@ test("isItemInTrack shows everyone-items in every track and subset-items only in
   assert.equal(isItemInTrack(["a", "b"], rest), false);
 });
 
+test("overlapping member sets become behavior tracks and shared items appear in each matching tab", () => {
+  const items = [["a"], ["a", "b"], ["a", "b", "c"]];
+  const present = ["a", "b", "c"];
+  const tracks = dayTracks(items, present);
+  assert.equal(tracks.length, 3);
+  const a = tracks.find((track) => track.memberIds.includes("a"));
+  const b = tracks.find((track) => track.memberIds.includes("b"));
+  const c = tracks.find((track) => track.memberIds.includes("c"));
+  assert.ok(a && b && c);
+  assert.equal(isItemInTrack(["a"], a, present), true);
+  assert.equal(isItemInTrack(["a"], b, present), false);
+  assert.equal(isItemInTrack(["a", "b"], a, present), true);
+  assert.equal(isItemInTrack(["a", "b"], b, present), true);
+  assert.equal(isItemInTrack(["a", "b"], c, present), false);
+  assert.equal(isItemInTrack(["a", "b", "c"], a, present), true);
+  assert.equal(isItemInTrack(["a", "b", "c"], b, present), true);
+  assert.equal(isItemInTrack(["a", "b", "c"], c, present), true);
+});
+
 test("public track keys create anonymous tabs without exposing members", () => {
   const tracks = publicDayTracks([["public-group-1", "public-group-2"], ["public-group-1"]]);
   assert.equal(tracks.length, 2);

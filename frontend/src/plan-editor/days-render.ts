@@ -1,4 +1,5 @@
 import * as db from "../shared/db";
+import * as TripPlans from "../shared/plans-store";
 import Sortable from "sortablejs";
 import { escapeHtml } from "../shared/dom";
 import { parseISO, toISO, weekday } from "../shared/date";
@@ -15,6 +16,11 @@ import { updateSteps } from "./steps";
 import { updateCalsync } from "./calendar-sync";
 import { markDirty } from "./persist";
 import { refreshMap } from "./map-controller";
+
+function memberName(userId: string): string {
+  const planId = state.slug ? TripPlans.planIdOf(state.slug) : "";
+  return db.planMemberName(planId, userId);
+}
 
 export function rebuildDays(): void {
   const a = parseISO(model.startDate);
@@ -101,7 +107,7 @@ function rowMembersBadge(item: Item): string {
   if (!item.members.length) {
     return renderingWithTrack ? `<span class="pe-row-members is-all">全員</span>` : "";
   }
-  const names = item.members.map((id) => db.nameOf(id)).filter(Boolean);
+  const names = item.members.map(memberName).filter(Boolean);
   return `<span class="pe-row-members" title="この予定の対象メンバー">${escapeHtml(names.join("・") || "一部メンバー")}</span>`;
 }
 
@@ -197,7 +203,7 @@ function placeBlock(item: Item, target: GeoTarget, label: string, ph: string): s
  * 途中合流の個人移動（例: たかしだけ東京→大阪）を共有行程の中に置くための例外指定。
  */
 function memberPickerBlock(item: Item): string {
-  const ids = model.memberIds.filter((id) => id && db.nameOf(id));
+  const ids = model.memberIds.filter((id) => id && memberName(id));
   if (ids.length < 2) return "";
   const all = !item.members.length;
   return (
@@ -206,7 +212,7 @@ function memberPickerBlock(item: Item): string {
     `<button class="pe-mchip${all ? " is-on" : ""}" type="button" data-act="members-all" data-item="${item.id}">全員</button>` +
     ids.map((id) => {
       const on = item.members.includes(id);
-      return `<button class="pe-mchip${on ? " is-on" : ""}" type="button" data-act="member-toggle" data-item="${item.id}" data-member="${escapeHtml(id)}">${escapeHtml(db.nameOf(id))}</button>`;
+      return `<button class="pe-mchip${on ? " is-on" : ""}" type="button" data-act="member-toggle" data-item="${item.id}" data-member="${escapeHtml(id)}">${escapeHtml(memberName(id))}</button>`;
     }).join("") +
     `</div>` +
     `<p class="pe-item-members-note">一部の人だけの予定（途中合流の移動など）はここで選ぶ。未選択＝全員。</p>` +
@@ -259,7 +265,7 @@ function editForm(item: Item): string {
 function candidateSlotHtml(options: import("../shared/types").Candidate[]): string {
   const first = options[0];
   if (!first?.slotId) return "";
-  const memberNames = (first.memberIds || []).map((id) => db.nameOf(id)).filter(Boolean);
+  const memberNames = (first.memberIds || []).map(memberName).filter(Boolean);
   const voterIds = new Set(options.flatMap((candidate) => candidate.voteIds || []));
   return `<section class="pe-vote-slot" data-slot="${escapeHtml(first.slotId)}">
     <div class="pe-vote-slot-head">
@@ -353,7 +359,7 @@ let renderingWithTrack = false;
 
 /** その日に在籍しているメンバー（参加期間 memberDates を反映）。 */
 function presentIdsOnDate(date: string): string[] {
-  const ids = model.memberIds.filter((id) => id && db.nameOf(id));
+  const ids = model.memberIds.filter((id) => id && memberName(id));
   return presentMemberIds(
     ids.map((id) => ({
       user_id: id,
@@ -379,7 +385,7 @@ function editTrackLabel(track: DayTrack): string {
   if (you && track.memberIds.includes(you)) names.push("あなた");
   for (const id of track.memberIds) {
     if (id === you) continue;
-    const name = db.nameOf(id);
+    const name = memberName(id);
     if (name) names.push(name);
   }
   if (!names.length) return "そのほか";

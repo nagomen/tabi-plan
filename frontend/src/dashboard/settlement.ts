@@ -232,7 +232,7 @@ export function renderExpenseDetails(settlement: Settlement): void {
 
   // 利用者は identity（user_id）が正。表示名は users から引く。
   const profileId = currentUserId();
-  const profileName = db.nameOf(profileId);
+  const profileName = db.planMemberName(planId(), profileId);
   const canManageExpenses = !isReadOnly();
   const details = settlement.expenseDetails || [];
   const related = canManageExpenses ? details : profileName ? details.filter((detail) => {

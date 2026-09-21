@@ -33,6 +33,7 @@ export interface ItineraryItem {
   members?: string[];
   /** 公開閲覧時の匿名班キー。未指定なら全班共通の予定。 */
   publicTrackKey?: string;
+  publicTrackKeys?: string[];
   /** 公開閲覧時にその日へ表示する匿名班キー。人物情報や人数は含まない。 */
   publicDayTrackKeys?: string[];
 }

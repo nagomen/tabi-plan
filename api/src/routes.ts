@@ -502,6 +502,11 @@ export async function route(method: string, path: string, body: Body, actorUserI
     return { status: 200, body: { ok: true, version } };
   }
   m = /^\/api\/plans\/([\w-]{1,32})\/members\/me$/.exec(path);
+  if (m && method === "PATCH") {
+    if (!actorUserId) return forbidden();
+    const displayName = await memberRepo.updateOwnPlanDisplayName(m[1], actorUserId, str(body.display_name));
+    return { status: 200, body: { ok: true, display_name: displayName } };
+  }
   if (m && method === "DELETE") {
     if (!actorUserId) return forbidden();
     await memberRepo.leavePlan(m[1], actorUserId);

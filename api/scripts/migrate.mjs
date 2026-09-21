@@ -463,6 +463,22 @@ async function migrate017() {
   }
 }
 
+async function migrate018() {
+  // アカウント名と旅行内表示名を分離する。既存メンバーは現在見えている名前を引き継ぐ。
+  if (!(await exists(
+    "SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'plan_members' AND COLUMN_NAME = 'display_name'",
+    [database],
+  ))) {
+    await conn.query("ALTER TABLE plan_members ADD COLUMN display_name VARCHAR(64) NULL AFTER user_id");
+  }
+  await conn.query(`UPDATE plan_members pm
+    JOIN users u ON u.id = pm.user_id
+    LEFT JOIN plan_member_placeholders pmp ON pmp.plan_id = pm.plan_id AND pmp.user_id = pm.user_id
+       SET pm.display_name = COALESCE(NULLIF(pm.display_name, ''), NULLIF(pmp.original_name, ''), u.display_name)
+     WHERE pm.display_name IS NULL OR pm.display_name = ''`);
+  await conn.query("ALTER TABLE plan_members MODIFY COLUMN display_name VARCHAR(64) NOT NULL");
+}
+
 async function main() {
   await conn.query(`CREATE TABLE IF NOT EXISTS schema_migrations (
     id VARCHAR(64) NOT NULL PRIMARY KEY,
@@ -484,6 +500,7 @@ async function main() {
   await applyMigration("015_separate_plan_access", migrate015);
   await applyMigration("016_user_ai_credentials", migrate016);
   await applyMigration("017_candidate_time_slots", migrate017);
+  await applyMigration("018_plan_member_display_names", migrate018);
 }
 
 // 同時デプロイが同じDDLを並走させないよう、DB側の advisory lock で直列化する。

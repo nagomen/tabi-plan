@@ -227,7 +227,7 @@ export function entryDetail(entry: ExpenseEntry, selfUserId = ""): ExpenseDetail
     kind: "expense",
     date: row.paid_on || "",
     payerId: row.payer_user_id,
-    payer: db.nameOf(row.payer_user_id),
+    payer: db.planMemberName(row.plan_id, row.payer_user_id),
     category: CATEGORY_LABEL[row.category] || "その他",
     title: row.title || "立替",
     mode: SPLIT_LABEL[row.split_method] || "",
@@ -235,10 +235,10 @@ export function entryDetail(entry: ExpenseEntry, selfUserId = ""): ExpenseDetail
     convertedLabel: formatYen(row.amount_base_minor),
     myShareLabel: selfUserId ? formatYen(mine ? mine.amount_base_minor : 0) : "",
     targetIds: shares.map((s) => s.user_id),
-    targetNames: shares.map((s) => db.nameOf(s.user_id)),
+    targetNames: shares.map((s) => db.planMemberName(row.plan_id, s.user_id)),
     shares: shares.map((s) => ({
       userId: s.user_id,
-      name: db.nameOf(s.user_id),
+      name: db.planMemberName(row.plan_id, s.user_id),
       amount: s.amount_base_minor,
       amountLabel: formatYen(s.amount_base_minor),
     })),
@@ -306,8 +306,8 @@ export function computeSettlement(
     settlementHistory.push({
       id: s.id,
       date: (s.settled_at || "").slice(0, 10),
-      from: db.nameOf(s.from_user_id),
-      to: db.nameOf(s.to_user_id),
+      from: db.planMemberName(planId, s.from_user_id),
+      to: db.planMemberName(planId, s.to_user_id),
       amount: s.amount_base_minor,
       amountLabel: formatYen(s.amount_base_minor),
       note: s.note || "",
@@ -324,8 +324,8 @@ export function computeSettlement(
   }
 
   const transfers: SettlementTransfer[] = settleTransfers(net).map((t) => ({
-    from: db.nameOf(t.fromId),
-    to: db.nameOf(t.toId),
+    from: db.planMemberName(planId, t.fromId),
+    to: db.planMemberName(planId, t.toId),
     fromId: t.fromId,
     toId: t.toId,
     amount: t.amount,

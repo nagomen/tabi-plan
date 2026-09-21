@@ -31,7 +31,7 @@ function participantMembers(names: string[], editing?: ExpenseStore.ExpenseEntry
   const byId = new Map<string, string>();
   const add = (id: string, name: string): void => {
     if (!id || byId.has(id)) return;
-    byId.set(id, name || db.nameOf(id) || "名前未設定");
+    byId.set(id, name || db.planMemberName(planId(), id) || "名前未設定");
   };
   for (const name of names) {
     const user = db.findUserByName(name) || (!db.isEnabled() ? db.ensureUserLocal(name) : undefined);
@@ -39,8 +39,8 @@ function participantMembers(names: string[], editing?: ExpenseStore.ExpenseEntry
   }
   // 編集中の費用に関わる人は、参加者一覧から漏れていても選択肢に残す。
   if (editing) {
-    add(editing.row.payer_user_id, db.nameOf(editing.row.payer_user_id));
-    for (const share of editing.shares) add(share.user_id, db.nameOf(share.user_id));
+    add(editing.row.payer_user_id, db.planMemberName(planId(), editing.row.payer_user_id));
+    for (const share of editing.shares) add(share.user_id, db.planMemberName(planId(), share.user_id));
   }
   const entries = [...byId.entries()].map(([id, name]) => ({ id, name }));
   const numbering = new Map<string, number>();

@@ -59,3 +59,15 @@ test("本人のAIキーは専用テーブルへ暗号文だけ保存する", () 
   assert.doesNotMatch(schema, /user_ai_credentials[\s\S]*api_key\s+VARCHAR/);
   assert.match(migration, /016_user_ai_credentials/);
 });
+
+test("旅行内表示名をアカウント名とは別の列で保持する", () => {
+  const schema = read("schema/002_relational.sql");
+  const migration = read("scripts/migrate.mjs");
+  const bootstrap = read("src/bootstrap-repo.ts");
+  const members = read("src/plan-member-repo.ts");
+  assert.match(schema, /CREATE TABLE plan_members[\s\S]*display_name\s+VARCHAR\(64\) NOT NULL/);
+  assert.match(migration, /018_plan_member_display_names/);
+  assert.match(bootstrap, /pm\.display_name/);
+  assert.match(members, /updateOwnPlanDisplayName[\s\S]*UPDATE plan_members SET display_name/);
+  assert.doesNotMatch(members, /updateOwnPlanDisplayName[\s\S]*UPDATE users/);
+});

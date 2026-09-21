@@ -88,7 +88,7 @@ export async function bootstrapForUser(userId = ""): Promise<Bootstrap> {
   const workspaceIn = inClause(workspacePlanIds);
   const [members, memberPlaceholders, checklist, candidates, expenses, expenseShares, settlements] = workspacePlanIds.length
     ? await Promise.all([
-      all<PlanMemberRow>(`SELECT pm.plan_id, pm.user_id, pm.role, pm.status, pm.from_date, pm.to_date,
+      all<PlanMemberRow>(`SELECT pm.plan_id, pm.user_id, pm.display_name, pm.role, pm.status, pm.from_date, pm.to_date,
              CASE WHEN p.owner_user_id = pm.user_id THEN 'active' ELSE pag.status END AS access_status
            FROM plan_members pm
            JOIN plans p ON p.id = pm.plan_id

@@ -53,7 +53,8 @@ export function ownerIdOf(plan: PlanMeta): string {
 
 export function ownerNameOf(plan: PlanMeta): string {
   const ownerId = ownerIdOf(plan);
-  return ownerId ? db.nameOf(ownerId) : "";
+  const planId = plan.id || db.planBySlug(plan.slug)?.id || "";
+  return ownerId ? db.planMemberName(planId, ownerId) : "";
 }
 
 /** 自分がこの計画の参加者か。利用者が未確定なら false。 */
