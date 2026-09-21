@@ -116,6 +116,24 @@ const COUNTRY_TEXT_HINTS: ReadonlyArray<readonly [RegExp, CountryCode]> = [
   [/ニュージーランド|new zealand|auckland|オークランド/i, "NZ"],
 ];
 
+/**
+ * 国・地域ごとの法定通貨（ISO 4217）。費用入力の通貨候補を行き先から出すために使う。
+ * 旅行ごとに通貨を設定へ書かなくて済むよう、判定はこの表だけに置く。
+ */
+const COUNTRY_CURRENCY: Record<CountryCode, string> = {
+  HK: "HKD", MO: "MOP", SG: "SGD", TW: "TWD", KR: "KRW", JP: "JPY", IN: "INR", MN: "MNT",
+  CN: "CNY", TH: "THB", VN: "VND", MY: "MYR", PH: "PHP", ID: "IDR",
+  NL: "EUR", BE: "EUR", CH: "CHF", AT: "EUR", CZ: "CZK", PT: "EUR", GB: "GBP", ES: "EUR",
+  FR: "EUR", DE: "EUR", IT: "EUR", GR: "EUR", TR: "TRY",
+  AE: "AED", EG: "EGP", MA: "MAD", KE: "KES", ZA: "ZAR", NZ: "NZD", AU: "AUD",
+  US: "USD", CA: "CAD", MX: "MXN",
+  BO: "BOB", UY: "UYU", PY: "PYG", PE: "PEN", CL: "CLP", AR: "ARS", BR: "BRL",
+};
+
+export function currencyOfCountry(code: CountryCode | null): string {
+  return code ? COUNTRY_CURRENCY[code] || "" : "";
+}
+
 export function countryCodeFromText(text: string | undefined): CountryCode | null {
   const raw = String(text || "").trim();
   if (!raw) return null;

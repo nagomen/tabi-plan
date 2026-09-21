@@ -1,11 +1,13 @@
 // 費用入力UIが共通で使う、取得元の緩いデータからの選択肢抽出。
 
+import { countryCodeFromText, countryCodeOf, currencyOfCountry } from "./country";
 import { formatMoneyMinor, toMinor } from "./currency";
 
 interface ExpenseFormSource {
   participants?: unknown;
   trip?: { members?: unknown } | null;
   localInfo?: unknown;
+  cities?: unknown;
 }
 
 function unique(values: string[]): string[] {
@@ -30,6 +32,22 @@ export function expenseParticipantNames(source: ExpenseFormSource, fallback: str
   return fromMembers.length ? unique(fromMembers) : unique(fallback);
 }
 
+/** 保存済みの訪問地（座標、無ければ地名）から、その旅行で使う通貨を割り出す。 */
+function destinationCurrencies(cities: unknown): string[] {
+  const rows = Array.isArray(cities) ? cities : [];
+  return rows.map((row) => {
+    if (!row || typeof row !== "object") return "";
+    const city = row as { name?: unknown; lat?: unknown; lng?: unknown };
+    const code = countryCodeOf(Number(city.lat), Number(city.lng)) || countryCodeFromText(String(city.name || ""));
+    return currencyOfCountry(code);
+  });
+}
+
+/**
+ * 費用入力の通貨候補。基準通貨の JPY と、国際的に使う USD は常に出し、
+ * あとはこの旅行の行き先から導く。世界中の通貨を並べても選びにくいだけなので、
+ * 行き先を判定できたときは設定の一覧（configured）へは戻らない。
+ */
 export function expenseCurrencyCodes(source: ExpenseFormSource, configured: string[] = []): string[] {
   const localInfo = Array.isArray(source.localInfo) ? source.localInfo : [];
   const discovered = localInfo.map((row) => {
@@ -37,7 +55,12 @@ export function expenseCurrencyCodes(source: ExpenseFormSource, configured: stri
     const record = row as Record<string, unknown>;
     return String(record.currencyCode || record.currency || record["通貨コード"] || "");
   });
-  return unique(["JPY", ...configured, ...discovered].map((code) => code.toUpperCase()));
+  const fromTrip = unique([...destinationCurrencies(source.cities), ...discovered].map((code) => code.toUpperCase()));
+  // 行き先が日本だけの旅行は「候補が空」ではなく「JPYで足りる」。
+  // 判定できたかどうかで分け、分からなかったときだけ設定の一覧へ戻す。
+  const extras = fromTrip.filter((code) => code !== "JPY" && code !== "USD");
+  const middle = fromTrip.length ? extras : configured.map((code) => code.toUpperCase());
+  return unique(["JPY", ...middle, "USD"]);
 }
 
 /** フォームが人を指す単位。value は user_id で、表示名はラベルにだけ使う。 */

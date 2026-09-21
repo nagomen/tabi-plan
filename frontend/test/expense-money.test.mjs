@@ -138,3 +138,46 @@ test("負担額の集計は user_id で持つ（同名メンバーで潰れな�
   assert.deepEqual({ ...settlement.expenseByPerson }, { u1: 500, u2: 500 });
   assert.equal(settlement.expenseTotal, "¥1,000");
 });
+
+const expenseForm = load("src/shared/expense-form.ts", {
+  "./country": load("src/shared/country.ts"),
+  "./currency": currency,
+});
+
+test("通貨候補は行き先の座標から出し、JPYとUSDを常に添える", () => {
+  const macau = expenseForm.expenseCurrencyCodes({
+    cities: [
+      { name: "マカオ", lat: 22.15, lng: 113.55 },
+      { name: "香港", lat: 22.32, lng: 114.17 },
+    ],
+  }, ["EUR", "THB", "AUD"]);
+  // 行き先が分かるなら、設定に並べた世界中の通貨は混ぜない。
+  assert.deepEqual(Array.from(macau), ["JPY", "MOP", "HKD", "USD"]);
+});
+
+test("座標が無い訪問地は地名から国を推定する", () => {
+  const seoul = expenseForm.expenseCurrencyCodes({ cities: [{ name: "ソウル" }] }, ["EUR"]);
+  assert.deepEqual(Array.from(seoul), ["JPY", "KRW", "USD"]);
+});
+
+test("国内旅行はJPYとUSDだけにする", () => {
+  const domestic = expenseForm.expenseCurrencyCodes({
+    cities: [{ name: "京都", lat: 35.0, lng: 135.77 }],
+  }, ["EUR", "THB"]);
+  assert.deepEqual(Array.from(domestic), ["JPY", "USD"]);
+});
+
+test("行き先を判定できない旅行だけ、設定の通貨一覧へ戻す", () => {
+  const unknown = expenseForm.expenseCurrencyCodes({ cities: [{ name: "どこか" }] }, ["EUR", "THB"]);
+  assert.deepEqual(Array.from(unknown), ["JPY", "EUR", "THB", "USD"]);
+  const none = expenseForm.expenseCurrencyCodes({}, []);
+  assert.deepEqual(Array.from(none), ["JPY", "USD"]);
+});
+
+test("現地情報に書かれた通貨コードも候補へ含める", () => {
+  const codes = expenseForm.expenseCurrencyCodes({
+    cities: [{ name: "台北", lat: 25.03, lng: 121.56 }],
+    localInfo: [{ currencyCode: "twd" }, { 通貨コード: "CNY" }],
+  }, []);
+  assert.deepEqual(Array.from(codes), ["JPY", "TWD", "CNY", "USD"]);
+});

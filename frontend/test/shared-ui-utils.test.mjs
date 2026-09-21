@@ -38,9 +38,11 @@ test("expense choices are normalized consistently for the expense form", () => {
     Array.from(expenseParticipantNames({ trip: { members: "Alice / Bob、Alice" } })),
     ["Alice", "Bob"],
   );
+  // 通貨候補は基準通貨のJPYに始まり、旅行から分かる通貨を挟んでUSDで終える。
+  // 設定に並べた一覧は、行き先も現地情報も分からないときのフォールバック。
   assert.deepEqual(
     Array.from(expenseCurrencyCodes({ localInfo: [{ currencyCode: "cny" }] }, ["JPY", "usd"])),
-    ["JPY", "USD", "CNY"],
+    ["JPY", "CNY", "USD"],
   );
 });
 
