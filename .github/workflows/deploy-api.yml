@@ -45,6 +45,7 @@ jobs:
         env:
           ENV_FILE: ${{ vars.PRODUCTION_API_ENV_FILE || '~/secure_env/travel-api.env' }}
           OPENAI_KEY: ${{ secrets.OPENAI_KEY }}
+          AI_CREDENTIAL_ENCRYPTION_KEY: ${{ secrets.AI_CREDENTIAL_ENCRYPTION_KEY }}
           OPENAI_MODEL: ${{ vars.PRODUCTION_OPENAI_MODEL }}
         with:
           host: ${{ secrets.PRODUCTION_SSH_HOST }}
@@ -52,11 +53,11 @@ jobs:
           key: ${{ secrets.PRODUCTION_SSH_KEY }}
           port: ${{ secrets.PRODUCTION_SSH_PORT || 22 }}
           fingerprint: ${{ secrets.PRODUCTION_SSH_FINGERPRINT }}
-          envs: ENV_FILE,OPENAI_KEY,OPENAI_MODEL
+          envs: ENV_FILE,OPENAI_KEY,AI_CREDENTIAL_ENCRYPTION_KEY,OPENAI_MODEL
           script_stop: true
           script: |
-            if [ -z "$OPENAI_KEY" ]; then
-              echo "OPENAI_KEY が未設定なので何もしません。"
+            if [ -z "$OPENAI_KEY" ] && [ -z "$AI_CREDENTIAL_ENCRYPTION_KEY" ]; then
+              echo "AI用シークレットが未設定なので何もしません。"
               exit 0
             fi
             file="${ENV_FILE/#\~/$HOME}"
@@ -66,14 +67,22 @@ jobs:
             fi
             umask 077
             tmp="$(mktemp)"
-            grep -v -E '^(OPENAI_KEY|OPENAI_MODEL)=' "$file" > "$tmp" || true
-            printf 'OPENAI_KEY=%s\n' "$OPENAI_KEY" >> "$tmp"
+            cp "$file" "$tmp"
+            if [ -n "$OPENAI_KEY" ]; then
+              sed -i '/^OPENAI_KEY=/d' "$tmp"
+              printf 'OPENAI_KEY=%s\n' "$OPENAI_KEY" >> "$tmp"
+            fi
+            if [ -n "$AI_CREDENTIAL_ENCRYPTION_KEY" ]; then
+              sed -i '/^AI_CREDENTIAL_ENCRYPTION_KEY=/d' "$tmp"
+              printf 'AI_CREDENTIAL_ENCRYPTION_KEY=%s\n' "$AI_CREDENTIAL_ENCRYPTION_KEY" >> "$tmp"
+            fi
             if [ -n "$OPENAI_MODEL" ]; then
+              sed -i '/^OPENAI_MODEL=/d' "$tmp"
               printf 'OPENAI_MODEL=%s\n' "$OPENAI_MODEL" >> "$tmp"
             fi
             install -m 600 "$tmp" "$file"
             rm -f "$tmp"
-            echo "OPENAI_KEY を書き込みました（値は出力しません）"
+            echo "AI用シークレットを更新しました（値は出力しません）"
 
       # サーバー側の配置先は git のクローンではないので、ここから中身を送る。
       # サーバーにリポジトリの認証情報を置かずに済むぶん、こちらの方が安全。

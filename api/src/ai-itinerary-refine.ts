@@ -255,8 +255,13 @@ function refinementPrompt(input: ItineraryRefineInput, dates: string[]): string 
   ].filter(Boolean).join("\n");
 }
 
-export async function refineItinerary(userId: string, input: ItineraryRefineInput): Promise<ItineraryRefineResult> {
-  if (!config.ai.apiKey) throw new AiUnavailableError("AI旅行相談は現在利用できません");
+export async function refineItinerary(
+  userId: string,
+  input: ItineraryRefineInput,
+  apiKey = config.ai.apiKey,
+  userManagedKey = false,
+): Promise<ItineraryRefineResult> {
+  if (!apiKey) throw new AiUnavailableError("AI旅行相談は現在利用できません");
   const instruction = input.instruction.trim();
   if (!instruction) throw new AiInputError("変更したい内容を入力してください");
   const dates = daysBetween(input.start_date, input.end_date);
@@ -268,6 +273,8 @@ export async function refineItinerary(userId: string, input: ItineraryRefineInpu
   // 検証失敗時の1回再生成を共通の方針で行う。
   return generateValidated<RawRefineResult, ItineraryRefineResult>({
     userId,
+    apiKey,
+    userManagedKey,
     schemaName: "itinerary_refinement",
     schema: REFINE_SCHEMA,
     system: "あなたは既存の旅行行程を会話形式で改善するプランナーです。利用者の依頼に必要な範囲だけを変更し、全日程を実行可能な順序で返します。",

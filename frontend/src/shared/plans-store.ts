@@ -202,6 +202,8 @@ export function getData(slug: string): LocalPlanData | null {
       transport: it.transport || "",
       duration: it.duration_minutes != null ? formatDurationMinutes(it.duration_minutes) : "",
       members: it.member_ids && it.member_ids.length ? it.member_ids : undefined,
+      publicTrackKey: it.public_track_key || undefined,
+      publicDayTrackKeys: it.public_day_track_keys?.length ? it.public_day_track_keys : undefined,
     })) as unknown as ItineraryItem[],
     links: db.links().filter((l) => l.plan_id === row.id).map((l) => ({
       key: l.link_key, label: l.label, url: l.url, caption: l.caption || "", icon: "",

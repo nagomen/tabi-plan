@@ -23,6 +23,8 @@ Required repository settings:
 | `PRODUCTION_SSH_PORT` | Secret | Optional SSH port; defaults to `22` |
 | `PRODUCTION_SSH_KNOWN_HOSTS` | Secret | Pinned output of `ssh-keyscan` |
 | `PRODUCTION_SSH_FINGERPRINT` | Secret | Pinned host-key SHA256 fingerprint |
+| `OPENAI_KEY` | Secret | Optional service-funded OpenAI API key |
+| `AI_CREDENTIAL_ENCRYPTION_KEY` | Secret | Encryption master key for user-provided OpenAI API keys |
 | `PRODUCTION_APP_DIR` | Variable | API source directory on the VPS |
 | `PRODUCTION_API_DOMAIN` | Variable | Public API hostname |
 | `PRODUCTION_API_ENV_FILE` | Variable | Server-only environment file |

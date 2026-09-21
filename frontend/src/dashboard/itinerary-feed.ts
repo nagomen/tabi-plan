@@ -2,7 +2,10 @@ import { icon, type IconName } from "../shared/icons";
 import * as TripPlans from "../shared/plans-store";
 import { isMemberOf } from "../shared/membership";
 import { joinersOn, leaversOn } from "../shared/member-period";
-import { dayTracks, pickTrack, isItemInTrack, everyoneIds, type DayTrack } from "../shared/day-tracks";
+import {
+  dayTracks, publicDayTracks, pickTrack, isItemInTrack, isPublicItemInTrack, isEveryoneItem,
+  rejoinIndexes, everyoneIds, type DayTrack,
+} from "../shared/day-tracks";
 import { parseFlight, parseTrain } from "../shared/flight-info";
 import { currentUserId } from "../shared/identity";
 import * as db from "../shared/db";
@@ -116,6 +119,8 @@ function presentIdsOf(day: DayGroup): string[] {
 
 /** その日の班。一部メンバーだけの予定が無い日（＝分かれない日）は空配列。 */
 function tracksOf(day: DayGroup): DayTrack[] {
+  const publicTracks = publicDayTracks(day.items.map((item) => item.publicDayTrackKeys));
+  if (publicTracks.length) return publicTracks;
   return dayTracks(day.items.map((item) => item.members), presentIdsOf(day));
 }
 
@@ -126,6 +131,9 @@ export function selectedTrack(day: DayGroup): DayTrack | null {
 /** 班タブがある日は、全員の予定（members 空か全員入り）＋選択中の班の予定だけに絞る。 */
 export function trackItems(day: DayGroup, track: DayTrack | null): ItineraryItem[] {
   if (!track) return day.items;
+  if (day.items.some((item) => item.publicDayTrackKeys?.length)) {
+    return day.items.filter((item) => isPublicItemInTrack(item.publicTrackKey, track));
+  }
   const everyone = everyoneIds(day.items.map((item) => item.members), presentIdsOf(day));
   return day.items.filter((item) => isItemInTrack(item.members, track, everyone));
 }
@@ -154,6 +162,17 @@ function trackLabel(track: DayTrack, index: number, withNames: boolean): string 
   return names.slice(0, 3).join("・") + (names.length > 3 ? ` 他${names.length - 3}人` : "");
 }
 
+/** タイムライン上で、別行動の直後に全員共通へ戻る予定を合流地点として抽出する。 */
+function rejoinItemsOf(day: DayGroup): Set<ItineraryItem> {
+  const items = day.items.filter((item) => String(item.type) !== "stay");
+  const isPublic = items.some((item) => item.publicDayTrackKeys?.length);
+  const everyone = isPublic ? [] : everyoneIds(items.map((item) => item.members), presentIdsOf(day));
+  const specific = items.map((item) => isPublic
+    ? Boolean(item.publicTrackKey)
+    : !isEveryoneItem(item.members, everyone));
+  return new Set(rejoinIndexes(specific).map((index) => items[index]));
+}
+
 function dayTrackTabsHtml(day: DayGroup): string {
   const tracks = tracksOf(day);
   if (!tracks.length) return "";
@@ -166,6 +185,25 @@ function dayTrackTabsHtml(day: DayGroup): string {
       `${icon("users")}<span class="tl-day-tab-label">${escapeHtml(trackLabel(track, index, withNames))}</span></button>`
     ).join("") +
     `</div>`;
+}
+
+/** mergeへ入ってくる側線に、現在表示していないブランチへの直接リンクを載せる。 */
+function alternateTrackLinksHtml(day: DayGroup, selected: DayTrack | null): string {
+  if (!selected) return "";
+  const tracks = tracksOf(day);
+  const withNames = canSeeTrackMemberNames();
+  const links = tracks.flatMap((track, index) => {
+    if (track.key === selected.key) return [];
+    const label = trackLabel(track, index, withNames);
+    const compactLabel = withNames
+      ? ([...label].length > 6 ? `${[...label].slice(0, 5).join("")}…` : label)
+      : `${String.fromCharCode(65 + (index % 26))}班`;
+    return [`<button class="tl-merge-branch" type="button"` +
+      ` data-track-day="${escapeHtml(day.date)}" data-track-key="${escapeHtml(track.key)}"` +
+      ` aria-label="${escapeHtml(label)}の別行動を表示" title="${escapeHtml(label)}">` +
+      `${escapeHtml(compactLabel)}</button>`];
+  });
+  return links.length ? `<span class="tl-merge-branches">${links.join("")}</span>` : "";
 }
 
 /** 予定と旅行固有の特集ページを結ぶ、行程内の補助導線。 */
@@ -193,8 +231,11 @@ function timelineHtmlForDay(idx: number): string {
   const day = state.days[idx];
   if (!day) return "";
   // 予定ごとに対象メンバー名は書かない。行程が班に分かれる日は
-  // dayTrackTabsHtml の帯タブで切り替え、名前はタブにだけ出す。
+  // 常設タブで班を切り替え、名前はタブにだけ出す。
   const track = selectedTrack(day);
+  const rejoinItems = rejoinItemsOf(day);
+  const everyone = everyoneIds(day.items.map((item) => item.members), presentIdsOf(day));
+  const alternateTracks = alternateTrackLinksHtml(day, track);
   let casinoGuideShown = false;
   return trackItems(day, track).filter((i) => String(i.type) !== "stay").map((item) => {
     const type = String(item.type || "todo");
@@ -219,7 +260,23 @@ function timelineHtmlForDay(idx: number): string {
     const casinoGuide = casinoGuideShown ? "" : relatedCasinoGuideHtml(item);
     if (casinoGuide) casinoGuideShown = true;
 
-    return `<article class="tl-item" data-kind="${escapeHtml(type)}">
+    const isBranchSpecific = Boolean(item.publicTrackKey) || (track
+      ? !isEveryoneItem(item.members, everyone)
+      : false);
+    const rejoin = rejoinItems.has(item)
+      ? `<div class="tl-merge" role="note" aria-label="全員が合流">
+          <span aria-hidden="true"></span>
+          <span class="tl-merge-graph">
+            <svg viewBox="0 0 28 34" aria-hidden="true"><path d="M14 2v30"/><path d="M20 2v8c0 7-2 11-6 11"/></svg>
+            <span class="tl-merge-node">合流</span>
+          </span>
+          <span class="tl-merge-copy">
+            <span class="tl-merge-link-line" aria-hidden="true"></span>
+            ${alternateTracks}
+          </span>
+        </div>`
+      : "";
+    return `${rejoin}<article class="tl-item${isBranchSpecific ? " is-branch-specific" : ""}" data-kind="${escapeHtml(type)}">
       <time class="tl-time">${escapeHtml(item.time || "")}</time>
       <span class="tl-rail"><span class="tl-dot ${escapeHtml(type)}">${kindIcon(type)}</span></span>
       <div class="tl-plan">

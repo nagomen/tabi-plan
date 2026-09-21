@@ -16,6 +16,7 @@ import { mountLoginMethods } from "./login-methods";
 import { mountPayLinks } from "./pay-links";
 import { mountPlansList } from "./plans-list";
 import { mountProfile } from "./profile";
+import { mountAiKey } from "./ai-key";
 
 initPageTransitions();
 
@@ -87,6 +88,7 @@ function renderHiddenViews(): void {
   hiddenViewsDrawn = true;
   renderCalendar();
   renderPayLinks();
+  void renderAiKey();
   renderLoginMethods();
   renderFriends();
 }
@@ -101,6 +103,7 @@ function showTab(name: string): void {
   views.forEach((v) => { v.hidden = v.dataset.view !== name; });
   if (name === "schedule") renderCalendar();
   if (name === "pay") { renderPayLinks(); renderLoginMethods(); }
+  if (name === "pay") void renderAiKey();
   if (name === "friends") renderFriends();
 }
 tabs.forEach((t) => t.addEventListener("click", () => showTab(t.dataset.tab || "plans")));
@@ -120,6 +123,17 @@ const { renderCalendar } = mountCalendar({
 const { renderPayLinks } = mountPayLinks({
   payMount: qs<HTMLElement>("[data-paylinks]"),
   payCount: qs<HTMLElement>("[data-pay-count]"),
+});
+
+const { renderAiKey } = mountAiKey({
+  form: qs<HTMLFormElement>("[data-ai-key-form]"),
+  input: qs<HTMLInputElement>("[data-ai-key-input]"),
+  revealButton: qs<HTMLButtonElement>("[data-ai-key-reveal]"),
+  saveButton: qs<HTMLButtonElement>("[data-ai-key-save]"),
+  deleteButton: qs<HTMLButtonElement>("[data-ai-key-delete]"),
+  state: qs<HTMLElement>("[data-ai-key-state]"),
+  detail: qs<HTMLElement>("[data-ai-key-detail]"),
+  message: qs<HTMLElement>("[data-ai-key-message]"),
 });
 
 // ---- ログイン方法（メール / LINE） --------------------------------------
@@ -167,5 +181,6 @@ db.onDbSync(() => {
   renderPlans();
   renderCalendar();
   renderPayLinks();
+  void renderAiKey();
   renderFriends();
 });

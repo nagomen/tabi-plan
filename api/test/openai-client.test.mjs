@@ -7,7 +7,7 @@ process.env.DB_PASSWORD ||= "test";
 process.env.OPENAI_KEY ||= "test-openai-key";
 process.env.OPENAI_MAX_RETRIES ||= "2";
 
-const { structuredResponse } = await import("../dist/openai-client.js");
+const { structuredResponse, verifyOpenAiApiKey } = await import("../dist/openai-client.js");
 
 const schema = {
   type: "object", additionalProperties: false, required: ["ok"],
@@ -40,6 +40,36 @@ test("Responses APIへ保存無効・構造化出力・Web検索・出力上限�
   assert.equal(requestBody.tools[0].type, "web_search");
   assert.equal(requestBody.max_output_tokens, 30000);
   assert.equal(result.meta.requestId, "req_test");
+});
+
+test("本人キーをResponses APIへ渡し、認証エラーは本人が直せる案内にする", async () => {
+  let authorization = "";
+  await assert.rejects(() => structuredResponse({
+    schemaName: "test_schema", schema, system: "system", user: "user",
+    apiKey: "sk-proj-user-key", userManagedKey: true,
+    fetchImpl: async (_url, init) => {
+      authorization = new Headers(init?.headers).get("authorization") || "";
+      return new Response(JSON.stringify({
+        error: { code: "invalid_api_key", message: "Incorrect API key: sk-proj-user-key" },
+      }), { status: 401 });
+    },
+  }), (error) => error.code === "ai_authentication_failed" &&
+    error.action === "update_api_key" && /マイページ/.test(error.message) &&
+    !error.causeDetail.includes("sk-proj-user-key") && error.causeDetail.includes("sk-[redacted]"));
+  assert.equal(authorization, "Bearer sk-proj-user-key");
+});
+
+test("保存前のキー確認は課金を伴わないmodels APIを使う", async () => {
+  let request;
+  await verifyOpenAiApiKey("sk-proj-test", async (url, init) => {
+    request = { url, method: init?.method, authorization: new Headers(init?.headers).get("authorization") };
+    return new Response(JSON.stringify({ data: [] }), { status: 200 });
+  });
+  assert.deepEqual(request, {
+    url: "https://api.openai.com/v1/models/gpt-5.4-mini",
+    method: "GET",
+    authorization: "Bearer sk-proj-test",
+  });
 });
 
 test("429はRetry-Afterを尊重して限定再試行する", async () => {

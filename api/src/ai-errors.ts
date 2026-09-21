@@ -16,6 +16,7 @@ export type AiRecoveryAction =
   | "revise_input"
   | "restart_consultation"
   | "use_external_ai"
+  | "update_api_key"
   | "contact_support";
 
 /** OpenAI APIの一時障害・拒否・不完全応答。詳細はサーバーログだけに残す。 */

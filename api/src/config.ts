@@ -40,6 +40,10 @@ const sessionSecret = required("SESSION_SECRET");
 if (sessionSecret.length < 32) {
   throw new Error("SESSION_SECRET は32文字以上のランダム値にしてください");
 }
+const aiCredentialEncryptionKey = optional("AI_CREDENTIAL_ENCRYPTION_KEY", sessionSecret);
+if (aiCredentialEncryptionKey.length < 32) {
+  throw new Error("AI_CREDENTIAL_ENCRYPTION_KEY は32文字以上のランダム値にしてください");
+}
 
 export const config = {
   port: integer("PORT", "8001", 1, 65_535),
@@ -107,6 +111,12 @@ export const config = {
    */
   ai: {
     apiKey: optional("OPENAI_KEY", ""),
+    /**
+     * 利用者が登録したAPIキーの保存用マスターキー。
+     * 既存環境との互換のため未設定時はSESSION_SECRETを使うが、本番では
+     * セッション失効と独立してローテーションできる専用値を推奨する。
+     */
+    credentialEncryptionKey: aiCredentialEncryptionKey,
     model: optional("OPENAI_MODEL", "gpt-5.4-mini"),
     timeoutMs: integer("OPENAI_TIMEOUT_MS", "80000", 1000, 300_000),
     // 長い行程のJSONへ出力枠を回す。推論量は機械的な構造化タスク向けに抑える。

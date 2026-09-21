@@ -55,6 +55,17 @@ test("表示名だけのグローバルユーザー作成APIは存在しない",
   assert.equal(result, null);
 });
 
+test("AIキー設定はログイン必須で、不正な形式をOpenAIへ送らない", async () => {
+  const anonymous = await route("GET", "/api/account/ai-credential", {}, "");
+  assert.equal(anonymous.status, 401);
+  assert.equal(anonymous.body.action, "sign_in");
+
+  const invalid = await route("PUT", "/api/account/ai-credential", { api_key: "not-a-secret" }, "usr_1");
+  assert.equal(invalid.status, 400);
+  assert.equal(invalid.body.error, "bad_request");
+  assert.match(invalid.body.message, /sk-/);
+});
+
 test("契約外の入力はすべて共通契約のbad_requestで説明する", async () => {
   const noVersion = await route("PATCH", "/api/plans/pln_1", { title: "x" }, "usr_owner");
   assert.equal(noVersion.status, 400);

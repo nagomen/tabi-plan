@@ -31,6 +31,9 @@
 //   POST   /api/ai/itinerary-options         行き先から選択用の観光候補を作る
 //   POST   /api/ai/itinerary                 選択候補と条件から旅程の下書きを作る
 //   POST   /api/ai/itinerary-refine          既存の全行程をチャットの依頼で修正する
+//   GET    /api/account/ai-credential        自分のOpenAI APIキー設定状態を取得
+//   PUT    /api/account/ai-credential        APIキーを検証して暗号化保存
+//   DELETE /api/account/ai-credential        保存済みAPIキーを削除
 
 import * as repo from "./plan-repo.js";
 import * as accessRepo from "./plan-access-repo.js";
@@ -50,6 +53,9 @@ import { BadRequest } from "./errors.js";
 import { refundAiRequest, reserveAiRequest, type AiScope } from "./ai-usage-repo.js";
 import { unlinkLine } from "./line-auth.js";
 import { searchTransportOptions, transportOptionsForCities } from "./transport-search.js";
+import * as aiCredentialRepo from "./ai-credential-repo.js";
+import { validOpenAiApiKey } from "./ai-credential-crypto.js";
+import { verifyOpenAiApiKey } from "./openai-client.js";
 
 export interface Handled {
   status: number;
@@ -297,8 +303,20 @@ function aiSessionRequired(): Handled {
   };
 }
 
-async function reserveAi(userId: string, scope: AiScope): Promise<Handled | null> {
-  const reservation = await reserveAiRequest(userId, scope);
+function aiKeyRequired(): Handled {
+  return {
+    status: 422,
+    body: {
+      error: "ai_key_required",
+      message: "AIを利用するには、マイページでOpenAI APIキーを登録してください。",
+      retryable: false,
+      action: "update_api_key",
+    },
+  };
+}
+
+async function reserveAi(userId: string, scope: AiScope, userManagedKey = false): Promise<Handled | null> {
+  const reservation = await reserveAiRequest(userId, scope, { skipDailyLimit: userManagedKey });
   return reservation.allowed
     ? null
     : {
@@ -320,8 +338,13 @@ async function reserveAi(userId: string, scope: AiScope): Promise<Handled | null
  * （設定不足・上流障害）は枠を返し、障害の連続で当日分が消えないようにする。
  * AiOutputError はトークンを消費済みなので返さない。
  */
-async function withAiReservation(userId: string, scope: AiScope, work: () => Promise<unknown>): Promise<Handled> {
-  const limited = await reserveAi(userId, scope);
+async function withAiReservation(
+  userId: string,
+  scope: AiScope,
+  userManagedKey: boolean,
+  work: () => Promise<unknown>,
+): Promise<Handled> {
+  const limited = await reserveAi(userId, scope, userManagedKey);
   if (limited) return limited;
   try {
     return { status: 200, body: await work() };
@@ -348,6 +371,33 @@ export async function route(method: string, path: string, body: Body, actorUserI
   // ---- 起動時の一括取得 ----
   if (method === "GET" && path === "/api/bootstrap") {
     return { status: 200, body: await bootstrapRepo.bootstrapForUser(actorUserId) };
+  }
+
+  // ---- 本人のAI課金設定（キー本体はどのレスポンスにも含めない） ----
+  if (path === "/api/account/ai-credential") {
+    if (!actorUserId) return aiSessionRequired();
+    if (method === "GET") {
+      return { status: 200, body: await aiCredentialRepo.credentialStatus(actorUserId) };
+    }
+    if (method === "DELETE") {
+      await aiCredentialRepo.deleteCredential(actorUserId);
+      return { status: 200, body: await aiCredentialRepo.credentialStatus(actorUserId) };
+    }
+    if (method === "PUT") {
+      const apiKey = str(body.api_key).trim();
+      if (!validOpenAiApiKey(apiKey)) {
+        return badRequest("OpenAI APIキーの形式を確認してください。sk- から始まるキーを入力します。");
+      }
+      try {
+        await verifyOpenAiApiKey(apiKey);
+        return { status: 200, body: await aiCredentialRepo.saveCredential(actorUserId, apiKey) };
+      } catch (error) {
+        const failed = aiFailure(error);
+        // キー・権限・課金設定は利用者自身が直せる入力エラーとして扱う。
+        if (error instanceof AiUpstreamError && error.action === "update_api_key") failed.status = 422;
+        return failed;
+      }
+    }
   }
 
   // ---- ユーザー ----
@@ -660,8 +710,11 @@ export async function route(method: string, path: string, body: Body, actorUserI
     if (!actorUserId) return aiSessionRequired();
     try {
       const input = itineraryInput(body);
-      return await withAiReservation(actorUserId, "options", () =>
-        suggestItineraryOptions(actorUserId, input));
+      const credential = await aiCredentialRepo.resolveAiCredential(actorUserId);
+      if (!credential) return aiKeyRequired();
+      const userManagedKey = credential.source === "user";
+      return await withAiReservation(actorUserId, "options", userManagedKey, () =>
+        suggestItineraryOptions(actorUserId, input, credential.apiKey, userManagedKey));
     } catch (error) {
       return aiFailure(error);
     }
@@ -671,7 +724,10 @@ export async function route(method: string, path: string, body: Body, actorUserI
     if (!actorUserId) return aiSessionRequired();
     try {
       const input = itineraryInput(body);
-      return await withAiReservation(actorUserId, "itinerary", async () => {
+      const credential = await aiCredentialRepo.resolveAiCredential(actorUserId);
+      if (!credential) return aiKeyRequired();
+      const userManagedKey = credential.source === "user";
+      return await withAiReservation(actorUserId, "itinerary", userManagedKey, async () => {
         const searched = await transportOptionsForCities(input.cities || [], input.people).catch((error) => {
           console.warn("[transport] search for itinerary failed", error);
           return [];
@@ -679,7 +735,7 @@ export async function route(method: string, path: string, body: Body, actorUserI
         return generateItinerary(actorUserId, {
           ...input,
           transportOptions: [...(input.transportOptions || []), ...searched],
-        });
+        }, credential.apiKey, userManagedKey);
       });
     } catch (error) {
       return aiFailure(error);
@@ -693,7 +749,10 @@ export async function route(method: string, path: string, body: Body, actorUserI
       // 正式な owner / editor メンバーだけに限定する。
       const access = await accessRepo.getPlanAccess(input.plan_id, actorUserId);
       if (!access.canEditWorkspace) return forbidden();
-      return await withAiReservation(actorUserId, "itinerary", async () => {
+      const credential = await aiCredentialRepo.resolveAiCredential(actorUserId);
+      if (!credential) return aiKeyRequired();
+      const userManagedKey = credential.source === "user";
+      return await withAiReservation(actorUserId, "itinerary", userManagedKey, async () => {
         const searched = await transportOptionsForCities(input.cities || []).catch((error) => {
           console.warn("[transport] search for refine failed", error);
           return [];
@@ -701,7 +760,7 @@ export async function route(method: string, path: string, body: Body, actorUserI
         return refineItinerary(actorUserId, {
           ...input,
           transport_options: [...(input.transport_options || []), ...searched],
-        });
+        }, credential.apiKey, userManagedKey);
       });
     } catch (error) {
       return aiFailure(error);

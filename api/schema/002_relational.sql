@@ -92,6 +92,22 @@ CREATE TABLE ai_usage_daily (
   CONSTRAINT fk_ai_usage_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
+-- 利用者自身のOpenAI APIキー。生キーや復号可能な値をbootstrapへは返さない。
+-- 暗号文はユーザーIDをAADにしたAES-256-GCMで保護し、画面には末尾4文字だけを返す。
+CREATE TABLE user_ai_credentials (
+  user_id        VARCHAR(32)  NOT NULL,
+  encrypted_key  VARBINARY(1024) NOT NULL,
+  encryption_iv  VARBINARY(12) NOT NULL,
+  auth_tag        VARBINARY(16) NOT NULL,
+  key_version     SMALLINT UNSIGNED NOT NULL DEFAULT 1,
+  key_last4       VARCHAR(4) NOT NULL,
+  verified_at     TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  created_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (user_id),
+  CONSTRAINT fk_user_ai_credentials_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
 -- 送金の受取先。旧 payment-links は「名前」がキーだったので改名で壊れていた。
 CREATE TABLE user_payment_links (
   user_id     VARCHAR(32) NOT NULL,

@@ -40,6 +40,13 @@ export interface CandidateVoteRow { candidate_id: string; user_id: string }
 export interface ViewRow { plan_id: string; view_count: number }
 export interface PaymentLinkRow { user_id: string; provider: string; handle: string }
 export interface UserSettingRow { user_id: string; history_public: 0 | 1 }
+export interface AiCredentialStatus {
+  configured: boolean;
+  last_four: string;
+  verified_at: string | null;
+  updated_at: string | null;
+  service_available: boolean;
+}
 export interface PendingInviteRow {
   id: string; plan_id: string; plan_slug: string; plan_title: string;
   role: "editor" | "viewer"; invited_name: string | null;
@@ -347,7 +354,8 @@ export type ApiRecoveryAction =
   | "restart_consultation"
   | "reload"
   | "contact_support"
-  | "sign_in";
+  | "sign_in"
+  | "update_api_key";
 
 export class ApiRequestError extends Error {
   constructor(
@@ -446,7 +454,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
       retryAfter = Math.max(0, Number(parsed.retry_after) || 0);
       retryable = parsed.retryable === true;
       const parsedAction = typeof parsed.action === "string" ? parsed.action : "";
-      if (["retry", "retry_later", "use_external_ai", "revise_input", "restart_consultation", "reload", "contact_support", "sign_in"].includes(parsedAction)) {
+      if (["retry", "retry_later", "use_external_ai", "revise_input", "restart_consultation", "reload", "contact_support", "sign_in", "update_api_key"].includes(parsedAction)) {
         action = parsedAction as ApiRecoveryAction;
       }
       if (typeof parsed.request_id === "string") requestId = parsed.request_id.slice(0, 128);
@@ -492,6 +500,19 @@ export async function authLogIn(input: {
 
 export async function authLogOut(): Promise<void> {
   await request("POST", "/api/auth/logout", {});
+}
+
+/** 自分のOpenAI APIキーは値を返さず、設定状態と末尾4文字だけ取得する。 */
+export async function getAiCredentialStatus(): Promise<AiCredentialStatus> {
+  return request<AiCredentialStatus>("GET", "/api/account/ai-credential");
+}
+
+export async function saveAiCredential(apiKey: string): Promise<AiCredentialStatus> {
+  return request<AiCredentialStatus>("PUT", "/api/account/ai-credential", { api_key: apiKey });
+}
+
+export async function deleteAiCredential(): Promise<AiCredentialStatus> {
+  return request<AiCredentialStatus>("DELETE", "/api/account/ai-credential");
 }
 
 /** パスワードを変える。成功すると他の端末のセッションは切れる。 */
