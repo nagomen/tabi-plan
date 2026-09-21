@@ -25,9 +25,20 @@ Required repository settings:
 | `PRODUCTION_SSH_FINGERPRINT` | Secret | Pinned host-key SHA256 fingerprint |
 | `OPENAI_KEY` | Secret | Optional service-funded OpenAI API key |
 | `AI_CREDENTIAL_ENCRYPTION_KEY` | Secret | Encryption master key for user-provided OpenAI API keys |
+| `AI_CREDENTIAL_ENCRYPTION_KEY_PREVIOUS` | Secret | Optional former master key, set only while rotating |
 | `PRODUCTION_APP_DIR` | Variable | API source directory on the VPS |
 | `PRODUCTION_API_DOMAIN` | Variable | Public API hostname |
 | `PRODUCTION_API_ENV_FILE` | Variable | Server-only environment file |
+
+## Rotating the AI credential encryption key
+
+User-provided OpenAI API keys survive a rotation of `AI_CREDENTIAL_ENCRYPTION_KEY`; the API decrypts with the current key first and falls back to the previous one.
+
+1. Set `AI_CREDENTIAL_ENCRYPTION_KEY_PREVIOUS` to the current value and `AI_CREDENTIAL_ENCRYPTION_KEY` to the new one, then run `Deploy API`.
+2. On the VPS, run `npm run reencrypt-ai-credentials -w api` with the API environment file loaded. Confirm the summary reports no undecryptable rows.
+3. Delete the `AI_CREDENTIAL_ENCRYPTION_KEY_PREVIOUS` secret and run `Deploy API` again; the deployment removes the line from the environment file.
+
+Skipping step 2 leaves rows that no key can open, and those users have to register their API key again.
 
 ## Database backups
 

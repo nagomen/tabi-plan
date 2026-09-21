@@ -52,6 +52,13 @@ test("AI route distinguishes an expired login session from missing plan permissi
   assert.match(routes, /skipDailyLimit: userManagedKey/);
   assert.match(source("ai-credential-repo.ts"), /decryptAiCredential\(userId/);
   assert.match(source("ai-credential-crypto.ts"), /aes-256-gcm/);
+  // 鍵ローテーション: 旧鍵で開いた行は使うたびに現行鍵へ寄せ、保存は常に現行鍵で行う。
+  assert.match(source("ai-credential-repo.ts"), /needsReencrypt[\s\S]*reencryptCredential\(userId/);
+  assert.match(source("ai-credential-crypto.ts"), /function decryptionSecrets[\s\S]*credentialEncryptionKeyPrevious/);
+  assert.match(
+    source("ai-credential-crypto.ts"),
+    /export function encryptAiCredential[\s\S]*?encryptWithSecret\(userId, apiKey, config\.ai\.credentialEncryptionKey\)/,
+  );
   assert.doesNotMatch(source("bootstrap-repo.ts"), /encrypted_key|user_ai_credentials/);
 });
 

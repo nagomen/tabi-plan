@@ -46,6 +46,7 @@ jobs:
           ENV_FILE: ${{ vars.PRODUCTION_API_ENV_FILE || '~/secure_env/travel-api.env' }}
           OPENAI_KEY: ${{ secrets.OPENAI_KEY }}
           AI_CREDENTIAL_ENCRYPTION_KEY: ${{ secrets.AI_CREDENTIAL_ENCRYPTION_KEY }}
+          AI_CREDENTIAL_ENCRYPTION_KEY_PREVIOUS: ${{ secrets.AI_CREDENTIAL_ENCRYPTION_KEY_PREVIOUS }}
           OPENAI_MODEL: ${{ vars.PRODUCTION_OPENAI_MODEL }}
         with:
           host: ${{ secrets.PRODUCTION_SSH_HOST }}
@@ -53,10 +54,11 @@ jobs:
           key: ${{ secrets.PRODUCTION_SSH_KEY }}
           port: ${{ secrets.PRODUCTION_SSH_PORT || 22 }}
           fingerprint: ${{ secrets.PRODUCTION_SSH_FINGERPRINT }}
-          envs: ENV_FILE,OPENAI_KEY,AI_CREDENTIAL_ENCRYPTION_KEY,OPENAI_MODEL
+          envs: ENV_FILE,OPENAI_KEY,AI_CREDENTIAL_ENCRYPTION_KEY,AI_CREDENTIAL_ENCRYPTION_KEY_PREVIOUS,OPENAI_MODEL
           script_stop: true
           script: |
-            if [ -z "$OPENAI_KEY" ] && [ -z "$AI_CREDENTIAL_ENCRYPTION_KEY" ]; then
+            if [ -z "$OPENAI_KEY" ] && [ -z "$AI_CREDENTIAL_ENCRYPTION_KEY" ] &&
+               [ -z "$AI_CREDENTIAL_ENCRYPTION_KEY_PREVIOUS" ]; then
               echo "AI用シークレットが未設定なので何もしません。"
               exit 0
             fi
@@ -75,6 +77,11 @@ jobs:
             if [ -n "$AI_CREDENTIAL_ENCRYPTION_KEY" ]; then
               sed -i '/^AI_CREDENTIAL_ENCRYPTION_KEY=/d' "$tmp"
               printf 'AI_CREDENTIAL_ENCRYPTION_KEY=%s\n' "$AI_CREDENTIAL_ENCRYPTION_KEY" >> "$tmp"
+            fi
+            # 旧鍵はローテーション中だけの値。Secret を消したらサーバーからも消す。
+            sed -i '/^AI_CREDENTIAL_ENCRYPTION_KEY_PREVIOUS=/d' "$tmp"
+            if [ -n "$AI_CREDENTIAL_ENCRYPTION_KEY_PREVIOUS" ]; then
+              printf 'AI_CREDENTIAL_ENCRYPTION_KEY_PREVIOUS=%s\n' "$AI_CREDENTIAL_ENCRYPTION_KEY_PREVIOUS" >> "$tmp"
             fi
             if [ -n "$OPENAI_MODEL" ]; then
               sed -i '/^OPENAI_MODEL=/d' "$tmp"

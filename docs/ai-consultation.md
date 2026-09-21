@@ -14,7 +14,7 @@ OpenAI の `max_output_tokens` で途中終了した場合は、利用者へす�
 
 - サービス提供枠の OpenAI API キーは API サーバーの `OPENAI_KEY` へ設定します。フロントの `trip-config.js` には入れません。
 - ログインユーザーはマイページで自分の OpenAI API キーを登録できます。保存前に OpenAI へ接続して認証を確認し、API サーバーで AES-256-GCM 暗号化した値だけを `user_ai_credentials` に保存します。ブラウザ、bootstrap、ログには生キーを残しません。
-- 暗号化には `AI_CREDENTIAL_ENCRYPTION_KEY` を使います。未設定時は既存環境との互換のため `SESSION_SECRET` を使いますが、本番では独立したランダム値を設定してください。この値を失うか変更すると、登録済みキーは再入力が必要です。
+- 暗号化には `AI_CREDENTIAL_ENCRYPTION_KEY` を使います。未設定時は既存環境との互換のため `SESSION_SECRET` を使いますが、本番では独立したランダム値を設定してください。
 - AI 実行時は操作した本人の登録キーを優先します。共同旅行でも、旅行所有者や他の参加者のキーは使いません。本人キーの利用料金はそのキーが所属する OpenAI プロジェクトへ計上されます。
 - AI 機能はログインユーザーだけが利用できます。未ログインユーザーには OpenAI API を使わせません。
 - サービス提供枠を使う場合は、全 AI リクエスト合計で 1 日 3 回までに制限します。本人キーを使う場合はこの費用上限を適用しませんが、障害時や誤操作の連打を防ぐクールダウンは維持します。
@@ -22,6 +22,18 @@ OpenAI の `max_output_tokens` で途中終了した場合は、利用者へす�
 - 主な運用設定は `.env.sample` の `OPENAI_*` と `AI_*` です。サービス提供枠の `AI_DAILY_REQUESTS_PER_USER` は設定できますが、アプリ側で 3 回にハードキャップします。
 - 利用回数とトークン数は `ai_usage_daily` へ記録されます。既存 DB では `npm run migrate -w api` を適用してください。
 - Web 検索を利用できないモデル・環境では `OPENAI_WEB_SEARCH_ENABLED=false` にできますが、候補や移動情報の根拠が弱くなるため本番では有効を推奨します。
+
+## 暗号化キーのローテーション
+
+`AI_CREDENTIAL_ENCRYPTION_KEY` は、登録済み API キーを再入力してもらうことなく差し替えられます。
+復号は現行鍵 → 旧鍵の順で試し、旧鍵で開いた行は保存し直すときに現行鍵へ寄せます。暗号化は常に現行鍵だけを使います。
+
+1. `AI_CREDENTIAL_ENCRYPTION_KEY_PREVIOUS` に今の値を、`AI_CREDENTIAL_ENCRYPTION_KEY` に新しい値（32 文字以上）を設定して API を再起動します。この時点で利用者は今までどおり AI を使えます。
+2. `npm run reencrypt-ai-credentials -w api` を実行します。API を使った利用者の行は自動で移りますが、しばらく使っていない行はこのコマンドで移します。出力の「復号できず」が 0 件であることを確認します。
+3. `AI_CREDENTIAL_ENCRYPTION_KEY_PREVIOUS` を空に戻して API を再起動します。
+
+手順 2 を飛ばして旧鍵を外すと、その時点で未移行だった行は開けなくなり、該当利用者はキーの再登録が必要になります。
+本番では両方の値を GitHub Secrets（`AI_CREDENTIAL_ENCRYPTION_KEY` / `AI_CREDENTIAL_ENCRYPTION_KEY_PREVIOUS`）に置き、Deploy API がサーバーの環境ファイルへ同期します。
 
 ## 外部 AI への導線
 

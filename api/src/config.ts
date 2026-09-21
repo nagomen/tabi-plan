@@ -44,6 +44,11 @@ const aiCredentialEncryptionKey = optional("AI_CREDENTIAL_ENCRYPTION_KEY", sessi
 if (aiCredentialEncryptionKey.length < 32) {
   throw new Error("AI_CREDENTIAL_ENCRYPTION_KEY は32文字以上のランダム値にしてください");
 }
+// ローテーション中だけ設定する旧鍵。復号にだけ使い、保存は常に現行鍵で行う。
+const aiCredentialEncryptionKeyPrevious = optional("AI_CREDENTIAL_ENCRYPTION_KEY_PREVIOUS", "");
+if (aiCredentialEncryptionKeyPrevious && aiCredentialEncryptionKeyPrevious.length < 32) {
+  throw new Error("AI_CREDENTIAL_ENCRYPTION_KEY_PREVIOUS は32文字以上のランダム値にしてください");
+}
 
 export const config = {
   port: integer("PORT", "8001", 1, 65_535),
@@ -117,6 +122,11 @@ export const config = {
      * セッション失効と独立してローテーションできる専用値を推奨する。
      */
     credentialEncryptionKey: aiCredentialEncryptionKey,
+    /**
+     * ローテーション中の旧マスターキー。現行鍵で復号できなかった行だけこちらを試し、
+     * 成功した行はその場で現行鍵へ再暗号化する。移行が終わったら空に戻す。
+     */
+    credentialEncryptionKeyPrevious: aiCredentialEncryptionKeyPrevious,
     model: optional("OPENAI_MODEL", "gpt-5.4-mini"),
     timeoutMs: integer("OPENAI_TIMEOUT_MS", "80000", 1000, 300_000),
     // 長い行程のJSONへ出力枠を回す。推論量は機械的な構造化タスク向けに抑える。

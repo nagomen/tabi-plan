@@ -60,6 +60,20 @@ export async function deleteCredential(userId: string): Promise<void> {
   await pool.query("DELETE FROM user_ai_credentials WHERE user_id = ?", [userId]);
 }
 
+/**
+ * 暗号文だけを現行マスターキーへ置き換える。
+ * OpenAI側の認証を取り直したわけではないので verified_at は動かさない。
+ */
+async function reencryptCredential(userId: string, apiKey: string): Promise<void> {
+  const encrypted = encryptAiCredential(userId, apiKey);
+  await pool.query(
+    `UPDATE user_ai_credentials
+        SET encrypted_key = ?, encryption_iv = ?, auth_tag = ?, key_version = ?
+      WHERE user_id = ?`,
+    [encrypted.ciphertext, encrypted.iv, encrypted.authTag, encrypted.keyVersion, userId],
+  );
+}
+
 /** 本人キーを優先し、未登録なら従来のサービス共通キーへフォールバックする。 */
 export async function resolveAiCredential(userId: string): Promise<ResolvedAiCredential | null> {
   const rows = await all<AiCredentialRow>(
@@ -69,15 +83,53 @@ export async function resolveAiCredential(userId: string): Promise<ResolvedAiCre
   );
   const row = rows[0];
   if (row) {
-    return {
-      apiKey: decryptAiCredential(userId, {
+    const decrypted = decryptAiCredential(userId, {
+      ciphertext: row.encrypted_key,
+      iv: row.encryption_iv,
+      authTag: row.auth_tag,
+      keyVersion: Number(row.key_version),
+    });
+    // 旧鍵の行は使うたびに現行鍵へ寄せる。書き込みに失敗してもAIの実行は止めない。
+    if (decrypted.needsReencrypt) {
+      await reencryptCredential(userId, decrypted.apiKey)
+        .catch((error) => console.warn("[ai-credential] re-encryption failed", error));
+    }
+    return { apiKey: decrypted.apiKey, source: "user" };
+  }
+  return config.ai.apiKey ? { apiKey: config.ai.apiKey, source: "service" } : null;
+}
+
+export interface ReencryptSummary {
+  total: number;
+  reencrypted: number;
+  failed: number;
+}
+
+/**
+ * 登録済みの全キーを現行マスターキーへ移す。旧鍵を環境から外す前に一度実行する。
+ * 復号できない行は残したまま数えるだけにして、利用者に再登録を案内できるようにする。
+ */
+export async function reencryptStoredCredentials(): Promise<ReencryptSummary> {
+  const rows = await all<AiCredentialRow & { user_id: string }>(
+    `SELECT user_id, encrypted_key, encryption_iv, auth_tag, key_version, key_last4, verified_at, updated_at
+       FROM user_ai_credentials`,
+  );
+  const summary: ReencryptSummary = { total: rows.length, reencrypted: 0, failed: 0 };
+  for (const row of rows) {
+    try {
+      const decrypted = decryptAiCredential(row.user_id, {
         ciphertext: row.encrypted_key,
         iv: row.encryption_iv,
         authTag: row.auth_tag,
         keyVersion: Number(row.key_version),
-      }),
-      source: "user",
-    };
+      });
+      if (!decrypted.needsReencrypt) continue;
+      await reencryptCredential(row.user_id, decrypted.apiKey);
+      summary.reencrypted += 1;
+    } catch {
+      // 失敗の詳細は鍵の手がかりになるため、件数だけを残す。
+      summary.failed += 1;
+    }
   }
-  return config.ai.apiKey ? { apiKey: config.ai.apiKey, source: "service" } : null;
+  return summary;
 }
