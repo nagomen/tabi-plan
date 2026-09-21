@@ -8,7 +8,6 @@ import { activeMemberSet, assertMember, safeUrl } from "./repo-helpers.js";
 // ---- 費用 ---------------------------------------------------------------
 
 export interface ExpenseInput {
-  id?: string;
   paid_on?: string | null;
   payer_user_id: string;
   category?: string;
@@ -96,6 +95,9 @@ export function validateShares(
   const shareTotal = shares.reduce((sum, share) => sum + share.amount_base_minor, 0);
   if (splitMethod === "none") {
     if (shareTotal !== 0) throw new BadRequest("精算不要の費用には負担額を設定できません");
+  } else if (!shares.length) {
+    // 合計不一致より先に出す。0人のときは「金額がずれている」では原因にたどり着けない。
+    throw new BadRequest("負担する人が1人もいません。割り勘の対象を確認してください");
   } else if (shareTotal !== base) {
     throw new BadRequest("負担額の合計が支払額と一致していません");
   }
@@ -104,7 +106,9 @@ export function validateShares(
 
 /** 費用を1件追加する。行の INSERT なので、複数端末の同時追加でも衝突しない。 */
 export async function createExpense(planId: string, input: ExpenseInput, actorUserId: string): Promise<{ id: string }> {
-  const id = input.id && /^[\w-]{1,32}$/.test(input.id) ? input.id : newId("exp");
+  // IDはサーバーで採番する。クライアント指定を通すと、衝突が重複キーの500になり、
+  // 他の計画のIDの存在判定にも使えてしまう。
+  const id = newId("exp");
   const { amount, rate, base } = computeAmounts(input);
   await withTransaction(async (conn) => {
     await assertWorkspaceEditor(conn, planId, actorUserId);
@@ -279,8 +283,9 @@ async function setExpenseDeleted(id: string, actorUserId: string, deleted: boole
 export async function createSettlement(planId: string, input: {
   from_user_id: string; to_user_id: string; amount_base_minor: number; note?: string | null;
 }, actorUserId: string): Promise<{ id: string }> {
+  // 費用と同じ上限で見る。安全整数を超える値はBIGINT列へ届いて500になる。
   const amount = Math.round(Number(input.amount_base_minor) || 0);
-  if (amount <= 0) throw new BadRequest("精算額は1以上にしてください");
+  if (!Number.isSafeInteger(amount) || amount <= 0) throw new BadRequest("精算額は1以上の整数で指定してください");
   if (input.from_user_id === input.to_user_id) throw new BadRequest("送金元と送金先は別の参加者にしてください");
   const id = newId("stl");
   await withTransaction(async (conn) => {

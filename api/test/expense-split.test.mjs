@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
 
 process.env.SESSION_SECRET ||= "test-session-secret-0123456789-abcdef";
 process.env.DB_USER ||= "test";
@@ -62,4 +63,24 @@ test("validateShares requires the payer and every share user to be an active mem
     () => validateShares({ payer_user_id: "u1", shares: [{ user_id: "ghost", amount_base_minor: 1000 }] }, 1000, members),
     /負担者/,
   );
+});
+
+test("validateShares names the real problem when nobody bears the cost", () => {
+  // 0人のときに「合計が一致しない」と言われても、利用者は原因へたどり着けない。
+  assert.throws(
+    () => validateShares({ payer_user_id: "u1", split_method: "equal_all", shares: [] }, 1000, members),
+    /負担する人が1人もいません/,
+  );
+});
+
+test("computeAmounts rejects a converted amount beyond the safe integer range", () => {
+  assert.throws(() => computeAmounts({ amount_minor: Number.MAX_SAFE_INTEGER, fx_rate: 100 }), /扱える範囲/);
+});
+
+test("金額を扱う書き込みはIDをサーバーで採番し、精算額も整数の範囲で受け取る", () => {
+  const repo = fs.readFileSync(new URL("../src/expense-repo.ts", import.meta.url), "utf8");
+  // クライアント指定のIDを通すと、衝突が500になり他計画のIDの存在判定にも使える。
+  assert.doesNotMatch(repo, /input\.id/);
+  assert.match(repo, /const id = newId\("exp"\)/);
+  assert.match(repo, /createSettlement[\s\S]*Number\.isSafeInteger\(amount\)/);
 });
