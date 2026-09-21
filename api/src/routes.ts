@@ -24,6 +24,7 @@
 //   POST   /api/invites/accept               招待リンクを受けて参加する
 //   POST   /api/invites/inspect              ログイン前に招待対象を確認する
 //   POST   /api/plans/<id>/expenses          費用を1件追加（行の INSERT なので衝突しない）
+//   POST   /api/plans/<id>/exchange-rate     支払日別の為替レートを取得・保存
 //   PATCH  /api/expenses/<id>                費用を1件更新
 //   DELETE /api/expenses/<id>                論理削除
 //   POST   /api/expenses/<id>/restore        元に戻す
@@ -44,6 +45,7 @@ import * as bootstrapRepo from "./bootstrap-repo.js";
 import * as inviteRepo from "./plan-invite-repo.js";
 import * as memberRepo from "./plan-member-repo.js";
 import * as expenseRepo from "./expense-repo.js";
+import * as exchangeRateRepo from "./exchange-rate-repo.js";
 import * as userRepo from "./user-repo.js";
 import * as flightNoteRepo from "./flight-note-repo.js";
 import * as candidateVoteRepo from "./candidate-vote-repo.js";
@@ -647,6 +649,15 @@ export async function route(method: string, path: string, body: Body, actorUserI
     const denied = await forbiddenUnless(accessRepo.canEditPlanWorkspace(m[1], actorUserId));
     if (denied) return denied;
     return { status: 200, body: await expenseRepo.createExpense(m[1], body as unknown as expenseRepo.ExpenseInput, actorUserId) };
+  }
+  m = /^\/api\/plans\/([\w-]{1,32})\/exchange-rate$/.exec(path);
+  if (m && method === "POST") {
+    const denied = await forbiddenUnless(accessRepo.canEditPlanWorkspace(m[1], actorUserId));
+    if (denied) return denied;
+    return {
+      status: 200,
+      body: await exchangeRateRepo.resolveExchangeRateForPlan(m[1], body.paid_on, body.currency),
+    };
   }
   m = /^\/api\/plans\/([\w-]{1,32})\/expense-audit$/.exec(path);
   if (m && method === "GET") {

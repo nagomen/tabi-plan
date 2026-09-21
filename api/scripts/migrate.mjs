@@ -545,6 +545,24 @@ async function migrate019() {
   ) ENGINE=InnoDB`);
 }
 
+async function migrate020() {
+  // 支払日・支払通貨・基準通貨の完全一致で再利用する。不変の履歴値として扱うため、
+  // アプリケーションはINSERT IGNOREだけを行い、既存行を更新しない。
+  await conn.query(`CREATE TABLE IF NOT EXISTS exchange_rates (
+    paid_on       DATE           NOT NULL,
+    currency      CHAR(3)        NOT NULL,
+    base_currency CHAR(3)        NOT NULL,
+    unit_rate     DECIMAL(24,12) NOT NULL,
+    fx_rate       DECIMAL(24,12) NOT NULL,
+    source        VARCHAR(32)    NOT NULL,
+    source_date   DATE           NOT NULL,
+    created_at    TIMESTAMP      NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (paid_on, currency, base_currency),
+    CONSTRAINT chk_exchange_rates_unit CHECK (unit_rate > 0),
+    CONSTRAINT chk_exchange_rates_fx CHECK (fx_rate > 0)
+  ) ENGINE=InnoDB`);
+}
+
 async function main() {
   await conn.query(`CREATE TABLE IF NOT EXISTS schema_migrations (
     id VARCHAR(64) NOT NULL PRIMARY KEY,
@@ -568,6 +586,7 @@ async function main() {
   await applyMigration("017_candidate_time_slots", migrate017);
   await applyMigration("018_plan_member_display_names", migrate018);
   await applyMigration("019_trip_mcp_oauth", migrate019);
+  await applyMigration("020_exact_date_exchange_rates", migrate020);
 }
 
 // 同時デプロイが同じDDLを並走させないよう、DB側の advisory lock で直列化する。

@@ -5,7 +5,7 @@ process.env.SESSION_SECRET ||= "test-session-secret-0123456789-abcdef";
 process.env.DB_USER ||= "test";
 process.env.DB_PASSWORD ||= "test";
 
-const { BadRequest, Forbidden, NotFound, VersionConflict, describeError } = await import("../dist/errors.js");
+const { BadRequest, ExchangeRateUnavailable, Forbidden, NotFound, VersionConflict, describeError } = await import("../dist/errors.js");
 const { rateLimitCheck } = await import("../dist/rate-limit.js");
 const { paidOnOrNull, computeAmounts } = await import("../dist/expense-repo.js");
 
@@ -47,6 +47,11 @@ test("DBの一時障害・接続断は再試行可能な503として返す", () 
   const queue = describeError(new Error("Queue limit reached"), "req1");
   assert.equal(queue.status, 503);
   assert.equal(queue.body.error, "db_unavailable");
+
+  const fx = describeError(new ExchangeRateUnavailable("為替レートを取得できませんでした"), "req1");
+  assert.equal(fx.status, 503);
+  assert.equal(fx.body.error, "exchange_rate_unavailable");
+  assert.equal(fx.body.action, "retry_later");
 });
 
 test("不正入力由来のDBエラーは500ではなく400として説明する", () => {

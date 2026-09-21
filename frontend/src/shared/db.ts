@@ -1434,6 +1434,26 @@ export interface ExpenseInput {
   shares: { user_id: string; amount_base_minor: number }[];
 }
 
+export interface ResolvedExchangeRate {
+  paid_on: string;
+  currency: string;
+  base_currency: string;
+  unit_rate: number;
+  fx_rate: number;
+  source: string;
+  source_date: string;
+  cached: boolean;
+}
+
+/** 支払日・通貨が同じ保存済みレートを再利用し、未保存の場合だけAPI側で取得する。 */
+export function resolveExchangeRate(planId: string, paidOn: string, currency: string): Promise<ResolvedExchangeRate> {
+  return request<ResolvedExchangeRate>(
+    "POST",
+    `/api/plans/${encodeURIComponent(planId)}/exchange-rate`,
+    { paid_on: paidOn, currency },
+  );
+}
+
 /** 費用を1件追加する。行の INSERT なので、他端末と同時に追加しても消えない。 */
 export async function addExpense(planId: string, input: ExpenseInput): Promise<ExpenseRow> {
   const res = await request<{ id: string }>("POST", `/api/plans/${encodeURIComponent(planId)}/expenses`, input);
