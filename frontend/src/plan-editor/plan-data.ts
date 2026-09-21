@@ -1,6 +1,6 @@
 import type { LocalPlanData } from "../shared/plans-store";
 import type { ItineraryItem, ItemType } from "../shared/types";
-import { type Item, KINDS, model, num, datesString, stayCovering, cityForDate } from "./editor-state";
+import { type Item, KINDS, model, num, datesString, stayCovering, cityForDate, newItineraryStorageId } from "./editor-state";
 
 export function contentFingerprint(data: LocalPlanData): string {
   return JSON.stringify({
@@ -22,8 +22,10 @@ export function buildData(): LocalPlanData {
     const dayLabel = `Day ${di + 1}`;
     const city = cityForDate(day.date);
     const dayArea = city?.name || day.area || "";
-    const flush = (it: Item): void => {
+    const flush = (it: Item, storageIndex = 0): void => {
+      if (!it.storageIds[storageIndex]) it.storageIds[storageIndex] = newItineraryStorageId();
       const base: ItineraryItem = {
+        itemId: it.storageIds[storageIndex],
         date: day.date, day: dayLabel, area: dayArea || it.place || "",
         time: it.time || "", type: it.kind as ItemType, typeLabel: KINDS[it.kind].label,
         title: it.title || (it.kind === "move" ? `${it.from} → ${it.to}` : ""),
@@ -52,7 +54,7 @@ export function buildData(): LocalPlanData {
     day.items.forEach(flush);
     // 連泊は各夜に1行ずつ出す（ダッシュボードで毎晩の宿が地図に出る）
     const cover = stayCovering(di);
-    if (cover) flush(cover.stay);
+    if (cover) flush(cover.stay, di - cover.startIndex);
   });
   return {
     trip: {

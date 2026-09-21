@@ -4,6 +4,8 @@ export type ItemType = "sight" | "move" | "food" | "stay" | "todo" | "form";
 
 /** 行程表の1行（1予定） */
 export interface ItineraryItem {
+  /** DB上の行程ID。編集画面の差分保存に使い、表示には出さない。 */
+  itemId?: string;
   date: string;
   day: string;
   area?: string;

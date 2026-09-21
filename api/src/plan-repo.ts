@@ -1,7 +1,7 @@
 // 計画メタデータ・本文・閲覧数の永続化。
 //
 // 方針:
-//   - 行程やチェックリストなどエディタが文書ごと保存する種類は一括置換にする。
+//   - 行程は安定IDで差分保存し、その他の本文コレクションは文書ごと置換する。
 //   - bootstrap、認証、認可、招待、メンバー、ユーザー、費用は各専用repositoryへ分離する。
 
 import mysql from "mysql2/promise";
@@ -231,7 +231,7 @@ const ITINERARY_KINDS = new Set(["sight", "move", "food", "stay", "todo", "form"
 const CHECKLIST_STATUSES = new Set(["todo", "doing", "done"]);
 const CONTENT_ITEM_FIELDS = {
   itinerary: new Set([
-    "item_date", "day_index", "kind", "start_time", "title", "place", "area", "note", "map_query",
+    "id", "item_date", "day_index", "kind", "start_time", "title", "place", "area", "note", "map_query",
     "lat", "lng", "from_place", "from_lat", "from_lng", "to_place", "to_lat", "to_lng", "transport",
     "duration_minutes", "member_ids",
   ]),
@@ -282,6 +282,9 @@ export function validatePlanContent(body: Record<string, unknown>): void {
   ((body.itinerary || []) as Record<string, unknown>[]).forEach((item, index) => {
     const row = `行程${index + 1}件目の`;
     assertKnownFields(item, CONTENT_ITEM_FIELDS.itinerary, `行程${index + 1}件目`);
+    if (item.id !== undefined && !/^[\w-]{1,32}$/.test(String(item.id))) {
+      throw new BadRequest(`${row}IDが正しくありません`);
+    }
     const kind = String(item.kind || "sight");
     if (!ITINERARY_KINDS.has(kind)) throw new BadRequest(`${row}種別が正しくありません`);
     assertOptionalDate(item.item_date, `${row}日付`);
@@ -399,7 +402,119 @@ export function validatePlanContent(body: Record<string, unknown>): void {
   });
 }
 
-/** 計画本文（行程・都市・リンク・チェックリスト・候補）を一括置換する。 */
+interface StoredItineraryItem {
+  id: string;
+  item_date: string | null;
+  day_index: number | null;
+  sort_order: number;
+  kind: string;
+  start_time: string | null;
+  title: string;
+  place: string | null;
+  area: string | null;
+  note: string | null;
+  map_query: string | null;
+  lat: number | null;
+  lng: number | null;
+  from_place: string | null;
+  from_lat: number | null;
+  from_lng: number | null;
+  to_place: string | null;
+  to_lat: number | null;
+  to_lng: number | null;
+  transport: string | null;
+  duration_minutes: number | null;
+  member_ids: string[] | null;
+}
+
+const ITINERARY_COLUMNS = `id, item_date, day_index, sort_order, kind, start_time, title, place, area, note,
+  map_query, lat, lng, from_place, from_lat, from_lng, to_place, to_lat, to_lng,
+  transport, duration_minutes, member_ids`;
+
+function parsedMemberIds(value: unknown): string[] | null {
+  if (Array.isArray(value)) return value.filter((id): id is string => typeof id === "string");
+  if (typeof value !== "string" || !value) return null;
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === "string") : null;
+  } catch {
+    return null;
+  }
+}
+
+function normalizeStoredItinerary(row: Omit<StoredItineraryItem, "member_ids"> & { member_ids: unknown }): StoredItineraryItem {
+  const numberOrNull = (value: unknown): number | null => value === null ? null : Number(value);
+  return {
+    ...row,
+    day_index: numberOrNull(row.day_index),
+    sort_order: Number(row.sort_order),
+    lat: numberOrNull(row.lat), lng: numberOrNull(row.lng),
+    from_lat: numberOrNull(row.from_lat), from_lng: numberOrNull(row.from_lng),
+    to_lat: numberOrNull(row.to_lat), to_lng: numberOrNull(row.to_lng),
+    duration_minutes: numberOrNull(row.duration_minutes),
+    member_ids: parsedMemberIds(row.member_ids),
+  };
+}
+
+function normalizeItineraryInput(item: Record<string, unknown>, index: number): StoredItineraryItem {
+  const time = String(item.start_time || "");
+  const memberIds = Array.isArray(item.member_ids)
+    ? [...new Set(item.member_ids.filter((id): id is string => typeof id === "string" && Boolean(id)))].slice(0, 50)
+    : [];
+  return {
+    id: String(item.id || newId("itm")),
+    item_date: safeDate(item.item_date),
+    day_index: boundedNumber(item.day_index, 0, 1000),
+    sort_order: index,
+    kind: String(item.kind || "sight"),
+    start_time: /^(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/.test(time) ? time : null,
+    title: String(item.title || "").slice(0, 200),
+    place: item.place ? String(item.place) : null,
+    area: item.area ? String(item.area) : null,
+    note: item.note ? String(item.note) : null,
+    map_query: item.map_query ? String(item.map_query) : null,
+    lat: boundedNumber(item.lat, -90, 90), lng: boundedNumber(item.lng, -180, 180),
+    from_place: item.from_place ? String(item.from_place) : null,
+    from_lat: boundedNumber(item.from_lat, -90, 90), from_lng: boundedNumber(item.from_lng, -180, 180),
+    to_place: item.to_place ? String(item.to_place) : null,
+    to_lat: boundedNumber(item.to_lat, -90, 90), to_lng: boundedNumber(item.to_lng, -180, 180),
+    transport: item.transport ? String(item.transport) : null,
+    duration_minutes: boundedNumber(item.duration_minutes, 0, 65_535),
+    member_ids: memberIds.length ? memberIds : null,
+  };
+}
+
+const ITINERARY_MUTABLE_FIELDS = [
+  "item_date", "day_index", "sort_order", "kind", "start_time", "title", "place", "area", "note", "map_query",
+  "lat", "lng", "from_place", "from_lat", "from_lng", "to_place", "to_lat", "to_lng", "transport",
+  "duration_minutes", "member_ids",
+] as const;
+
+function changedItineraryFields(before: StoredItineraryItem, after: StoredItineraryItem): string[] {
+  return ITINERARY_MUTABLE_FIELDS.filter((field) =>
+    JSON.stringify(before[field]) !== JSON.stringify(after[field]));
+}
+
+async function auditItineraryChange(
+  conn: mysql.PoolConnection,
+  planId: string,
+  actorUserId: string,
+  action: "create" | "update" | "move" | "delete",
+  before: StoredItineraryItem | null,
+  after: StoredItineraryItem | null,
+): Promise<void> {
+  const itemId = after?.id || before?.id;
+  if (!itemId) return;
+  await conn.query(
+    `INSERT INTO itinerary_audit_logs
+       (id, plan_id, itinerary_item_id, actor_user_id, action, before_json, after_json)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [newId("iau"), planId, itemId, actorUserId || null, action,
+      before ? JSON.stringify(before) : null, after ? JSON.stringify(after) : null],
+  );
+}
+
+/** 計画本文を保存する。行程だけは安定IDを使い、変更された行のみ反映する。 */
 export async function replacePlanContent(planId: string, body: {
   itinerary?: Record<string, unknown>[];
   cities?: { name: string; from_date?: string | null; to_date?: string | null; lat?: number | null; lng?: number | null }[];
@@ -469,32 +584,71 @@ export async function replacePlanContent(planId: string, body: {
     }
 
     if (body.itinerary) {
-      await conn.query("DELETE FROM itinerary_items WHERE plan_id = ?", [planId]);
-      // 日付・時刻・座標・分数は、DBの厳格モードで500になる前に安全な値へ丸める。
-      const timeOrNull = (v: unknown): string | null =>
-        /^(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/.test(String(v || "")) ? String(v) : null;
-      // 対象メンバー。user_id の配列だけ受け付け、それ以外や空は NULL（＝全員）に落とす。
-      const memberIdsOrNull = (v: unknown): string | null => {
-        if (!Array.isArray(v)) return null;
-        const ids = [...new Set(v.filter((x) => typeof x === "string" && x && x.length <= 64))].slice(0, 50);
-        return ids.length ? JSON.stringify(ids) : null;
-      };
-      const rows = body.itinerary.map((it, i) => [
-        newId("itm"), planId, safeDate(it.item_date), boundedNumber(it.day_index, 0, 1000), i,
-        it.kind || "sight", timeOrNull(it.start_time), String(it.title || "").slice(0, 200),
-        it.place || null, it.area || null, it.note || null, it.map_query || null,
-        boundedNumber(it.lat, -90, 90), boundedNumber(it.lng, -180, 180),
-        it.from_place || null, boundedNumber(it.from_lat, -90, 90), boundedNumber(it.from_lng, -180, 180),
-        it.to_place || null, boundedNumber(it.to_lat, -90, 90), boundedNumber(it.to_lng, -180, 180),
-        it.transport || null, boundedNumber(it.duration_minutes, 0, 65_535),
-        memberIdsOrNull(it.member_ids),
-      ]);
-      if (rows.length) {
+      const [storedRows] = await conn.query<mysql.RowDataPacket[]>(
+        `SELECT ${ITINERARY_COLUMNS} FROM itinerary_items WHERE plan_id = ? FOR UPDATE`,
+        [planId],
+      );
+      const current = new Map(
+        (storedRows as unknown as (Omit<StoredItineraryItem, "member_ids"> & { member_ids: unknown })[])
+          .map((row) => normalizeStoredItinerary(row))
+          .map((row) => [row.id, row]),
+      );
+      const desired = body.itinerary.map(normalizeItineraryInput);
+      const desiredIds = new Set<string>();
+      for (const item of desired) {
+        if (desiredIds.has(item.id)) throw new BadRequest("同じ行程IDを複数回指定できません");
+        desiredIds.add(item.id);
+      }
+
+      // 新規IDが別の旅行ですでに使われていれば、主キーエラーではなく入力エラーとして返す。
+      const newIds = desired.filter((item) => !current.has(item.id)).map((item) => item.id);
+      if (newIds.length) {
+        const placeholders = newIds.map(() => "?").join(",");
+        const [collisions] = await conn.query<mysql.RowDataPacket[]>(
+          `SELECT id FROM itinerary_items WHERE id IN (${placeholders}) FOR UPDATE`, newIds,
+        );
+        if (collisions.length) throw new BadRequest("別の行程で使用中の行程IDは指定できません");
+      }
+
+      for (const item of desired) {
+        const before = current.get(item.id);
+        const memberIdsJson = item.member_ids?.length ? JSON.stringify(item.member_ids) : null;
+        if (!before) {
+          await conn.query(
+            `INSERT INTO itinerary_items
+               (id, plan_id, item_date, day_index, sort_order, kind, start_time, title, place, area, note,
+                map_query, lat, lng, from_place, from_lat, from_lng, to_place, to_lat, to_lng,
+                transport, duration_minutes, member_ids)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [item.id, planId, item.item_date, item.day_index, item.sort_order, item.kind, item.start_time,
+              item.title, item.place, item.area, item.note, item.map_query, item.lat, item.lng,
+              item.from_place, item.from_lat, item.from_lng, item.to_place, item.to_lat, item.to_lng,
+              item.transport, item.duration_minutes, memberIdsJson],
+          );
+          await auditItineraryChange(conn, planId, actorUserId, "create", null, item);
+          continue;
+        }
+        const changed = changedItineraryFields(before, item);
+        if (!changed.length) continue;
         await conn.query(
-          `INSERT INTO itinerary_items (id, plan_id, item_date, day_index, sort_order, kind, start_time,
-             title, place, area, note, map_query, lat, lng, from_place, from_lat, from_lng,
-             to_place, to_lat, to_lng, transport, duration_minutes, member_ids)
-           VALUES ?`, [rows]);
+          `UPDATE itinerary_items SET item_date = ?, day_index = ?, sort_order = ?, kind = ?, start_time = ?,
+             title = ?, place = ?, area = ?, note = ?, map_query = ?, lat = ?, lng = ?,
+             from_place = ?, from_lat = ?, from_lng = ?, to_place = ?, to_lat = ?, to_lng = ?,
+             transport = ?, duration_minutes = ?, member_ids = ?
+           WHERE id = ? AND plan_id = ?`,
+          [item.item_date, item.day_index, item.sort_order, item.kind, item.start_time,
+            item.title, item.place, item.area, item.note, item.map_query, item.lat, item.lng,
+            item.from_place, item.from_lat, item.from_lng, item.to_place, item.to_lat, item.to_lng,
+            item.transport, item.duration_minutes, memberIdsJson, item.id, planId],
+        );
+        const onlyMoved = changed.every((field) => ["item_date", "day_index", "sort_order"].includes(field));
+        await auditItineraryChange(conn, planId, actorUserId, onlyMoved ? "move" : "update", before, item);
+      }
+
+      for (const before of current.values()) {
+        if (desiredIds.has(before.id)) continue;
+        await conn.query("DELETE FROM itinerary_items WHERE id = ? AND plan_id = ?", [before.id, planId]);
+        await auditItineraryChange(conn, planId, actorUserId, "delete", before, null);
       }
     }
 

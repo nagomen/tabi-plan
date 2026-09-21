@@ -1243,6 +1243,7 @@ export function createPlanBundleLocal(
   members: { user_id: string; role?: PlanMemberRow["role"]; from_date?: string | null; to_date?: string | null }[],
   content: PlanContent,
 ): PlanRow {
+  const identifiedContent = withItineraryIds(content);
   const row: PlanRow = {
     id: localId("pln"), slug: input.slug, title: input.title || "無題の旅行", note: input.note ?? null,
     start_date: input.start_date ?? null, end_date: input.end_date ?? null, dates_label: input.dates_label ?? null,
@@ -1263,8 +1264,8 @@ export function createPlanBundleLocal(
     from_date: member.from_date ?? null,
     to_date: member.to_date ?? null,
   })));
-  applyPlanContentLocal(row.id, content);
-  send("POST", "/api/plans", { ...row, members, content });
+  applyPlanContentLocal(row.id, identifiedContent);
+  send("POST", "/api/plans", { ...row, members, content: identifiedContent });
   return row;
 }
 
@@ -1308,7 +1309,7 @@ export function replaceMembers(planId: string, list: {
 }
 
 export interface PlanContent {
-  itinerary?: Omit<ItineraryRow, "id" | "plan_id" | "sort_order">[];
+  itinerary?: (Omit<ItineraryRow, "id" | "plan_id" | "sort_order"> & { id?: string })[];
   cities?: { name: string; from_date?: string | null; to_date?: string | null; lat?: number | null; lng?: number | null }[];
   links?: Omit<LinkRow, "id" | "plan_id" | "sort_order">[];
   checklist?: { label: string; status?: ChecklistRow["status"] }[];
@@ -1319,10 +1320,18 @@ export interface PlanContent {
   }[];
 }
 
+function withItineraryIds(content: PlanContent): PlanContent {
+  if (!content.itinerary) return content;
+  return {
+    ...content,
+    itinerary: content.itinerary.map((item) => ({ ...item, id: item.id || localId("itm") })),
+  };
+}
+
 function applyPlanContentLocal(planId: string, content: PlanContent): void {
   if (content.itinerary) {
     snap.itinerary = snap.itinerary.filter((i) => i.plan_id !== planId).concat(
-      content.itinerary.map((it, i) => ({ ...it, id: localId("itm"), plan_id: planId, sort_order: i })),
+      content.itinerary.map((it, i) => ({ ...it, id: it.id || localId("itm"), plan_id: planId, sort_order: i })),
     );
   }
   if (content.cities) {
@@ -1370,9 +1379,10 @@ export function replacePlanContent(planId: string, content: PlanContent): void {
   const plan = planById(planId);
   if (!plan) return;
   const expectedVersion = plan.version;
-  applyPlanContentLocal(planId, content);
+  const identifiedContent = withItineraryIds(content);
+  applyPlanContentLocal(planId, identifiedContent);
   plan.version = expectedVersion + 1;
-  send("PUT", `/api/plans/${encodeURIComponent(planId)}/content`, { ...content, expected_version: expectedVersion });
+  send("PUT", `/api/plans/${encodeURIComponent(planId)}/content`, { ...identifiedContent, expected_version: expectedVersion });
 }
 
 export interface CandidateVoteResult {
