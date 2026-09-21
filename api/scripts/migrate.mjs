@@ -563,6 +563,39 @@ async function migrate020() {
   ) ENGINE=InnoDB`);
 }
 
+async function migrate021() {
+  // ChatGPT MCPからの行程変更履歴。行程本体を削除しても復元できるよう、項目へのFKは張らない。
+  await conn.query(`CREATE TABLE IF NOT EXISTS itinerary_audit_logs (
+    id                VARCHAR(32) NOT NULL,
+    plan_id           VARCHAR(32) NOT NULL,
+    itinerary_item_id VARCHAR(32) NOT NULL,
+    actor_user_id     VARCHAR(32) NULL,
+    action            ENUM('create','update','move','delete','restore') NOT NULL,
+    before_json       JSON NULL,
+    after_json        JSON NULL,
+    created_at        DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    PRIMARY KEY (id),
+    KEY idx_itinerary_audit_plan (plan_id, created_at),
+    KEY idx_itinerary_audit_item (itinerary_item_id, created_at),
+    CONSTRAINT fk_itinerary_audit_plan FOREIGN KEY (plan_id) REFERENCES plans (id) ON DELETE CASCADE,
+    CONSTRAINT fk_itinerary_audit_actor FOREIGN KEY (actor_user_id) REFERENCES users (id) ON DELETE SET NULL
+  ) ENGINE=InnoDB`);
+
+  // createの通信再試行で同じ予定が二重登録されないよう、利用者ごとの要求IDを記録する。
+  await conn.query(`CREATE TABLE IF NOT EXISTS mcp_itinerary_requests (
+    user_id           VARCHAR(32) NOT NULL,
+    request_id        VARCHAR(64) NOT NULL,
+    plan_id           VARCHAR(32) NOT NULL,
+    payload_hash      VARBINARY(32) NOT NULL,
+    itinerary_item_id VARCHAR(32) NOT NULL,
+    created_at        TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (user_id, request_id),
+    KEY idx_mcp_itinerary_request_item (itinerary_item_id),
+    CONSTRAINT fk_mcp_itinerary_request_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+    CONSTRAINT fk_mcp_itinerary_request_plan FOREIGN KEY (plan_id) REFERENCES plans (id) ON DELETE CASCADE
+  ) ENGINE=InnoDB`);
+}
+
 async function main() {
   await conn.query(`CREATE TABLE IF NOT EXISTS schema_migrations (
     id VARCHAR(64) NOT NULL PRIMARY KEY,
@@ -587,6 +620,7 @@ async function main() {
   await applyMigration("018_plan_member_display_names", migrate018);
   await applyMigration("019_trip_mcp_oauth", migrate019);
   await applyMigration("020_exact_date_exchange_rates", migrate020);
+  await applyMigration("021_mcp_itinerary_editing", migrate021);
 }
 
 // 同時デプロイが同じDDLを並走させないよう、DB側の advisory lock で直列化する。

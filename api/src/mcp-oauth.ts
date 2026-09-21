@@ -24,7 +24,8 @@ import { BadRequest, Forbidden } from "./errors.js";
 
 export const MCP_READ_SCOPE = "trip:expenses:read";
 export const MCP_WRITE_SCOPE = "trip:expenses:write";
-export const MCP_SCOPES = [MCP_READ_SCOPE, MCP_WRITE_SCOPE] as const;
+export const MCP_ITINERARY_WRITE_SCOPE = "trip:itinerary:write";
+export const MCP_SCOPES = [MCP_READ_SCOPE, MCP_WRITE_SCOPE, MCP_ITINERARY_WRITE_SCOPE] as const;
 
 type DbClientRow = { metadata_json: string | Record<string, unknown> };
 type GrantRow = {
@@ -287,7 +288,7 @@ oauthApp.get("/.well-known/oauth-protected-resource", (_req, res) => {
     resource: config.mcp.resourceUrl,
     authorization_servers: [config.mcp.issuerUrl + "/"],
     scopes_supported: [...MCP_SCOPES],
-    resource_name: "香港・マカオ・金門旅行の費用",
+    resource_name: "香港・マカオ・金門旅行の旅程・費用",
     resource_documentation: "https://nagomen.github.io/tabi-plan/",
   });
 });
@@ -296,7 +297,7 @@ oauthApp.use(mcpAuthRouter({
   issuerUrl: new URL(config.mcp.issuerUrl),
   resourceServerUrl: new URL(config.mcp.resourceUrl),
   scopesSupported: [...MCP_SCOPES],
-  resourceName: "香港・マカオ・金門旅行の費用",
+  resourceName: "香港・マカオ・金門旅行の旅程・費用",
   serviceDocumentationUrl: new URL("https://nagomen.github.io/tabi-plan/"),
 }));
 
@@ -332,7 +333,7 @@ async function authorizedTripUser(userId: string): Promise<boolean> {
 }
 
 export async function inspectMcpApproval(request: string, userId: string): Promise<Record<string, unknown>> {
-  if (!userId || !(await authorizedTripUser(userId))) throw new Forbidden("この旅行の費用を編集する権限がありません");
+  if (!userId || !(await authorizedTripUser(userId))) throw new Forbidden("この旅行を編集する権限がありません");
   const row = await firstRow<GrantRow & { client_name: string | null }>(pool,
     `SELECT g.id, g.client_id, g.redirect_uri, g.state_value, g.scopes_value,
             g.code_challenge, g.resource_value, g.user_id,
@@ -355,7 +356,7 @@ export async function decideMcpApproval(
   userId: string,
   approved: boolean,
 ): Promise<{ redirect: string }> {
-  if (!userId || !(await authorizedTripUser(userId))) throw new Forbidden("この旅行の費用を編集する権限がありません");
+  if (!userId || !(await authorizedTripUser(userId))) throw new Forbidden("この旅行を編集する権限がありません");
   return withTransaction(async (conn) => {
     const row = await firstRow<GrantRow>(conn,
       `SELECT id, client_id, redirect_uri, state_value, scopes_value, code_challenge,

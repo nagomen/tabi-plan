@@ -6,7 +6,9 @@ process.env.SESSION_SECRET ||= "test-session-secret-0123456789-abcdef";
 process.env.DB_USER ||= "test";
 process.env.DB_PASSWORD ||= "test";
 
-const { isAllowedMcpRedirectUri, MCP_READ_SCOPE, MCP_WRITE_SCOPE } = await import("../dist/mcp-oauth.js");
+const {
+  isAllowedMcpRedirectUri, MCP_READ_SCOPE, MCP_WRITE_SCOPE, MCP_ITINERARY_WRITE_SCOPE,
+} = await import("../dist/mcp-oauth.js");
 
 test("MCP OAuth accepts ChatGPT HTTPS and local development callbacks only", () => {
   assert.equal(isAllowedMcpRedirectUri("https://chatgpt.com/connector_platform_oauth_redirect"), true);
@@ -16,9 +18,10 @@ test("MCP OAuth accepts ChatGPT HTTPS and local development callbacks only", () 
   assert.equal(isAllowedMcpRedirectUri("javascript:alert(1)"), false);
 });
 
-test("MCP exposes separate read and write scopes", () => {
+test("MCP exposes separate read, expense-write, and itinerary-write scopes", () => {
   assert.equal(MCP_READ_SCOPE, "trip:expenses:read");
   assert.equal(MCP_WRITE_SCOPE, "trip:expenses:write");
+  assert.equal(MCP_ITINERARY_WRITE_SCOPE, "trip:itinerary:write");
 });
 
 test("OAuth migration hashes authorization secrets instead of storing plaintext", () => {
@@ -28,4 +31,3 @@ test("OAuth migration hashes authorization secrets instead of storing plaintext"
   assert.match(migration, /token_hash\s+VARBINARY\(32\)/);
   assert.doesNotMatch(migration, /access_token\s+VARCHAR|refresh_token\s+VARCHAR/);
 });
-

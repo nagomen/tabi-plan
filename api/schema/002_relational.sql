@@ -321,6 +321,38 @@ CREATE TABLE itinerary_items (
   CONSTRAINT fk_itinerary_plan FOREIGN KEY (plan_id) REFERENCES plans (id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
+-- ChatGPT MCPから行った行程変更の監査履歴。
+-- 削除した項目も復元できるよう itinerary_item_id には外部キーを張らない。
+CREATE TABLE itinerary_audit_logs (
+  id                VARCHAR(32) NOT NULL,
+  plan_id           VARCHAR(32) NOT NULL,
+  itinerary_item_id VARCHAR(32) NOT NULL,
+  actor_user_id     VARCHAR(32) NULL,
+  action            ENUM('create','update','move','delete','restore') NOT NULL,
+  before_json       JSON NULL,
+  after_json        JSON NULL,
+  created_at        DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  KEY idx_itinerary_audit_plan (plan_id, created_at),
+  KEY idx_itinerary_audit_item (itinerary_item_id, created_at),
+  CONSTRAINT fk_itinerary_audit_plan FOREIGN KEY (plan_id) REFERENCES plans (id) ON DELETE CASCADE,
+  CONSTRAINT fk_itinerary_audit_actor FOREIGN KEY (actor_user_id) REFERENCES users (id) ON DELETE SET NULL
+) ENGINE=InnoDB;
+
+-- MCPの再試行による行程の二重登録を防ぐ。
+CREATE TABLE mcp_itinerary_requests (
+  user_id           VARCHAR(32) NOT NULL,
+  request_id        VARCHAR(64) NOT NULL,
+  plan_id           VARCHAR(32) NOT NULL,
+  payload_hash      VARBINARY(32) NOT NULL,
+  itinerary_item_id VARCHAR(32) NOT NULL,
+  created_at        TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (user_id, request_id),
+  KEY idx_mcp_itinerary_request_item (itinerary_item_id),
+  CONSTRAINT fk_mcp_itinerary_request_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+  CONSTRAINT fk_mcp_itinerary_request_plan FOREIGN KEY (plan_id) REFERENCES plans (id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
 CREATE TABLE plan_cities (
   id          VARCHAR(32) NOT NULL,
   plan_id     VARCHAR(32) NOT NULL,

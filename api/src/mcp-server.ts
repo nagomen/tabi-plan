@@ -14,8 +14,19 @@ import {
   restoreTargetExpense,
   updateTargetExpense,
 } from "./mcp-expense-repo.js";
+import {
+  createTargetItineraryItem,
+  deleteTargetItineraryItem,
+  listDeletedTargetItinerary,
+  moveTargetItineraryItem,
+  restoreTargetItineraryItem,
+  updateTargetItineraryItem,
+  type ItineraryCreateInput,
+  type ItineraryPatch,
+  type McpItineraryItem,
+} from "./mcp-itinerary-repo.js";
 import { TARGET_TRIP_SLUG, TARGET_TRIP_URL } from "./mcp-constants.js";
-import { MCP_WRITE_SCOPE } from "./mcp-oauth.js";
+import { MCP_ITINERARY_WRITE_SCOPE, MCP_WRITE_SCOPE } from "./mcp-oauth.js";
 
 export { MCP_PATH, TARGET_TRIP_SLUG, TARGET_TRIP_URL } from "./mcp-constants.js";
 
@@ -42,8 +53,13 @@ const expenseSharesSchema = z.array(z.object({
   amountBaseMinor: z.number().int().positive().describe("基準通貨での負担額（最小通貨単位）"),
 })).max(30);
 
+const localDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+const localTimeSchema = z.string().regex(/^(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/);
+const memberIdsSchema = z.array(z.string().min(1).max(32)).max(50);
+
 function publicItem(item: PublicTripItineraryItem): Record<string, unknown> {
   return {
+    itemId: item.id,
     date: item.item_date,
     dayIndex: item.day_index,
     order: item.sort_order,
@@ -60,6 +76,33 @@ function publicItem(item: PublicTripItineraryItem): Record<string, unknown> {
     to: item.to_place,
     transport: item.transport,
     durationMinutes: item.duration_minutes,
+  };
+}
+
+function editableItem(item: McpItineraryItem): Record<string, unknown> {
+  return {
+    itemId: item.id,
+    date: item.item_date,
+    dayIndex: item.day_index,
+    position: item.sort_order,
+    kind: item.kind,
+    startTime: item.start_time,
+    title: item.title,
+    place: item.place,
+    area: item.area,
+    note: item.note,
+    mapQuery: item.map_query,
+    latitude: item.lat,
+    longitude: item.lng,
+    from: item.from_place,
+    fromLatitude: item.from_lat,
+    fromLongitude: item.from_lng,
+    to: item.to_place,
+    toLatitude: item.to_lat,
+    toLongitude: item.to_lng,
+    transport: item.transport,
+    durationMinutes: item.duration_minutes,
+    memberIds: item.member_ids,
   };
 }
 
@@ -98,6 +141,61 @@ function writeDenied() {
   };
 }
 
+function itineraryWriteDenied() {
+  return {
+    content: [{ type: "text" as const, text: "旅程を変更する権限がありません。ChatGPTとの接続をやり直してください。" }],
+    isError: true,
+  };
+}
+
+function itineraryCreateInput(input: {
+  itemDate: string | null;
+  dayIndex: number | null;
+  position?: number;
+  kind: typeof itineraryKinds[number];
+  startTime: string | null;
+  title: string;
+  place: string | null;
+  area: string | null;
+  note: string | null;
+  mapQuery: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  from: string | null;
+  fromLatitude: number | null;
+  fromLongitude: number | null;
+  to: string | null;
+  toLatitude: number | null;
+  toLongitude: number | null;
+  transport: string | null;
+  durationMinutes: number | null;
+  memberIds: string[] | null;
+}): ItineraryCreateInput {
+  return {
+    item_date: input.itemDate,
+    day_index: input.dayIndex,
+    position: input.position,
+    kind: input.kind,
+    start_time: input.startTime,
+    title: input.title,
+    place: input.place,
+    area: input.area,
+    note: input.note,
+    map_query: input.mapQuery,
+    lat: input.latitude,
+    lng: input.longitude,
+    from_place: input.from,
+    from_lat: input.fromLatitude,
+    from_lng: input.fromLongitude,
+    to_place: input.to,
+    to_lat: input.toLatitude,
+    to_lng: input.toLongitude,
+    transport: input.transport,
+    duration_minutes: input.durationMinutes,
+    member_ids: input.memberIds,
+  };
+}
+
 function expenseInput(input: {
   paidOn: string;
   payerMemberId: string;
@@ -131,16 +229,16 @@ function expenseInput(input: {
   };
 }
 
-/** 認証済み利用者に、この旅行専用の旅程参照・費用編集ツールを公開する。 */
+/** 認証済み利用者に、この旅行専用の旅程・費用編集ツールを公開する。 */
 export function createTravelMcpServer(
   actor: McpActor,
   loadTrip: TripLoader = loadPublishedTrip,
 ): McpServer {
   const server = new McpServer(
-    { name: "tabi-plan-travel", version: "1.0.0" },
+    { name: "tabi-plan-travel", version: "1.1.0" },
     {
       instructions:
-        "香港・マカオ・金門旅行だけを扱う。旅程は公開済みデータを読み、費用は接続した編集メンバーとして読み書きする。費用を書き込む前に、内容・支払日・金額・通貨・支払者・負担者を利用者へ提示して確認する。未登録の情報は推測しない。",
+        "香港・マカオ・金門旅行だけを扱う。旅程と費用は接続した編集メンバーとして読み書きする。書き込む前に変更内容を利用者へ提示して確認し、get_itineraryまたはget_trip_overviewの最新versionをexpectedVersionへ指定する。未登録の情報は推測しない。",
     },
   );
 
@@ -250,6 +348,163 @@ export function createTravelMcpServer(
       dashboardUrl: TARGET_TRIP_URL,
       links: trip.links.map(({ sort_order: _sortOrder, ...link }) => link),
     });
+  });
+
+  server.registerTool("list_deleted_itinerary_items", {
+    title: "削除した中国旅行の行程を一覧する",
+    description: "MCPから削除され、現在は復元可能な行程項目を一覧する。",
+    annotations: toolAnnotations,
+  }, async () => {
+    const data = await listDeletedTargetItinerary(actor.userId);
+    return textResult({
+      title: data.plan.title,
+      version: data.plan.version,
+      count: data.items.length,
+      items: data.items.map(editableItem),
+    });
+  });
+
+  server.registerTool("create_itinerary_item", {
+    title: "中国旅行の行程を追加する",
+    description:
+      "確認済みの予定を香港・マカオ・金門旅行へ1件追加する。実行前に追加内容を利用者へ示す。requestIdは同じ予定の再試行で同じUUIDを使う。",
+    inputSchema: {
+      expectedVersion: z.number().int().positive().describe("直前に取得した旅行のversion"),
+      requestId: z.string().uuid().max(64).describe("二重登録を防ぐ、この追加要求固有のUUID"),
+      itemDate: localDateSchema.nullable().describe("現地日付。未定ならnull"),
+      dayIndex: z.number().int().min(0).max(1000).nullable().default(null),
+      position: z.number().int().min(0).optional().describe("同じ日付内の0始まりの挿入位置。省略時は末尾"),
+      kind: z.enum(itineraryKinds),
+      startTime: localTimeSchema.nullable().default(null),
+      title: z.string().trim().min(1).max(200),
+      place: z.string().trim().max(200).nullable().default(null),
+      area: z.string().trim().max(100).nullable().default(null),
+      note: z.string().max(5000).nullable().default(null),
+      mapQuery: z.string().trim().max(200).nullable().default(null),
+      latitude: z.number().min(-90).max(90).nullable().default(null),
+      longitude: z.number().min(-180).max(180).nullable().default(null),
+      from: z.string().trim().max(200).nullable().default(null),
+      fromLatitude: z.number().min(-90).max(90).nullable().default(null),
+      fromLongitude: z.number().min(-180).max(180).nullable().default(null),
+      to: z.string().trim().max(200).nullable().default(null),
+      toLatitude: z.number().min(-90).max(90).nullable().default(null),
+      toLongitude: z.number().min(-180).max(180).nullable().default(null),
+      transport: z.string().trim().max(60).nullable().default(null),
+      durationMinutes: z.number().int().min(0).max(65_535).nullable().default(null),
+      memberIds: memberIdsSchema.nullable().default(null),
+    },
+    annotations: {
+      readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false,
+    },
+  }, async ({ expectedVersion, requestId, ...input }) => {
+    if (!actor.scopes.includes(MCP_ITINERARY_WRITE_SCOPE)) return itineraryWriteDenied();
+    const result = await createTargetItineraryItem(
+      actor.userId, itineraryCreateInput(input), expectedVersion, requestId,
+    );
+    return textResult({
+      ok: true,
+      itemId: result.itemId,
+      version: result.version,
+      message: result.replayed ? "同じ追加要求は既に保存済みです。" : "行程を追加しました。",
+      trip: TARGET_TRIP_SLUG,
+    });
+  });
+
+  server.registerTool("update_itinerary_item", {
+    title: "中国旅行の行程を訂正する",
+    description:
+      "itemIdで指定した行程を部分更新する。日付と並び順の変更にはmove_itinerary_itemを使う。実行前に変更前後を利用者へ示して確認する。",
+    inputSchema: {
+      itemId: z.string().min(1).max(32),
+      expectedVersion: z.number().int().positive().describe("直前に取得した旅行のversion"),
+      dayIndex: z.number().int().min(0).max(1000).nullable().optional(),
+      kind: z.enum(itineraryKinds).optional(),
+      startTime: localTimeSchema.nullable().optional(),
+      title: z.string().trim().min(1).max(200).optional(),
+      place: z.string().trim().max(200).nullable().optional(),
+      area: z.string().trim().max(100).nullable().optional(),
+      note: z.string().max(5000).nullable().optional(),
+      mapQuery: z.string().trim().max(200).nullable().optional(),
+      latitude: z.number().min(-90).max(90).nullable().optional(),
+      longitude: z.number().min(-180).max(180).nullable().optional(),
+      from: z.string().trim().max(200).nullable().optional(),
+      fromLatitude: z.number().min(-90).max(90).nullable().optional(),
+      fromLongitude: z.number().min(-180).max(180).nullable().optional(),
+      to: z.string().trim().max(200).nullable().optional(),
+      toLatitude: z.number().min(-90).max(90).nullable().optional(),
+      toLongitude: z.number().min(-180).max(180).nullable().optional(),
+      transport: z.string().trim().max(60).nullable().optional(),
+      durationMinutes: z.number().int().min(0).max(65_535).nullable().optional(),
+      memberIds: memberIdsSchema.nullable().optional(),
+    },
+    annotations: {
+      readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false,
+    },
+  }, async ({ itemId, expectedVersion, ...input }) => {
+    if (!actor.scopes.includes(MCP_ITINERARY_WRITE_SCOPE)) return itineraryWriteDenied();
+    const fieldMap: Record<string, keyof ItineraryPatch> = {
+      dayIndex: "day_index", kind: "kind", startTime: "start_time", title: "title", place: "place",
+      area: "area", note: "note", mapQuery: "map_query", latitude: "lat", longitude: "lng",
+      from: "from_place", fromLatitude: "from_lat", fromLongitude: "from_lng", to: "to_place",
+      toLatitude: "to_lat", toLongitude: "to_lng", transport: "transport",
+      durationMinutes: "duration_minutes", memberIds: "member_ids",
+    };
+    const patch: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(input)) {
+      if (value !== undefined) patch[fieldMap[key]] = value;
+    }
+    const result = await updateTargetItineraryItem(actor.userId, itemId, patch as ItineraryPatch, expectedVersion);
+    return textResult({ ok: true, itemId, version: result.version, message: "行程を更新しました。", trip: TARGET_TRIP_SLUG });
+  });
+
+  server.registerTool("move_itinerary_item", {
+    title: "中国旅行の行程を移動・並び替えする",
+    description: "itemIdで指定した行程の日付と、同じ日付内での位置を変更する。実行前に移動内容を利用者へ示す。",
+    inputSchema: {
+      itemId: z.string().min(1).max(32),
+      expectedVersion: z.number().int().positive().describe("直前に取得した旅行のversion"),
+      itemDate: localDateSchema.nullable().describe("移動先の現地日付。未定欄へ移す場合はnull"),
+      position: z.number().int().min(0).describe("移動先の日付内での0始まりの位置"),
+    },
+    annotations: {
+      readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false,
+    },
+  }, async ({ itemId, expectedVersion, itemDate, position }) => {
+    if (!actor.scopes.includes(MCP_ITINERARY_WRITE_SCOPE)) return itineraryWriteDenied();
+    const result = await moveTargetItineraryItem(actor.userId, itemId, itemDate, position, expectedVersion);
+    return textResult({ ok: true, itemId, version: result.version, message: "行程を移動しました。", trip: TARGET_TRIP_SLUG });
+  });
+
+  server.registerTool("delete_itinerary_item", {
+    title: "中国旅行の行程を削除する",
+    description: "itemIdで指定した行程を削除する。対象を利用者へ示して明示確認してから呼ぶ。監査履歴から復元できる。",
+    inputSchema: {
+      itemId: z.string().min(1).max(32),
+      expectedVersion: z.number().int().positive().describe("直前に取得した旅行のversion"),
+    },
+    annotations: {
+      readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false,
+    },
+  }, async ({ itemId, expectedVersion }) => {
+    if (!actor.scopes.includes(MCP_ITINERARY_WRITE_SCOPE)) return itineraryWriteDenied();
+    const result = await deleteTargetItineraryItem(actor.userId, itemId, expectedVersion);
+    return textResult({ ok: true, itemId, version: result.version, message: "行程を削除しました。復元できます。", trip: TARGET_TRIP_SLUG });
+  });
+
+  server.registerTool("restore_itinerary_item", {
+    title: "削除した中国旅行の行程を元へ戻す",
+    description: "list_deleted_itinerary_itemsで得たitemIdの行程を、削除前の日付と位置へ復元する。",
+    inputSchema: {
+      itemId: z.string().min(1).max(32),
+      expectedVersion: z.number().int().positive().describe("直前に取得した旅行のversion"),
+    },
+    annotations: {
+      readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false,
+    },
+  }, async ({ itemId, expectedVersion }) => {
+    if (!actor.scopes.includes(MCP_ITINERARY_WRITE_SCOPE)) return itineraryWriteDenied();
+    const result = await restoreTargetItineraryItem(actor.userId, itemId, expectedVersion);
+    return textResult({ ok: true, itemId, version: result.version, message: "行程を復元しました。", trip: TARGET_TRIP_SLUG });
   });
 
   server.registerTool("list_trip_expenses", {

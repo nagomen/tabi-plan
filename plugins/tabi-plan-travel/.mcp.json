@@ -3,7 +3,7 @@
     "tabi_plan_china_trip": {
       "type": "http",
       "url": "https://travel-api.vote-jt.com/mcp",
-      "note": "香港・マカオ・金門旅行専用。既存のTabi PlanアカウントでOAuth接続し、旅程の参照と費用の追加・訂正・削除を行います。"
+      "note": "香港・マカオ・金門旅行専用。既存のTabi PlanアカウントでOAuth接続し、旅程と費用の追加・訂正・並び替え・削除・復元を行います。"
     }
   }
 }

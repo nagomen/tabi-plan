@@ -21,6 +21,7 @@ export interface PublicTripCity {
 }
 
 export interface PublicTripItineraryItem {
+  id: string;
   item_date: string | null;
   day_index: number | null;
   sort_order: number;
@@ -78,7 +79,7 @@ export async function loadPublishedTrip(slug: string): Promise<PublicTripData | 
       [plan.id],
     ),
     all<PublicTripItineraryItem>(
-      `SELECT item_date, day_index, sort_order, kind, start_time, title, place, area, note,
+      `SELECT id, item_date, day_index, sort_order, kind, start_time, title, place, area, note,
               map_query, lat, lng, from_place, to_place, transport, duration_minutes
          FROM itinerary_items
         WHERE plan_id = ?
