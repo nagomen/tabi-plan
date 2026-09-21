@@ -131,7 +131,7 @@ test("別行動は常設タブを保ち、タイムラインをGit graph型のbr
   assert.match(style, /\.tl-day-tab\[aria-selected="true"\]/);
 });
 
-test("費用フォームは人をuser_idで指し、外貨はレート入力を必須にする", () => {
+test("費用フォームは人をuser_idで指し、外貨は支払日別レートを自動取得する", () => {
   const entry = read("src/dashboard/expense-entry.ts");
   const form = read("src/shared/expense-form.ts");
   // 表示名で金額を割り当てると、同名メンバーがいたときに別人へ付け替わる。
@@ -141,10 +141,12 @@ test("費用フォームは人をuser_idで指し、外貨はレート入力を�
   assert.doesNotMatch(entry, /data-share-name|const idOf =/);
   assert.match(entry, /payerUserId: \(field\("payer"\) as HTMLSelectElement\)\.value/);
   assert.match(form, /data-share-id/);
-  // レート未入力のまま外貨を保存すると、基準通貨の額として記録されてしまう。
+  // 外貨は手入力ではなく、支払日と通貨の完全一致で取得・保存したレートを使う。
   assert.match(entry, /data-fx-field/);
-  assert.match(entry, /fxRateFromUnitRate\(unitRate, currency, baseCurrency\)/);
-  assert.match(entry, /if \(!fxRate\)/);
+  assert.match(entry, /db\.resolveExchangeRate\(planId\(\), paidOn, currency\)/);
+  assert.match(entry, /name="fxRate"[^>]*readonly/);
+  assert.match(entry, /resolvedRate\?\.fx_rate/);
+  assert.doesNotMatch(entry, /fxRateFromUnitRate/);
   assert.match(entry, /amountMinor: toMinor\(amount, currency\)/);
   // 全員等分の母集団が空になる日（旅行期間外の前払い）でも保存できる。
   assert.match(entry, /presentIds\.length \? presentIds : TripPlans\.memberIdsPresentOn\(planId\(\), ""\)/);

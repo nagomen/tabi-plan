@@ -71,3 +71,12 @@ test("旅行内表示名をアカウント名とは別の列で保持する", ()
   assert.match(members, /updateOwnPlanDisplayName[\s\S]*UPDATE plan_members SET display_name/);
   assert.doesNotMatch(members, /updateOwnPlanDisplayName[\s\S]*UPDATE users/);
 });
+
+test("支払日別為替レートは日付と通貨ペアで一意に保存する", () => {
+  const schema = read("schema/002_relational.sql");
+  const migration = read("scripts/migrate.mjs");
+  assert.match(schema, /CREATE TABLE exchange_rates[\s\S]*PRIMARY KEY \(paid_on, currency, base_currency\)/);
+  assert.match(schema, /unit_rate\s+DECIMAL\(24,12\)[\s\S]*fx_rate\s+DECIMAL\(24,12\)/);
+  assert.match(migration, /020_exact_date_exchange_rates/);
+  assert.match(migration, /CREATE TABLE IF NOT EXISTS exchange_rates/);
+});

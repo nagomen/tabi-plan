@@ -4,7 +4,7 @@ import * as db from "../shared/db";
 import * as ExpenseStore from "../shared/expense-store";
 import { escapeHtml } from "../shared/dom";
 import {
-  currencyLabel, currencyStep, fxRateFromUnitRate, toMajor, toMinor, unitRateFromFxRate,
+  currencyLabel, currencyStep, toMajor, toMinor, unitRateFromFxRate,
 } from "../shared/currency";
 import { bindExpenseSplitForm } from "../shared/expense-form";
 import { mdLabel } from "../shared/date";
@@ -180,8 +180,8 @@ export function renderExpenseEntry(data: TripData, options: { force?: boolean } 
             <select name="currency" required>${currencyOptions}</select>
           </label>
           <label class="tl-field" data-fx-field>
-            <span>為替レート <b class="tl-required-mark" aria-label="必須">*</b></span>
-            <input type="number" name="fxRate" min="0" step="0.0001" inputmode="decimal" placeholder="0">
+            <span>支払日の為替レート</span>
+            <input type="number" name="fxRate" min="0" step="0.0001" inputmode="decimal" placeholder="自動取得" readonly>
             <small data-fx-hint></small>
           </label>
         </details>
@@ -316,6 +316,7 @@ function setupExpenseEntryHandlers(form: HTMLFormElement, members: FormMember[],
   const selectedCurrency = (): string => ((field("currency") as HTMLSelectElement).value || baseCurrency).toUpperCase();
   const fxField = form.querySelector<HTMLElement>("[data-fx-field]");
   const fxInput = field("fxRate") as HTMLInputElement;
+  const fxHint = form.querySelector<HTMLElement>("[data-fx-hint]");
 
   /**
    * 基準通貨以外を選んだときだけレート欄を出す。
@@ -329,16 +330,66 @@ function setupExpenseEntryHandlers(form: HTMLFormElement, members: FormMember[],
     const switched = currency !== appliedCurrency;
     appliedCurrency = currency;
     if (fxField) fxField.style.display = foreign ? "" : "none";
-    fxInput.required = foreign;
+    fxInput.required = false;
     if (!foreign) fxInput.value = "";
     // レートは必須なので、外貨へ切り替えた時点で閉じたアコーディオンの中に隠れたままにしない。
     const editor = fxField?.closest("details");
     if (editor && switched && foreign && !fxInput.value) editor.open = true;
-    const hint = form.querySelector<HTMLElement>("[data-fx-hint]");
-    if (hint) hint.textContent = foreign ? `1 ${currency} = ? ${baseCurrency}` : "";
+    if (fxHint && !foreign) fxHint.textContent = "";
     const amountInput = field("amount") as HTMLInputElement;
     amountInput.step = currencyStep(currency);
     qsa<HTMLInputElement>("[data-share-id]", form).forEach((input) => { input.step = currencyStep(currency); });
+  };
+
+  let resolvedRateKey = "";
+  let rateRequestSequence = 0;
+  let rateRequest: Promise<db.ResolvedExchangeRate | null> | null = null;
+  const resolveRate = (force = false): Promise<db.ResolvedExchangeRate | null> => {
+    const currency = selectedCurrency();
+    const paidOn = (field("paidDate") as HTMLInputElement).value || "";
+    const key = `${paidOn}|${currency}|${baseCurrency}`;
+    if (key !== resolvedRateKey) {
+      // 日付・通貨が変わった後に古いリクエストが完了しても、表示へ反映させない。
+      rateRequestSequence += 1;
+      resolvedRateKey = key;
+      rateRequest = null;
+    }
+    if (currency === baseCurrency) return Promise.resolve({
+      paid_on: paidOn,
+      currency,
+      base_currency: baseCurrency,
+      unit_rate: 1,
+      fx_rate: 1,
+      source: "identity",
+      source_date: paidOn,
+      cached: true,
+    });
+    if (!paidOn) {
+      fxInput.value = "";
+      if (fxHint) fxHint.textContent = "支払日を選ぶと自動取得します";
+      return Promise.resolve(null);
+    }
+    // 同じ入力中の再描画では進行中・完了済みのPromiseを共有し、重複取得しない。
+    if (!force && rateRequest) return rateRequest;
+    const sequence = ++rateRequestSequence;
+    fxInput.value = "";
+    if (fxHint) fxHint.textContent = `${paidOn}のレートを確認中...`;
+    rateRequest = db.resolveExchangeRate(planId(), paidOn, currency).then((rate) => {
+      if (sequence !== rateRequestSequence) return null;
+      fxInput.value = String(rate.unit_rate);
+      if (fxHint) {
+        const stateLabel = rate.cached ? "保存済み" : "取得して保存済み";
+        fxHint.textContent = `1 ${currency} = ${rate.unit_rate} ${baseCurrency}（${stateLabel}）`;
+      }
+      return rate;
+    }).catch((error: unknown) => {
+      if (sequence === rateRequestSequence) {
+        fxInput.value = "";
+        if (fxHint) fxHint.textContent = (error as Error).message || "支払日のレートを取得できませんでした";
+      }
+      return null;
+    });
+    return rateRequest;
   };
 
   const updateEditorSummaries = (): void => {
@@ -354,6 +405,7 @@ function setupExpenseEntryHandlers(form: HTMLFormElement, members: FormMember[],
     form.dataset.dirty = "true";
     applyCurrency();
     updateEditorSummaries();
+    void resolveRate();
   };
   const split = bindExpenseSplitForm(form, members, {
     onChange: markChanged,
@@ -361,6 +413,7 @@ function setupExpenseEntryHandlers(form: HTMLFormElement, members: FormMember[],
   });
   applyCurrency();
   updateEditorSummaries();
+  void resolveRate();
 
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -377,13 +430,6 @@ function setupExpenseEntryHandlers(form: HTMLFormElement, members: FormMember[],
     const currency = selectedCurrency();
     const splitMethod = splitFromLabel(mode);
 
-    // 外貨はレートが無いと基準通貨へ換算できない。1:1 で保存すると金額が別物になる。
-    const unitRate = Number(fxInput.value);
-    const fxRate = currency === baseCurrency ? 1 : fxRateFromUnitRate(unitRate, currency, baseCurrency);
-    if (!fxRate) {
-      setStatus(`1 ${currency} が何 ${baseCurrency} かを入力してください。`, "error");
-      return;
-    }
     const paidOn = (field("paidDate") as HTMLInputElement).value || "";
     // 「全員で等分」はその費用の日に在籍していたメンバーだけを対象にする（途中合流/離脱を反映）。
     // 旅行期間の外に払った前払い分は誰の在籍期間にも入らないので、その場合は全員へ戻す。
@@ -403,6 +449,15 @@ function setupExpenseEntryHandlers(form: HTMLFormElement, members: FormMember[],
     }
 
     button.disabled = true;
+    if (currency !== baseCurrency) setStatus("支払日の為替レートを確認中...", "");
+    // 外貨は支払日と通貨の完全一致で保存したレートだけを使う。
+    const resolvedRate = currency === baseCurrency ? null : await resolveRate(true);
+    const fxRate = currency === baseCurrency ? 1 : Number(resolvedRate?.fx_rate || 0);
+    if (!fxRate) {
+      button.disabled = false;
+      setStatus("支払日の為替レートを取得できませんでした。通信状態を確認してもう一度お試しください。", "error");
+      return;
+    }
     setStatus("保存中...", "");
     try {
       // フォームの value は user_id。金額は入力単位（major）から保存単位（minor）へ寄せる。

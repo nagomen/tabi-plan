@@ -4,6 +4,8 @@ export class Forbidden extends Error {}
 
 export class NotFound extends Error {}
 
+export class ExchangeRateUnavailable extends Error {}
+
 export class VersionConflict extends Error {
   constructor(message: string, readonly currentVersion = 0) {
     super(message);
@@ -80,6 +82,18 @@ export function describeError(error: unknown, requestId: string): { status: numb
     return {
       status: 404,
       body: { error: "not_found", message, retryable: false, action: "reload" },
+    };
+  }
+  if (error instanceof ExchangeRateUnavailable) {
+    return {
+      status: 503,
+      body: {
+        error: "exchange_rate_unavailable",
+        message,
+        retryable: true,
+        retry_after: 30,
+        action: "retry_later",
+      },
     };
   }
   if (error instanceof VersionConflict) {

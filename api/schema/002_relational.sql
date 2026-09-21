@@ -446,6 +446,22 @@ CREATE TABLE expenses (
   CONSTRAINT chk_expenses_amount CHECK (amount_minor >= 0)
 ) ENGINE=InnoDB;
 
+-- 支払日と通貨の組み合わせごとに一度だけ確定する履歴為替レート。
+-- 表示や再集計のたびに外部APIへ問い合わせず、既存行は更新しない。
+CREATE TABLE exchange_rates (
+  paid_on       DATE          NOT NULL,
+  currency      CHAR(3)       NOT NULL,
+  base_currency CHAR(3)       NOT NULL,
+  unit_rate     DECIMAL(24,12) NOT NULL,
+  fx_rate       DECIMAL(24,12) NOT NULL,
+  source        VARCHAR(32)   NOT NULL,
+  source_date   DATE          NOT NULL,
+  created_at    TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (paid_on, currency, base_currency),
+  CONSTRAINT chk_exchange_rates_unit CHECK (unit_rate > 0),
+  CONSTRAINT chk_exchange_rates_fx CHECK (fx_rate > 0)
+) ENGINE=InnoDB;
+
 -- 誰がいくら負担するか。旧構造は targets（配列）と individual（名前→金額）に
 -- 分割方式ごとに別の形で入っていたため、SQL で負担額を出せなかった。
 CREATE TABLE expense_shares (
