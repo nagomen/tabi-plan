@@ -418,6 +418,22 @@ async function migrate015() {
        AND (pm.user_id IS NULL OR pm.status <> 'active')`);
 }
 
+async function migrate016() {
+  await conn.query(`CREATE TABLE IF NOT EXISTS user_ai_credentials (
+    user_id        VARCHAR(32)  NOT NULL,
+    encrypted_key  VARBINARY(1024) NOT NULL,
+    encryption_iv  VARBINARY(12) NOT NULL,
+    auth_tag        VARBINARY(16) NOT NULL,
+    key_version     SMALLINT UNSIGNED NOT NULL DEFAULT 1,
+    key_last4       VARCHAR(4) NOT NULL,
+    verified_at     TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (user_id),
+    CONSTRAINT fk_user_ai_credentials_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+  ) ENGINE=InnoDB`);
+}
+
 async function main() {
   await conn.query(`CREATE TABLE IF NOT EXISTS schema_migrations (
     id VARCHAR(64) NOT NULL PRIMARY KEY,
@@ -437,6 +453,7 @@ async function main() {
   await applyMigration("013_plan_city_details", migrate013);
   await applyMigration("014_plan_flight_notes", migrate014);
   await applyMigration("015_separate_plan_access", migrate015);
+  await applyMigration("016_user_ai_credentials", migrate016);
 }
 
 // 同時デプロイが同じDDLを並走させないよう、DB側の advisory lock で直列化する。

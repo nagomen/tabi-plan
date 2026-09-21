@@ -83,6 +83,10 @@ function showAiError(error: unknown, phase: AiErrorPhase): void {
             "noopener",
           );
         }
+        : guidance.action === "update_api_key"
+          ? () => {
+            window.open("mypage.html?tab=pay#ai-key", "_blank", "noopener");
+          }
         : guidance.action === "external_ai"
           ? async () => {
             aiImportDetails.open = true;

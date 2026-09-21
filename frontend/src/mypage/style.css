@@ -312,6 +312,89 @@
   .mp-bar-more { font-size: 10px; font-weight: 700; color: var(--muted); }
 
   /* 送金リンク登録 */
+  .mp-ai-key {
+    margin: 0 0 28px;
+    padding: 0 0 24px;
+    border-bottom: 1px solid var(--line);
+  }
+  .mp-ai-key-state {
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 700;
+  }
+  .mp-ai-key-state::before {
+    content: "";
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    margin-right: 6px;
+    border-radius: 50%;
+    background: var(--line-strong);
+    vertical-align: 1px;
+  }
+  .mp-ai-key-state.is-own { color: var(--green); }
+  .mp-ai-key-state.is-own::before { background: var(--green); }
+  .mp-ai-key-form { display: grid; gap: 7px; max-width: 620px; }
+  .mp-ai-key-form > label { font-size: 12px; font-weight: 700; color: var(--ink); }
+  .mp-ai-key-input { display: flex; min-width: 0; }
+  .mp-ai-key-input input {
+    flex: 1;
+    min-width: 0;
+    min-height: 44px;
+    border: 1px solid var(--line-strong);
+    border-right: 0;
+    border-radius: 0;
+    padding: 8px 12px;
+    background: #fff;
+    color: var(--ink);
+    font: 14px ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  .mp-ai-key-input input:focus-visible { outline: none; border-color: var(--green); box-shadow: 0 0 0 3px var(--green-soft); }
+  .mp-ai-key-reveal {
+    flex: none;
+    min-width: 58px;
+    border: 1px solid var(--line-strong);
+    border-radius: 0;
+    background: var(--wash);
+    color: var(--ink);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  .mp-ai-key-actions { display: flex; align-items: center; gap: 14px; margin-top: 3px; flex-wrap: wrap; }
+  .mp-ai-key-save {
+    min-height: 42px;
+    border: 0;
+    border-radius: 0;
+    padding: 0 16px;
+    background: var(--green);
+    color: #fff;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  .mp-ai-key-delete {
+    min-height: 36px;
+    border: 0;
+    border-bottom: 1px solid var(--red);
+    border-radius: 0;
+    padding: 0 2px;
+    background: transparent;
+    color: var(--red);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  .mp-ai-key button:disabled, .mp-ai-key input:disabled { opacity: .55; cursor: default; }
+  .mp-ai-key-help { margin: 10px 0 0; color: var(--muted); font-size: 11.5px; line-height: 1.7; }
+  .mp-ai-key-help a { color: var(--green); font-weight: 700; }
+  .mp-ai-key-message { min-height: 18px; margin: 8px 0 0; color: var(--muted); font-size: 12px; font-weight: 650; }
+  .mp-ai-key-message.is-error { color: var(--red); }
+  .mp-ai-key-message.is-done { color: var(--green); }
+
   .mp-pay-help { margin: 0 0 14px; color: var(--muted); font-size: 12.5px; }
   .mp-paylist { display: grid; gap: 10px; }
   .mp-pay-row { display: grid; grid-template-columns: 130px minmax(0, 1fr); gap: 10px; align-items: center; }
@@ -405,6 +488,9 @@
     .mp-cell { min-height: 56px; }
     .mp-bar { font-size: 9px; min-height: 13px; padding: 0 3px; line-height: 13px; }
     .mp-legend-dates { font-size: 11px; }
+    .mp-ai-key-actions { align-items: stretch; flex-direction: column; gap: 8px; }
+    .mp-ai-key-save { width: 100%; }
+    .mp-ai-key-delete { align-self: flex-start; }
   }
 
 /* PC は左右の余白をもう少し取る。中のセクションが 20px を持っているので、

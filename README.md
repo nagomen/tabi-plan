@@ -111,7 +111,7 @@ npm run deploy:production
 | `SESSION_SECRET は32文字以上` で起動しない | 本番は 32 文字以上のランダム値を設定する。ローカルは `dev:full` が自動生成する |
 | `dev:full` で DB に接続できない | SSH トンネルの設定(`LOCAL_DB_SSH_TARGET`)を確認する。直接接続できる環境では `LOCAL_DB_TUNNEL=0` |
 | 5173 番ポートが使えない | 空いている次のポートを自動で選ぶ。実際の URL はターミナルに表示される |
-| 画面の AI ボタンがエラーになる | API 側に `OPENAI_KEY` が未設定。未設定なら AI 機能は無効 |
+| 画面の AI ボタンが「APIキーが必要」となる | マイページで本人のOpenAI APIキーを登録するか、サービス提供枠としてAPI側へ `OPENAI_KEY` を設定 |
 | AI 生成で「AI サーバーへ接続できませんでした」 | 前段プロキシの読み取りタイムアウトが `OPENAI_TIMEOUT_MS` より短い。[docs/ai-consultation.md](docs/ai-consultation.md) を参照 |
 | 保存時に 409 が返る | 別端末で先に更新されている。読み込み直してから編集する |
 

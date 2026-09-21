@@ -12,7 +12,9 @@ interface UsageRow extends mysql.RowDataPacket {
 }
 
 /** 複数APIプロセス間でも共有される、ユーザー単位の原子的な利用枠確保。 */
-export async function reserveAiRequest(userId: string, scope: AiScope): Promise<{
+export async function reserveAiRequest(userId: string, scope: AiScope, options: {
+  skipDailyLimit?: boolean;
+} = {}): Promise<{
   allowed: boolean;
   retryAfter: number;
   reason: "daily" | "cooldown" | null;
@@ -36,8 +38,8 @@ export async function reserveAiRequest(userId: string, scope: AiScope): Promise<
     );
     const usage = rows[0];
     if (!usage) throw new Error("AI usage row was not created");
-    if (Number(usage.request_count) >= config.ai.dailyRequestsPerUser ||
-        Number(usage.token_count) >= config.ai.dailyTokensPerUser) {
+    if (!options.skipDailyLimit && (Number(usage.request_count) >= config.ai.dailyRequestsPerUser ||
+        Number(usage.token_count) >= config.ai.dailyTokensPerUser)) {
       return { allowed: false, retryAfter: Number(usage.daily_retry_after) || 3600, reason: "daily" };
     }
     if (Number(usage.cooldown_remaining) > 0) {

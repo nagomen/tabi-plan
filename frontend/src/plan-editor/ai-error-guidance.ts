@@ -1,5 +1,5 @@
 export type AiErrorPhase = "candidates" | "itinerary";
-export type AiErrorAction = "retry" | "revise" | "restart" | "sign_in" | "external_ai" | "contact_support";
+export type AiErrorAction = "retry" | "revise" | "restart" | "sign_in" | "external_ai" | "update_api_key" | "contact_support";
 
 export interface AiErrorLike {
   message?: string;
@@ -73,6 +73,16 @@ export function aiErrorGuidance(error: AiErrorLike, phase: AiErrorPhase): AiErro
 
   if (code === "session_required" || error.action === "sign_in") {
     return { title: "ログインが必要です", message, action: "sign_in", actionLabel: "ログインする", retryAfter: 0, requestId };
+  }
+  if (code === "ai_key_required" || error.action === "update_api_key") {
+    return {
+      title: code === "ai_key_required" ? "OpenAI APIキーが必要です" : "OpenAI APIキーを確認してください",
+      message,
+      action: "update_api_key",
+      actionLabel: "APIキー設定を開く",
+      retryAfter: 0,
+      requestId,
+    };
   }
   if (code === "ai_daily_limit" || code === "ai_output_too_long" || error.action === "use_external_ai") {
     return {

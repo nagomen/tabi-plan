@@ -184,7 +184,7 @@ try {
       "expense_audit_logs", "expense_shares", "expenses", "settlements", "plan_candidate_votes", "plan_candidates",
       "plan_checklist_items", "plan_links", "plan_cities", "itinerary_items", "plan_view_daily", "plan_flight_notes",
       "plan_invites", "plan_member_placeholders", "plan_access_grants", "plan_members", "plans",
-      "ai_usage_daily", "user_settings", "user_payment_links", "friendships", "user_sessions",
+      "user_ai_credentials", "ai_usage_daily", "user_settings", "user_payment_links", "friendships", "user_sessions",
       "user_identities", "user_credentials", "users",
     ]) await conn.query(`DELETE FROM ${t}`);
     await conn.query("SET FOREIGN_KEY_CHECKS = 1");

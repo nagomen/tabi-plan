@@ -48,6 +48,11 @@ test("AI route distinguishes an expired login session from missing plan permissi
   assert.match(aiItinerary, /error instanceof AiUpstreamError && error\.code === "ai_output_too_long"[\s\S]*generate\(true\)/);
   assert.match(aiItinerary, /軽量版として/);
   assert.match(source("openai-client.ts"), /tooLong \? "use_external_ai" : "retry"/);
+  assert.match(routes, /resolveAiCredential\(actorUserId\)/);
+  assert.match(routes, /skipDailyLimit: userManagedKey/);
+  assert.match(source("ai-credential-repo.ts"), /decryptAiCredential\(userId/);
+  assert.match(source("ai-credential-crypto.ts"), /aes-256-gcm/);
+  assert.doesNotMatch(source("bootstrap-repo.ts"), /encrypted_key|user_ai_credentials/);
 });
 
 test("unregistered trip members are explicit placeholders, not auto-created friends", () => {

@@ -60,6 +60,31 @@
   </div>
 
   <section class="mp-view" data-view="pay" hidden>
+    <section class="mp-ai-key" id="ai-key" aria-labelledby="ai-key-title">
+      <div class="mp-listhead">
+        <h2 class="mp-sec-title" id="ai-key-title">AI利用設定</h2>
+        <span class="mp-ai-key-state" data-ai-key-state>確認中…</span>
+      </div>
+      <p class="mp-pay-help" data-ai-key-detail>OpenAI APIキーを登録すると、自分のOpenAI利用料金でAI旅行相談を使えます。</p>
+      <form class="mp-ai-key-form" data-ai-key-form autocomplete="off">
+        <label for="openai-api-key">OpenAI APIキー</label>
+        <div class="mp-ai-key-input">
+          <input id="openai-api-key" data-ai-key-input type="password" inputmode="text" spellcheck="false" autocapitalize="none"
+            autocomplete="new-password" placeholder="sk-…" aria-describedby="ai-key-help">
+          <button type="button" class="mp-ai-key-reveal" data-ai-key-reveal aria-pressed="false">表示</button>
+        </div>
+        <div class="mp-ai-key-actions">
+          <button type="submit" class="mp-ai-key-save" data-ai-key-save>接続確認して保存</button>
+          <button type="button" class="mp-ai-key-delete" data-ai-key-delete hidden>保存済みキーを削除</button>
+        </div>
+      </form>
+      <p class="mp-ai-key-help" id="ai-key-help">
+        管理者用ではなくプロジェクト用のAPIキーを使ってください。キーはブラウザに保存せず、APIサーバーで暗号化します。値は保存後に再表示できません。
+        <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer">OpenAI Platformでキーを作成</a>
+      </p>
+      <p class="mp-ai-key-message" data-ai-key-message aria-live="polite"></p>
+    </section>
+
     <div class="mp-listhead">
       <h2 class="mp-sec-title">送金リンク <span class="mp-sec-count" data-pay-count></span></h2>
     </div>

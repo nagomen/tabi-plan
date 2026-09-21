@@ -38,6 +38,8 @@ interface StructuredResponseArgs {
   schema: unknown;
   system: string;
   user: string;
+  apiKey?: string;
+  userManagedKey?: boolean;
   webSearch?: boolean;
   fetchImpl?: typeof fetch;
   sleep?: (milliseconds: number) => Promise<void>;
@@ -65,10 +67,15 @@ function requestIdOf(response: Response | null, data: OpenAiResponse | null): st
 function safeUpstreamDetail(value: unknown): string {
   if (!value || typeof value !== "object") return "";
   const error = (value as OpenAiResponse).error;
-  return [error?.code, error?.type, error?.param, error?.message].filter(Boolean).join(": ").slice(0, 500);
+  return [error?.code, error?.type, error?.param, error?.message]
+    .filter(Boolean)
+    .join(": ")
+    // 認証エラー本文が入力キーの一部を含んでも、サーバーログへ残さない。
+    .replace(/sk-[A-Za-z0-9_-]+/g, "sk-[redacted]")
+    .slice(0, 500);
 }
 
-function classifiedError(response: Response, data: OpenAiResponse | null): AiUpstreamError {
+function classifiedError(response: Response, data: OpenAiResponse | null, userManagedKey = false): AiUpstreamError {
   const status = response.status;
   const code = String(data?.error?.code || "").toLowerCase();
   const upstreamDetail = safeUpstreamDetail(data);
@@ -82,29 +89,37 @@ function classifiedError(response: Response, data: OpenAiResponse | null): AiUps
   if (status === 401) {
     return new AiUpstreamError(
       "ai_authentication_failed",
-      "AI機能のサーバー設定を確認する必要があります。管理者へお知らせください。",
-      options({ action: "contact_support" }),
+      userManagedKey
+        ? "登録したOpenAI APIキーを認証できませんでした。マイページでキーを確認してください。"
+        : "AI機能のサーバー設定を確認する必要があります。管理者へお知らせください。",
+      options({ action: userManagedKey ? "update_api_key" : "contact_support" }),
     );
   }
   if (status === 403) {
     return new AiUpstreamError(
       "ai_access_denied",
-      "このAIモデルまたは接続元を利用できません。管理者へお知らせください。",
-      options({ action: "contact_support" }),
+      userManagedKey
+        ? "登録したAPIキーではこのAIモデルを利用できません。OpenAIプロジェクトの権限を確認してください。"
+        : "このAIモデルまたは接続元を利用できません。管理者へお知らせください。",
+      options({ action: userManagedKey ? "update_api_key" : "contact_support" }),
     );
   }
   if (status === 404) {
     return new AiUpstreamError(
       "ai_model_unavailable",
-      "設定中のAIモデルを利用できません。管理者へお知らせください。",
-      options({ action: "contact_support" }),
+      userManagedKey
+        ? "登録したAPIキーでは設定中のAIモデルを利用できません。キーのプロジェクト権限を確認してください。"
+        : "設定中のAIモデルを利用できません。管理者へお知らせください。",
+      options({ action: userManagedKey ? "update_api_key" : "contact_support" }),
     );
   }
   if (QUOTA_CODES.has(code)) {
     return new AiUpstreamError(
       "ai_quota_exceeded",
-      "AI機能の利用枠または支払い上限に達しています。管理者へお知らせください。",
-      options({ action: "contact_support" }),
+      userManagedKey
+        ? "OpenAI APIの残高またはプロジェクトの支払い上限に達しています。OpenAI Platformで課金設定を確認してください。"
+        : "AI機能の利用枠または支払い上限に達しています。管理者へお知らせください。",
+      options({ action: userManagedKey ? "update_api_key" : "contact_support" }),
     );
   }
   if (status === 413 || INPUT_TOO_LARGE_CODES.has(code)) {
@@ -140,18 +155,20 @@ function classifiedError(response: Response, data: OpenAiResponse | null): AiUps
   );
 }
 
-function extractOutput(data: OpenAiResponse, requestId: string): string {
+function extractOutput(data: OpenAiResponse, requestId: string, userManagedKey = false): string {
   if (data.status === "failed" || data.error) {
     const code = String(data.error?.code || "").toLowerCase();
     const quota = QUOTA_CODES.has(code);
     throw new AiUpstreamError(
       quota ? "ai_quota_exceeded" : "ai_response_failed",
       quota
-        ? "AI機能の利用枠または支払い上限に達しています。管理者へお知らせください。"
+        ? userManagedKey
+          ? "OpenAI APIの残高またはプロジェクトの支払い上限に達しています。OpenAI Platformで課金設定を確認してください。"
+          : "AI機能の利用枠または支払い上限に達しています。管理者へお知らせください。"
         : "AIサービスが行程生成を完了できませんでした。時間を置いてお試しください。",
       {
         retryable: !quota,
-        action: quota ? "contact_support" : "retry_later",
+        action: quota ? (userManagedKey ? "update_api_key" : "contact_support") : "retry_later",
         requestId,
         causeDetail: safeUpstreamDetail(data),
       },
@@ -223,7 +240,7 @@ export async function structuredResponse<T>(args: StructuredResponseArgs): Promi
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${config.ai.apiKey}`,
+          Authorization: `Bearer ${args.apiKey ?? config.ai.apiKey}`,
         },
         body: JSON.stringify({
           model: config.ai.model,
@@ -243,7 +260,7 @@ export async function structuredResponse<T>(args: StructuredResponseArgs): Promi
       });
 
       const data = await response.json().catch(() => null) as OpenAiResponse | null;
-      if (!response.ok) throw classifiedError(response, data);
+      if (!response.ok) throw classifiedError(response, data, args.userManagedKey);
       const requestId = requestIdOf(response, data);
       if (!data) {
         throw new AiUpstreamError(
@@ -253,7 +270,7 @@ export async function structuredResponse<T>(args: StructuredResponseArgs): Promi
         );
       }
 
-      const content = extractOutput(data, requestId);
+      const content = extractOutput(data, requestId, args.userManagedKey);
       let value: T;
       try {
         value = JSON.parse(content) as T;
@@ -311,4 +328,28 @@ export async function structuredResponse<T>(args: StructuredResponseArgs): Promi
       causeDetail: String(lastError || "network error").slice(0, 500),
     },
   );
+}
+
+/** 保存前に課金を発生させず、OpenAI側でキーの認証が通ることを確認する。 */
+export async function verifyOpenAiApiKey(apiKey: string, fetchImpl: typeof fetch = fetch): Promise<void> {
+  let response: Response;
+  try {
+    response = await fetchImpl(`https://api.openai.com/v1/models/${encodeURIComponent(config.ai.model)}`, {
+      method: "GET",
+      headers: { Authorization: `Bearer ${apiKey}` },
+      signal: AbortSignal.timeout(20_000),
+    });
+  } catch (error) {
+    throw new AiUpstreamError(
+      "ai_key_verification_failed",
+      "OpenAIへ接続できずAPIキーを確認できませんでした。時間を置いてもう一度お試しください。",
+      { retryable: true, action: "retry_later", causeDetail: String(error).slice(0, 500) },
+    );
+  }
+  if (response.ok) {
+    await response.body?.cancel().catch(() => undefined);
+    return;
+  }
+  const data = await response.json().catch(() => null) as OpenAiResponse | null;
+  throw classifiedError(response, data, true);
 }
