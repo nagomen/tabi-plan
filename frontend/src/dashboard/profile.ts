@@ -65,10 +65,20 @@ function profileInitial(name: string | undefined): string {
 }
 
 export function applyProfileDefaults(form: HTMLFormElement | null, participants: string[]): void {
-  const name = currentProfileName(participants);
   const payer = form?.elements.namedItem("payer") as HTMLSelectElement | null;
-  if (!name || !payer) return;
-  payer.value = name;
+  if (!payer) return;
+  // 支払者の value は user_id。本人が候補にいればそれを選ぶ。
+  const selfId = currentUserId();
+  if (selfId && Array.from(payer.options).some((option) => option.value === selfId)) {
+    payer.value = selfId;
+    return;
+  }
+  // 本人の user_id が無いローカル運用では、表示名のラベルから引き当てる。
+  const name = currentProfileName(participants);
+  const labeled = name
+    ? Array.from(payer.options).find((option) => (option.textContent || "").trim() === name)
+    : undefined;
+  if (labeled) payer.value = labeled.value;
 }
 
 function showIdentityModal(required: boolean): Promise<boolean> {
@@ -226,8 +236,9 @@ export function expenseParticipants(data: TripData): string[] {
   const discovered = expenseParticipantNames(data);
   if (discovered.length) return withSelf(discovered);
   // メンバーも本人も分からないときだけダミー名にフォールバックする。
+  // CONFIG の配列をそのまま返すと呼び出し側の push で設定を壊すため、必ず複製する。
   const onlySelf = withSelf([]);
-  return onlySelf.length ? onlySelf : CONFIG.defaultParticipants || ["参加者A", "参加者B"];
+  return onlySelf.length ? onlySelf : [...(CONFIG.defaultParticipants || ["参加者A", "参加者B"])];
 }
 
 export function expenseCurrencies(data: TripData): string[] {

@@ -92,6 +92,31 @@ test("別行動は常設タブを保ち、タイムラインをGit graph型のbr
   assert.match(style, /\.tl-day-tab\[aria-selected="true"\]/);
 });
 
+test("費用フォームは人をuser_idで指し、外貨はレート入力を必須にする", () => {
+  const entry = read("src/dashboard/expense-entry.ts");
+  const form = read("src/shared/expense-form.ts");
+  // 表示名で金額を割り当てると、同名メンバーがいたときに別人へ付け替わる。
+  assert.match(entry, /name="targets" value="\$\{escapeHtml\(member\.id\)\}"/);
+  assert.match(entry, /data-share-id="\$\{escapeHtml\(member\.id\)\}"/);
+  // 保存時に表示名からIDを引き直さない（解決は選択肢を組み立てる1か所だけ）。
+  assert.doesNotMatch(entry, /data-share-name|const idOf =/);
+  assert.match(entry, /payerUserId: \(field\("payer"\) as HTMLSelectElement\)\.value/);
+  assert.match(form, /data-share-id/);
+  // レート未入力のまま外貨を保存すると、基準通貨の額として記録されてしまう。
+  assert.match(entry, /data-fx-field/);
+  assert.match(entry, /fxRateFromUnitRate\(unitRate, currency, baseCurrency\)/);
+  assert.match(entry, /if \(!fxRate\)/);
+  assert.match(entry, /amountMinor: toMinor\(amount, currency\)/);
+  // 全員等分の母集団が空になる日（旅行期間外の前払い）でも保存できる。
+  assert.match(entry, /presentIds\.length \? presentIds : TripPlans\.memberIdsPresentOn\(planId\(\), ""\)/);
+});
+
+test("閲覧のみのモードでは精算完了を描画も実行もしない", () => {
+  const settlement = read("src/dashboard/settlement.ts");
+  assert.match(settlement, /isReadOnly\(\) \? "" : `<button[^`]*data-settlement-complete/);
+  assert.match(settlement, /data-settlement-complete[\s\S]*?addEventListener\("click"[\s\S]*?if \(isReadOnly\(\)\) return;/);
+});
+
 test("デプロイ設定生成は実在するTripConfig項目だけを必須にする", () => {
   const source = fs.readFileSync(new URL("tools/build-trip-config.js", repoRoot), "utf8");
   assert.match(source, /\["tripSlug", "tripTitle", "mode"\]/);

@@ -1,5 +1,7 @@
 // 費用入力UIが共通で使う、取得元の緩いデータからの選択肢抽出。
 
+import { formatMoneyMinor, toMinor } from "./currency";
+
 interface ExpenseFormSource {
   participants?: unknown;
   trip?: { members?: unknown } | null;
@@ -38,10 +40,16 @@ export function expenseCurrencyCodes(source: ExpenseFormSource, configured: stri
   return unique(["JPY", ...configured, ...discovered].map((code) => code.toUpperCase()));
 }
 
+/** フォームが人を指す単位。value は user_id で、表示名はラベルにだけ使う。 */
+export interface ExpenseParticipant {
+  id: string;
+  name: string;
+}
+
 export interface ExpenseSplitController {
   mode: () => string;
   amount: () => number;
-  selectedNames: () => string[];
+  selectedIds: () => string[];
   individualAmounts: () => Record<string, number>;
   individualTotal: () => number;
   validationMessage: () => string;
@@ -56,7 +64,7 @@ function numericValue(value: unknown): number {
 /** 割り勘モードの表示切替・合計表示・共通検証をフォームへ結び付ける。 */
 export function bindExpenseSplitForm(
   form: HTMLFormElement,
-  participants: string[],
+  participants: ExpenseParticipant[],
   options: { onChange?: (event: Event) => void; onInput?: (event: Event) => void } = {},
 ): ExpenseSplitController {
   const selectedDetail = form.querySelector<HTMLElement>("[data-selected-detail]");
@@ -69,24 +77,25 @@ export function bindExpenseSplitForm(
   }
 
   const mode = (): string => form.querySelector<HTMLInputElement>("input[name='splitMode']:checked")?.value || "";
-  const shareInputFor = (name: string): HTMLInputElement | undefined =>
-    Array.from(form.querySelectorAll<HTMLInputElement>("[data-share-name]"))
-      .find((input) => input.dataset.shareName === name);
+  const shareInputFor = (userId: string): HTMLInputElement | undefined =>
+    Array.from(form.querySelectorAll<HTMLInputElement>("[data-share-id]"))
+      .find((input) => input.dataset.shareId === userId);
   const individualAmounts = (): Record<string, number> => Object.fromEntries(
-    participants.map((name) => [name, numericValue(shareInputFor(name)?.value)]).filter(([, value]) => Number(value) > 0),
+    participants
+      .map((member) => [member.id, numericValue(shareInputFor(member.id)?.value)])
+      .filter(([, value]) => Number(value) > 0),
   );
   const individualTotal = (): number =>
     Object.values(individualAmounts()).reduce((sum, value) => sum + value, 0);
   const amount = (): number => numericValue(amountInput.value);
-  const selectedNames = (): string[] => Array.from(
+  const selectedIds = (): string[] => Array.from(
     form.querySelectorAll<HTMLInputElement>("input[name='targets']:checked"),
   ).map((input) => input.value);
-  const formatAmount = (value: number): string => {
-    const currency = currencyInput.value || "JPY";
-    return currency === "JPY"
-      ? `¥${Math.round(value).toLocaleString("ja-JP")}`
-      : `${currency} ${Math.round(value * 100) / 100}`;
-  };
+  const currency = (): string => currencyInput.value || "JPY";
+  const formatAmount = (value: number): string => formatMoneyMinor(toMinor(value, currency()), currency());
+  // 表示上の端数ではなく、保存する最小単位で比べる（0.1+0.2 のような誤差を持ち込まない）。
+  const differsFromPaid = (total: number): boolean =>
+    toMinor(total, currency()) !== toMinor(amount(), currency());
   const update = (): void => {
     const activeMode = mode();
     selectedDetail.classList.toggle("is-visible", /選んだ人だけ/.test(activeMode));
@@ -96,16 +105,17 @@ export function bindExpenseSplitForm(
     totalNode.textContent = paid
       ? `合計 ${formatAmount(total)} / 支払額 ${formatAmount(paid)}`
       : `合計 ${formatAmount(total)}`;
-    totalNode.style.color = /個別金額/.test(activeMode) && paid && Math.abs(total - paid) > 1
+    totalNode.style.color = /個別金額/.test(activeMode) && paid && differsFromPaid(total)
       ? "var(--red)"
       : "var(--muted)";
   };
   const validationMessage = (): string => {
-    if (/選んだ人だけ/.test(mode()) && !selectedNames().length) return "割り勘する人を1人以上選んでください。";
+    if (/選んだ人だけ/.test(mode()) && !selectedIds().length) return "割り勘する人を1人以上選んでください。";
     if (/個別金額/.test(mode())) {
       const total = individualTotal();
       if (!total) return "個別金額を入力してください。";
-      if (Math.abs(total - amount()) > 1) return "個別金額の合計が支払額と一致していません。";
+      // APIは合計＝支払額の完全一致を要求する。ここで通して後で弾かれないよう同じ条件で見る。
+      if (differsFromPaid(total)) return "個別金額の合計が支払額と一致していません。";
     }
     return "";
   };
@@ -119,5 +129,5 @@ export function bindExpenseSplitForm(
     options.onInput?.(event);
   });
   update();
-  return { mode, amount, selectedNames, individualAmounts, individualTotal, validationMessage, refresh: update };
+  return { mode, amount, selectedIds, individualAmounts, individualTotal, validationMessage, refresh: update };
 }

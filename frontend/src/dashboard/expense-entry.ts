@@ -3,6 +3,7 @@ import * as TripPlans from "../shared/plans-store";
 import * as db from "../shared/db";
 import * as ExpenseStore from "../shared/expense-store";
 import { escapeHtml } from "../shared/dom";
+import { currencyStep, fxRateFromUnitRate, toMajor, toMinor, unitRateFromFxRate } from "../shared/currency";
 import { bindExpenseSplitForm } from "../shared/expense-form";
 import { mdLabel } from "../shared/date";
 import type { TripData } from "../shared/types";
@@ -11,6 +12,48 @@ import { qs, qsa, root } from "./dom";
 import { planId } from "./plan-access";
 import { todayISO } from "./days";
 import { applyProfileDefaults, currentProfileName, expenseCurrencies, expenseParticipants } from "./profile";
+
+/** フォームの選択肢1つ。value は user_id で、label は見分けるための表示だけに使う。 */
+interface FormMember {
+  id: string;
+  name: string;
+  label: string;
+}
+
+/**
+ * 参加者の表示名を user_id へ解決する。
+ * 金額の割り当てを表示名で行うと、同名メンバーがいたときに別人へ付け替わるため、
+ * 選択肢を組み立てる時点で ID に寄せて、名前はラベルとしてしか使わない。
+ */
+function participantMembers(names: string[], editing?: ExpenseStore.ExpenseEntry): FormMember[] {
+  const byId = new Map<string, string>();
+  const add = (id: string, name: string): void => {
+    if (!id || byId.has(id)) return;
+    byId.set(id, name || db.nameOf(id) || "名前未設定");
+  };
+  for (const name of names) {
+    const user = db.findUserByName(name) || (!db.isEnabled() ? db.ensureUserLocal(name) : undefined);
+    if (user) add(user.id, name);
+  }
+  // 編集中の費用に関わる人は、参加者一覧から漏れていても選択肢に残す。
+  if (editing) {
+    add(editing.row.payer_user_id, db.nameOf(editing.row.payer_user_id));
+    for (const share of editing.shares) add(share.user_id, db.nameOf(share.user_id));
+  }
+  const entries = [...byId.entries()].map(([id, name]) => ({ id, name }));
+  const numbering = new Map<string, number>();
+  return entries.map((member) => {
+    const duplicated = entries.filter((item) => item.name === member.name).length > 1;
+    const order = (numbering.get(member.name) || 0) + 1;
+    numbering.set(member.name, order);
+    return { ...member, label: duplicated ? `${member.name} (${order})` : member.name };
+  });
+}
+
+/** 計画の基準通貨。費用はこの通貨へ換算して割り勘・精算する。 */
+function planBaseCurrency(): string {
+  return (db.planById(planId())?.base_currency || "JPY").toUpperCase();
+}
 
 // フォームは日本語ラベルを value に持つ。列挙へ寄せる変換をここに集約する。
 function categoryFromLabel(label: string): ExpenseStore.ExpenseCategory {
@@ -57,27 +100,25 @@ export function renderExpenseEntry(data: TripData, options: { force?: boolean } 
     mount.innerHTML = `<div class="tl-expense-empty">編集する費用が見つかりませんでした。台帳を更新してからもう一度開いてください。</div>`;
     return;
   }
-  if (editingRecord) {
-    const editingNames = [
-      db.nameOf(editingRecord.row.payer_user_id),
-      ...editingRecord.shares.map((share) => db.nameOf(share.user_id)),
-    ].filter(Boolean);
-    editingNames.forEach((name) => {
-      if (!participants.includes(name)) participants.push(name);
-    });
+  const members = participantMembers(participants, editingRecord);
+  if (!members.length) {
+    mount.innerHTML = `<div class="tl-expense-empty">旅行メンバーを読み込めませんでした。画面を再読み込みしてからお試しください。</div>`;
+    return;
   }
+  const baseCurrency = planBaseCurrency();
   const currencyOptions = expenseCurrencies(data).map((code) => `<option>${escapeHtml(code)}</option>`).join("");
   const profileName = currentProfileName(participants);
-  const payerOptions = participants.map((name) => `<option value="${escapeHtml(name)}" ${name === profileName ? "selected" : ""}>${escapeHtml(name)}</option>`).join("");
-  const targetPicks = participants.map((name) => `
+  // value は user_id。表示名は同名メンバーがいると誰の負担か決められないため、ラベルにだけ使う。
+  const payerOptions = members.map((member) => `<option value="${escapeHtml(member.id)}" ${member.name === profileName ? "selected" : ""}>${escapeHtml(member.label)}</option>`).join("");
+  const targetPicks = members.map((member) => `
     <label class="tl-pick">
-      <input type="checkbox" name="targets" value="${escapeHtml(name)}" checked>
-      <span>${escapeHtml(name)}</span>
+      <input type="checkbox" name="targets" value="${escapeHtml(member.id)}" checked>
+      <span>${escapeHtml(member.label)}</span>
     </label>`).join("");
-  const shareInputs = participants.map((name) => `
+  const shareInputs = members.map((member) => `
     <label class="tl-field">
-      <span>${escapeHtml(name)}</span>
-      <input type="number" name="share-${escapeHtml(name)}" data-share-name="${escapeHtml(name)}" min="0" step="1" inputmode="numeric" placeholder="0">
+      <span>${escapeHtml(member.label)}</span>
+      <input type="number" name="share-${escapeHtml(member.id)}" data-share-id="${escapeHtml(member.id)}" min="0" step="${currencyStep(baseCurrency)}" inputmode="decimal" placeholder="0">
     </label>`).join("");
 
   mount.innerHTML = `
@@ -85,7 +126,7 @@ export function renderExpenseEntry(data: TripData, options: { force?: boolean } 
       <div class="tl-expense-primary">
         <label class="tl-field tl-amount-field">
           <span>金額 <b class="tl-required-mark" aria-label="必須">*</b></span>
-          <input type="number" name="amount" required min="1" step="1" inputmode="decimal" placeholder="0">
+          <input type="number" name="amount" required min="0" step="${currencyStep(baseCurrency)}" inputmode="decimal" placeholder="0">
         </label>
         <label class="tl-field wide">
           <span>内容 <b class="tl-required-mark" aria-label="必須">*</b></span>
@@ -124,6 +165,11 @@ export function renderExpenseEntry(data: TripData, options: { force?: boolean } 
           <label class="tl-field">
             <span>通貨 <b class="tl-required-mark" aria-label="必須">*</b></span>
             <select name="currency" required>${currencyOptions}</select>
+          </label>
+          <label class="tl-field" data-fx-field>
+            <span>為替レート <b class="tl-required-mark" aria-label="必須">*</b></span>
+            <input type="number" name="fxRate" min="0" step="0.0001" inputmode="decimal" placeholder="0">
+            <small data-fx-hint></small>
           </label>
         </details>
       </div>
@@ -181,24 +227,36 @@ export function renderExpenseEntry(data: TripData, options: { force?: boolean } 
   (form.elements.namedItem("paidDate") as HTMLInputElement).value = todayISO();
   applyProfileDefaults(form, participants);
   if (editingRecord) {
-    fillExpenseForm(form, editingRecord, participants);
+    fillExpenseForm(form, editingRecord, members, baseCurrency);
   }
-  setupExpenseEntryHandlers(form, participants);
+  setupExpenseEntryHandlers(form, members, baseCurrency);
 }
 
-function fillExpenseForm(form: HTMLFormElement, entry: ExpenseStore.ExpenseEntry, participants: string[]): void {
+function fillExpenseForm(
+  form: HTMLFormElement,
+  entry: ExpenseStore.ExpenseEntry,
+  members: FormMember[],
+  baseCurrency: string,
+): void {
+  const currency = (entry.row.currency || baseCurrency).toUpperCase();
+  const rate = entry.row.fx_rate > 0 ? entry.row.fx_rate : 1;
   const record = {
     paidDate: entry.row.paid_on || "",
-    payer: db.nameOf(entry.row.payer_user_id),
+    payer: entry.row.payer_user_id,
     category: ExpenseStore.CATEGORY_LABEL[entry.row.category],
     title: entry.row.title,
-    amount: entry.row.amount_minor,
-    currency: entry.row.currency,
+    // 保存は最小単位。入力欄は人が読む単位なので戻してから表示する。
+    amount: toMajor(entry.row.amount_minor, currency),
+    currency,
+    fxRate: currency === baseCurrency ? "" : unitRateFromFxRate(rate, currency, baseCurrency),
     splitMode: ExpenseStore.SPLIT_LABEL[entry.row.split_method],
     paymentMethod: entry.row.payment_method ? ExpenseStore.PAYMENT_LABEL[entry.row.payment_method] : "",
     note: entry.row.note || "",
-    targets: entry.shares.map((s) => db.nameOf(s.user_id)).filter(Boolean),
-    individual: Object.fromEntries(entry.shares.map((s) => [db.nameOf(s.user_id), s.amount_base_minor])),
+    targets: entry.shares.map((s) => s.user_id).filter(Boolean),
+    // 負担額は基準通貨で保存されている。個別金額の入力欄は費用の通貨なので割り戻す。
+    individual: Object.fromEntries(
+      entry.shares.map((s) => [s.user_id, toMajor(Math.round(s.amount_base_minor / rate), currency)]),
+    ),
   };
   const setField = (name: string, value: string | number | undefined): void => {
     const field = form.elements.namedItem(name) as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement | null;
@@ -207,7 +265,8 @@ function fillExpenseForm(form: HTMLFormElement, entry: ExpenseStore.ExpenseEntry
   setField("paidDate", record.paidDate || todayISO());
   setField("payer", record.payer);
   setField("category", record.category);
-  setField("currency", record.currency || "JPY");
+  setField("currency", record.currency);
+  setField("fxRate", record.fxRate);
   setField("title", record.title);
   setField("amount", record.amount);
   setField("paymentMethod", record.paymentMethod);
@@ -218,15 +277,16 @@ function fillExpenseForm(form: HTMLFormElement, entry: ExpenseStore.ExpenseEntry
   qsa<HTMLInputElement>("input[name='targets']", form).forEach((input) => {
     input.checked = record.targets && record.targets.length ? record.targets.includes(input.value) : true;
   });
-  participants.forEach((name) => {
-    const input = qsa<HTMLInputElement>("[data-share-name]", form).find((item) => item.dataset.shareName === name);
-    if (input) input.value = record.individual && record.individual[name] ? String(record.individual[name]) : "";
+  members.forEach((member) => {
+    const input = qsa<HTMLInputElement>("[data-share-id]", form).find((item) => item.dataset.shareId === member.id);
+    if (input) input.value = record.individual[member.id] ? String(record.individual[member.id]) : "";
   });
 }
 
-function setupExpenseEntryHandlers(form: HTMLFormElement, participants: string[]): void {
+function setupExpenseEntryHandlers(form: HTMLFormElement, members: FormMember[], baseCurrency: string): void {
   const status = qs<HTMLElement>("[data-expense-status]", form);
   const button = qs<HTMLButtonElement>("button[type='submit']", form);
+  const participants = members.map((member) => member.name);
 
   const field = (name: string): HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement =>
     form.elements.namedItem(name) as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
@@ -240,10 +300,31 @@ function setupExpenseEntryHandlers(form: HTMLFormElement, participants: string[]
     const node = form.querySelector<HTMLElement>(selector);
     if (node) node.textContent = value;
   };
+  const selectedCurrency = (): string => ((field("currency") as HTMLSelectElement).value || baseCurrency).toUpperCase();
+  const fxField = form.querySelector<HTMLElement>("[data-fx-field]");
+  const fxInput = field("fxRate") as HTMLInputElement;
+
+  /**
+   * 基準通貨以外を選んだときだけレート欄を出す。
+   * レートが無いと外貨がそのまま基準通貨の額として保存され、合計も精算も狂う。
+   */
+  const applyCurrency = (): void => {
+    const currency = selectedCurrency();
+    const foreign = currency !== baseCurrency;
+    if (fxField) fxField.style.display = foreign ? "" : "none";
+    fxInput.required = foreign;
+    if (!foreign) fxInput.value = "";
+    const hint = form.querySelector<HTMLElement>("[data-fx-hint]");
+    if (hint) hint.textContent = foreign ? `1 ${currency} = ? ${baseCurrency}` : "";
+    const amountInput = field("amount") as HTMLInputElement;
+    amountInput.step = currencyStep(currency);
+    qsa<HTMLInputElement>("[data-share-id]", form).forEach((input) => { input.step = currencyStep(currency); });
+  };
+
   const updateEditorSummaries = (): void => {
     setSummary("[data-expense-summary-date]", mdLabel((field("paidDate") as HTMLInputElement).value || todayISO()));
     setSummary("[data-expense-summary-category]", (field("category") as HTMLSelectElement).value || "食費");
-    setSummary("[data-expense-summary-currency]", (field("currency") as HTMLSelectElement).value || "JPY");
+    setSummary("[data-expense-summary-currency]", selectedCurrency());
     setSummary("[data-expense-summary-payment]", (field("paymentMethod") as HTMLSelectElement).value || "カード");
     const note = ((field("note") as HTMLTextAreaElement).value || "").trim();
     setSummary("[data-expense-summary-note]", note ? "入力済み" : "任意");
@@ -251,12 +332,14 @@ function setupExpenseEntryHandlers(form: HTMLFormElement, participants: string[]
 
   const markChanged = (): void => {
     form.dataset.dirty = "true";
+    applyCurrency();
     updateEditorSummaries();
   };
-  const split = bindExpenseSplitForm(form, participants, {
+  const split = bindExpenseSplitForm(form, members, {
     onChange: markChanged,
     onInput: markChanged,
   });
+  applyCurrency();
   updateEditorSummaries();
 
   form.addEventListener("submit", async (event) => {
@@ -268,37 +351,49 @@ function setupExpenseEntryHandlers(form: HTMLFormElement, participants: string[]
     const validation = split.validationMessage();
     if (validation) { setStatus(validation, "error"); return; }
     const mode = split.mode();
-    const targets = split.selectedNames();
+    const targets = split.selectedIds();
     const individual = split.individualAmounts();
     const amount = split.amount();
+    const currency = selectedCurrency();
+    const splitMethod = splitFromLabel(mode);
+
+    // 外貨はレートが無いと基準通貨へ換算できない。1:1 で保存すると金額が別物になる。
+    const unitRate = Number(fxInput.value);
+    const fxRate = currency === baseCurrency ? 1 : fxRateFromUnitRate(unitRate, currency, baseCurrency);
+    if (!fxRate) {
+      setStatus(`1 ${currency} が何 ${baseCurrency} かを入力してください。`, "error");
+      return;
+    }
+    const paidOn = (field("paidDate") as HTMLInputElement).value || "";
+    // 「全員で等分」はその費用の日に在籍していたメンバーだけを対象にする（途中合流/離脱を反映）。
+    // 旅行期間の外に払った前払い分は誰の在籍期間にも入らないので、その場合は全員へ戻す。
+    const presentIds = TripPlans.memberIdsPresentOn(planId(), paidOn);
+    const memberIds = presentIds.length ? presentIds : TripPlans.memberIdsPresentOn(planId(), "");
+    if (splitMethod === "equal_all" && !memberIds.length) {
+      setStatus("割り勘の対象になるメンバーがいません。メンバーを確認してください。", "error");
+      return;
+    }
 
     button.disabled = true;
     setStatus("保存中...", "");
     try {
-      // フォームは表示名と日本語ラベルを持つので、user_id と列挙へ変換して保存する。
-      const idOf = (name: string): string => {
-        const user = db.findUserByName(name)
-          || (!db.isEnabled() ? db.ensureUserLocal(name) : undefined);
-        if (!user) throw new Error("旅行メンバー情報を再読み込みしてください");
-        return user.id;
-      };
-      const custom: Record<string, number> = {};
-      for (const [name, value] of Object.entries(individual)) custom[idOf(name)] = value;
-      const paidOn = (field("paidDate") as HTMLInputElement).value || "";
+      // フォームの value は user_id。金額は入力単位（major）から保存単位（minor）へ寄せる。
+      const custom = Object.fromEntries(
+        Object.entries(individual).map(([userId, value]) => [userId, toMinor(value, currency)]),
+      );
       const payload: ExpenseStore.AddInput = {
         paidOn: paidOn || null,
-        payerUserId: idOf((field("payer") as HTMLSelectElement).value),
+        payerUserId: (field("payer") as HTMLSelectElement).value,
         category: categoryFromLabel((field("category") as HTMLSelectElement).value),
         title: (field("title") as HTMLInputElement).value,
-        amountMinor: amount,
-        currency: (field("currency") as HTMLSelectElement).value,
-        splitMethod: splitFromLabel(mode),
+        amountMinor: toMinor(amount, currency),
+        currency,
+        fxRate,
+        splitMethod,
         paymentMethod: paymentFromLabel((field("paymentMethod") as HTMLSelectElement).value),
         note: (field("note") as HTMLTextAreaElement).value,
-        // 「全員で等分」は、その費用の日に旅行へ在籍していたメンバーだけを対象にする
-        // （途中合流/離脱を反映）。日付未指定なら全員。
-        memberIds: TripPlans.memberIdsPresentOn(planId(), paidOn),
-        selectedIds: targets.map(idOf),
+        memberIds,
+        selectedIds: targets,
         customAmounts: custom,
       };
       const editingExpenseId = getEditingExpenseId();
@@ -313,6 +408,7 @@ function setupExpenseEntryHandlers(form: HTMLFormElement, participants: string[]
       (field("paidDate") as HTMLInputElement).value = todayISO();
       applyProfileDefaults(form, participants);
       qsa<HTMLInputElement>("input[name='targets']", form).forEach((input) => { input.checked = true; });
+      applyCurrency();
       split.refresh();
       hooks.renderBase();
       hooks.renderActive();

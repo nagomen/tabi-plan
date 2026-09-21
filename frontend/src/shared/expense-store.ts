@@ -12,6 +12,7 @@
 // （名前は「表示のための値」に降格した、という整理）。
 
 import type { Settlement, SettlementTransfer, ExpenseDetail, SettlementHistory } from "./types";
+import { formatMoneyMinor } from "./currency";
 import * as db from "./db";
 import type {
   ExpenseRow, ExpenseShareRow, SettlementRow, SplitMethod, ExpenseCategory, PaymentMethod,
@@ -90,9 +91,18 @@ export function computeShares(input: {
   if (input.splitMethod === "none" || amount <= 0) return [];
 
   if (input.splitMethod === "custom") {
-    return Object.entries(input.customAmounts || {})
+    const shares = Object.entries(input.customAmounts || {})
       .map(([user_id, v]) => ({ user_id, amount_base_minor: Math.round(Number(v) || 0) }))
       .filter((s) => s.user_id && s.amount_base_minor > 0);
+    // 個別金額を1人ずつ換算すると、合計が支払額から1人あたり1単位まで外れうる。
+    // その範囲のずれは丸め由来なので最大の負担へ寄せ、合計＝支払額を保つ。
+    // それより大きいずれは入力の誤りなので、APIの検証に弾かせる。
+    const drift = amount - shares.reduce((sum, share) => sum + share.amount_base_minor, 0);
+    if (drift !== 0 && shares.length && Math.abs(drift) <= shares.length) {
+      const largest = shares.reduce((top, s) => (s.amount_base_minor > top.amount_base_minor ? s : top), shares[0]);
+      largest.amount_base_minor += drift;
+    }
+    return shares.filter((s) => s.amount_base_minor > 0);
   }
 
   const pool =
@@ -124,8 +134,15 @@ export interface AddInput {
   memberIds: string[];
   /** 「選んだ人だけ」のときの対象 */
   selectedIds?: string[];
-  /** 「個別金額」のときの user_id → 金額 */
+  /** 「個別金額」のときの user_id → 金額。単位は amountMinor と同じ（費用の通貨の最小単位）。 */
   customAmounts?: Record<string, number>;
+}
+
+/** 個別金額は費用の通貨で受け取る。負担額として配る前に基準通貨へ換算する。 */
+function toBaseAmounts(custom: Record<string, number> | undefined, rate: number): Record<string, number> {
+  return Object.fromEntries(
+    Object.entries(custom || {}).map(([userId, value]) => [userId, Math.round((Number(value) || 0) * rate)]),
+  );
 }
 
 function toApiInput(input: AddInput): db.ExpenseInput {
@@ -148,7 +165,7 @@ function toApiInput(input: AddInput): db.ExpenseInput {
       splitMethod: input.splitMethod || "equal_all",
       memberIds: input.memberIds,
       selectedIds: input.selectedIds,
-      customAmounts: input.customAmounts,
+      customAmounts: toBaseAmounts(input.customAmounts, rate),
     }),
   };
 }
@@ -198,9 +215,8 @@ function formatYen(value: number): string {
 }
 
 function amountLabel(row: ExpenseRow): string {
-  const currency = (row.currency || "JPY").toUpperCase();
-  if (currency !== "JPY") return `${currency} ${row.amount_minor.toLocaleString("ja-JP")}`;
-  return formatYen(row.amount_minor);
+  // amount_minor はその通貨の最小単位なので、USD 12.34 は 1234 で入っている。
+  return formatMoneyMinor(row.amount_minor, row.currency || "JPY");
 }
 
 export function entryDetail(entry: ExpenseEntry, selfUserId = ""): ExpenseDetail {
@@ -300,7 +316,8 @@ export function computeSettlement(
   const expenseByPerson: Record<string, number> = {};
   for (const id of ids) {
     net[id] = (paid[id] || 0) - (owe[id] || 0);
-    expenseByPerson[db.nameOf(id) || id] = Math.round(owe[id] || 0);
+    // 表示名をキーにすると同名メンバーで合算が潰れるので user_id で持つ。
+    expenseByPerson[id] = Math.round(owe[id] || 0);
   }
 
   const transfers: SettlementTransfer[] = settleTransfers(net).map((t) => ({

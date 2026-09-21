@@ -113,6 +113,7 @@ export interface Settlement {
   paid?: string;
   paidLabel?: string;
   expenseTotal?: string;
+  /** user_id → 負担額の合計（基準通貨の最小単位）。表示名は描画側で解決する。 */
   expenseByPerson?: Record<string, number>;
   progress?: number;
   yourPaid?: string;
