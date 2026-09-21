@@ -1,0 +1,28 @@
+#!/bin/sh
+# main へ直接 push する前に npm run ci を通す。
+# PR を挟まない運用なので、壊れた変更を止められるのは実質ここだけ。
+# main 以外のブランチは素通しする。
+#
+# どうしても急ぐときは git push --no-verify で飛ばせるが、
+# main への push はそのまま本番デプロイへ流れることに注意する。
+set -e
+
+pushing_to_main=0
+while read -r local_ref local_sha remote_ref remote_sha; do
+  # ブランチ削除（local_sha が全部 0）は検査しない。
+  case "$local_sha" in
+    *[!0]*) ;;
+    *) continue ;;
+  esac
+  case "$remote_ref" in
+    refs/heads/main) pushing_to_main=1 ;;
+  esac
+done
+
+[ "$pushing_to_main" = 1 ] || exit 0
+
+echo "[pre-push] main へ push します。npm run ci を実行します（飛ばすなら --no-verify）。"
+if ! npm run ci; then
+  echo "[pre-push] npm run ci が失敗したので push を中止しました。" >&2
+  exit 1
+fi

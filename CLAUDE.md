@@ -17,9 +17,10 @@ npm run lint             # ESLint(await 忘れ、async 誤用、層の越境)
 
 ## コーディングルール
 
-- `main` への直接 push は禁止。`type/短い説明` の作業ブランチを切り、PR でマージする。`dev` ブランチはない。
+- `main` へ直接 push してよい。`dev` ブランチはない。push 前に pre-push フックが `npm run ci` を実行し、失敗したら push を止める。`main` への push はそのまま本番デプロイへ流れるので、フックを `--no-verify` で飛ばさない。
+- フックは `npm install` で自動的に有効になる(`core.hooksPath` = `.githooks`)。clone 直後は一度 `npm install` する。
+- レビューしてほしい変更だけ `type/短い説明` の作業ブランチを切り、PR にする。PR 本文は `.github/PULL_REQUEST_TEMPLATE.md` に従い、`## 目的` から始める。丁寧語で書く。
 - コミットメッセージは `type: 要約`(50 文字以内)。`type` は `feat` / `fix` / `docs` / `refactor` / `test` / `chore`。本文には「なぜ」を書く。
-- PR 本文は `.github/PULL_REQUEST_TEMPLATE.md` に従い、`## 目的` から始める。丁寧語で書く。
 - 各ページの `frontend/src/<page>/main.ts` は入口として薄く保つ。ロジックは同じディレクトリの責務ごとのモジュールに置く。
 - `frontend/src/shared/` は全画面共有。ページ固有のコードを置かない。
 - API の HTTP 層(`server.ts` / `routes.ts`)は repo を経由し、DB ドライバへ直接触れない(ESLint で検査)。

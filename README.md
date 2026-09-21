@@ -39,7 +39,7 @@ cp .env.sample .env      # 値を埋める。必須は DB_USER / DB_PASSWORD / S
 ## テスト
 
 ```bash
-npm run ci               # 型検査 + Lint + テスト + 本番フロントビルド。PR を出す前に必ず通す
+npm run ci               # 型検査 + Lint + テスト + 本番フロントビルド。main への push 前に pre-push フックが自動実行する
 npm test                 # frontend / API のテストだけ
 npm run test:coverage    # API のカバレッジ閾値を含む
 npm run lint             # ESLint。await 忘れ、async 誤用、層の越境だけを検査する
@@ -82,8 +82,10 @@ GitHub Pages に含まれるため公開情報として扱い、秘密情報は�
 ## ブランチ運用と PR
 
 - `main` だけで運用します(`dev` ブランチは設けていません)。`main` は常にデプロイ可能な状態を保ちます。
-- `main` への直接 push は禁止です。作業ブランチを `type/短い説明`(例: `fix/csv-encoding`)で切り、PR を出してマージします。
-- `main` はブランチ保護で PR と CI(`verify`)の成功を必須にしています。
+- `main` へ直接 push できます。PR は必須ではなく、レビューしてほしい変更にだけ作業ブランチ(`type/短い説明`、例: `fix/csv-encoding`)と PR を使います。
+- `main` へ push する直前に、pre-push フックが `npm run ci` を実行します。失敗した場合 push は中止されます。フックは `npm install` で有効になります(`core.hooksPath` = `.githooks`)。
+- `main` への push はそのまま本番デプロイに流れます。`--no-verify` でフックを飛ばさないでください。
+- 履歴の巻き戻し(force push)とブランチ削除はブランチ保護で禁止したままです。
 - コミットメッセージは `type: 要約` の形式で、1 行目は 50 文字以内にします。`type` は `feat` / `fix` / `docs` / `refactor` / `test` / `chore` のいずれかです。次のコマンドでテンプレートを有効にできます。
 
 ```bash

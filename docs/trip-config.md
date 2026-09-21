@@ -14,7 +14,7 @@ GitHub Pages の静的ファイルは公開情報です。ページに出して�
 | --- | --- | --- | --- |
 | 1 | 旅行 repo | `frontend/public/trip-config.example.js` を参考に `frontend/public/trip-config.js` を編集する | `tripSlug` は旅行ごとに必ず変える |
 | 2 | ローカル | ルートで `npm run ci` を実行する | 型検査・テスト・ビルドを確認する |
-| 3 | GitHub | PR を `main` にマージする | Actions が本番 Pages を更新し、配信内容を検証する |
+| 3 | GitHub | `main` へ push する(PR を使った場合はマージする) | Actions が本番 Pages を更新し、配信内容を検証する |
 | 4 | GitHub | API を変更した場合だけ `Deploy API` を手動実行する | API 更新・DB マイグレーション・バックアップタイマー更新 |
 
 `tripSlug` は localStorage のキーに使います。旅行ごとに必ず変えてください。

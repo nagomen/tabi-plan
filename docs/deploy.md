@@ -11,7 +11,8 @@
 `.github/workflows/deploy-pages.yml` は `main` に push された `frontend/` を検査・ビルドし、出力 `frontend/dist` を GitHub Pages にデプロイします。
 デプロイ後はコミット識別子と主要ファイルを実 URL で検証します。
 
-`main` はブランチ保護で PR 必須のため、フロントのデプロイは「PR をマージする」ことで行われます。
+`main` へ直接 push すればそのままデプロイされます。PR を使った場合はマージ時に同じ流れになります。
+push 直前には pre-push フックが `npm run ci` を実行するため、ビルドの通らない変更は手元で止まります。
 
 ## API
 
@@ -20,7 +21,7 @@
 
 ## ワンコマンドで全てデプロイ
 
-PR を `main` にマージした後、リポジトリのルートで次を実行します。
+`main` へ push(または PR をマージ)した後、リポジトリのルートで次を実行します。
 
 ```bash
 npm run deploy:production

@@ -8,6 +8,7 @@
     "api"
   ],
   "scripts": {
+    "prepare": "git config core.hooksPath .githooks || true",
     "dev": "npm run dev -w frontend",
     "dev:full": "node tools/dev-full.mjs",
     "build": "npm run build -w frontend",
