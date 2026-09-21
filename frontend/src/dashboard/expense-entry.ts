@@ -80,7 +80,11 @@ export function setExpenseSheet(open: boolean): void {
   if (panel) panel.setAttribute("aria-label", getEditingExpenseId() ? "費用を編集" : "費用を追加");
   sheet.hidden = !open;
   document.documentElement.style.overflow = open ? "hidden" : "";
-  if (open) {
+  // タッチ端末で自動フォーカスすると、開いた直後にキーボードが出て画面が飛ぶ。
+  // 自分で入力欄を選ぶほうが落ち着くので、フォーカスはポインタのある端末だけにする。
+  const pointerDevice = typeof window.matchMedia === "function"
+    && window.matchMedia("(hover: hover) and (pointer: fine)").matches;
+  if (open && pointerDevice) {
     const first = sheet.querySelector<HTMLInputElement | HTMLSelectElement>(
       "input:not([type=hidden]):not([type=file]), select",
     );
@@ -92,7 +96,11 @@ export function renderExpenseEntry(data: TripData, options: { force?: boolean } 
   const mount = root.querySelector<HTMLElement>("[data-expense-entry]");
   if (!mount) return;
   const existingForm = mount.querySelector<HTMLFormElement>("[data-expense-form-native]");
-  if (!options.force && existingForm && existingForm.dataset.dirty === "true") return;
+  // 入力中の作り直しは、入力内容だけでなくフォーカスとキーボードも失わせる。
+  // 触り始めた時点（dirty）と、まだ何も打っていないが触っている時点の両方で作り直さない。
+  const editing = existingForm
+    && (existingForm.dataset.dirty === "true" || existingForm.contains(document.activeElement));
+  if (!options.force && editing) return;
   const editingExpenseId = getEditingExpenseId();
   const editingRecord = editingExpenseId ? ExpenseStore.get(planId(), editingExpenseId) : undefined;
   const participants = expenseParticipants(data);
@@ -308,12 +316,19 @@ function setupExpenseEntryHandlers(form: HTMLFormElement, members: FormMember[],
    * 基準通貨以外を選んだときだけレート欄を出す。
    * レートが無いと外貨がそのまま基準通貨の額として保存され、合計も精算も狂う。
    */
+  // 入力のたびに呼ばれるので、通貨が変わった瞬間だけ開閉に触れる（打鍵中に画面を動かさない）。
+  let appliedCurrency = "";
   const applyCurrency = (): void => {
     const currency = selectedCurrency();
     const foreign = currency !== baseCurrency;
+    const switched = currency !== appliedCurrency;
+    appliedCurrency = currency;
     if (fxField) fxField.style.display = foreign ? "" : "none";
     fxInput.required = foreign;
     if (!foreign) fxInput.value = "";
+    // レートは必須なので、外貨へ切り替えた時点で閉じたアコーディオンの中に隠れたままにしない。
+    const editor = fxField?.closest("details");
+    if (editor && switched && foreign && !fxInput.value) editor.open = true;
     const hint = form.querySelector<HTMLElement>("[data-fx-hint]");
     if (hint) hint.textContent = foreign ? `1 ${currency} = ? ${baseCurrency}` : "";
     const amountInput = field("amount") as HTMLInputElement;

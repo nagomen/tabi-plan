@@ -3150,8 +3150,18 @@
     background: #fff;
     color: var(--ink);
     font: inherit;
-    font-size: 14px;
+    /* iOS Safari は16px未満の入力欄にフォーカスすると画面を勝手に拡大する。
+       入力のたびに表示が飛ぶので、指で触る幅では16pxを下回らせない。 */
+    font-size: 16px;
     font-weight: 500;
+  }
+
+  @media (min-width: 721px) {
+    .tl-field input,
+    .tl-field select,
+    .tl-field textarea {
+      font-size: 14px;
+    }
   }
 
   .tl-field input:focus-visible,
@@ -3284,6 +3294,9 @@
   }
 
   .tl-share-total {
+    /* 入力のたびに「合計 … / 支払額 …」の行数が変わると下の内容ごと動く。
+       2行ぶんを先に確保して、文字だけが差し替わるようにする。 */
+    min-height: 32px;
     color: var(--muted);
     font-size: 12px;
     font-weight: 620;
@@ -3366,6 +3379,9 @@
     position: relative;
     width: 100%;
     max-height: 88vh;
+    /* vh はモバイルでURLバーを除いた高さにならず、キーボードが出ると
+       パネルが画面より高くなって送信ボタンが隠れる。dvh は実際の表示領域に追従する。 */
+    max-height: 88dvh;
     display: flex;
     flex-direction: column;
     background: #fff;

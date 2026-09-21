@@ -111,6 +111,22 @@ test("費用フォームは人をuser_idで指し、外貨はレート入力を�
   assert.match(entry, /presentIds\.length \? presentIds : TripPlans\.memberIdsPresentOn\(planId\(\), ""\)/);
 });
 
+test("スマホで入力しても画面が拡大・再描画されない", () => {
+  const style = read("src/dashboard/style.css");
+  const entry = read("src/dashboard/expense-entry.ts");
+  // iOS Safari は16px未満の入力欄で自動ズームする。指で触る幅では下回らせない。
+  assert.match(style, /\.tl-field textarea \{[^}]*font-size: 16px/s);
+  assert.match(style, /@media \(min-width: 721px\) \{\s*\.tl-field input[\s\S]*?font-size: 14px/);
+  // キーボードが出ても送信ボタンが隠れないよう、実表示領域に追従させる。
+  assert.match(style, /\.tl-sheet-panel \{[^}]*max-height: 88dvh/s);
+  // 合計行の行数が変わると下の内容ごと動くので、高さを先に確保する。
+  assert.match(style, /\.tl-share-total \{[^}]*min-height/s);
+  // 入力中の作り直しはフォーカスとキーボードを失わせる。
+  assert.match(entry, /existingForm\.contains\(document\.activeElement\)/);
+  // 開いた直後の自動フォーカスは、タッチ端末では画面が飛ぶだけ。
+  assert.match(entry, /\(hover: hover\) and \(pointer: fine\)/);
+});
+
 test("閲覧のみのモードでは精算完了を描画も実行もしない", () => {
   const settlement = read("src/dashboard/settlement.ts");
   assert.match(settlement, /isReadOnly\(\) \? "" : `<button[^`]*data-settlement-complete/);
