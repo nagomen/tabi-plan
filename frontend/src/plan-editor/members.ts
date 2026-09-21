@@ -23,10 +23,15 @@ function hasMemberAccount(): boolean {
   return Boolean(currentAccount());
 }
 
+function memberName(userId: string): string {
+  const planId = state.slug ? TripPlans.planIdOf(state.slug) : "";
+  return db.planMemberName(planId, userId);
+}
+
 function memberArray(): string[] { return splitNames(model.members); }
 function syncMemberNames(): void {
   model.members = [
-    ...model.memberIds.map((id) => db.nameOf(id)).filter(Boolean),
+    ...model.memberIds.map(memberName).filter(Boolean),
     ...model.pendingMembers.map((member) => member.name),
   ].join("、");
 }
@@ -116,7 +121,7 @@ export function renderMembers(): void {
   const meta = state.slug ? TripPlans.get(state.slug) : null;
   const stored = meta ? db.planBySlug(meta.slug) : null;
   const ownerId = stored?.owner_user_id || account?.id || "";
-  const memberAccounts = model.memberIds.map((id) => ({ id, name: db.nameOf(id) })).filter((member) => member.name);
+  const memberAccounts = model.memberIds.map((id) => ({ id, name: memberName(id) })).filter((member) => member.name);
   const savedMembers = memberAccounts.length
     ? memberAccounts.map((member) => ({ ...member, pendingKey: "" }))
     : model.pendingMembers.length
@@ -250,7 +255,7 @@ function memberPeriodsHtml(): string {
   const meta = state.slug ? TripPlans.get(state.slug) : null;
   if (!meta?.id || !canManagePlan(meta)) return "";
   if (!model.startDate || !model.endDate) return "";
-  const ids = model.memberIds.filter((id) => id && db.nameOf(id));
+  const ids = model.memberIds.filter((id) => id && memberName(id));
   if (!ids.length) return "";
   const start = model.startDate;
   const end = model.endDate;
@@ -275,7 +280,7 @@ function memberPeriodsHtml(): string {
     const full = isFull(id);
     return (
       `<div class="pe-mperiod${full ? "" : " is-partial"}">` +
-      `<span class="pe-mperiod-name">${escapeHtml(db.nameOf(id))}</span>` +
+      `<span class="pe-mperiod-name">${escapeHtml(memberName(id))}</span>` +
       memberPeriodBar(dates, start, end) +
       `<span class="pe-mperiod-badge${full ? " is-full" : ""}">${escapeHtml(memberPeriodLabel(dates))}</span>` +
       `<span class="pe-mperiod-fields">` +
@@ -532,7 +537,7 @@ export async function commitMemberSelect(): Promise<void> {
   const v = memberSelect.value.trim();
   if (!v) return;
   const role = selectedRole();
-  const name = db.nameOf(v);
+  const name = memberName(v);
   // owner は名簿へ足してから招待する。editor は名簿を触れないので招待だけ送り、
   // 相手が受諾した時点で参加者になる。
   if (canEditRoster()) addMember(v, role);

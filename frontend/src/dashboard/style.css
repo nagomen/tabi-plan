@@ -375,6 +375,25 @@
 
   .tl-members-list { display: grid; }
 
+  .tl-member-name-setting {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px 16px;
+    align-items: end;
+    margin-top: 18px;
+    padding-top: 16px;
+    border-top: 1px solid var(--line);
+  }
+  .tl-member-name-setting[hidden] { display: none; }
+  .tl-member-name-setting p {
+    grid-column: 1 / -1;
+    margin: 0;
+    color: var(--muted);
+    font-size: 11.5px;
+    line-height: 1.6;
+  }
+  .tl-member-name-setting .tl-button { min-height: 38px; }
+
   .tl-member-row {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto auto;

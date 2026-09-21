@@ -21,7 +21,9 @@ function fakeConnection(statements) {
     query: async (sql, params = []) => {
       const statement = String(sql);
       statements.push(statement);
-      if (statement.includes("SELECT id FROM users")) return [params.map((id) => ({ id }))];
+      if (statement.includes("SELECT id, display_name FROM users")) {
+        return [params.map((id) => ({ id, display_name: id === "usr_owner" ? "所有者" : "同行者" }))];
+      }
       if (statement.includes("SELECT version, source, visibility")) {
         return [[{ version: 1, source: "local", visibility: "public", status: "draft", open_editing: 0 }]];
       }

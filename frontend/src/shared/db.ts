@@ -677,7 +677,8 @@ function readCache(): Snapshot | null {
     if (parsed.plans.some((plan) => !plan || typeof plan.version !== "number")) return null;
     // 参加者とアクセス権を分離する前のキャッシュは、招待前の人を誤って
     // ログイン済みメンバー扱いするため破棄する。
-    if (!Array.isArray(parsed.members) || parsed.members.some((member) => !("access_status" in member))) return null;
+    if (!Array.isArray(parsed.members) || parsed.members.some((member) =>
+      !("access_status" in member) || typeof member.display_name !== "string")) return null;
     return { ...emptySnapshot(), ...parsed } as Snapshot;
   } catch {
     return null;
@@ -939,6 +940,14 @@ export function nameOf(id: string | null | undefined): string {
   return userById(id)?.display_name || "";
 }
 
+/** アカウント名ではなく、その旅行で本人が設定した表示名を返す。 */
+export function planMemberName(planId: string, userId: string | null | undefined): string {
+  if (!userId) return "";
+  return snap.members.find((member) =>
+    member.plan_id === planId && member.user_id === userId && member.status === "active"
+  )?.display_name || nameOf(userId);
+}
+
 const nameKey = (s: string): string => String(s || "").trim().toLowerCase();
 
 /** 表示名から id を引く（同名は最初の1件）。 */
@@ -1171,6 +1180,19 @@ export async function leavePlan(planId: string): Promise<void> {
   await reload();
 }
 
+export async function updateOwnPlanDisplayName(planId: string, displayName: string): Promise<string> {
+  const result = await request<{ display_name: string }>(
+    "PATCH",
+    `/api/plans/${encodeURIComponent(planId)}/members/me`,
+    { display_name: displayName },
+  );
+  const me = snap.viewer?.id || "";
+  const member = snap.members.find((row) => row.plan_id === planId && row.user_id === me);
+  if (member) member.display_name = result.display_name;
+  writeCache(snap);
+  return result.display_name;
+}
+
 export async function removePlanMember(
   planId: string,
   userId: string,
@@ -1234,6 +1256,7 @@ export function createPlanBundleLocal(
   snap.members = snap.members.concat(members.filter((member) => member.user_id).map((member) => ({
     plan_id: row.id,
     user_id: member.user_id,
+    display_name: nameOf(member.user_id) || "メンバー",
     role: member.user_id === row.owner_user_id ? "owner" : member.role || "editor",
     status: "active" as const,
     access_status: member.user_id === row.owner_user_id ? "active" as const : null,
@@ -1269,7 +1292,9 @@ export function replaceMembers(planId: string, list: {
   );
   snap.members = snap.members.filter((m) => m.plan_id !== planId).concat(
     list.filter((m) => m.user_id).map((m) => ({
-      plan_id: planId, user_id: m.user_id, role: m.role || "editor", status: "active" as const,
+      plan_id: planId, user_id: m.user_id,
+      display_name: currentMembers.get(m.user_id)?.display_name || nameOf(m.user_id) || "メンバー",
+      role: m.role || "editor", status: "active" as const,
       access_status: currentMembers.get(m.user_id)?.access_status ?? null,
       from_date: m.from_date ?? null, to_date: m.to_date ?? null,
     })),

@@ -200,11 +200,11 @@ async function claimPlaceholder(
   userId: string,
 ): Promise<void> {
   const placeholder = await firstRow<{
-    user_id: string; role: "owner" | "editor" | "viewer";
+    user_id: string; display_name: string; role: "owner" | "editor" | "viewer";
     from_date: string | null; to_date: string | null;
   }>(
     conn,
-    `SELECT pmp.user_id, pm.role, pm.from_date, pm.to_date
+    `SELECT pmp.user_id, pm.display_name, pm.role, pm.from_date, pm.to_date
        FROM plan_member_placeholders pmp
        JOIN plan_members pm ON pm.plan_id = pmp.plan_id AND pm.user_id = pmp.user_id AND pm.status = 'active'
       WHERE pmp.plan_id = ? AND pmp.user_id = ? AND pmp.status = 'unclaimed'
@@ -223,11 +223,11 @@ async function claimPlaceholder(
   if (existingMember) throw new BadRequest("このアカウントは既に別のメンバーとしてこの旅行に登録されています");
 
   await conn.query(
-    `INSERT INTO plan_members (plan_id, user_id, role, status, invited_by_id, from_date, to_date)
-     VALUES (?, ?, ?, 'active', ?, ?, ?)
+    `INSERT INTO plan_members (plan_id, user_id, display_name, role, status, invited_by_id, from_date, to_date)
+     VALUES (?, ?, ?, ?, 'active', ?, ?, ?)
      ON DUPLICATE KEY UPDATE role = VALUES(role), status = 'active',
        invited_by_id = VALUES(invited_by_id), from_date = VALUES(from_date), to_date = VALUES(to_date)`,
-    [invite.plan_id, userId, invite.role, invite.created_by_id, placeholder.from_date, placeholder.to_date],
+    [invite.plan_id, userId, placeholder.display_name, invite.role, invite.created_by_id, placeholder.from_date, placeholder.to_date],
   );
   await conn.query(
     `INSERT INTO plan_access_grants (plan_id, user_id, role, status, granted_by_id)
@@ -330,10 +330,10 @@ export async function acceptInvite(token: string, userId: string, selectedMember
       const acceptedRole = invite.owner_user_id === userId ? "owner" : invite.role;
       if (existing?.status !== "active") {
         await conn.query(
-          `INSERT INTO plan_members (plan_id, user_id, role, status, invited_by_id)
-           VALUES (?, ?, ?, 'active', ?)
+          `INSERT INTO plan_members (plan_id, user_id, display_name, role, status, invited_by_id)
+           SELECT ?, id, display_name, ?, 'active', ? FROM users WHERE id = ?
            ON DUPLICATE KEY UPDATE role = VALUES(role), status = 'active', invited_by_id = VALUES(invited_by_id)`,
-          [invite.plan_id, userId, acceptedRole, invite.created_by_id],
+          [invite.plan_id, acceptedRole, invite.created_by_id, userId],
         );
       } else if (existing.role !== "owner" && existing.role !== acceptedRole) {
         await conn.query(

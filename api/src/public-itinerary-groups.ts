@@ -3,6 +3,7 @@ interface PublicItineraryRow {
   item_date: string | null;
   member_ids?: unknown;
   public_track_key?: string | null;
+  public_track_keys?: string[] | null;
   public_day_track_keys?: string[] | null;
 }
 
@@ -46,8 +47,8 @@ function coversEveryone(ids: readonly string[], everyone: ReadonlySet<string>): 
 /**
  * 公開閲覧用に、実際の user_id 集合を人物数も含まない匿名の班キーへ置き換える。
  *
- * 同じ対象集合の予定は同じ班になる。全員予定は全タブ共通、予定のない残りメンバーも
- * 1班として表現する。氏名・実ID・班の人数・別日との人物対応は応答から分からない。
+ * 各メンバーが参加する予定の組み合わせで班を作る。全員予定は全タブ共通、重なる予定は
+ * 該当する複数班へ表示する。氏名・実ID・班の人数・別日との人物対応は応答から分からない。
  */
 export function anonymizePublicItineraryGroups(
   itinerary: PublicItineraryRow[],
@@ -93,20 +94,30 @@ export function anonymizePublicItineraryGroups(
       if (!key || subsets.has(key) || coversEveryone(ids || [], everyone)) continue;
       subsets.set(key, ids || []);
     }
-    const covered = new Set([...subsets.values()].flat());
-    const hasRest = [...everyone].some((id) => !covered.has(id));
-    const internalTrackKeys = [...subsets.keys()];
-    if (hasRest) internalTrackKeys.push("@rest");
-    const publicTrackKeys = internalTrackKeys.map((_, index) => `public-group-${index + 1}`);
-    const publicKeyByInternal = new Map(internalTrackKeys.map((key, index) => [key, publicTrackKeys[index]]));
-    const hasMultipleTracks = internalTrackKeys.length >= 2;
+    const subsetRows = [...subsets.entries()];
+    const bySignature = new Map<string, string[]>();
+    for (const memberId of everyone) {
+      const signature = subsetRows
+        .filter(([, ids]) => ids.includes(memberId))
+        .map(([key]) => key)
+        .join("|");
+      const members = bySignature.get(signature) || [];
+      members.push(memberId);
+      bySignature.set(signature, members);
+    }
+    const internalTracks = [...bySignature.values()];
+    const publicTrackKeys = internalTracks.map((_, index) => `public-group-${index + 1}`);
+    const hasMultipleTracks = internalTracks.length >= 2;
 
     for (const row of rows) {
       const memberIds = parsedByRow.get(row);
       const key = memberSetKey(memberIds || null);
-      row.public_track_key = hasMultipleTracks && key && !coversEveryone(memberIds || [], everyone)
-        ? publicKeyByInternal.get(key) || null
-        : null;
+      const trackKeys = hasMultipleTracks && key && !coversEveryone(memberIds || [], everyone)
+        ? internalTracks.flatMap((trackMembers, index) =>
+          trackMembers.some((id) => (memberIds || []).includes(id)) ? [publicTrackKeys[index]] : [])
+        : [];
+      row.public_track_keys = trackKeys.length ? trackKeys : null;
+      row.public_track_key = trackKeys.length === 1 ? trackKeys[0] : null;
       row.public_day_track_keys = hasMultipleTracks ? publicTrackKeys : null;
       row.member_ids = null;
     }

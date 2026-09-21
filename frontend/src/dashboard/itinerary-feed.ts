@@ -26,7 +26,7 @@ import { flightTicketHtml, trainTicketHtml } from "./flight-notes";
 /** 旅行の全日程を LINE で送れるテキストにして共有／コピーする。 */
 export async function shareSchedule(): Promise<void> {
   const btn = root.querySelector<HTMLButtonElement>("[data-copy-schedule]");
-  const text = buildItineraryShareText(state.data.trip, state.days, (id) => db.nameOf(id));
+  const text = buildItineraryShareText(state.data.trip, state.days, (id) => db.planMemberName(planId(), id));
   if (!text.trim()) {
     if (btn) flashLabel(btn, "[data-copy-schedule-label]", "日程がありません");
     return;
@@ -133,7 +133,7 @@ export function selectedTrack(day: DayGroup): DayTrack | null {
 export function trackItems(day: DayGroup, track: DayTrack | null): ItineraryItem[] {
   if (!track) return day.items;
   if (day.items.some((item) => item.publicDayTrackKeys?.length)) {
-    return day.items.filter((item) => isPublicItemInTrack(item.publicTrackKey, track));
+    return day.items.filter((item) => isPublicItemInTrack(item.publicTrackKeys || item.publicTrackKey, track));
   }
   const everyone = everyoneIds(day.items.map((item) => item.members), presentIdsOf(day));
   return day.items.filter((item) => isItemInTrack(item.members, track, everyone));
@@ -156,7 +156,7 @@ function trackLabel(track: DayTrack, index: number, withNames: boolean): string 
   if (you && track.memberIds.includes(you)) names.push("あなた");
   for (const id of track.memberIds) {
     if (id === you) continue;
-    const name = db.nameOf(id);
+    const name = db.planMemberName(planId(), id);
     if (name) names.push(name);
   }
   if (!names.length) return "そのほか";
@@ -169,7 +169,7 @@ function rejoinItemsOf(day: DayGroup): Set<ItineraryItem> {
   const isPublic = items.some((item) => item.publicDayTrackKeys?.length);
   const everyone = isPublic ? [] : everyoneIds(items.map((item) => item.members), presentIdsOf(day));
   const specific = items.map((item) => isPublic
-    ? Boolean(item.publicTrackKey)
+      ? Boolean(item.publicTrackKeys?.length || item.publicTrackKey)
     : !isEveryoneItem(item.members, everyone));
   return new Set(rejoinIndexes(specific).map((index) => items[index]));
 }
@@ -254,7 +254,7 @@ function candidateSlotHtml(options: Candidate[]): string {
   const scope = first.memberIds?.length ? new Set(first.memberIds) : null;
   const eligible = accepted.filter((userId) => present.includes(userId) && (!scope || scope.has(userId)));
   const voters = new Set(options.flatMap((candidate) => candidate.voteIds || []).filter((userId) => eligible.includes(userId)));
-  const remainingNames = eligible.filter((userId) => !voters.has(userId)).map((userId) => db.nameOf(userId)).filter(Boolean);
+  const remainingNames = eligible.filter((userId) => !voters.has(userId)).map((userId) => db.planMemberName(id, userId)).filter(Boolean);
   const mine = options.find((candidate) => me && candidate.voteIds?.includes(me));
   const allVoted = eligible.length > 0 && voters.size === eligible.length;
   const max = Math.max(0, ...options.map((candidate) => candidate.voteIds?.filter((id) => eligible.includes(id)).length || 0));
@@ -344,7 +344,7 @@ function timelineHtmlForDay(idx: number): string {
     const casinoGuide = casinoGuideShown ? "" : relatedCasinoGuideHtml(item);
     if (casinoGuide) casinoGuideShown = true;
 
-    const isBranchSpecific = Boolean(item.publicTrackKey) || (track
+    const isBranchSpecific = Boolean(item.publicTrackKeys?.length || item.publicTrackKey) || (track
       ? !isEveryoneItem(item.members, everyone)
       : false);
     const rejoin = rejoinItems.has(item)
@@ -398,8 +398,8 @@ function presenceBadgesHtml(day: DayGroup): string {
   if (!periods.length) return "";
   const first = state.days[0]?.date || "";
   const last = state.days[state.days.length - 1]?.date || "";
-  const joins = joinersOn(periods, day.date, first).map((uid) => db.nameOf(uid)).filter(Boolean);
-  const leaves = leaversOn(periods, day.date, last).map((uid) => db.nameOf(uid)).filter(Boolean);
+  const joins = joinersOn(periods, day.date, first).map((uid) => db.planMemberName(id, uid)).filter(Boolean);
+  const leaves = leaversOn(periods, day.date, last).map((uid) => db.planMemberName(id, uid)).filter(Boolean);
   const parts: string[] = [];
   if (joins.length) parts.push(`<span class="tl-day-presence is-join">${icon("users")}${escapeHtml(joins.join("・"))} 合流</span>`);
   if (leaves.length) parts.push(`<span class="tl-day-presence is-leave">${escapeHtml(leaves.join("・"))} この日まで</span>`);

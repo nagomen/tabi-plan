@@ -17,8 +17,14 @@ export function publicDayTracks(dayTrackKeys: (readonly string[] | undefined)[])
 }
 
 /** 公開予定は班キー未指定なら全班共通、指定ありなら一致する班だけへ表示する。 */
-export function isPublicItemInTrack(itemTrackKey: string | undefined, track: DayTrack): boolean {
-  return !itemTrackKey || itemTrackKey === track.key;
+export function isPublicItemInTrack(
+  itemTrackKeys: string | readonly string[] | undefined,
+  track: DayTrack,
+): boolean {
+  if (!itemTrackKeys || (Array.isArray(itemTrackKeys) && !itemTrackKeys.length)) return true;
+  return Array.isArray(itemTrackKeys)
+    ? itemTrackKeys.includes(track.key)
+    : itemTrackKeys === track.key;
 }
 
 /** 予定の対象メンバー集合を正規化したキー。空＝全員対象は null。 */
@@ -76,8 +82,8 @@ export function everyoneIds(
 }
 
 /**
- * その日の班。一部メンバーだけの予定があるとき、対象メンバー集合ごとに1班と、
- * どの班にも入らない在籍メンバー（presentIds の残り）の班に割る。
+ * その日の班。一部メンバーだけの予定があるとき、各メンバーが参加する予定の
+ * 組み合わせを比較し、同じ行動をする人を一つの班へまとめる。
  * 全員（everyoneIds）が入っている予定は「全員の予定」なので班を作らない
  * （どの班のタブにも共通の予定として表示する）。
  * 班が2つ以上に分かれない日は空配列（＝タブは出さず従来表示）。
@@ -96,12 +102,21 @@ export function dayTracks(
     subsets.set(key, ids);
   }
   if (!subsets.size) return [];
-  const covered = new Set([...subsets.values()].flat());
-  const tracks: DayTrack[] = [...subsets.entries()].map(([key, memberIds]) => ({ key, memberIds }));
-  // 公開閲覧ではplan_membersを受け取らないが、全員予定に匿名ID一式が入る。
-  // everyoneから残りを求めれば、実IDを公開せず「別行動しない残り班」も作れる。
-  const rest = everyone.filter((id) => id && !covered.has(id));
-  if (rest.length) tracks.push({ key: REST_TRACK_KEY, memberIds: [...new Set(rest)] });
+  const subsetRows = [...subsets.entries()];
+  const bySignature = new Map<string, string[]>();
+  for (const memberId of everyone) {
+    const signature = subsetRows
+      .filter(([, ids]) => ids.includes(memberId))
+      .map(([key]) => key)
+      .join("|");
+    const group = bySignature.get(signature) || [];
+    group.push(memberId);
+    bySignature.set(signature, group);
+  }
+  const tracks: DayTrack[] = [...bySignature.entries()].map(([signature, memberIds]) => ({
+    key: signature ? memberSetKey(memberIds) || REST_TRACK_KEY : REST_TRACK_KEY,
+    memberIds,
+  }));
   return tracks.length >= 2 ? tracks : [];
 }
 
@@ -128,5 +143,6 @@ export function isItemInTrack(
 ): boolean {
   const key = memberSetKey(members);
   if (isEveryoneItem(members, everyone)) return true;
-  return key === track.key;
+  const ids = new Set(key?.split(",") || []);
+  return track.memberIds.some((id) => ids.has(id));
 }

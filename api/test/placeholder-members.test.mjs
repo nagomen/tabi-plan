@@ -6,7 +6,9 @@ process.env.DB_USER = "test";
 process.env.DB_PASSWORD = "test";
 
 const { pool } = await import("../dist/db.js");
-const { createPlaceholderMember, leavePlan, removePlanMember, revokeMemberAccess } = await import("../dist/plan-member-repo.js");
+const {
+  createPlaceholderMember, leavePlan, removePlanMember, revokeMemberAccess, updateOwnPlanDisplayName,
+} = await import("../dist/plan-member-repo.js");
 const { acceptInvite, inspectInvite } = await import("../dist/plan-invite-repo.js");
 
 function result(affectedRows = 1) {
@@ -37,6 +39,7 @@ test("同名でも旅行専用の仮メンバーを別IDで作成する", async 
   assert.notEqual(first.user.id, second.user.id);
   assert.match(first.user.id, /^gst_/);
   assert.equal(first.user.display_name, "たかし");
+  assert.equal(first.member.display_name, "たかし");
   assert.equal(first.assignedItineraryItems, 0);
   assert.equal(statements.filter(({ sql }) => sql.includes("INSERT INTO plan_member_placeholders")).length, 2);
 });
@@ -130,7 +133,7 @@ test("招待承諾は仮メンバーの旅行内データをアカウントへ�
         }]];
       }
       if (sql.includes("FROM plan_member_placeholders WHERE")) return [[{ user_id: "gst_1" }]];
-      if (sql.includes("JOIN plan_members pm")) return [[{ user_id: "gst_1", role: "editor" }]];
+      if (sql.includes("JOIN plan_members pm")) return [[{ user_id: "gst_1", display_name: "たかし", role: "editor" }]];
       if (sql.includes("SELECT user_id FROM plan_members")) return [[]];
       if (sql.includes("SELECT id, member_ids FROM itinerary_items")) {
         return [[{ id: "iti_1", member_ids: JSON.stringify(["gst_1", "usr_other"]) }]];
@@ -165,6 +168,30 @@ test("招待承諾は仮メンバーの旅行内データをアカウントへ�
   assert.match(sql, /SET status = 'claimed'/);
   assert.match(sql, /COMMIT/);
   assert.doesNotMatch(sql, /INSERT INTO friendships/);
+});
+
+test("本人はアカウント名を変えず旅行内表示名だけを更新する", async (t) => {
+  const originalGetConnection = pool.getConnection;
+  const statements = [];
+  const connection = {
+    beginTransaction: async () => {},
+    commit: async () => {},
+    rollback: async () => {},
+    release: () => {},
+    query: async (sql, params = []) => {
+      statements.push({ sql: String(sql), params });
+      if (String(sql).includes("SELECT pm.user_id")) return [[{ user_id: "usr_aizawa" }]];
+      return result();
+    },
+  };
+  pool.getConnection = async () => connection;
+  t.after(() => { pool.getConnection = originalGetConnection; });
+
+  const name = await updateOwnPlanDisplayName("pln_1", "usr_aizawa", "  旅行のあいざわ  ");
+  assert.equal(name, "旅行のあいざわ");
+  const update = statements.find(({ sql }) => sql.includes("UPDATE plan_members SET display_name"));
+  assert.deepEqual(update.params, ["旅行のあいざわ", "pln_1", "usr_aizawa"]);
+  assert.equal(statements.some(({ sql }) => sql.includes("UPDATE users")), false);
 });
 
 test("個人宛て招待では別の仮メンバーを選べない", async (t) => {

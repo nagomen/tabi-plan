@@ -29,7 +29,7 @@ function itineraryTrackOptions(planId: string): ItineraryTrackOption[] {
     groups.set(ids.join(","), ids);
   }
   return [...groups.entries()].map(([key, ids], index) => {
-    const names = ids.map((id) => db.nameOf(id)).filter(Boolean);
+    const names = ids.map((id) => db.planMemberName(planId, id)).filter(Boolean);
     const detail = names.length > 3 ? `${names.slice(0, 3).join("・")}ほか` : names.join("・");
     return { key, label: `${String.fromCharCode(65 + (index % 26))}班${detail ? `（${detail}）` : ""}` };
   });
@@ -76,7 +76,7 @@ export function renderMembers(data: TripData): void {
   const ownerId = meta ? (db.planBySlug(meta.slug)?.owner_user_id || "") : "";
   const canRemoveMembers = Boolean(meta && !isReadOnly() && canManagePlan(meta));
   const people = meta?.memberIds?.length
-    ? meta.memberIds.map((id) => ({ id, name: db.nameOf(id) })).filter((person) => person.name)
+    ? meta.memberIds.map((id) => ({ id, name: db.planMemberName(meta.id || "", id) })).filter((person) => person.name)
     : splitNames(membersStr).map((name) => ({ id: "", name }));
   if (openEditingVisitor && myName && !people.some((person) => person.name === myName)) {
     people.unshift({ id: currentUserId(), name: myName });
@@ -129,9 +129,45 @@ export function renderMembers(data: TripData): void {
   if (inviteEl) inviteEl.hidden = isReadOnly() || CONFIG.mode !== "local" || !meta || !canManagePlan(meta);
   if (meta?.id && canRemoveMembers) configureMemberForm(meta.id);
 
+  const nameSetting = root.querySelector<HTMLFormElement>("[data-member-name-setting]");
+  const ownMember = meta?.id ? db.members().find((member) =>
+    member.plan_id === meta.id && member.user_id === currentUserId() &&
+    member.status === "active" && member.access_status === "active"
+  ) : undefined;
+  if (nameSetting) {
+    nameSetting.hidden = !ownMember;
+    const input = nameSetting.querySelector<HTMLInputElement>("[data-member-display-name]");
+    if (input && document.activeElement !== input) input.value = ownMember?.display_name || "";
+  }
+
   // 脱退は「名前を設定した参加メンバー」だけ（＝自分が一覧にいる）。
   const leaveEl = root.querySelector<HTMLElement>("[data-members-leave]");
   if (leaveEl) leaveEl.hidden = isReadOnly() || !meta || !isMemberOf(meta) || canManagePlan(meta);
+}
+
+/** アカウント名は変えず、この旅行内で表示する本人の名前だけを保存する。 */
+export async function saveOwnMemberName(form: HTMLFormElement): Promise<void> {
+  const meta = TripPlans.get(CONFIG.tripSlug);
+  const input = form.querySelector<HTMLInputElement>("[data-member-display-name]");
+  const button = form.querySelector<HTMLButtonElement>("button[type='submit']");
+  const name = (input?.value || "").trim();
+  if (!meta?.id || !name) {
+    input?.focus();
+    if (button) flashButton(button, "名前を入力してください");
+    return;
+  }
+  if (button) button.disabled = true;
+  try {
+    const saved = await db.updateOwnPlanDisplayName(meta.id, name);
+    hooks.renderData(TripPlans.toDashboardData(TripPlans.getData(CONFIG.tripSlug)), CONFIG.mode);
+    if (input) input.value = saved;
+    setMemberStatus(`この旅行では「${saved}」と表示します`);
+    if (button) flashButton(button, "保存しました");
+  } catch (error) {
+    if (button) flashButton(button, errorMessage(error) || "保存できませんでした");
+  } finally {
+    if (button) button.disabled = false;
+  }
 }
 
 /** ownerが参加者を名簿・アクセス権・個人行程から即時に外す。 */
@@ -267,7 +303,7 @@ export async function shareTripInvite(): Promise<void> {
     if (btn) flashButton(btn, "参加者名を入力してください");
     return;
   }
-  if (meta.memberIds?.some((id) => db.nameOf(id).trim() === name)) {
+  if (meta.memberIds?.some((id) => db.planMemberName(meta.id || "", id).trim() === name)) {
     if (btn) flashButton(btn, "同じ名前のメンバーがいます");
     return;
   }

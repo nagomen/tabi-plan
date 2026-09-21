@@ -43,7 +43,8 @@ export async function createPlaceholderMember(
 ): Promise<{
   user: { id: string; display_name: string };
   member: {
-    plan_id: string; user_id: string; role: "editor" | "viewer"; status: "active"; access_status: null;
+    plan_id: string; user_id: string; display_name: string;
+    role: "editor" | "viewer"; status: "active"; access_status: null;
     from_date: string | null; to_date: string | null;
   };
   assignedItineraryItems: number;
@@ -87,9 +88,9 @@ export async function createPlaceholderMember(
       [userId, name, identityKey(name)],
     );
     await conn.query(
-      `INSERT INTO plan_members (plan_id, user_id, role, status, invited_by_id, from_date, to_date)
-       VALUES (?, ?, ?, 'active', ?, ?, ?)`,
-      [planId, userId, role, actorUserId, fromDate, toDate],
+      `INSERT INTO plan_members (plan_id, user_id, display_name, role, status, invited_by_id, from_date, to_date)
+       VALUES (?, ?, ?, ?, 'active', ?, ?, ?)`,
+      [planId, userId, name, role, actorUserId, fromDate, toDate],
     );
     await conn.query(
       `INSERT INTO plan_member_placeholders
@@ -129,7 +130,7 @@ export async function createPlaceholderMember(
   return {
     user: { id: userId, display_name: name },
     member: {
-      plan_id: planId, user_id: userId, role, status: "active", access_status: null,
+      plan_id: planId, user_id: userId, display_name: name, role, status: "active", access_status: null,
       from_date: fromDate, to_date: toDate,
     },
     assignedItineraryItems: created.assignedItineraryItems,
@@ -194,7 +195,7 @@ export async function replaceMembers(
     const activeIds = normalized.map((member) => member.user_id);
     const activeIn = inClause(activeIds);
     const [knownRows] = await conn.query<Row[]>(
-      `SELECT id FROM users WHERE id IN (${activeIn.sql}) FOR UPDATE`,
+      `SELECT id, display_name FROM users WHERE id IN (${activeIn.sql}) FOR UPDATE`,
       activeIn.params,
     );
     if (knownRows.length !== activeIds.length) throw new BadRequest("存在しないユーザーがメンバーに含まれています");
@@ -241,10 +242,12 @@ export async function replaceMembers(
         [planId, ...removedIn.params],
       );
     }
+    const knownNames = new Map((knownRows as unknown as { id: string; display_name: string }[])
+      .map((row) => [row.id, row.display_name]));
     const rows = normalized.map((member) =>
-      [planId, member.user_id, member.role, "active", member.from_date, member.to_date]);
+      [planId, member.user_id, knownNames.get(member.user_id) || "メンバー", member.role, "active", member.from_date, member.to_date]);
     await conn.query(
-      `INSERT INTO plan_members (plan_id, user_id, role, status, from_date, to_date) VALUES ?
+      `INSERT INTO plan_members (plan_id, user_id, display_name, role, status, from_date, to_date) VALUES ?
        ON DUPLICATE KEY UPDATE role = VALUES(role), status = 'active',
          from_date = VALUES(from_date), to_date = VALUES(to_date)`,
       [rows],
@@ -279,6 +282,40 @@ export async function replaceMembers(
       [planId],
     );
     return currentVersion + 1;
+  });
+}
+
+/** 本人が、この旅行の中だけで使う表示名を変更する。 */
+export async function updateOwnPlanDisplayName(
+  planId: string,
+  userId: string,
+  displayName: string,
+): Promise<string> {
+  const name = String(displayName || "").trim().slice(0, 64);
+  if (!name) throw new BadRequest("旅行内で使う名前を入力してください");
+  return withTransaction(async (conn) => {
+    const member = await firstRow<{ user_id: string }>(
+      conn,
+      `SELECT pm.user_id
+         FROM plan_members pm
+         JOIN plans p ON p.id = pm.plan_id AND p.deleted_at IS NULL
+         LEFT JOIN plan_access_grants pag
+           ON pag.plan_id = pm.plan_id AND pag.user_id = pm.user_id AND pag.status = 'active'
+        WHERE pm.plan_id = ? AND pm.user_id = ? AND pm.status = 'active'
+          AND (p.owner_user_id = pm.user_id OR pag.user_id IS NOT NULL)
+        LIMIT 1 FOR UPDATE`,
+      [planId, userId],
+    );
+    if (!member) throw new BadRequest("この旅行のメンバーではありません");
+    await conn.query(
+      "UPDATE plan_members SET display_name = ? WHERE plan_id = ? AND user_id = ?",
+      [name, planId, userId],
+    );
+    await conn.query(
+      "UPDATE plans SET version = version + 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+      [planId],
+    );
+    return name;
   });
 }
 

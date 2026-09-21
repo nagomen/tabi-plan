@@ -44,3 +44,21 @@ test("参加期間外の人は全員予定の匿名集合へ含めない", () =>
   assert.equal(rows[0].public_track_key, null);
   assert.equal(rows[0].public_day_track_keys, null);
 });
+
+test("重なる対象メンバーの予定は該当する複数の匿名班へ表示する", () => {
+  const rows = [
+    { plan_id: "p", item_date: "2026-09-27", member_ids: '["a"]' },
+    { plan_id: "p", item_date: "2026-09-27", member_ids: '["a","b"]' },
+    { plan_id: "p", item_date: "2026-09-27", member_ids: '["a","b","c"]' },
+  ];
+  const periods = ["a", "b", "c"].map((user_id) => ({
+    plan_id: "p", user_id, from_date: null, to_date: null,
+  }));
+  anonymizePublicItineraryGroups(rows, new Set(["p"]), periods);
+  assert.deepEqual(rows[0].public_track_keys, ["public-group-1"]);
+  assert.deepEqual(rows[1].public_track_keys, ["public-group-1", "public-group-2"]);
+  assert.equal(rows[1].public_track_key, null);
+  assert.equal(rows[2].public_track_keys, null);
+  assert.deepEqual(rows[2].public_day_track_keys, ["public-group-1", "public-group-2", "public-group-3"]);
+  assert.equal(JSON.stringify(rows).includes('"a"'), false);
+});

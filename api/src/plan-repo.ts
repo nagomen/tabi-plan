@@ -38,7 +38,8 @@ export async function createPlan(input: Record<string, unknown>): Promise<{ id: 
     const owner = String(input.owner_user_id || "");
     if (owner) {
       await conn.query(
-        `INSERT INTO plan_members (plan_id, user_id, role, status) VALUES (?, ?, 'owner', 'active')
+        `INSERT INTO plan_members (plan_id, user_id, display_name, role, status)
+         SELECT ?, id, display_name, 'owner', 'active' FROM users WHERE id = ?
          ON DUPLICATE KEY UPDATE role = 'owner', status = 'active'`,
         [id, owner],
       );
@@ -87,15 +88,18 @@ export async function createPlan(input: Record<string, unknown>): Promise<{ id: 
       }
       const placeholders = initialMembers.map(() => "?").join(",");
       const [knownRows] = await conn.query<mysql.RowDataPacket[]>(
-        `SELECT id FROM users WHERE id IN (${placeholders}) FOR UPDATE`,
+        `SELECT id, display_name FROM users WHERE id IN (${placeholders}) FOR UPDATE`,
         initialMembers.map((member) => member.user_id),
       );
       if (knownRows.length !== initialMembers.length) throw new BadRequest("存在しないユーザーがメンバーに含まれています");
+      const names = new Map((knownRows as { id: string; display_name: string }[]).map((row) => [row.id, row.display_name]));
       await conn.query(
-        `INSERT INTO plan_members (plan_id, user_id, role, status, from_date, to_date) VALUES ?
+        `INSERT INTO plan_members (plan_id, user_id, display_name, role, status, from_date, to_date) VALUES ?
          ON DUPLICATE KEY UPDATE role = VALUES(role), status = 'active',
            from_date = VALUES(from_date), to_date = VALUES(to_date)`,
-        [initialMembers.map((member) => [id, member.user_id, member.role, "active", member.from_date, member.to_date])],
+        [initialMembers.map((member) => [
+          id, member.user_id, names.get(member.user_id) || "メンバー", member.role, "active", member.from_date, member.to_date,
+        ])],
       );
     }
     if (Object.prototype.hasOwnProperty.call(input, "content")) {

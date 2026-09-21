@@ -42,6 +42,14 @@
       <p class="tl-members-note">この旅行に参加しているメンバーです。招待した人だけがこの計画を見られます。</p>
       <p class="tl-members-status" data-members-status aria-live="polite"></p>
       <div class="tl-members-list" data-members-list></div>
+      <form class="tl-member-name-setting" data-member-name-setting hidden>
+        <label class="tl-members-field">
+          <span>この旅行での名前</span>
+          <input type="text" data-member-display-name maxlength="64" autocomplete="off" required>
+        </label>
+        <button class="tl-button" type="submit">名前を保存</button>
+        <p>アカウント名は変わりません。この旅行のメンバー名、旅程、費用だけに使われます。</p>
+      </form>
       <div class="tl-members-invite" data-members-invite hidden>
         <h3>メンバーを追加</h3>
         <label class="tl-members-field">

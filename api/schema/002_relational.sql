@@ -205,6 +205,7 @@ CREATE TABLE plans (
 CREATE TABLE plan_members (
   plan_id     VARCHAR(32) NOT NULL,
   user_id     VARCHAR(32) NOT NULL,
+  display_name VARCHAR(64) NOT NULL,
   role        ENUM('owner','editor','viewer') NOT NULL DEFAULT 'editor',
   status      ENUM('active','left','revoked') NOT NULL DEFAULT 'active',
   invited_by_id VARCHAR(32) NULL,
