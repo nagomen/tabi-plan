@@ -10,6 +10,29 @@ function tokenHash(token: string): Buffer {
 }
 
 /**
+ * 招待の作成・取消は owner と editor に許す（viewer と部外者は不可）。
+ * ルート側でも同じ判定をするが、判定後に権限が変わる競合を避けるため
+ * 書き込みtransactionの中でも確認する。参加者の追加・削除は owner のままにして、
+ * editor には「呼べるが、名簿そのものは書き換えられない」範囲を与える。
+ */
+async function assertInviteManager(
+  conn: mysql.PoolConnection,
+  planId: string,
+  actorUserId: string,
+): Promise<void> {
+  const access = await firstRow<{ role: string }>(
+    conn,
+    `SELECT g.role FROM plans p
+       JOIN plan_access_grants g ON g.plan_id = p.id AND g.user_id = ? AND g.status = 'active'
+      WHERE p.id = ? AND p.deleted_at IS NULL LIMIT 1 FOR UPDATE`,
+    [actorUserId, planId],
+  );
+  if (!access || !["owner", "editor"].includes(access.role)) {
+    throw new BadRequest("招待を扱えるのは計画の所有者と編集メンバーだけです");
+  }
+}
+
+/**
  * 取消・期限切れの招待を業務エラーへ変換する。inspect と accept で同じ文言を使う。
  * accepted の扱いだけ呼び出し側で分岐する（inspect は拒否、accept は同一人物なら冪等成功）。
  */
@@ -56,12 +79,7 @@ export async function createInvite(input: {
     if (!users.length) throw new BadRequest("招待先のユーザーが見つかりません");
   }
   await withTransaction(async (conn) => {
-    const plan = await firstRow<{ owner_user_id: string | null }>(
-      conn,
-      "SELECT owner_user_id FROM plans WHERE id = ? AND deleted_at IS NULL LIMIT 1 FOR UPDATE",
-      [input.planId],
-    );
-    if (!plan || plan.owner_user_id !== input.createdById) throw new BadRequest("招待を作成できるのは現在のownerだけです");
+    await assertInviteManager(conn, input.planId, input.createdById);
     // 同じ相手へ再発行した古いリンクは残さない。
     await conn.query(
       `UPDATE plan_invites SET status = 'revoked', revoked_at = CURRENT_TIMESTAMP
@@ -100,12 +118,7 @@ export async function listInvites(planId: string): Promise<{
 
 export async function revokeInvite(planId: string, inviteId: string, actorUserId: string): Promise<void> {
   await withTransaction(async (conn) => {
-    const plan = await firstRow<{ owner_user_id: string | null }>(
-      conn,
-      "SELECT owner_user_id FROM plans WHERE id = ? AND deleted_at IS NULL LIMIT 1 FOR UPDATE",
-      [planId],
-    );
-    if (!plan || plan.owner_user_id !== actorUserId) throw new BadRequest("招待を取り消せるのは現在のownerだけです");
+    await assertInviteManager(conn, planId, actorUserId);
     const [result] = await conn.query<mysql.ResultSetHeader>(
       `UPDATE plan_invites
           SET status = 'revoked', revoked_at = CURRENT_TIMESTAMP

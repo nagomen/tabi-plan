@@ -146,3 +146,55 @@ test("クライアント指定の計画idはURLで扱える形式だけ受け付
     /スラッグ/,
   );
 });
+
+test("招待の発行は編集メンバーにも許し、閲覧メンバーには許さない", async (t) => {
+  const originalQuery = pool.query;
+  const access = { role: "editor" };
+  pool.query = async (sql) => {
+    const text = String(sql);
+    if (text.includes("FROM plans p") && text.includes("LEFT JOIN plan_access_grants")) {
+      return [[{
+        source: "local", visibility: "private", status: "draft",
+        open_editing: 0, owner_user_id: "usr_owner", role: access.role,
+      }], []];
+    }
+    // 期限切れの掃除と一覧取得。どちらも権限判定の後に走る。
+    if (text.includes("UPDATE plan_invites")) return [{ affectedRows: 0 }, []];
+    if (text.includes("FROM plan_invites")) return [[], []];
+    throw new Error(`unexpected query: ${text}`);
+  };
+  t.after(() => { pool.query = originalQuery; });
+
+  const editor = await route("GET", "/api/plans/pln_1/invites", {}, "usr_editor");
+  assert.equal(editor.status, 200);
+
+  access.role = "viewer";
+  const viewer = await route("GET", "/api/plans/pln_1/invites", {}, "usr_viewer");
+  assert.equal(viewer.status, 403);
+});
+
+test("参加者名簿の書き換えは owner だけに限る", async (t) => {
+  const originalQuery = pool.query;
+  pool.query = async (sql) => {
+    const text = String(sql);
+    if (text.includes("FROM plans p") && text.includes("LEFT JOIN plan_access_grants")) {
+      return [[{
+        source: "local", visibility: "private", status: "draft",
+        open_editing: 0, owner_user_id: "usr_owner", role: "editor",
+      }], []];
+    }
+    throw new Error(`unexpected query: ${text}`);
+  };
+  t.after(() => { pool.query = originalQuery; });
+
+  const replace = await route("PUT", "/api/plans/pln_1/members", {
+    expected_version: 1,
+    members: [{ user_id: "usr_owner", role: "owner" }],
+  }, "usr_editor");
+  assert.equal(replace.status, 403);
+
+  const placeholder = await route("POST", "/api/plans/pln_1/placeholder-members", {
+    display_name: "たかし",
+  }, "usr_editor");
+  assert.equal(placeholder.status, 403);
+});

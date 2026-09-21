@@ -83,7 +83,7 @@ test("unregistered trip members are explicit placeholders, not auto-created frie
   assert.match(invites, /旅行メンバーの中から自分を選択してください/);
   assert.match(invites, /invite\.role/);
   assert.match(references, /SELECT id, member_ids FROM itinerary_items/);
-  assert.match(invites, /SELECT owner_user_id FROM plans[\s\S]*FOR UPDATE/);
+  assert.match(invites, /SELECT g\.role FROM plans p[\s\S]*FOR UPDATE/);
   assert.match(invites, /UPDATE plan_member_placeholders[\s\S]*status = 'claimed'/);
   assert.match(members, /未登録メンバーへ所有権は移譲できません/);
   assert.match(members, /owner_user_id !== actorUserId/);
@@ -101,7 +101,9 @@ test("mutable repositories recheck current membership inside their transactions"
   assert.match(plans, /SELECT role FROM plan_access_grants[\s\S]*FOR UPDATE/);
   assert.match(plans, /source === "sample"/);
   assert.match(members, /SELECT owner_user_id, version FROM plans[\s\S]*FOR UPDATE/);
-  assert.match(invites, /招待を作成できるのは現在のownerだけです/);
+  assert.match(invites, /async function assertInviteManager/);
+  assert.match(invites, /await assertInviteManager\(conn, input\.planId, input\.createdById\)/);
+  assert.match(invites, /招待を扱えるのは計画の所有者と編集メンバーだけです/);
   assert.match(expenses, /async function assertWorkspaceEditor/);
   assert.match(expenses, /await assertWorkspaceEditor\(conn, planId, actorUserId\)/);
 });

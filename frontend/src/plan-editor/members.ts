@@ -7,10 +7,11 @@ import { splitNames } from "../shared/friend-store";
 import { buildInviteLink } from "../shared/invite";
 import { currentAccount } from "../shared/account-store";
 import { listFriends } from "../shared/friendship-store";
-import { canManagePlan } from "../shared/membership";
+import { canEditPlanMetadata, canManagePlan } from "../shared/membership";
 import { state, model, datesString } from "./editor-state";
 import {
-  root, membersMount, memberField, memberSelect, memberRoleSelect, memberAddBtn, memberNameInput, memberHint, activeInvitesMount, toast,
+  root, membersMount, memberField, memberSelect, memberRoleSelect, memberAddBtn, memberNameAddBtn,
+  memberNameInput, memberHint, activeInvitesMount, toast,
 } from "./editor-dom";
 import { markDirty, persist } from "./persist";
 import { buildData } from "./plan-data";
@@ -140,12 +141,12 @@ export function renderMembers(): void {
         (meta && canManagePlan(meta) && member.id && !placeholder && !self && member.id !== ownerId && storedMember?.access_status === "active"
           ? `<button class="pe-chip-ic access" type="button" data-revoke-access="${escapeHtml(member.id)}" data-revoke-name="${escapeHtml(member.name)}" title="アクセスを停止" aria-label="${escapeHtml(member.name)}のアクセスを停止">${icon("xCircle")}</button>`
           : "") +
-        (!account || self || member.pendingKey || storedMember?.access_status === "active" || (meta && !canManagePlan(meta))
+        (!account || self || member.pendingKey || storedMember?.access_status === "active" || (meta && !canEditPlanMetadata(meta))
           ? ""
           : `<button class="pe-chip-ic invite" type="button" data-invite="${escapeHtml(member.name)}" data-invite-user="${escapeHtml(member.id)}" data-invite-role="${escapeHtml(model.memberRoles[member.id] || storedMember?.role || "editor")}" title="招待リンクを送る" aria-label="${escapeHtml(member.name)}を招待">${icon("paperAirplane")}</button>`) +
         (member.pendingKey
           ? `<button class="pe-chip-ic del" type="button" data-rm-pending="${escapeHtml(member.pendingKey)}" title="削除" aria-label="${escapeHtml(member.name)}を削除">${icon("xMark")}</button>`
-          : member.id && member.id !== ownerId
+          : meta && canManagePlan(meta) && member.id && member.id !== ownerId
           ? `<button class="pe-chip-ic del" type="button" data-rm="${escapeHtml(member.id)}" data-rm-name="${escapeHtml(member.name)}" title="旅行参加者から削除" aria-label="${escapeHtml(member.name)}を旅行参加者から削除">${icon("xMark")}</button>`
           : "") +
         (claimedPlaceholder && meta && canManagePlan(meta) && member.id !== ownerId
@@ -162,7 +163,7 @@ export function renderMembers(): void {
 let inviteListLoading = false;
 async function renderActiveInvites(): Promise<void> {
   const meta = state.slug ? TripPlans.get(state.slug) : null;
-  if (!meta?.id || !canManagePlan(meta)) {
+  if (!meta?.id || !canEditPlanMetadata(meta)) {
     activeInvitesMount.innerHTML = "";
     return;
   }
@@ -330,9 +331,18 @@ export function renderMemberSelect(): void {
 
 export function updateMemberVisibility(): void {
   const meta = state.slug ? TripPlans.get(state.slug) : null;
-  const enabled = hasMemberAccount() && (!meta || canManagePlan(meta));
+  // 招待は編集メンバーもできる。名簿の追加・削除だけは owner に限る（下の is-roster で出し分ける）。
+  const enabled = hasMemberAccount() && (!meta || canEditPlanMetadata(meta));
   memberField.hidden = !enabled;
   memberField.classList.toggle("is-enabled", enabled);
+  const roster = canEditRoster();
+  memberField.classList.toggle("is-roster", roster);
+  memberAddBtn.textContent = roster ? "追加して招待" : "招待リンクを送る";
+  memberNameAddBtn.textContent = roster ? "名前で追加して招待" : "名前を指定して招待";
+  memberNameInput.placeholder = roster ? "未登録の人の名前（例: たかし）" : "招待する人の名前（例: たかし）";
+  memberHint.textContent = roster
+    ? "友達はリンクを受諾するまで限定情報にアクセスできません。未登録の人は名前だけ先に登録でき、そのまま招待リンクを送れます。"
+    : "編集メンバーは招待リンクを送れます。参加者の追加・削除と参加期間は計画の所有者が行います。";
 }
 
 function updateWorkspaceControlVisibility(): void {
@@ -471,26 +481,39 @@ async function transferOwnership(userId: string, name: string): Promise<void> {
   }
 }
 
+/** 参加者名簿を書き換えられるか（owner だけ）。editor は招待までできる。 */
+function canEditRoster(): boolean {
+  const meta = state.slug ? TripPlans.get(state.slug) : null;
+  return !meta || canManagePlan(meta);
+}
+
 export async function commitMemberSelect(): Promise<void> {
   const v = memberSelect.value.trim();
   if (!v) return;
   const role = selectedRole();
   const name = db.nameOf(v);
-  addMember(v, role);
+  // owner は名簿へ足してから招待する。editor は名簿を触れないので招待だけ送り、
+  // 相手が受諾した時点で参加者になる。
+  if (canEditRoster()) addMember(v, role);
   memberSelect.value = "";
   await shareInvite(name, v, role);
 }
-export function commitMemberName(): void {
-  const name = memberNameInput.value;
-  if (!name.trim()) return;
-  addPendingMember(name);
+
+export async function commitMemberName(): Promise<void> {
+  const name = memberNameInput.value.trim();
+  if (!name) return;
+  const role = selectedRole();
+  // 未登録の人は名簿へ先に載せておくと、本登録前でも割り勘の対象にできる。
+  if (canEditRoster()) addPendingMember(name, role);
   memberNameInput.value = "";
+  await shareInvite(name, "", role);
   memberNameInput.focus();
 }
+
 export function onMemberNameKeydown(event: KeyboardEvent): void {
   if (event.key !== "Enter" || event.isComposing) return;
   event.preventDefault();
-  commitMemberName();
+  void commitMemberName();
 }
 export async function shareInvite(
   name: string,
@@ -506,7 +529,7 @@ export async function shareInvite(
   }
   const data = buildData();
   const meta = TripPlans.get(state.slug);
-  if (meta && !canManagePlan(meta)) { toast("招待できるのは計画の所有者だけです"); return; }
+  if (meta && !canEditPlanMetadata(meta)) { toast("招待できるのは計画の編集メンバーだけです"); return; }
   const planId = TripPlans.planIdOf(state.slug);
   if (!planId) { toast("保存してから招待してください"); return; }
   let link = "";

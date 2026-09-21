@@ -566,14 +566,15 @@ export async function route(method: string, path: string, body: Body, actorUserI
     await repo.countView(m[1]);
     return { status: 200, body: { ok: true } };
   }
+  // 招待の発行・取消は編集メンバーにも許す（参加者名簿の書き換えは owner のまま）。
   m = /^\/api\/plans\/([\w-]{1,32})\/invites$/.exec(path);
   if (m && method === "GET") {
-    const denied = await forbiddenUnless(accessRepo.canManagePlan(m[1], actorUserId));
+    const denied = await forbiddenUnless(accessRepo.canEditPlanWorkspace(m[1], actorUserId));
     if (denied) return denied;
     return { status: 200, body: { invites: await inviteRepo.listInvites(m[1]) } };
   }
   if (m && method === "POST") {
-    const denied = await forbiddenUnless(accessRepo.canManagePlan(m[1], actorUserId));
+    const denied = await forbiddenUnless(accessRepo.canEditPlanWorkspace(m[1], actorUserId));
     if (denied) return denied;
     return {
       status: 200,
@@ -588,7 +589,7 @@ export async function route(method: string, path: string, body: Body, actorUserI
   }
   m = /^\/api\/plans\/([\w-]{1,32})\/invites\/([\w-]{1,32})$/.exec(path);
   if (m && method === "DELETE") {
-    const denied = await forbiddenUnless(accessRepo.canManagePlan(m[1], actorUserId));
+    const denied = await forbiddenUnless(accessRepo.canEditPlanWorkspace(m[1], actorUserId));
     if (denied) return denied;
     await inviteRepo.revokeInvite(m[1], m[2], actorUserId);
     return { status: 200, body: { ok: true } };
