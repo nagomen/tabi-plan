@@ -388,7 +388,15 @@ function setupExpenseEntryHandlers(form: HTMLFormElement, members: FormMember[],
     // 「全員で等分」はその費用の日に在籍していたメンバーだけを対象にする（途中合流/離脱を反映）。
     // 旅行期間の外に払った前払い分は誰の在籍期間にも入らないので、その場合は全員へ戻す。
     const presentIds = TripPlans.memberIdsPresentOn(planId(), paidOn);
-    const memberIds = presentIds.length ? presentIds : TripPlans.memberIdsPresentOn(planId(), "");
+    const currentMemberIds = presentIds.length ? presentIds : TripPlans.memberIdsPresentOn(planId(), "");
+    const editingExpenseId = getEditingExpenseId();
+    const editingRecord = editingExpenseId ? ExpenseStore.get(planId(), editingExpenseId) : undefined;
+    // 保存済みの「全員」は登録時点の全員であり、後からメンバーを外しても意味を
+    // 変えない。編集画面で内容だけ直した際に負担者が勝手に入れ替わるのを防ぐ。
+    const savedEqualAllIds = splitMethod === "equal_all"
+      ? [...new Set((editingRecord?.shares || []).map((share) => share.user_id).filter(Boolean))]
+      : [];
+    const memberIds = savedEqualAllIds.length ? savedEqualAllIds : currentMemberIds;
     if (splitMethod === "equal_all" && !memberIds.length) {
       setStatus("割り勘の対象になるメンバーがいません。メンバーを確認してください。", "error");
       return;
@@ -416,7 +424,6 @@ function setupExpenseEntryHandlers(form: HTMLFormElement, members: FormMember[],
         selectedIds: targets,
         customAmounts: custom,
       };
-      const editingExpenseId = getEditingExpenseId();
       if (editingExpenseId) {
         await ExpenseStore.update(editingExpenseId, payload);
       } else {

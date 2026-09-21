@@ -231,13 +231,20 @@ export function renderExpenseDetails(settlement: Settlement): void {
   if (!mount || !button) return;
 
   // 利用者は identity（user_id）が正。表示名は users から引く。
-  const profileName = db.nameOf(currentUserId());
+  const profileId = currentUserId();
+  const profileName = db.nameOf(profileId);
   const canManageExpenses = !isReadOnly();
   const details = settlement.expenseDetails || [];
   const related = canManageExpenses ? details : profileName ? details.filter((detail) => {
     const shares = detail.shares || [];
+    const hasIds = Boolean(detail.payerId || detail.targetIds?.length || shares.some((share) => share.userId));
+    if (hasIds) {
+      return detail.payerId === profileId || (detail.targetIds || []).includes(profileId) ||
+        shares.some((share) => share.userId === profileId && Number(share.amount || 0) > 0);
+    }
+    // サンプルなど旧形式の明細だけ表示名へフォールバックする。
     const targetNames = detail.targetNames || [];
-    return targetNames.includes(profileName) ||
+    return detail.payer === profileName || targetNames.includes(profileName) ||
       shares.some((share) => share.name === profileName && Number(share.amount || 0) > 0);
   }) : [];
 
@@ -253,15 +260,22 @@ export function renderExpenseDetails(settlement: Settlement): void {
   }
 
   const shareFor = (detail: ExpenseDetail): string => {
-    const share = (detail.shares || []).find((item) => item.name === profileName);
+    const shares = detail.shares || [];
+    const share = shares.find((item) => item.userId === profileId) ||
+      (!shares.some((item) => item.userId) ? shares.find((item) => item.name === profileName) : undefined);
     if (share) return share.amountLabel || formatYen(share.amount);
     if (detail.myShareLabel) return detail.myShareLabel;
     return "-";
   };
   const roleFor = (detail: ExpenseDetail): string => {
-    const isPayer = detail.payer === profileName;
-    const hasShare = (detail.shares || []).some((item) => item.name === profileName && Number(item.amount || 0) > 0) ||
-      (detail.targetNames || []).includes(profileName);
+    const shares = detail.shares || [];
+    const hasIds = Boolean(detail.payerId || detail.targetIds?.length || shares.some((item) => item.userId));
+    const isPayer = hasIds ? detail.payerId === profileId : detail.payer === profileName;
+    const hasShare = hasIds
+      ? shares.some((item) => item.userId === profileId && Number(item.amount || 0) > 0) ||
+        (detail.targetIds || []).includes(profileId)
+      : shares.some((item) => item.name === profileName && Number(item.amount || 0) > 0) ||
+        (detail.targetNames || []).includes(profileName);
     if (isPayer && hasShare) return "支払・負担";
     if (isPayer) return "立替のみ";
     return "負担";

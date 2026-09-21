@@ -148,6 +148,9 @@ test("費用フォームは人をuser_idで指し、外貨はレート入力を�
   assert.match(entry, /amountMinor: toMinor\(amount, currency\)/);
   // 全員等分の母集団が空になる日（旅行期間外の前払い）でも保存できる。
   assert.match(entry, /presentIds\.length \? presentIds : TripPlans\.memberIdsPresentOn\(planId\(\), ""\)/);
+  // 過去の「全員」は登録時点の集合。メンバー削除後の編集で勝手に再配分しない。
+  assert.match(entry, /savedEqualAllIds[\s\S]*editingRecord\?\.shares/);
+  assert.match(entry, /savedEqualAllIds\.length \? savedEqualAllIds : currentMemberIds/);
 });
 
 test("スマホで入力しても画面が拡大・再描画されない", () => {

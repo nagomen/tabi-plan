@@ -11,13 +11,22 @@ const ZERO_DECIMAL_CURRENCIES = new Set([
   "PYG", "RWF", "UGX", "VND", "VUV", "XAF", "XOF", "XPF",
 ]);
 
+/** ISO 4217 で補助通貨単位が3桁の通貨。 */
+const THREE_DECIMAL_CURRENCIES = new Set([
+  "BHD", "IQD", "JOD", "KWD", "LYD", "OMR", "TND",
+]);
+
 export function currencyDecimals(code: string): number {
-  return ZERO_DECIMAL_CURRENCIES.has(String(code || "").toUpperCase()) ? 0 : 2;
+  const currency = String(code || "").toUpperCase();
+  if (ZERO_DECIMAL_CURRENCIES.has(currency)) return 0;
+  if (THREE_DECIMAL_CURRENCIES.has(currency)) return 3;
+  return 2;
 }
 
-/** 金額入力欄の step。円は 1、セントを持つ通貨は 0.01。 */
+/** 金額入力欄の step。通貨の補助通貨単位に合わせる。 */
 export function currencyStep(code: string): string {
-  return currencyDecimals(code) === 0 ? "1" : "0.01";
+  const decimals = currencyDecimals(code);
+  return decimals === 0 ? "1" : `0.${"0".repeat(decimals - 1)}1`;
 }
 
 /** 人が入力した額（major）を保存単位（minor）へ。 */

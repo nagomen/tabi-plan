@@ -26,6 +26,11 @@ const CATEGORIES = new Set(["food", "transport", "lodging", "sightseeing", "comm
 const SPLIT = new Set(["equal_all", "equal_selected", "custom", "none"]);
 const PAY = new Set(["card", "cash", "transfer", "other"]);
 
+async function planMemberSet(conn: mysql.PoolConnection, planId: string): Promise<Set<string>> {
+  const [rows] = await conn.query<Row[]>("SELECT user_id FROM plan_members WHERE plan_id = ?", [planId]);
+  return new Set((rows as unknown as { user_id: string }[]).map((row) => row.user_id));
+}
+
 /** ルート判定後の権限変更競合を防ぎ、書き込みtransaction内でも編集権限を確認する。 */
 async function assertWorkspaceEditor(conn: mysql.PoolConnection, planId: string, actorUserId: string): Promise<void> {
   const access = await firstRow<{ role: string; source: string }>(
@@ -214,7 +219,17 @@ export async function updateExpense(id: string, input: ExpenseInput, actorUserId
     );
     if (!locked) throw new NotFound("費用が見つかりません");
     const before = await expenseSnapshot(conn, id);
-    const { splitMethod, shares } = validateShares(input, base, await activeMemberSet(planId, conn));
+    const allowedMemberIds = await activeMemberSet(planId, conn);
+    // 会計履歴を持つメンバーは旅行から外されても行自体は残る。既存明細に既に
+    // 含まれているIDだけは許可し、タイトル修正などが不可能にならないようにする。
+    const previousPayer = String(before?.payer_user_id || "");
+    if (previousPayer) allowedMemberIds.add(previousPayer);
+    const previousShares = Array.isArray(before?.shares) ? before.shares : [];
+    for (const share of previousShares) {
+      const userId = String((share as Record<string, unknown>).user_id || "");
+      if (userId) allowedMemberIds.add(userId);
+    }
+    const { splitMethod, shares } = validateShares(input, base, allowedMemberIds);
     await conn.query(
       `UPDATE expenses SET paid_on = ?, payer_user_id = ?, category = ?, title = ?, amount_minor = ?,
          currency = ?, fx_rate = ?, amount_base_minor = ?, split_method = ?, payment_method = ?,
@@ -280,6 +295,51 @@ async function setExpenseDeleted(id: string, actorUserId: string, deleted: boole
   });
 }
 
+export function validateSettlementAgainstBalances(
+  input: { from_user_id: string; to_user_id: string; amount_base_minor: number },
+  memberIds: Set<string>,
+  balances: Record<string, number>,
+): void {
+  assertMember(memberIds, String(input.from_user_id || ""), "送金元");
+  assertMember(memberIds, String(input.to_user_id || ""), "送金先");
+  const amount = Math.round(Number(input.amount_base_minor) || 0);
+  const fromNet = Number(balances[input.from_user_id] || 0);
+  const toNet = Number(balances[input.to_user_id] || 0);
+  if (!Number.isSafeInteger(fromNet) || !Number.isSafeInteger(toNet)) {
+    throw new BadRequest("未精算額が扱える範囲を超えています");
+  }
+  if (fromNet >= 0 || toNet <= 0) {
+    throw new BadRequest("精算状況が更新されています。画面を再読み込みして確認してください");
+  }
+  if (amount !== Math.min(-fromNet, toNet)) {
+    // このAPIは任意額の送金記録ではなく、画面に出した1件を「精算完了」にする操作。
+    // 一部額を許すと、応答消失後の同一リクエストを残高が尽きるまで重複登録できる。
+    throw new BadRequest("精算額が現在の未精算額と一致しません。画面を再読み込みして確認してください");
+  }
+}
+
+async function planBalances(conn: mysql.PoolConnection, planId: string): Promise<Record<string, number>> {
+  const [rows] = await conn.query<Row[]>(
+    `SELECT user_id, SUM(delta) AS net_amount FROM (
+       SELECT payer_user_id AS user_id, amount_base_minor AS delta
+         FROM expenses WHERE plan_id = ? AND deleted_at IS NULL
+       UNION ALL
+       SELECT s.user_id, -s.amount_base_minor AS delta
+         FROM expense_shares s JOIN expenses e ON e.id = s.expense_id
+        WHERE e.plan_id = ? AND e.deleted_at IS NULL
+       UNION ALL
+       SELECT from_user_id AS user_id, amount_base_minor AS delta
+         FROM settlements WHERE plan_id = ? AND deleted_at IS NULL
+       UNION ALL
+       SELECT to_user_id AS user_id, -amount_base_minor AS delta
+         FROM settlements WHERE plan_id = ? AND deleted_at IS NULL
+     ) balance_rows GROUP BY user_id`,
+    [planId, planId, planId, planId],
+  );
+  return Object.fromEntries((rows as unknown as { user_id: string; net_amount: string | number }[])
+    .map((row) => [row.user_id, Number(row.net_amount) || 0]));
+}
+
 export async function createSettlement(planId: string, input: {
   from_user_id: string; to_user_id: string; amount_base_minor: number; note?: string | null;
 }, actorUserId: string): Promise<{ id: string }> {
@@ -289,11 +349,19 @@ export async function createSettlement(planId: string, input: {
   if (input.from_user_id === input.to_user_id) throw new BadRequest("送金元と送金先は別の参加者にしてください");
   const id = newId("stl");
   await withTransaction(async (conn) => {
+    // assertWorkspaceEditor が plans 行を FOR UPDATE する。費用・精算の全書き込みも
+    // 同じ行をロックするため、残高確認からINSERTまでを直列化できる。
     await assertWorkspaceEditor(conn, planId, actorUserId);
-    const memberIds = await activeMemberSet(planId, conn);
-    assertMember(memberIds, String(input.from_user_id || ""), "送金元");
-    assertMember(memberIds, String(input.to_user_id || ""), "送金先");
-    assertMember(memberIds, actorUserId, "記録者");
+    const activeMemberIds = await activeMemberSet(planId, conn);
+    assertMember(activeMemberIds, actorUserId, "記録者");
+    // 旅行から外れた人でも過去の会計残高は残る。その人を新しい費用へ追加する
+    // ことは許さないが、既存残高の精算相手にはできる。
+    const accountingMemberIds = await planMemberSet(conn, planId);
+    validateSettlementAgainstBalances(
+      { ...input, amount_base_minor: amount },
+      accountingMemberIds,
+      await planBalances(conn, planId),
+    );
     await conn.query(
       `INSERT INTO settlements (id, plan_id, from_user_id, to_user_id, amount_base_minor, note, created_by_id)
        VALUES (?,?,?,?,?,?,?)`,

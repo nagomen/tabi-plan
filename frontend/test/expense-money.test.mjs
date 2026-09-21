@@ -20,7 +20,9 @@ function load(relativePath, stubs = {}) {
 }
 
 const currency = load("src/shared/currency.ts");
-const { currencyDecimals, toMinor, toMajor, fxRateFromUnitRate, unitRateFromFxRate, formatMoneyMinor } = currency;
+const {
+  currencyDecimals, currencyStep, toMinor, toMajor, fxRateFromUnitRate, unitRateFromFxRate, formatMoneyMinor,
+} = currency;
 
 // db は DOM とネットワークに触るので、テストでは呼ばれた入力を捕まえるだけのスタブにする。
 function expenseStoreWith(db) {
@@ -31,10 +33,15 @@ test("小数を持つ通貨と持たない通貨で最小単位を切り替え�
   assert.equal(currencyDecimals("JPY"), 0);
   assert.equal(currencyDecimals("KRW"), 0);
   assert.equal(currencyDecimals("usd"), 2);
+  assert.equal(currencyDecimals("KWD"), 3);
+  assert.equal(currencyStep("KWD"), "0.001");
   assert.equal(toMinor(1200, "JPY"), 1200);
   assert.equal(toMinor(12.34, "USD"), 1234);
+  assert.equal(toMinor(1.234, "KWD"), 1234);
   assert.equal(toMajor(1234, "USD"), 12.34);
+  assert.equal(toMajor(1234, "KWD"), 1.234);
   assert.equal(formatMoneyMinor(1234, "USD"), "USD 12.34");
+  assert.equal(formatMoneyMinor(1234, "KWD"), "KWD 1.234");
   assert.equal(formatMoneyMinor(9750, "JPY"), "¥9,750");
 });
 
@@ -137,6 +144,28 @@ test("負担額の集計は user_id で持つ（同名メンバーで潰れな�
   const settlement = store.computeSettlement("p1", ["u1", "u2"], "u1");
   assert.deepEqual({ ...settlement.expenseByPerson }, { u1: 500, u2: 500 });
   assert.equal(settlement.expenseTotal, "¥1,000");
+});
+
+test("費用明細も同名メンバーをuser_idで区別できる", () => {
+  const rows = [
+    { id: "e1", plan_id: "p1", payer_user_id: "u1", amount_base_minor: 1000, amount_minor: 1000,
+      currency: "JPY", fx_rate: 1, category: "food", title: "昼食", split_method: "custom", deleted_at: null },
+  ];
+  const shares = [
+    { expense_id: "e1", user_id: "u1", amount_base_minor: 700 },
+    { expense_id: "e1", user_id: "u2", amount_base_minor: 300 },
+  ];
+  const store = expenseStoreWith({
+    expenses: () => rows,
+    expenseShares: () => shares,
+    settlements: () => [],
+    nameOf: () => "たろう",
+  });
+  const detail = store.computeSettlement("p1", ["u1", "u2"], "u2").expenseDetails[0];
+  assert.equal(detail.payerId, "u1");
+  assert.deepEqual(Array.from(detail.targetIds), ["u1", "u2"]);
+  assert.deepEqual(Array.from(detail.shares, (share) => share.userId), ["u1", "u2"]);
+  assert.equal(detail.myShareLabel, "¥300");
 });
 
 const expenseForm = load("src/shared/expense-form.ts", {

@@ -68,6 +68,8 @@ export interface SettlementTransfer {
 }
 
 export interface SettlementShare {
+  /** 同名メンバーを区別するための user_id。旧表示データでは未設定。 */
+  userId?: string;
   name: string;
   amount: number;
   amountLabel: string;
@@ -98,6 +100,8 @@ export interface ExpenseDetail {
   id?: string;
   kind?: "expense" | "settlement";
   date: string;
+  /** 支払者の user_id。表示名は payer。 */
+  payerId?: string;
   payer: string;
   category: string;
   title: string;
@@ -105,6 +109,8 @@ export interface ExpenseDetail {
   amountLabel: string;
   convertedLabel: string;
   myShareLabel: string;
+  /** 負担者の user_id。旧表示データでは未設定。 */
+  targetIds?: string[];
   targetNames: string[];
   shares: SettlementShare[];
 }

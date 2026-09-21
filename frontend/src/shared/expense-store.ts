@@ -226,6 +226,7 @@ export function entryDetail(entry: ExpenseEntry, selfUserId = ""): ExpenseDetail
     id: row.id,
     kind: "expense",
     date: row.paid_on || "",
+    payerId: row.payer_user_id,
     payer: db.nameOf(row.payer_user_id),
     category: CATEGORY_LABEL[row.category] || "その他",
     title: row.title || "立替",
@@ -233,8 +234,10 @@ export function entryDetail(entry: ExpenseEntry, selfUserId = ""): ExpenseDetail
     amountLabel: amountLabel(row),
     convertedLabel: formatYen(row.amount_base_minor),
     myShareLabel: selfUserId ? formatYen(mine ? mine.amount_base_minor : 0) : "",
+    targetIds: shares.map((s) => s.user_id),
     targetNames: shares.map((s) => db.nameOf(s.user_id)),
     shares: shares.map((s) => ({
+      userId: s.user_id,
       name: db.nameOf(s.user_id),
       amount: s.amount_base_minor,
       amountLabel: formatYen(s.amount_base_minor),
