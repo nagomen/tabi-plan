@@ -22,7 +22,9 @@ npm install              # frontend / api / contracts の依存をまとめて�
 cp .env.sample .env      # 値を埋める。必須は DB_USER / DB_PASSWORD / SESSION_SECRET
 ```
 
-`.env` は絶対にコミットしないでください(`.gitignore` 済み)。
+`.env` は絶対にコミットしないでください(`.gitignore` 済み)。他の人の `.env` をもらうのではなく、各自が `.env.sample` から作ります。
+
+はじめて参加する場合は、SSH 鍵の登録から最初の push までを [docs/onboarding.md](docs/onboarding.md) にまとめています。
 
 ## 実行
 
@@ -121,6 +123,7 @@ npm run deploy:production
 
 | ファイル | 内容 |
 | --- | --- |
+| [docs/onboarding.md](docs/onboarding.md) | 参加したときの初回セットアップ(SSH 鍵、`.env`、最初の push まで) |
 | [docs/local-development.md](docs/local-development.md) | `dev:full` の動作、ローカルデータの扱い |
 | [docs/architecture.md](docs/architecture.md) | 画面構成、計画の作成と選択、共同計画、権限モデル、費用、地図 |
 | [docs/ai-consultation.md](docs/ai-consultation.md) | AI 旅行相談、外部 AI 導線、移動候補検索、タイムアウト設計 |
