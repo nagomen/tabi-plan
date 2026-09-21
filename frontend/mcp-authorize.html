@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#ffffff">
+<link rel="icon" href="icon-32.webp" type="image/webp" sizes="32x32">
+<title>ChatGPTと接続 | Tabi Plan</title>
+</head>
+<body>
+<main class="ma">
+  <p class="ma-brand">Tabi Plan</p>
+  <p class="ma-kicker">CHATGPT CONNECTION</p>
+  <h1>この旅行の費用を<br>ChatGPTから編集</h1>
+  <p class="ma-lead">接続先と許可内容を確認してください。この許可は、香港・マカオ・金門旅行だけに適用されます。</p>
+
+  <section class="ma-details" data-details hidden>
+    <dl>
+      <div><dt>接続元</dt><dd data-client>ChatGPT</dd></div>
+      <div><dt>対象</dt><dd data-trip>香港・マカオ・金門旅行</dd></div>
+      <div><dt>許可</dt><dd>旅程・費用の閲覧、費用の追加・訂正・削除・復元</dd></div>
+    </dl>
+    <p class="ma-note">他の旅行、メール、パスワード、カード情報にはアクセスできません。削除は論理削除され、元に戻せます。</p>
+    <div class="ma-actions">
+      <button class="ma-primary" type="button" data-approve>接続を許可</button>
+      <button class="ma-secondary" type="button" data-deny>許可しない</button>
+    </div>
+  </section>
+
+  <p class="ma-status" data-status aria-live="polite">接続内容を確認しています…</p>
+</main>
+<script src="./trip-config.js"></script>
+<script type="module" src="./src/mcp-authorize/main.ts"></script>
+</body>
+</html>
+

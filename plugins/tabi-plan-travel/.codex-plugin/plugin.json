@@ -1,0 +1,19 @@
+{
+  "name": "tabi-plan-travel",
+  "version": "0.1.0",
+  "description": "香港・マカオ・金門旅行の旅程参照と費用編集",
+  "author": {
+    "name": "Hiroaki"
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Tabi Plan Travel",
+    "shortDescription": "中国旅行の旅程と費用をChatGPTから管理します。",
+    "longDescription": "Tabi Planに保存した香港・マカオ・金門旅行だけを対象に、旅程の確認と費用の追加・訂正・削除・復元を行います。接続時にTabi Planへのログインと許可が必要です。",
+    "developerName": "Hiroaki",
+    "category": "Lifestyle",
+    "capabilities": ["MCP"],
+    "defaultPrompt": "香港・マカオ・金門旅行の旅程や費用を確認してください。費用を書き込む前には、登録内容を一覧で見せて確認してください。"
+  },
+  "mcpServers": "./.mcp.json"
+}

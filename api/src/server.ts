@@ -27,6 +27,14 @@ import { route } from "./routes.js";
 import { closeDatabase, pingDatabase } from "./db.js";
 import { rateLimitCheck, sweepExpired, type RateBucket } from "./rate-limit.js";
 import { clientIp } from "./client-ip.js";
+import { handleMcpHttpRequest, MCP_PATH } from "./mcp-server.js";
+import {
+  authenticateMcpRequest,
+  decideMcpApproval,
+  handleMcpOAuthHttp,
+  inspectMcpApproval,
+  isMcpOAuthPath,
+} from "./mcp-oauth.js";
 
 // ---- レート制限（プロセス内・1分窓） -----------------------------------
 
@@ -156,6 +164,13 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
   const requestId = crypto.randomBytes(8).toString("hex");
   res.setHeader("X-Request-Id", requestId);
 
+  // OAuth の token/register はWebベースのMCPクライアントからも呼ばれる。
+  // SDK側が標準CORSを付けるため、アプリ画面専用のOrigin制限より前へ渡す。
+  if (isMcpOAuthPath(path)) {
+    await handleMcpOAuthHttp(req, res);
+    return;
+  }
+
   if (req.method === "OPTIONS") {
     res.writeHead(Object.keys(cors).length ? 204 : 403, cors);
     res.end();
@@ -195,6 +210,14 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
       console.error("[travel-api] health check failed", JSON.stringify({ request_id: requestId }), error);
       send(res, 503, { ok: false, error: "database unavailable" }, cors);
     }
+    return;
+  }
+
+  if (path === MCP_PATH) {
+    const auth = await authenticateMcpRequest(req, res);
+    if (!auth) return;
+    const userId = String(auth.extra?.userId || "");
+    await handleMcpHttpRequest(req, res, { userId, scopes: auth.scopes });
     return;
   }
 
@@ -267,6 +290,7 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
     "/api/auth/signup", "/api/auth/login", "/api/auth/recover",
     "/api/auth/password", "/api/auth/credentials",
     "/api/auth/recovery-code",
+    "/api/mcp/oauth/request", "/api/mcp/oauth/approve",
     // 招待トークンは総当たりの対象になるため、認証と同じ厳しい制限を当てる。
     "/api/invites/accept", "/api/invites/inspect",
   ];
@@ -342,6 +366,24 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
       return;
     }
     const actorUserId = await resolveSession(sessionToken);
+    if (path === "/api/mcp/oauth/request" && req.method === "POST") {
+      if (!actorUserId) {
+        send(res, 401, SESSION_REQUIRED_BODY, cors);
+        return;
+      }
+      send(res, 200, await inspectMcpApproval(str(body.request), actorUserId), cors);
+      return;
+    }
+    if (path === "/api/mcp/oauth/approve" && req.method === "POST") {
+      if (!actorUserId) {
+        send(res, 401, SESSION_REQUIRED_BODY, cors);
+        return;
+      }
+      send(res, 200, await decideMcpApproval(
+        str(body.request), actorUserId, body.approved === true,
+      ), cors);
+      return;
+    }
     // パスワードの変更・追加は、本人のセッションが要る。
     // 401 を返すのは「ログインし直せば直る」と画面に伝えるため。
     if (path === "/api/auth/password" && req.method === "POST") {

@@ -111,6 +111,21 @@ export const config = {
   loginUrl: optional("LOGIN_URL", ""),
 
   /**
+   * ChatGPT からこの旅行へ接続する MCP/OAuth。認可画面だけ GitHub Pages に置き、
+   * トークン発行とデータ更新は常にこの API で行う。
+   */
+  mcp: {
+    issuerUrl: optional("MCP_ISSUER_URL", "https://travel-api.vote-jt.com").replace(/\/+$/, ""),
+    resourceUrl: optional("MCP_RESOURCE_URL", "https://travel-api.vote-jt.com/mcp"),
+    approvalUrl: optional(
+      "MCP_APPROVAL_URL",
+      "https://nagomen.github.io/tabi-plan/mcp-authorize.html",
+    ),
+    accessTokenTtlSeconds: integer("MCP_ACCESS_TOKEN_TTL_SECONDS", "3600", 300, 86_400),
+    refreshTokenTtlDays: integer("MCP_REFRESH_TOKEN_TTL_DAYS", "30", 1, 365),
+  },
+
+  /**
    * 旅程の下書きを作る AI。キーはサーバーにだけ置く
    * （静的サイトに出すと誰でも使えてしまう）。未設定なら機能ごと無効。
    */

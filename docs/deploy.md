@@ -1,5 +1,14 @@
 # デプロイ
 
+## ChatGPT MCP（香港・マカオ・金門旅行）
+
+- MCP URL: `https://travel-api.vote-jt.com/mcp`
+- OAuth認可画面: GitHub Pages の `mcp-authorize.html`
+- 認証・トークン・費用更新: VPS API
+- 対象旅行: `2026-hong-kong-macau-kinmen` にサーバー側で固定
+
+`main` への push で、認可画面は Deploy Frontend、MCP/OAuth/API/nginx は Deploy API から配布される。MCPは既存のTabi Planログインを使い、対象旅行の owner/editor にだけ費用書き込みを許可する。
+
 | workflow | 用途 | トリガー | 反映先 |
 | --- | --- | --- | --- |
 | `CI`(`ci.yml`) | 検証 | PR / `main` への push | なし |

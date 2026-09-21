@@ -479,6 +479,72 @@ async function migrate018() {
   await conn.query("ALTER TABLE plan_members MODIFY COLUMN display_name VARCHAR(64) NOT NULL");
 }
 
+async function migrate019() {
+  // ChatGPT MCP の OAuth 2.1。認可コード・アクセストークンは平文で保存しない。
+  await conn.query(`CREATE TABLE IF NOT EXISTS mcp_oauth_clients (
+    client_id       VARCHAR(64) NOT NULL,
+    metadata_json   JSON NOT NULL,
+    created_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (client_id)
+  ) ENGINE=InnoDB`);
+
+  await conn.query(`CREATE TABLE IF NOT EXISTS mcp_oauth_grants (
+    id              VARCHAR(32) NOT NULL,
+    request_hash    VARBINARY(32) NOT NULL,
+    client_id       VARCHAR(64) NOT NULL,
+    redirect_uri    VARCHAR(1024) NOT NULL,
+    state_value     VARCHAR(1024) NULL,
+    scopes_value    VARCHAR(255) NOT NULL,
+    code_challenge  VARCHAR(128) NOT NULL,
+    resource_value  VARCHAR(255) NOT NULL,
+    user_id         VARCHAR(32) NULL,
+    code_hash       VARBINARY(32) NULL,
+    expires_at      DATETIME(3) NOT NULL,
+    approved_at     DATETIME(3) NULL,
+    consumed_at     DATETIME(3) NULL,
+    created_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_mcp_oauth_request (request_hash),
+    UNIQUE KEY uq_mcp_oauth_code (code_hash),
+    KEY idx_mcp_oauth_grants_expiry (expires_at),
+    CONSTRAINT fk_mcp_oauth_grant_client FOREIGN KEY (client_id) REFERENCES mcp_oauth_clients (client_id) ON DELETE CASCADE,
+    CONSTRAINT fk_mcp_oauth_grant_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+  ) ENGINE=InnoDB`);
+
+  await conn.query(`CREATE TABLE IF NOT EXISTS mcp_oauth_tokens (
+    id              VARCHAR(32) NOT NULL,
+    token_hash      VARBINARY(32) NOT NULL,
+    token_type      ENUM('access','refresh') NOT NULL,
+    client_id       VARCHAR(64) NOT NULL,
+    user_id         VARCHAR(32) NOT NULL,
+    scopes_value    VARCHAR(255) NOT NULL,
+    resource_value  VARCHAR(255) NOT NULL,
+    expires_at      DATETIME(3) NOT NULL,
+    revoked_at      DATETIME(3) NULL,
+    created_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_mcp_oauth_token (token_hash),
+    KEY idx_mcp_oauth_tokens_expiry (expires_at, revoked_at),
+    KEY idx_mcp_oauth_tokens_user (user_id, revoked_at),
+    CONSTRAINT fk_mcp_oauth_token_client FOREIGN KEY (client_id) REFERENCES mcp_oauth_clients (client_id) ON DELETE CASCADE,
+    CONSTRAINT fk_mcp_oauth_token_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+  ) ENGINE=InnoDB`);
+
+  await conn.query(`CREATE TABLE IF NOT EXISTS mcp_expense_requests (
+    user_id         VARCHAR(32) NOT NULL,
+    request_id      VARCHAR(64) NOT NULL,
+    plan_id         VARCHAR(32) NOT NULL,
+    payload_hash    VARBINARY(32) NOT NULL,
+    expense_id      VARCHAR(32) NOT NULL,
+    created_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (user_id, request_id),
+    KEY idx_mcp_expense_request_expense (expense_id),
+    CONSTRAINT fk_mcp_expense_request_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+    CONSTRAINT fk_mcp_expense_request_plan FOREIGN KEY (plan_id) REFERENCES plans (id) ON DELETE CASCADE,
+    CONSTRAINT fk_mcp_expense_request_expense FOREIGN KEY (expense_id) REFERENCES expenses (id) ON DELETE CASCADE
+  ) ENGINE=InnoDB`);
+}
+
 async function main() {
   await conn.query(`CREATE TABLE IF NOT EXISTS schema_migrations (
     id VARCHAR(64) NOT NULL PRIMARY KEY,
@@ -501,6 +567,7 @@ async function main() {
   await applyMigration("016_user_ai_credentials", migrate016);
   await applyMigration("017_candidate_time_slots", migrate017);
   await applyMigration("018_plan_member_display_names", migrate018);
+  await applyMigration("019_trip_mcp_oauth", migrate019);
 }
 
 // 同時デプロイが同じDDLを並走させないよう、DB側の advisory lock で直列化する。

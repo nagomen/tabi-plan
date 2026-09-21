@@ -162,7 +162,7 @@ jobs:
             fi
             cd "$APP_DIR"
             APP_DIR="$APP_DIR" API_DOMAIN="$API_DOMAIN" \
-              bash infra/deploy-api.sh --skip-git
+              bash infra/deploy-api.sh --skip-git --install-nginx
 
       - name: Check the API answers
         run: |
@@ -177,3 +177,13 @@ jobs:
               exit 1
             fi
           done
+          for metadata_path in /.well-known/oauth-protected-resource /.well-known/oauth-protected-resource/mcp; do
+            metadata="https://${{ vars.PRODUCTION_API_DOMAIN }}$metadata_path"
+            code=$(curl -s -o /dev/null -w '%{http_code}' "$metadata")
+            echo "$metadata → HTTP $code"
+            test "$code" = "200"
+          done
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+            "https://${{ vars.PRODUCTION_API_DOMAIN }}/mcp")
+          echo "/mcp (without OAuth) → HTTP $code"
+          test "$code" = "401"

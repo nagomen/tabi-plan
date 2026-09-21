@@ -1,5 +1,6 @@
 // 費用・負担割・精算・監査ログの永続化。
 import mysql from "mysql2/promise";
+import crypto from "node:crypto";
 import { all, firstRow, type Row, withTransaction } from "./db.js";
 import { BadRequest, Forbidden, NotFound } from "./errors.js";
 import { newId } from "./ids.js";
@@ -143,6 +144,68 @@ export async function createExpense(planId: string, input: ExpenseInput, actorUs
     });
   });
   return { id };
+}
+
+/**
+ * MCPの再送対策つき追加。同じ利用者・requestId・同じ内容なら既存IDを返し、
+ * 内容が違えば拒否する。費用行と再送台帳を同じtransactionで確定する。
+ */
+export async function createExpenseIdempotent(
+  planId: string,
+  input: ExpenseInput,
+  actorUserId: string,
+  requestId: string,
+): Promise<{ id: string; replayed: boolean }> {
+  if (!/^[0-9a-f]{8}-[0-9a-f-]{27,}$/i.test(requestId)) {
+    throw new BadRequest("requestIdの形式が正しくありません");
+  }
+  const normalized = {
+    ...input,
+    shares: normalizeShares(input.shares).sort((a, b) => a.user_id.localeCompare(b.user_id)),
+  };
+  const payloadHash = crypto.createHash("sha256").update(JSON.stringify(normalized)).digest();
+  const id = newId("exp");
+  const { amount, rate, base } = computeAmounts(input);
+  return withTransaction(async (conn) => {
+    await assertWorkspaceEditor(conn, planId, actorUserId);
+    const existing = await firstRow<{ plan_id: string; payload_hash: Buffer; expense_id: string }>(conn,
+      `SELECT plan_id, payload_hash, expense_id FROM mcp_expense_requests
+        WHERE user_id = ? AND request_id = ? LIMIT 1 FOR UPDATE`,
+      [actorUserId, requestId],
+    );
+    if (existing) {
+      if (existing.plan_id !== planId || !crypto.timingSafeEqual(existing.payload_hash, payloadHash)) {
+        throw new BadRequest("同じrequestIdが別の費用内容に使われています");
+      }
+      return { id: existing.expense_id, replayed: true };
+    }
+    const { splitMethod, shares } = validateShares(input, base, await activeMemberSet(planId, conn));
+    await conn.query(
+      `INSERT INTO expenses (id, plan_id, paid_on, payer_user_id, category, title, amount_minor,
+         currency, fx_rate, amount_base_minor, split_method, payment_method, note, receipt_url, created_by_id)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      [
+        id, planId, paidOnOrNull(input.paid_on), input.payer_user_id,
+        CATEGORIES.has(String(input.category)) ? input.category : "other",
+        String(input.title || "").slice(0, 200), amount,
+        String(input.currency || "JPY").toUpperCase().slice(0, 3), rate, base,
+        splitMethod,
+        PAY.has(String(input.payment_method)) ? input.payment_method : null,
+        input.note || null, safeUrl(input.receipt_url), actorUserId || null,
+      ],
+    );
+    await insertShares(conn, id, shares);
+    await recordExpenseAudit(conn, {
+      planId, expenseId: id, actorUserId, action: "create", before: null,
+      after: await expenseSnapshot(conn, id),
+    });
+    await conn.query(
+      `INSERT INTO mcp_expense_requests
+         (user_id, request_id, plan_id, payload_hash, expense_id) VALUES (?, ?, ?, ?, ?)`,
+      [actorUserId, requestId, planId, payloadHash, id],
+    );
+    return { id, replayed: false };
+  });
 }
 
 async function insertShares(
