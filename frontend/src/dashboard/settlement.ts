@@ -61,7 +61,7 @@ export function renderTransfers(settlement: Settlement): void {
       <div class="tl-transfer-act">
         <b>${escapeHtml(transfer.amountLabel || "")}</b>
         <button type="button" class="tl-icon-action tl-paypay" data-paypay data-to="${escapeHtml(transfer.to)}" data-to-id="${escapeHtml(transfer.toId || "")}" data-amount="${Number(transfer.amount || 0)}" aria-label="${escapeHtml(transfer.to)}へPayPayで送る" title="PayPayで送る">${icon("paperAirplane")}</button>
-        <button type="button" class="tl-icon-action" data-settlement-complete data-from="${escapeHtml(transfer.from)}" data-to="${escapeHtml(transfer.to)}" data-from-id="${escapeHtml(transfer.fromId || "")}" data-to-id="${escapeHtml(transfer.toId || "")}" data-amount="${Number(transfer.amount || 0)}" aria-label="${escapeHtml(transfer.from)}から${escapeHtml(transfer.to)}への精算を完了" title="精算完了">${icon("checkCircle")}</button>
+        ${isReadOnly() ? "" : `<button type="button" class="tl-icon-action" data-settlement-complete data-from="${escapeHtml(transfer.from)}" data-to="${escapeHtml(transfer.to)}" data-from-id="${escapeHtml(transfer.fromId || "")}" data-to-id="${escapeHtml(transfer.toId || "")}" data-amount="${Number(transfer.amount || 0)}" aria-label="${escapeHtml(transfer.from)}から${escapeHtml(transfer.to)}への精算を完了" title="精算完了">${icon("checkCircle")}</button>`}
       </div>
       ${transfer.completedLabel ? `<small>完了済み ${escapeHtml(transfer.completedLabel)} を差し引き済み</small>` : ""}
     </div>`,
@@ -164,6 +164,8 @@ function setupSettlementCompleteHandlers(mount: HTMLElement): void {
   });
   mount.querySelectorAll<HTMLButtonElement>("[data-settlement-complete]").forEach((button) => {
     button.addEventListener("click", async () => {
+      // 費用フォームと同じく、閲覧モードでは書き込みへ進ませない。
+      if (isReadOnly()) return;
       const from = button.dataset.from || "";
       const to = button.dataset.to || "";
       const amount = Number(button.dataset.amount || 0);
