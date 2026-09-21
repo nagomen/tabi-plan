@@ -12,6 +12,10 @@ import {
 import {
   disarm, arm, runGeocode, applyGeo, geoCache, geoSuggestTimers, clearGeoResults, scheduleNamePlaceSuggest,
 } from "./place-geocode";
+import {
+  addCandidateToSlot, cancelCandidateSlot, convertItemToCandidateSlot,
+  removeCandidateSlotOption, updateCandidateSlotOption,
+} from "./candidates";
 
 // ---- イベント委譲 -------------------------------------------------------
 
@@ -33,6 +37,15 @@ export function onDaysClick(event: MouseEvent): void {
     return;
   }
   if (act === "close") { state.openItemId = null; disarm(); renderDays(); return; }
+  if (act === "candidate") { convertItemToCandidateSlot(itemId); return; }
+  if (act === "slot-option-add") {
+    const slotId = actEl.dataset.slot || "";
+    const input = daysEl.querySelector<HTMLInputElement>(`[data-slot-new="${CSS.escape(slotId)}"]`);
+    if (input && addCandidateToSlot(slotId, input.value)) input.value = "";
+    return;
+  }
+  if (act === "slot-option-remove") { removeCandidateSlotOption(actEl.dataset.candidateId || ""); return; }
+  if (act === "slot-cancel") { cancelCandidateSlot(actEl.dataset.slot || ""); return; }
   if (act === "remove") {
     const found = findItem(itemId);
     if (found) {
@@ -124,6 +137,12 @@ export function onDaysClick(event: MouseEvent): void {
 export function onDaysInput(event: Event): void {
   const target = event.target;
   if (!(target instanceof HTMLInputElement) && !(target instanceof HTMLTextAreaElement) && !(target instanceof HTMLSelectElement)) return;
+  const candidateField = target.getAttribute("data-slot-field");
+  const candidateId = target.getAttribute("data-candidate-id") || "";
+  if ((candidateField === "title" || candidateField === "place") && candidateId) {
+    updateCandidateSlotOption(candidateId, candidateField, target.value);
+    return;
+  }
 
   // 日の拠点エリア
   const areaIdx = target.getAttribute("data-area");
@@ -191,6 +210,12 @@ export function onDaysInput(event: Event): void {
 export function onDaysKeydown(event: KeyboardEvent): void {
   const t = event.target;
   if (!(t instanceof Element)) return;
+  const slotInput = t.closest<HTMLInputElement>("[data-slot-new]");
+  if (slotInput && event.key === "Enter") {
+    event.preventDefault();
+    if (addCandidateToSlot(slotInput.dataset.slotNew || "", slotInput.value)) slotInput.value = "";
+    return;
+  }
   const row = t.closest<HTMLElement>('.pe-row[data-act="toggle"]');
   if (!row) return;
   if (event.key === "Enter" || event.key === " ") {

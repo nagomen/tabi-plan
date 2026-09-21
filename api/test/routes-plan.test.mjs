@@ -193,6 +193,9 @@ test("参加者名簿の書き換えは owner だけに限る", async (t) => {
   }, "usr_editor");
   assert.equal(replace.status, 403);
 
+  const remove = await route("DELETE", "/api/plans/pln_1/members/usr_guest", {}, "usr_editor");
+  assert.equal(remove.status, 403);
+
   const placeholder = await route("POST", "/api/plans/pln_1/placeholder-members", {
     display_name: "たかし",
   }, "usr_editor");

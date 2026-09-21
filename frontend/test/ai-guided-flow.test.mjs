@@ -92,7 +92,8 @@ test("旅行詳細では編集メンバーだけが全日程対応のAIチャッ
   assert.match(aiChat, /importExternalAiRefineJson/);
   assert.match(aiChat, /importOpen\.addEventListener/);
   assert.match(aiChat, /data-ai-external/);
-  assert.match(aiChat, /error\.code === "ai_daily_limit"/);
+  assert.match(aiChat, /"ai_daily_limit"/);
+  assert.match(aiChat, /error\.action === "update_api_key"/);
   assert.match(aiChat, /この提案を行程に反映/);
   assert.match(aiChat, /await db\.flushMutations\(checkpoint\)/);
   assert.match(db, /"POST", "\/api\/ai\/itinerary-refine"/);

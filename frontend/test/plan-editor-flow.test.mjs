@@ -110,16 +110,38 @@ test("友達以外を名前で追加し、保存後に未登録メンバーと�
   assert.match(editor, /data-member-role-id/);
   assert.match(editor, /data-revoke-access/);
   assert.match(editor, /db\.revokeMemberAccess/);
+  assert.match(editor, /data-rm=/);
+  assert.match(editor, /db\.removePlanMember/);
   assert.match(editor, /data-transfer-owner[\s\S]{0,300}access_status === "active"|access_status === "active"[\s\S]{0,300}data-transfer-owner/);
 });
 
-test("共通招待は対象者を限定しないことを明示し、共有キャンセル時に失効する", () => {
+test("ownerはダッシュボードの参加者一覧から本人以外を即時削除できる", () => {
   const html = fs.readFileSync(new URL("index.html", root), "utf8");
   const dashboard = fs.readFileSync(new URL("src/dashboard/members.ts", root), "utf8");
-  assert.match(html, /招待リンクの表示名/);
-  assert.match(html, /招待相手のアカウントを限定しません/);
+  const main = fs.readFileSync(new URL("src/dashboard/main.ts", root), "utf8");
+  const database = fs.readFileSync(new URL("src/shared/db.ts", root), "utf8");
+  assert.match(html, /data-members-status aria-live="polite"/);
+  assert.match(dashboard, /canManagePlan\(meta\)/);
+  assert.match(dashboard, /data-remove-member=/);
+  assert.match(dashboard, /!owner && !self/);
+  assert.match(dashboard, /db\.removePlanMember\(meta\.id, userId\)/);
+  assert.match(main, /\[data-remove-member\]/);
+  assert.match(database, /DELETE[\s\S]*\/members\/\$\{encodeURIComponent\(userId\)\}/);
+});
+
+test("ダッシュボードで名前・参加期間・旅程分類を登録し、本人専用招待を再送できる", () => {
+  const html = fs.readFileSync(new URL("index.html", root), "utf8");
+  const dashboard = fs.readFileSync(new URL("src/dashboard/members.ts", root), "utf8");
+  assert.match(html, /data-invite-name[^>]*required/);
+  assert.match(html, /data-invite-track/);
+  assert.match(html, /data-invite-from/);
+  assert.match(html, /data-invite-to/);
+  assert.match(html, /追加して招待リンクを共有/);
+  assert.match(dashboard, /db\.createPlaceholderMember\(meta\.id, name, role, \{ fromDate, toDate, trackMemberIds \}\)/);
+  assert.match(dashboard, /invited_user_id: userId/);
+  assert.match(dashboard, /data-invite-member=/);
   assert.match(dashboard, /revokeCreatedInvite[\s\S]*db\.revokeInvite\(planId, createdInviteId\)/);
-  assert.match(dashboard, /navigator\.share[\s\S]*revokeCreatedInvite\("共有をキャンセルしました"\)/);
+  assert.match(dashboard, /navigator\.share[\s\S]*revokeCreatedInvite\("招待は未送信です"\)/);
   assert.match(dashboard, /window\.prompt[\s\S]*copied === null[\s\S]*revokeCreatedInvite/);
 });
 
@@ -149,8 +171,8 @@ test("招待参加後は最新セッションを解決し、旧端末用の空�
   assert.match(database, /!options\.fresh && !sessionRequiresViewerResolution\(\)/);
   assert.match(dashboard, /db\.load\(\{ fresh: db\.isEnabled\(\), strict: db\.isEnabled\(\) \}\)/);
   assert.match(profile, /if \(db\.isEnabled\(\)\)[\s\S]{0,300}login\.html\?returnTo=/);
-  assert.match(html, /招待リンクを発行して共有/);
-  assert.match(html, /ブラウザに表示中のURLでは参加できません/);
+  assert.match(html, /追加して招待リンクを共有/);
+  assert.match(html, /本人専用の招待リンク/);
 });
 
 test("MySQL運用では静的設定から旅行を自動作成しない", () => {

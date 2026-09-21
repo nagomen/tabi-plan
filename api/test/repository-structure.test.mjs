@@ -100,7 +100,7 @@ test("mutable repositories recheck current membership inside their transactions"
   const expenses = source("expense-repo.ts");
   assert.match(plans, /SELECT role FROM plan_access_grants[\s\S]*FOR UPDATE/);
   assert.match(plans, /source === "sample"/);
-  assert.match(members, /SELECT owner_user_id, version FROM plans[\s\S]*FOR UPDATE/);
+  assert.match(members, /SELECT owner_user_id, version,[\s\S]*FROM plans[\s\S]*FOR UPDATE/);
   assert.match(invites, /async function assertInviteManager/);
   assert.match(invites, /await assertInviteManager\(conn, input\.planId, input\.createdById\)/);
   assert.match(invites, /招待を扱えるのは計画の所有者と編集メンバーだけです/);

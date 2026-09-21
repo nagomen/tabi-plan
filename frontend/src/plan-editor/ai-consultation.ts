@@ -27,6 +27,23 @@ const aiConsultation = new AiConsultationState();
 let aiErrorTimer: number | null = null;
 let aiErrorHandler: (() => void | Promise<void>) | null = null;
 
+/**
+ * このサイト内のページを別タブで開く。ポップアップとして塞がれたときは
+ * 押しても何も起きない見え方になるので、同じタブへ進める（自動保存なので入力は残る）。
+ * window.open の第3引数に noopener を渡すと戻り値が常に null になって遮断を
+ * 見分けられないため、開いてから opener を切る。
+ */
+function openSitePage(url: string): void {
+  let opened: Window | null = null;
+  try {
+    opened = window.open(url, "_blank");
+    if (opened) opened.opener = null;
+  } catch {
+    opened = null;
+  }
+  if (!opened) location.assign(url);
+}
+
 /** 考えている間の見た目。ボタンごと状態を持たせる。 */
 function setAiBusy(busy: boolean, label = "考えています"): void {
   aiRun.disabled = busy;
@@ -77,25 +94,24 @@ function showAiError(error: unknown, phase: AiErrorPhase): void {
       ? () => { resetAiConsultation(); aiArea.focus(); }
       : guidance.action === "sign_in"
         ? () => {
-          window.open(
-            "login.html?returnTo=" + encodeURIComponent("plan-editor.html" + location.search),
-            "_blank",
-            "noopener",
-          );
+          openSitePage("login.html?returnTo=" + encodeURIComponent("plan-editor.html" + location.search));
         }
         : guidance.action === "update_api_key"
           ? () => {
-            window.open("mypage.html?tab=pay#ai-key", "_blank", "noopener");
+            openSitePage("mypage.html?tab=pay#ai-key");
           }
         : guidance.action === "external_ai"
           ? async () => {
             aiImportDetails.open = true;
-            openExternalAi("chatgpt");
+            // ここは貼り付け先がこの画面なので、塞がれても同じタブへは移動しない。
+            const opened = openExternalAi("chatgpt");
             const copied = await copyExternalAiPrompt(externalAiCreatePrompt());
             setAiStatus(
-              copied
-                ? "質問文をコピーしました。開いたChatGPTへ貼り付けてください。"
-                : "質問文を表示しました。すべてコピーしてChatGPTへ貼り付けてください。",
+              !copied
+                ? "質問文を表示しました。すべてコピーしてChatGPTへ貼り付けてください。"
+                : opened
+                  ? "質問文をコピーしました。開いたChatGPTへ貼り付けてください。"
+                  : "質問文をコピーしました。ChatGPT（chatgpt.com）を開いて貼り付けてください。",
               copied ? "ok" : "warn",
             );
           }
@@ -467,7 +483,7 @@ async function importExternalAiDraft(): Promise<void> {
 export function onAiRunClick(): void { void startAiConsultation(); }
 
 export async function onAiImportOpenClick(): Promise<void> {
-  openExternalAi("chatgpt");
+  // ChatGPT はリンクの既定動作で開く。コピーはこのクリックのうちに始める。
   const copied = await copyExternalAiPrompt(externalAiCreatePrompt());
   aiImportStatus.textContent = copied
     ? "質問文をコピーしました。開いたChatGPTへ貼り付けてください。"

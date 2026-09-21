@@ -39,25 +39,57 @@ export async function createPlaceholderMember(
   displayName: string,
   actorUserId: string,
   role: "editor" | "viewer" = "editor",
-): Promise<{ user: { id: string; display_name: string }; member: { plan_id: string; user_id: string; role: "editor" | "viewer"; status: "active"; access_status: null }; version: number }> {
+  options: { fromDate?: string; toDate?: string; trackMemberIds?: string[] } = {},
+): Promise<{
+  user: { id: string; display_name: string };
+  member: {
+    plan_id: string; user_id: string; role: "editor" | "viewer"; status: "active"; access_status: null;
+    from_date: string | null; to_date: string | null;
+  };
+  assignedItineraryItems: number;
+  version: number;
+}> {
   const name = String(displayName || "").trim().slice(0, 64);
   if (!name) throw new BadRequest("メンバー名を入力してください");
+  const rawFromDate = String(options.fromDate || "").trim();
+  const rawToDate = String(options.toDate || "").trim();
+  const fromDate = safeDate(rawFromDate);
+  const toDate = safeDate(rawToDate);
+  if (rawFromDate && !fromDate) throw new BadRequest("参加開始日が正しくありません");
+  if (rawToDate && !toDate) throw new BadRequest("参加終了日が正しくありません");
+  if (fromDate && toDate && fromDate > toDate) throw new BadRequest("参加開始日は参加終了日以前にしてください");
+  const trackMemberIds = [...new Set((options.trackMemberIds || []).map((id) => String(id || "").trim()).filter(Boolean))].sort();
   const userId = newId("gst");
-  const version = await withTransaction(async (conn) => {
-    const plan = await firstRow<{ owner_user_id: string | null; version: number }>(
+  const created = await withTransaction(async (conn) => {
+    const plan = await firstRow<{
+      owner_user_id: string | null; version: number; start_date: string | null; end_date: string | null;
+    }>(
       conn,
-      "SELECT owner_user_id, version FROM plans WHERE id = ? AND deleted_at IS NULL LIMIT 1 FOR UPDATE",
+      "SELECT owner_user_id, version, start_date, end_date FROM plans WHERE id = ? AND deleted_at IS NULL LIMIT 1 FOR UPDATE",
       [planId],
     );
     if (!plan || plan.owner_user_id !== actorUserId) throw new BadRequest("メンバーを追加できるのは現在のownerだけです");
+    if (plan.start_date && fromDate && fromDate < plan.start_date) throw new BadRequest("参加開始日は旅行開始日以降にしてください");
+    if (plan.end_date && fromDate && fromDate > plan.end_date) throw new BadRequest("参加開始日は旅行終了日以前にしてください");
+    if (plan.start_date && toDate && toDate < plan.start_date) throw new BadRequest("参加終了日は旅行開始日以降にしてください");
+    if (plan.end_date && toDate && toDate > plan.end_date) throw new BadRequest("参加終了日は旅行終了日以前にしてください");
+    if (trackMemberIds.length) {
+      const trackIn = inClause(trackMemberIds);
+      const [trackRows] = await conn.query<Row[]>(
+        `SELECT user_id FROM plan_members
+          WHERE plan_id = ? AND status = 'active' AND user_id IN (${trackIn.sql}) FOR UPDATE`,
+        [planId, ...trackIn.params],
+      );
+      if (trackRows.length !== trackMemberIds.length) throw new BadRequest("選択した旅程グループが最新ではありません");
+    }
     await conn.query(
       "INSERT INTO users (id, display_name, name_key) VALUES (?, ?, ?)",
       [userId, name, identityKey(name)],
     );
     await conn.query(
-      `INSERT INTO plan_members (plan_id, user_id, role, status, invited_by_id)
-       VALUES (?, ?, ?, 'active', ?)`,
-      [planId, userId, role, actorUserId],
+      `INSERT INTO plan_members (plan_id, user_id, role, status, invited_by_id, from_date, to_date)
+       VALUES (?, ?, ?, 'active', ?, ?, ?)`,
+      [planId, userId, role, actorUserId, fromDate, toDate],
     );
     await conn.query(
       `INSERT INTO plan_member_placeholders
@@ -65,13 +97,43 @@ export async function createPlaceholderMember(
        VALUES (?, ?, ?, 'unclaimed', ?)`,
       [planId, userId, name, actorUserId],
     );
+    let assignedItineraryItems = 0;
+    if (trackMemberIds.length) {
+      const [itineraryRows] = await conn.query<Row[]>(
+        "SELECT id, item_date, member_ids FROM itinerary_items WHERE plan_id = ? AND member_ids IS NOT NULL FOR UPDATE",
+        [planId],
+      );
+      const trackKey = trackMemberIds.join(",");
+      for (const row of itineraryRows as unknown as { id: string; item_date: string | null; member_ids: string }[]) {
+        if (row.item_date && fromDate && row.item_date < fromDate) continue;
+        if (row.item_date && toDate && row.item_date > toDate) continue;
+        try {
+          const parsed = JSON.parse(String(row.member_ids || "")) as unknown;
+          if (!Array.isArray(parsed)) continue;
+          const ids = [...new Set(parsed.filter((id): id is string => typeof id === "string" && Boolean(id)))].sort();
+          if (ids.join(",") !== trackKey) continue;
+          await conn.query(
+            "UPDATE itinerary_items SET member_ids = ? WHERE id = ?",
+            [JSON.stringify([...ids, userId].sort()), row.id],
+          );
+          assignedItineraryItems += 1;
+        } catch {
+          // 壊れた旧JSONは全員予定として扱い、メンバー追加そのものは止めない。
+        }
+      }
+      if (!assignedItineraryItems) throw new BadRequest("選択した旅程グループに該当する予定が見つかりません");
+    }
     await conn.query("UPDATE plans SET version = version + 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?", [planId]);
-    return Number(plan.version || 0) + 1;
+    return { version: Number(plan.version || 0) + 1, assignedItineraryItems };
   });
   return {
     user: { id: userId, display_name: name },
-    member: { plan_id: planId, user_id: userId, role, status: "active", access_status: null },
-    version,
+    member: {
+      plan_id: planId, user_id: userId, role, status: "active", access_status: null,
+      from_date: fromDate, to_date: toDate,
+    },
+    assignedItineraryItems: created.assignedItineraryItems,
+    version: created.version,
   };
 }
 
@@ -250,6 +312,110 @@ export async function leavePlan(planId: string, userId: string): Promise<void> {
       [planId, userId],
     );
     await conn.query("UPDATE plans SET version = version + 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?", [planId]);
+  });
+}
+
+/**
+ * ownerが参加者を旅行から外す。
+ *
+ * 会計行は履歴として残す一方、名簿・アクセス権・投票・個人行程からは即時に外す。
+ * 対象者だけに割り当てられていた行程は、空配列＝全員参加へ化けないよう削除する。
+ */
+export async function removePlanMember(
+  planId: string,
+  targetUserId: string,
+  actorUserId: string,
+): Promise<{ removedItineraryItems: number }> {
+  if (!targetUserId) throw new BadRequest("削除する参加者を指定してください");
+  if (targetUserId === actorUserId) throw new BadRequest("owner自身は削除できません。先に所有権を移譲してください");
+
+  return withTransaction(async (conn) => {
+    const plan = await firstRow<{ owner_user_id: string | null }>(
+      conn,
+      "SELECT owner_user_id FROM plans WHERE id = ? AND deleted_at IS NULL LIMIT 1 FOR UPDATE",
+      [planId],
+    );
+    if (!plan || plan.owner_user_id !== actorUserId) {
+      throw new BadRequest("参加者を削除できるのは現在のownerだけです");
+    }
+    if (plan.owner_user_id === targetUserId) {
+      throw new BadRequest("ownerは削除できません。先に所有権を移譲してください");
+    }
+
+    const member = await firstRow<{ role: string; status: string }>(
+      conn,
+      "SELECT role, status FROM plan_members WHERE plan_id = ? AND user_id = ? LIMIT 1 FOR UPDATE",
+      [planId, targetUserId],
+    );
+    if (!member || member.status !== "active") throw new BadRequest("対象の旅行参加者が見つかりません");
+    if (member.role === "owner") throw new BadRequest("ownerは削除できません。先に所有権を移譲してください");
+
+    let removedItineraryItems = 0;
+    const [itineraryRows] = await conn.query<Row[]>(
+      "SELECT id, member_ids FROM itinerary_items WHERE plan_id = ? AND member_ids IS NOT NULL FOR UPDATE",
+      [planId],
+    );
+    for (const row of itineraryRows as unknown as { id: string; member_ids: string }[]) {
+      try {
+        const parsed = JSON.parse(String(row.member_ids || "")) as unknown;
+        if (!Array.isArray(parsed) || !parsed.includes(targetUserId)) continue;
+        const remaining = [...new Set(parsed.filter((id): id is string => typeof id === "string" && id !== targetUserId))];
+        if (remaining.length) {
+          await conn.query("UPDATE itinerary_items SET member_ids = ? WHERE id = ?", [JSON.stringify(remaining), row.id]);
+        } else {
+          await conn.query("DELETE FROM itinerary_items WHERE id = ? AND plan_id = ?", [row.id, planId]);
+          removedItineraryItems += 1;
+        }
+      } catch {
+        // 壊れた旧JSONはbootstrapと同様に全員予定として扱い、参加者削除そのものは止めない。
+      }
+    }
+
+    const [candidateRows] = await conn.query<Row[]>(
+      "SELECT id, member_ids FROM plan_candidates WHERE plan_id = ? AND member_ids IS NOT NULL FOR UPDATE",
+      [planId],
+    );
+    for (const row of candidateRows as unknown as { id: string; member_ids: string }[]) {
+      try {
+        const parsed = JSON.parse(String(row.member_ids || "")) as unknown;
+        if (!Array.isArray(parsed) || !parsed.includes(targetUserId)) continue;
+        const remaining = [...new Set(parsed.filter((id): id is string => typeof id === "string" && id !== targetUserId))];
+        if (remaining.length) {
+          await conn.query("UPDATE plan_candidates SET member_ids = ? WHERE id = ?", [JSON.stringify(remaining), row.id]);
+        } else {
+          await conn.query("DELETE FROM plan_candidates WHERE id = ? AND plan_id = ?", [row.id, planId]);
+        }
+      } catch {
+        // 壊れた旧JSONは全員対象として扱い、参加者削除を止めない。
+      }
+    }
+
+    await conn.query(
+      "UPDATE plan_members SET status = 'revoked' WHERE plan_id = ? AND user_id = ? AND status = 'active'",
+      [planId, targetUserId],
+    );
+    await conn.query(
+      "UPDATE plan_access_grants SET status = 'revoked' WHERE plan_id = ? AND user_id = ? AND status = 'active'",
+      [planId, targetUserId],
+    );
+    await conn.query(
+      `UPDATE plan_invites SET status = 'revoked', revoked_at = CURRENT_TIMESTAMP
+        WHERE plan_id = ? AND invited_user_id = ? AND status = 'pending'`,
+      [planId, targetUserId],
+    );
+    await conn.query(
+      `UPDATE plan_member_placeholders SET status = 'removed'
+        WHERE plan_id = ? AND user_id = ? AND status = 'unclaimed'`,
+      [planId, targetUserId],
+    );
+    await conn.query(
+      `DELETE v FROM plan_candidate_votes v
+        JOIN plan_candidates c ON c.id = v.candidate_id
+        WHERE c.plan_id = ? AND v.user_id = ?`,
+      [planId, targetUserId],
+    );
+    await conn.query("UPDATE plans SET version = version + 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?", [planId]);
+    return { removedItineraryItems };
   });
 }
 

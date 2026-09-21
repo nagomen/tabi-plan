@@ -8,7 +8,7 @@ import { presentMemberIds } from "../shared/member-period";
 import { dayTracks, pickTrack, isItemInTrack, everyoneIds, type DayTrack } from "../shared/day-tracks";
 import {
   type ItemKind, type ItemStrKey, type Item, type Day, type GeoTarget, KINDS, TRANSPORTS, TRANSPORT_ICONS,
-  model, state, stayCovering, cityForDate, findItem, inclusiveDateCount, applyCityDateDefaults,
+  model, state, stayCovering, cityForDate, findItem, inclusiveDateCount, applyCityDateDefaults, timeOrder,
 } from "./editor-state";
 import { daysEl, warnEl, dayCountEl, dayStripEl, tripSummaryEl } from "./editor-dom";
 import { updateSteps } from "./steps";
@@ -216,7 +216,10 @@ function memberPickerBlock(item: Item): string {
 
 function editForm(item: Item): string {
   const g = `<div class="pe-edit-grid">`;
-  const end = `</div><div class="pe-edit-actions"><button class="pe-mini" type="button" data-act="close">${icon("check")}<span>完了</span></button></div>`;
+  const candidateButton = item.kind !== "move" && item.kind !== "stay"
+    ? `<button class="pe-mini pe-make-candidate" type="button" data-act="candidate" data-item="${item.id}">${icon("star")}<span>候補にする</span></button>`
+    : "";
+  const end = `</div><div class="pe-edit-actions">${candidateButton}<button class="pe-mini" type="button" data-act="close">${icon("check")}<span>完了</span></button></div>`;
   if (item.kind === "move") {
     return (
       g +
@@ -251,6 +254,48 @@ function editForm(item: Item): string {
     memberPickerBlock(item) +
     end
   );
+}
+
+function candidateSlotHtml(options: import("../shared/types").Candidate[]): string {
+  const first = options[0];
+  if (!first?.slotId) return "";
+  const memberNames = (first.memberIds || []).map((id) => db.nameOf(id)).filter(Boolean);
+  const voterIds = new Set(options.flatMap((candidate) => candidate.voteIds || []));
+  return `<section class="pe-vote-slot" data-slot="${escapeHtml(first.slotId)}">
+    <div class="pe-vote-slot-head">
+      <span class="pe-vote-time">${escapeHtml(first.time || "時刻未定")}</span>
+      <span class="pe-vote-kicker">投票で決める</span>
+      <span class="pe-vote-progress">${voterIds.size}人が投票</span>
+    </div>
+    <p class="pe-vote-help">この時間の過ごし方を並べます。参加者は旅行ページから一つだけ選べます。</p>
+    <div class="pe-vote-options">${options.map((candidate, index) => `
+      <div class="pe-vote-option" data-candidate="${escapeHtml(candidate.id)}">
+        <span class="pe-vote-index">${index + 1}</span>
+        <label><span>候補名</span><input maxlength="200" data-slot-field="title" data-candidate-id="${escapeHtml(candidate.id)}" value="${escapeHtml(candidate.title)}"></label>
+        <label><span>場所</span><input maxlength="200" data-slot-field="place" data-candidate-id="${escapeHtml(candidate.id)}" value="${escapeHtml(candidate.place || "")}" placeholder="任意"></label>
+        <span class="pe-vote-count">${candidate.voteIds?.length || 0}票</span>
+        <button type="button" data-act="slot-option-remove" data-candidate-id="${escapeHtml(candidate.id)}" aria-label="この候補を削除">${icon("xMark")}</button>
+      </div>`).join("")}</div>
+    <div class="pe-vote-slot-add">
+      <input maxlength="200" data-slot-new="${escapeHtml(first.slotId)}" placeholder="別の過ごし方を追加">
+      <button type="button" data-act="slot-option-add" data-slot="${escapeHtml(first.slotId)}">${icon("plus")}候補を追加</button>
+    </div>
+    <div class="pe-vote-slot-foot">
+      <span>${memberNames.length ? `${escapeHtml(memberNames.join("・"))}が投票` : "当日の参加者全員が投票"}</span>
+      <button type="button" data-act="slot-cancel" data-slot="${escapeHtml(first.slotId)}">通常の予定に戻す</button>
+    </div>
+  </section>`;
+}
+
+function candidateSlotsForDate(date: string): import("../shared/types").Candidate[][] {
+  const groups = new Map<string, import("../shared/types").Candidate[]>();
+  model.candidates.filter((candidate) => candidate.slotId && candidate.date === date && !candidate.adopted)
+    .forEach((candidate) => {
+      const list = groups.get(candidate.slotId!) || [];
+      list.push(candidate);
+      groups.set(candidate.slotId!, list);
+    });
+  return [...groups.values()].sort((a, b) => String(a[0]?.time || "").localeCompare(String(b[0]?.time || "")));
 }
 
 function timelineNode(item: Item): string {
@@ -403,7 +448,16 @@ export function renderDays(): void {
       const everyone = track ? everyoneIds(day.items.map((it) => it.members), presentIdsOnDate(day.date)) : [];
       const visible = track ? day.items.filter((it) => isItemInTrack(it.members, track, everyone)) : day.items;
       renderingWithTrack = Boolean(track);
-      const items = visible.map(timelineNode).join("");
+      const pendingSlots = candidateSlotsForDate(day.date);
+      const timelineParts: string[] = [];
+      visible.forEach((item) => {
+        while (pendingSlots.length && timeOrder(pendingSlots[0][0]?.time || "") <= timeOrder(item.time)) {
+          timelineParts.push(candidateSlotHtml(pendingSlots.shift()!));
+        }
+        timelineParts.push(timelineNode(item));
+      });
+      pendingSlots.forEach((slot) => timelineParts.push(candidateSlotHtml(slot)));
+      const items = timelineParts.join("");
       renderingWithTrack = false;
       const empty = visible.length ? "" : `<p class="pe-day-empty">予定はまだありません。下のボタンから追加できます。</p>`;
       // 前夜の宿を朝に出発するときだけ「前泊から出発」を出す（連泊中は出さない）

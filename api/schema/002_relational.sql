@@ -367,10 +367,21 @@ CREATE TABLE plan_candidates (
   title          VARCHAR(200) NOT NULL,
   place          VARCHAR(200) NULL,
   proposed_by_id VARCHAR(32) NULL,
+  -- slot_id がある行は、同じ日時に対する排他的な投票候補。NULL は従来の行きたい候補。
+  slot_id        VARCHAR(32) NULL,
+  item_date      DATE        NULL,
+  start_time     TIME        NULL,
+  kind           ENUM('sight','move','food','stay','todo','form') NULL,
+  duration_minutes SMALLINT UNSIGNED NULL,
+  lat            DECIMAL(9,6) NULL,
+  lng            DECIMAL(9,6) NULL,
+  note           TEXT        NULL,
+  member_ids     TEXT        NULL,
   adopted_at     TIMESTAMP   NULL DEFAULT NULL,
   created_at     TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
   KEY idx_candidates_plan (plan_id),
+  KEY idx_candidates_slot (plan_id, slot_id),
   CONSTRAINT fk_candidates_plan FOREIGN KEY (plan_id) REFERENCES plans (id) ON DELETE CASCADE,
   CONSTRAINT fk_candidates_proposer FOREIGN KEY (proposed_by_id) REFERENCES users (id) ON DELETE SET NULL
 ) ENGINE=InnoDB;

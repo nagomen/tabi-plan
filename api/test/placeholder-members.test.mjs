@@ -6,7 +6,7 @@ process.env.DB_USER = "test";
 process.env.DB_PASSWORD = "test";
 
 const { pool } = await import("../dist/db.js");
-const { createPlaceholderMember, leavePlan, revokeMemberAccess } = await import("../dist/plan-member-repo.js");
+const { createPlaceholderMember, leavePlan, removePlanMember, revokeMemberAccess } = await import("../dist/plan-member-repo.js");
 const { acceptInvite, inspectInvite } = await import("../dist/plan-invite-repo.js");
 
 function result(affectedRows = 1) {
@@ -23,8 +23,8 @@ test("同名でも旅行専用の仮メンバーを別IDで作成する", async 
     release: () => {},
     query: async (sql, params) => {
       statements.push({ sql, params });
-      if (sql.includes("SELECT owner_user_id, version FROM plans")) {
-        return [[{ owner_user_id: "usr_owner", version: 1 }]];
+      if (sql.includes("SELECT owner_user_id, version")) {
+        return [[{ owner_user_id: "usr_owner", version: 1, start_date: "2026-10-09", end_date: "2026-10-18" }]];
       }
       return result();
     },
@@ -37,7 +37,56 @@ test("同名でも旅行専用の仮メンバーを別IDで作成する", async 
   assert.notEqual(first.user.id, second.user.id);
   assert.match(first.user.id, /^gst_/);
   assert.equal(first.user.display_name, "たかし");
+  assert.equal(first.assignedItineraryItems, 0);
   assert.equal(statements.filter(({ sql }) => sql.includes("INSERT INTO plan_member_placeholders")).length, 2);
+});
+
+test("未登録メンバーを参加期間つきで追加し、選んだ旅程グループへ分類する", async (t) => {
+  const originalGetConnection = pool.getConnection;
+  const statements = [];
+  const connection = {
+    beginTransaction: async () => {},
+    commit: async () => {},
+    rollback: async () => {},
+    release: () => {},
+    query: async (sql, params = []) => {
+      const text = String(sql);
+      statements.push({ sql: text, params });
+      if (text.includes("SELECT owner_user_id, version")) {
+        return [[{ owner_user_id: "usr_owner", version: 4, start_date: "2026-10-09", end_date: "2026-10-18" }]];
+      }
+      if (text.includes("SELECT user_id FROM plan_members")) {
+        return [[{ user_id: "usr_a" }, { user_id: "usr_b" }]];
+      }
+      if (text.includes("SELECT id, item_date, member_ids FROM itinerary_items")) {
+        return [[
+          { id: "iti_match", item_date: "2026-10-12", member_ids: JSON.stringify(["usr_b", "usr_a"]) },
+          { id: "iti_outside", item_date: "2026-10-09", member_ids: JSON.stringify(["usr_a", "usr_b"]) },
+          { id: "iti_other", item_date: "2026-10-12", member_ids: JSON.stringify(["usr_c"]) },
+        ]];
+      }
+      return result();
+    },
+  };
+  pool.getConnection = async () => connection;
+  t.after(() => { pool.getConnection = originalGetConnection; });
+
+  const created = await createPlaceholderMember("pln_1", "さくら", "usr_owner", "viewer", {
+    fromDate: "2026-10-10",
+    toDate: "2026-10-15",
+    trackMemberIds: ["usr_b", "usr_a"],
+  });
+  assert.equal(created.member.from_date, "2026-10-10");
+  assert.equal(created.member.to_date, "2026-10-15");
+  assert.equal(created.assignedItineraryItems, 1);
+  assert.equal(created.version, 5);
+  const memberInsert = statements.find(({ sql }) => sql.includes("INSERT INTO plan_members"));
+  assert.deepEqual(memberInsert.params.slice(-2), ["2026-10-10", "2026-10-15"]);
+  const itineraryUpdate = statements.find(({ sql }) => sql.includes("UPDATE itinerary_items SET member_ids"));
+  const assignedIds = JSON.parse(itineraryUpdate.params[0]);
+  assert.ok(assignedIds.includes("usr_a"));
+  assert.ok(assignedIds.includes("usr_b"));
+  assert.match(assignedIds.find((id) => id.startsWith("gst_")), /^gst_/);
 });
 
 test("ログイン前の招待確認で未登録メンバー候補を返す", async (t) => {
@@ -86,6 +135,9 @@ test("招待承諾は仮メンバーの旅行内データをアカウントへ�
       if (sql.includes("SELECT id, member_ids FROM itinerary_items")) {
         return [[{ id: "iti_1", member_ids: JSON.stringify(["gst_1", "usr_other"]) }]];
       }
+      if (sql.includes("SELECT id, member_ids FROM plan_candidates")) {
+        return [[{ id: "cnd_1", member_ids: JSON.stringify(["gst_1", "usr_other"]) }]];
+      }
       return result();
     },
   };
@@ -108,6 +160,8 @@ test("招待承諾は仮メンバーの旅行内データをアカウントへ�
   assert.match(sql, /INSERT IGNORE INTO plan_candidate_votes/);
   const itineraryUpdate = statements.find(({ sql: statement }) => statement.includes("UPDATE itinerary_items SET member_ids"));
   assert.deepEqual(JSON.parse(itineraryUpdate.params[0]), ["usr_takashi", "usr_other"]);
+  const candidateUpdate = statements.find(({ sql: statement }) => statement.includes("UPDATE plan_candidates SET member_ids"));
+  assert.deepEqual(JSON.parse(candidateUpdate.params[0]), ["usr_takashi", "usr_other"]);
   assert.match(sql, /SET status = 'claimed'/);
   assert.match(sql, /COMMIT/);
   assert.doesNotMatch(sql, /INSERT INTO friendships/);
@@ -234,6 +288,54 @@ test("ownerは会計上の参加者を残したままアクセスだけを停止
   assert.match(sql, /UPDATE plan_invites SET status = 'revoked'/);
   assert.doesNotMatch(sql, /UPDATE plan_members SET status/);
   assert.doesNotMatch(sql, /FROM expenses/);
+});
+
+test("ownerは参加者を名簿とアクセス権から削除し、個人行程だけを整理できる", async (t) => {
+  const originalGetConnection = pool.getConnection;
+  const statements = [];
+  const connection = {
+    beginTransaction: async () => {},
+    commit: async () => {},
+    rollback: async () => {},
+    release: () => {},
+    query: async (sql, params = []) => {
+      const text = String(sql);
+      statements.push({ sql: text, params });
+      if (text.includes("SELECT owner_user_id FROM plans")) return [[{ owner_user_id: "usr_owner" }]];
+      if (text.includes("SELECT role, status FROM plan_members")) return [[{ role: "editor", status: "active" }]];
+      if (text.includes("SELECT id, member_ids FROM itinerary_items")) return [[
+        { id: "iti_only", member_ids: JSON.stringify(["usr_guest"]) },
+        { id: "iti_group", member_ids: JSON.stringify(["usr_guest", "usr_friend"]) },
+      ]];
+      if (text.includes("SELECT id, member_ids FROM plan_candidates")) return [[
+        { id: "cnd_group", member_ids: JSON.stringify(["usr_guest", "usr_friend"]) },
+      ]];
+      return result();
+    },
+  };
+  pool.getConnection = async () => connection;
+  t.after(() => { pool.getConnection = originalGetConnection; });
+
+  const removed = await removePlanMember("pln_1", "usr_guest", "usr_owner");
+  assert.deepEqual(removed, { removedItineraryItems: 1 });
+  const sql = statements.map(({ sql }) => sql).join("\n");
+  assert.match(sql, /UPDATE plan_members SET status = 'revoked'/);
+  assert.match(sql, /UPDATE plan_access_grants SET status = 'revoked'/);
+  assert.match(sql, /UPDATE plan_invites SET status = 'revoked'/);
+  assert.match(sql, /DELETE FROM itinerary_items/);
+  assert.match(sql, /DELETE v FROM plan_candidate_votes/);
+  const groupUpdate = statements.find(({ sql: text }) => text.includes("UPDATE itinerary_items SET member_ids"));
+  assert.deepEqual(JSON.parse(groupUpdate.params[0]), ["usr_friend"]);
+  const candidateGroupUpdate = statements.find(({ sql: text }) => text.includes("UPDATE plan_candidates SET member_ids"));
+  assert.deepEqual(JSON.parse(candidateGroupUpdate.params[0]), ["usr_friend"]);
+  assert.doesNotMatch(sql, /FROM expenses/);
+});
+
+test("owner自身は参加者削除APIで削除できない", async () => {
+  await assert.rejects(
+    removePlanMember("pln_1", "usr_owner", "usr_owner"),
+    /owner自身は削除できません/,
+  );
 });
 
 test("会計履歴がある本人の脱退は参加者記録を残してアクセスを失効する", async (t) => {

@@ -15,6 +15,7 @@ import {
 } from "./editor-dom";
 import { markDirty, persist } from "./persist";
 import { buildData } from "./plan-data";
+import { renderDays } from "./days-render";
 
 // ---- メンバー（チップ／友達候補／招待リンク） --------------------------
 
@@ -45,9 +46,26 @@ function addMember(userId: string, role: "editor" | "viewer" = selectedRole()): 
   model.memberRoles[userId] = role;
   setMembers([...model.memberIds, userId]);
 }
-function removeMember(userId: string): void {
+function removeMemberFromModel(userId: string): void {
   delete model.memberRoles[userId];
-  setMembers(model.memberIds.filter((id) => id !== userId));
+  delete model.memberDates[userId];
+  model.memberIds = model.memberIds.filter((id) => id !== userId);
+  for (const day of model.days) {
+    day.items = day.items.filter((item) => {
+      if (!item.members.includes(userId)) return true;
+      item.members = item.members.filter((id) => id !== userId);
+      return item.members.length > 0;
+    });
+    if (day.stay?.members.includes(userId)) {
+      day.stay.members = day.stay.members.filter((id) => id !== userId);
+      if (!day.stay.members.length) day.stay = null;
+    }
+  }
+  syncMemberNames();
+  updateMemberVisibility();
+  renderMembers();
+  renderMemberSelect();
+  renderDays();
 }
 function addPendingMember(name: string, role: "editor" | "viewer" = selectedRole()): void {
   const displayName = name.trim().slice(0, 64);
@@ -370,10 +388,7 @@ export function onMembersClick(event: MouseEvent): void {
   if (!(t instanceof Element)) return;
   const rm = t.closest<HTMLElement>("[data-rm]");
   if (rm) {
-    const name = rm.dataset.rmName || "このメンバー";
-    if (window.confirm(`${name}さんを旅行参加者から削除しますか？費用・精算の履歴がある場合は削除できません。`)) {
-      removeMember(rm.dataset.rm || "");
-    }
+    void removeSavedMember(rm.dataset.rm || "", rm.dataset.rmName || "このメンバー", rm);
     return;
   }
   const revokeAccess = t.closest<HTMLElement>("[data-revoke-access]");
@@ -416,6 +431,32 @@ export function onMembersClick(event: MouseEvent): void {
       inv.dataset.inviteUser || "",
       inv.dataset.inviteRole === "viewer" ? "viewer" : "editor",
     );
+  }
+}
+
+async function removeSavedMember(userId: string, name: string, button: HTMLElement): Promise<void> {
+  const meta = state.slug ? TripPlans.get(state.slug) : null;
+  if (!meta?.id || !userId || !canManagePlan(meta)) return;
+  if (!window.confirm(
+    `${name}さんをこの旅行から削除しますか？\n\n` +
+    "この計画へアクセスできなくなります。その人だけの予定は削除され、費用・精算の履歴は残ります。",
+  )) return;
+  button.setAttribute("disabled", "true");
+  if (!(await persist(true))) {
+    button.removeAttribute("disabled");
+    toast("未保存の変更があるため、参加者を削除できませんでした");
+    return;
+  }
+  try {
+    const result = await db.removePlanMember(meta.id, userId);
+    removeMemberFromModel(userId);
+    const suffix = result.removedItineraryItems
+      ? `（その人だけの予定 ${result.removedItineraryItems}件も削除）`
+      : "";
+    toast(`${name}さんを旅行から削除しました${suffix}`);
+  } catch (error) {
+    button.removeAttribute("disabled");
+    toast(errorMessage(error) || "旅行参加者から削除できませんでした");
   }
 }
 

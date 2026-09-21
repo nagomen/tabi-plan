@@ -362,23 +362,43 @@
     line-height: 1.65;
   }
 
+  .tl-members-status {
+    min-height: 1.4em;
+    margin: -4px 0 4px;
+    color: var(--green);
+    font-size: 11px;
+    font-weight: 700;
+  }
+
+  .tl-members-status:empty { display: none; }
+  .tl-members-status.is-error { color: var(--red); }
+
   .tl-members-list { display: grid; }
 
   .tl-member-row {
     display: grid;
-    grid-template-columns: auto minmax(0, 1fr) auto auto;
+    grid-template-columns: minmax(0, 1fr) auto auto;
     align-items: center;
     gap: 10px;
     min-height: 52px;
-    padding: 6px 0;
     border-top: 1px solid var(--line);
+    color: inherit;
+  }
+
+  .tl-member-profile {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto auto;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+    padding: 6px 0;
     color: inherit;
     text-decoration: none;
   }
 
   .tl-member-row:first-child { border-top: 0; }
-  .tl-member-row:hover .tl-member-name,
-  .tl-member-row:focus-visible .tl-member-name { color: var(--green); }
+  .tl-member-profile:hover .tl-member-name,
+  .tl-member-profile:focus-visible .tl-member-name { color: var(--green); }
 
   .tl-member-avatar {
     display: inline-grid;
@@ -400,10 +420,40 @@
     font-weight: 700;
     letter-spacing: 0.04em;
   }
+  .tl-member-self-badge.is-pending { color: var(--amber); }
 
   .tl-member-go { display: inline-grid; place-items: center; color: var(--line-strong); }
   .tl-member-go .hi,
   .tl-member-go svg { width: 16px; height: 16px; }
+
+  .tl-member-remove,
+  .tl-member-invite {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    min-height: 36px;
+    padding: 6px 4px 6px 10px;
+    border: 0;
+    background: transparent;
+    color: var(--red);
+    font: inherit;
+    font-size: 11px;
+    font-weight: 750;
+    cursor: pointer;
+  }
+
+  .tl-member-invite { color: var(--green); }
+
+  .tl-member-remove svg,
+  .tl-member-remove .hi,
+  .tl-member-invite svg,
+  .tl-member-invite .hi { width: 15px; height: 15px; }
+  .tl-member-remove:hover,
+  .tl-member-invite:hover { text-decoration: underline; text-underline-offset: 3px; }
+  .tl-member-remove:focus-visible { outline: 2px solid color-mix(in srgb, var(--red) 30%, transparent); outline-offset: 2px; }
+  .tl-member-invite:focus-visible { outline: 2px solid rgba(11, 90, 66, .25); outline-offset: 2px; }
+  .tl-member-remove:disabled,
+  .tl-member-invite:disabled { cursor: wait; opacity: .5; }
 
   /* 招待は「入力欄＋塗りボタン」の箱をやめ、下罫線とテキスト操作にする。 */
   .tl-members-invite {
@@ -412,6 +462,18 @@
     margin-top: 16px;
     padding-top: 14px;
     border-top: 1px solid var(--line);
+  }
+
+  .tl-members-invite h3 {
+    margin: 0 0 2px;
+    font-size: 14px;
+    font-weight: 800;
+  }
+
+  .tl-members-fields-row {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
   }
 
   .tl-members-field { display: grid; gap: 4px; }
@@ -428,6 +490,14 @@
   }
   .tl-members-field input:focus-visible,
   .tl-members-field select:focus-visible { outline: none; border-bottom-color: var(--green); }
+
+  @media (max-width: 560px) {
+    .tl-members-fields-row { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+    .tl-member-remove span,
+    .tl-member-invite span { display: none; }
+    .tl-member-remove,
+    .tl-member-invite { padding-inline: 6px; }
+  }
 
   .tl-members-invite-note { margin: 2px 0 0; color: var(--muted); font-size: 11.5px; line-height: 1.6; }
 
@@ -1171,7 +1241,11 @@
   }
   .tl-ai-message.is-thinking span::after { content: ""; animation: tl-ai-dots 1.2s steps(4, end) infinite; }
   @keyframes tl-ai-dots { 0% { content: ""; } 25% { content: "."; } 50% { content: ".."; } 75%, 100% { content: "..."; } }
-  .tl-ai-message button {
+  .tl-ai-message button,
+  .tl-ai-message .tl-ai-key-action {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     min-height: 34px;
     padding: 6px 12px;
     border: 1px solid var(--green);
@@ -1180,8 +1254,10 @@
     color: var(--green);
     font: 800 12px/1.2 inherit;
     cursor: pointer;
+    text-decoration: none;
   }
-  .tl-ai-message button:hover { background: #eaf6f1; }
+  .tl-ai-message button:hover,
+  .tl-ai-message .tl-ai-key-action:hover { background: #eaf6f1; }
   .tl-ai-message button:disabled { border-color: #bdcbc5; color: #71807a; cursor: default; }
   .tl-ai-chat-form {
     display: grid;
@@ -1296,6 +1372,23 @@
     font-weight: 900;
   }
   .tl-ai-import-steps strong { color: var(--ink); font-size: 12px; }
+  .tl-ai-open-chatgpt {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    min-height: 38px;
+    padding: 8px 14px;
+    border: 1px solid var(--green);
+    border-radius: 999px;
+    background: var(--green);
+    color: #fff;
+    font-size: 12px;
+    font-weight: 800;
+    text-align: center;
+    text-decoration: none;
+  }
+  .tl-ai-open-chatgpt:hover { background: var(--green-deep); }
   .tl-ai-import-steps button { width: 100%; }
   .tl-ai-import textarea {
     width: 100%;
@@ -1311,6 +1404,27 @@
   .tl-ai-import textarea:focus { outline: 2px solid rgba(0, 104, 75, .18); border-color: var(--green); }
   .tl-ai-import .tl-ai-chat-actions { display: grid; gap: 8px; }
   .tl-ai-import .tl-ai-chat-actions button { width: 100%; }
+  .tl-ai-own-key {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    margin-top: 12px;
+    padding: 12px 1px;
+    border-top: 1px solid #d9e8e1;
+    border-bottom: 1px solid #d9e8e1;
+  }
+  .tl-ai-own-key > div { min-width: 0; }
+  .tl-ai-own-key strong { color: var(--ink); font-size: 12px; }
+  .tl-ai-own-key p { margin-bottom: 0; }
+  .tl-ai-own-key > a {
+    flex: 0 0 auto;
+    color: var(--green);
+    font-size: 11px;
+    font-weight: 800;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
   .tl-ai-import .tl-ai-import-note { margin: 10px 1px 0; font-size: 10px; }
   .tl-ai-chat-note { margin: 0; padding: 0 16px 14px; color: #75867f; font-size: 10.5px; line-height: 1.5; }
 
@@ -1573,6 +1687,53 @@
   .tl-related-guide-arrow .hi {
     width: 16px;
     height: 16px;
+  }
+
+  /* 日程内の未確定な時間枠。通常予定とは異なる投票用の選択面として見せる。 */
+  .tl-vote-slot { display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 18px; margin: 22px 0 28px; }
+  .tl-vote-slot-rail { position: relative; display: flex; justify-content: flex-end; }
+  .tl-vote-slot-rail::before { content: ""; position: absolute; right: 18px; top: 0; bottom: -28px; border-left: 2px dashed #d3b35c; }
+  .tl-vote-slot-rail > span { position: relative; z-index: 1; display: grid; place-items: center; width: 38px; height: 38px; border: 2px solid #b78517; border-radius: 50%; background: #fffaf0; color: #8a6100; }
+  .tl-vote-slot-rail .hi { width: 18px; height: 18px; }
+  .tl-vote-slot-main { min-width: 0; padding: 2px 0 4px; }
+  .tl-vote-slot-head { display: flex; align-items: center; gap: 9px; margin-bottom: 5px; }
+  .tl-vote-slot-head time { font-size: 15px; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .tl-vote-label { padding: 3px 8px; border-radius: 999px; background: #fff1c5; color: #765000; font-size: 11px; font-weight: 800; }
+  .tl-vote-progress { margin-left: auto; color: var(--muted); font-size: 12px; font-weight: 600; }
+  .tl-vote-slot-main > h3 { margin: 0; font-size: 19px; letter-spacing: -.02em; }
+  .tl-vote-guide { margin: 4px 0 13px; color: var(--muted); font-size: 12px; line-height: 1.6; }
+  .tl-vote-options { border-top: 1px solid #ded8c9; }
+  .tl-vote-option { width: 100%; display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 12px 2px; border: 0; border-bottom: 1px solid #e8e3d7; border-radius: 0; background: transparent; color: var(--ink); text-align: left; cursor: pointer; }
+  .tl-vote-option:hover:not(:disabled) { background: linear-gradient(90deg, rgba(255, 242, 198, .55), transparent); }
+  .tl-vote-option:disabled { cursor: default; opacity: .7; }
+  .tl-vote-option.is-selected { background: linear-gradient(90deg, #fff5d7, transparent); }
+  .tl-vote-radio { width: 16px; height: 16px; border: 1.5px solid #a48c55; border-radius: 50%; box-shadow: inset 0 0 0 3px #fff; }
+  .tl-vote-option.is-selected .tl-vote-radio { border-color: #8a6100; background: #b78517; }
+  .tl-vote-copy { display: grid; gap: 2px; min-width: 0; }
+  .tl-vote-copy strong { overflow-wrap: anywhere; font-size: 15px; }
+  .tl-vote-copy small { color: var(--muted); font-size: 12px; }
+  .tl-vote-note { color: #4f554f; font-size: 11px; line-height: 1.55; white-space: pre-line; }
+  .tl-vote-total { min-width: 34px; color: #765000; font-size: 18px; font-weight: 800; text-align: right; }
+  .tl-vote-total small { margin-left: 2px; font-size: 10px; font-weight: 700; }
+  .tl-vote-status { margin: 9px 0 0; color: #6c6556; font-size: 11px; }
+  .tl-vote-finalize-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 13px; padding-top: 11px; border-top: 1px solid #ded8c9; }
+  .tl-vote-finalize-row > span { color: var(--muted); font-size: 11px; line-height: 1.45; }
+  .tl-vote-finalize { flex: 0 0 auto; min-height: 36px; padding: 7px 13px; border: 1px solid #806018; border-radius: 7px; background: #806018; color: #fff; font: inherit; font-size: 12px; font-weight: 800; cursor: pointer; }
+  .tl-vote-finalize:hover:not(:disabled) { background: #684c0d; }
+  .tl-vote-finalize:focus-visible { outline: 3px solid rgba(183, 133, 23, .3); outline-offset: 2px; }
+  .tl-vote-finalize:disabled { border-color: #d8d2c5; background: #f2f0e9; color: #8a877f; cursor: default; }
+
+  @media (max-width: 700px) {
+    .tl-vote-slot { grid-template-columns: 43px minmax(0, 1fr); gap: 9px; margin: 18px 0 24px; }
+    .tl-vote-slot-rail::before { right: 14px; }
+    .tl-vote-slot-rail > span { width: 30px; height: 30px; }
+    .tl-vote-slot-rail .hi { width: 14px; height: 14px; }
+    .tl-vote-slot-head { flex-wrap: wrap; }
+    .tl-vote-progress { width: 100%; margin-left: 0; }
+    .tl-vote-slot-main > h3 { font-size: 17px; }
+    .tl-vote-option { padding-block: 11px; }
+    .tl-vote-finalize-row { align-items: stretch; flex-direction: column; }
+    .tl-vote-finalize { width: 100%; }
   }
 
   /* 飛行機の移動：航空券（搭乗券）風カード。
@@ -4028,6 +4189,7 @@
     .tl-ai-message { max-width: 90%; font-size: 12.5px; }
     .tl-ai-chat-form { padding: 0 12px 12px; }
     .tl-ai-import { margin: 0 12px 12px; }
+    .tl-ai-own-key { align-items: flex-start; flex-direction: column; gap: 4px; }
     .tl-ai-chat-actions { align-items: flex-end; }
     .tl-ai-chat-actions button { flex: none; }
     .tl-ai-chat-note { padding: 0 12px 12px; }

@@ -1,5 +1,7 @@
 import { icon } from "../shared/icons";
-import { escapeHtml, safeHref } from "../shared/dom";
+import * as TripPlans from "../shared/plans-store";
+import * as db from "../shared/db";
+import { errorMessage, escapeHtml, safeHref } from "../shared/dom";
 import { buildGoogleMyMapsKml, googleMyMapsKmlFilename, mapsSearchUrl } from "../shared/maps";
 import type { TripData, TripLink } from "../shared/types";
 import { CONFIG, getMobileView, linkByKey, SAMPLE, setMobileView, state } from "./state";
@@ -62,7 +64,7 @@ export function renderBase(): void {
     ...(workspaceView ? [{ key: "members", label: "メンバー", glyph: icon("users") }] : []),
     { key: "map", label: "地図", glyph: icon("map") },
     ...(workspaceView ? [{ key: "money", label: "費用", glyph: icon("banknotes") }] : []),
-    { key: "links", label: "リンク", glyph: icon("link") },
+    { key: "links", label: "データ", glyph: icon("squares2x2") },
   ];
   qs<HTMLElement>("[data-actions]").style.setProperty("--tl-action-count", String(tabs.length));
   setHtml("[data-actions]", tabs.map((tab) =>
@@ -203,6 +205,43 @@ export function renderActive(): void {
   qsa<HTMLElement>("[data-track-key]").forEach((b) => b.addEventListener("click", () => {
     dayTrackChoice.set(b.dataset.trackDay || "", b.dataset.trackKey || "");
     renderActive();
+  }));
+  qsa<HTMLButtonElement>("[data-candidate-vote]").forEach((button) => button.addEventListener("click", async () => {
+    const id = TripPlans.planIdOf(CONFIG.tripSlug);
+    const slotId = button.dataset.candidateSlotId || "";
+    const candidateId = button.dataset.candidateVote || "";
+    if (!id || !slotId || !candidateId || button.disabled) return;
+    const status = root.querySelector<HTMLElement>(`[data-candidate-vote-status="${CSS.escape(slotId)}"]`);
+    root.querySelectorAll<HTMLButtonElement>(`[data-candidate-slot="${CSS.escape(slotId)}"] [data-candidate-vote]`)
+      .forEach((item) => { item.disabled = true; });
+    if (status) status.textContent = "投票を保存しています…";
+    try {
+      await db.voteForCandidateSlot(id, slotId, candidateId);
+      renderData(TripPlans.toDashboardData(TripPlans.getData(CONFIG.tripSlug)), CONFIG.mode);
+    } catch (error) {
+      if (status) status.textContent = errorMessage(error) || "投票を保存できませんでした";
+      root.querySelectorAll<HTMLButtonElement>(`[data-candidate-slot="${CSS.escape(slotId)}"] [data-candidate-vote]`)
+        .forEach((item) => { item.disabled = false; });
+    }
+  }));
+  qsa<HTMLButtonElement>("[data-candidate-finalize]").forEach((button) => button.addEventListener("click", async () => {
+    const id = TripPlans.planIdOf(CONFIG.tripSlug);
+    const slotId = button.dataset.candidateFinalize || "";
+    if (!id || !slotId || button.disabled) return;
+    if (!window.confirm("投票を終了し、最多票の候補を予定に確定しますか？終了後は投票を変更できません。")) return;
+    const status = root.querySelector<HTMLElement>(`[data-candidate-vote-status="${CSS.escape(slotId)}"]`);
+    root.querySelectorAll<HTMLButtonElement>(`[data-candidate-slot="${CSS.escape(slotId)}"] button`)
+      .forEach((item) => { item.disabled = true; });
+    if (status) status.textContent = "投票を終了して予定に反映しています…";
+    try {
+      await db.finalizeCandidateSlot(id, slotId);
+      renderData(TripPlans.toDashboardData(TripPlans.getData(CONFIG.tripSlug)), CONFIG.mode);
+      const next = root.querySelector<HTMLElement>("[data-day-feed]");
+      next?.setAttribute("aria-live", "polite");
+    } catch (error) {
+      if (status) status.textContent = errorMessage(error) || "投票を終了できませんでした";
+      button.disabled = false;
+    }
   }));
   // 航空券カード：編集・QR表示・リンクを開く（ボタン上のタップはカードのリンクに流さない）
   qsa<HTMLElement>("[data-flight-edit]").forEach((b) => b.addEventListener("click", (event) => {

@@ -13,8 +13,11 @@
 //   POST   /api/plans/<id>/placeholder-members 名前だけの未登録参加者を追加
 //   POST   /api/plans/<id>/owner-transfer    所有権を参加者へ移譲
 //   DELETE /api/plans/<id>/members/me        自分が計画から脱退
+//   DELETE /api/plans/<id>/members/<user>    ownerが参加者を計画から削除
 //   DELETE /api/plans/<id>/members/<user>/access 会計履歴を残してアクセスだけ停止
 //   PUT    /api/plans/<id>/content           行程・都市・リンク・チェックリスト・候補を一括置換
+//   PUT    /api/plans/<id>/candidate-slots/<slot>/vote     候補へ投票・変更
+//   POST   /api/plans/<id>/candidate-slots/<slot>/finalize ownerが投票を終了して最多票を確定
 //   PUT    /api/plans/<id>/flight-notes/<便名> 自分の便メモ（リンク・予約番号・座席・QR）を保存
 //   POST   /api/plans/<id>/views             閲覧を1加算
 //   POST   /api/plans/<id>/invites           招待リンクを作る
@@ -43,6 +46,7 @@ import * as memberRepo from "./plan-member-repo.js";
 import * as expenseRepo from "./expense-repo.js";
 import * as userRepo from "./user-repo.js";
 import * as flightNoteRepo from "./flight-note-repo.js";
+import * as candidateVoteRepo from "./candidate-vote-repo.js";
 import { PLAN_MANAGE_FIELDS, PLAN_PATCH_FIELDS } from "./plan-contract.js";
 import { generateItinerary, MAX_AI_CITIES, suggestItineraryOptions, type ItineraryInput } from "./ai-itinerary.js";
 import { refineItinerary } from "./ai-itinerary-refine.js";
@@ -431,6 +435,11 @@ export async function route(method: string, path: string, body: Body, actorUserI
       status: 200,
       body: await memberRepo.createPlaceholderMember(
         m[1], str(body.display_name), actorUserId, str(body.role) === "viewer" ? "viewer" : "editor",
+        {
+          fromDate: str(body.from_date),
+          toDate: str(body.to_date),
+          trackMemberIds: strArr(body.track_member_ids).slice(0, 50),
+        },
       ),
     };
   }
@@ -498,6 +507,13 @@ export async function route(method: string, path: string, body: Body, actorUserI
     await memberRepo.leavePlan(m[1], actorUserId);
     return { status: 200, body: { ok: true } };
   }
+  m = /^\/api\/plans\/([\w-]{1,32})\/members\/([\w-]{1,32})$/.exec(path);
+  if (m && method === "DELETE") {
+    const denied = await forbiddenUnless(accessRepo.canManagePlan(m[1], actorUserId));
+    if (denied) return denied;
+    const result = await memberRepo.removePlanMember(m[1], m[2], actorUserId);
+    return { status: 200, body: { ok: true, removed_itinerary_items: result.removedItineraryItems } };
+  }
   m = /^\/api\/plans\/([\w-]{1,32})\/members\/([\w-]{1,32})\/access$/.exec(path);
   if (m && method === "DELETE") {
     const denied = await forbiddenUnless(accessRepo.canManagePlan(m[1], actorUserId));
@@ -511,6 +527,23 @@ export async function route(method: string, path: string, body: Body, actorUserI
     if (denied) return denied;
     await memberRepo.transferPlanOwnership(m[1], actorUserId, str(body.user_id));
     return { status: 200, body: { ok: true } };
+  }
+  m = /^\/api\/plans\/([\w-]{1,32})\/candidate-slots\/([\w-]{1,32})\/vote$/.exec(path);
+  if (m && method === "PUT") {
+    if (!actorUserId) return forbidden();
+    const access = await accessRepo.getPlanAccess(m[1], actorUserId);
+    if (!access.canView || !access.role) return forbidden();
+    const result = await candidateVoteRepo.voteForCandidateSlot(
+      m[1], m[2], str(body.candidate_id), actorUserId,
+    );
+    return { status: 200, body: result };
+  }
+  m = /^\/api\/plans\/([\w-]{1,32})\/candidate-slots\/([\w-]{1,32})\/finalize$/.exec(path);
+  if (m && method === "POST") {
+    const denied = await forbiddenUnless(accessRepo.canManagePlan(m[1], actorUserId));
+    if (denied) return denied;
+    const result = await candidateVoteRepo.finalizeCandidateSlot(m[1], m[2], actorUserId);
+    return { status: 200, body: result };
   }
   m = /^\/api\/plans\/([\w-]{1,32})\/content$/.exec(path);
   if (m && method === "PUT") {

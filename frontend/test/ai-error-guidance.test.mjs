@@ -48,4 +48,48 @@ test("APIのエラー契約(code/action/retry_after/request_id)を画面操作�
   assert.match(external, /parseExternalAiCreateJson/);
   assert.match(external, /parseExternalAiRefineJson/);
   assert.match(external, /clipboard\.writeText/);
+  const dashboardChat = read("src/dashboard/ai-chat.ts");
+  assert.match(dashboardChat, /latestExternalPrompt/);
+  assert.match(dashboardChat, /showApiKeySetup/);
+  assert.match(dashboardChat, /mypage\.html\?tab=pay#ai-key/);
+});
+
+test("ChatGPTを開く操作はリンクにして、ポップアップ遮断で無反応にならない", () => {
+  // window.open はモバイルブラウザでポップアップとして塞がれ、押しても
+  // 何も起きない見え方になる。既定動作で開くリンクに固定する。
+  const dashboardHtml = read("index.html");
+  assert.match(dashboardHtml, /<a[^>]*data-ai-chat-import-open[^>]*href="https:\/\/chatgpt\.com\/"[^>]*target="_blank"/);
+  const editorHtml = read("plan-editor.html");
+  assert.match(editorHtml, /<a[^>]*data-ai-import-open[^>]*href="https:\/\/chatgpt\.com\/"[^>]*target="_blank"/);
+  const dashboardChat = read("src/dashboard/ai-chat.ts");
+  assert.match(dashboardChat, /data-ai-external="\$\{index\}" href="\$\{externalAiUrl\("chatgpt"\)\}"/);
+  assert.doesNotMatch(dashboardChat, /openExternalAi/);
+  const consultation = read("src/plan-editor/ai-consultation.ts");
+  assert.doesNotMatch(consultation, /onAiImportOpenClick[\s\S]{0,200}openExternalAi/);
+  // 自分のAPIキーへの導線を、AIを使う画面の両方から常に出す。
+  assert.match(dashboardHtml, /mypage\.html\?tab=pay#ai-key/);
+  assert.match(editorHtml, /mypage\.html\?tab=pay#ai-key/);
+  assert.match(read("src/mypage/main.ts"), /scrollToHashTarget/);
+});
+
+test("ポップアップ遮断を見分けられる形で開き、塞がれても行き止まりにしない", () => {
+  // window.open の第3引数に noopener を渡すと戻り値が常に null になり、
+  // 遮断されたのかどうかを判定できなくなる。
+  const external = read("src/shared/external-ai.ts");
+  assert.doesNotMatch(external, /window\.open\([^)]*noopener/);
+  assert.match(external, /opened\.opener = null/);
+  const consultation = read("src/plan-editor/ai-consultation.ts");
+  assert.doesNotMatch(consultation, /window\.open\([^)]*noopener/);
+  // 同一オリジンの行き先は同じタブへ、ChatGPT は貼り付け先を失うので案内に留める。
+  assert.match(consultation, /function openSitePage[\s\S]*location\.assign\(url\)/);
+  assert.match(consultation, /ChatGPT（chatgpt\.com）を開いて貼り付けてください/);
+});
+
+test("AI利用枠切れは管理者待ちにせずAPIキー設定へ案内する", () => {
+  const guidance = read("src/plan-editor/ai-error-guidance.ts");
+  const support = /const SUPPORT_CODES = new Set\(\[([\s\S]*?)\]\)/.exec(guidance);
+  assert.ok(support, "SUPPORT_CODES を読み取れる");
+  assert.doesNotMatch(support[1], /ai_quota_exceeded/);
+  assert.match(guidance, /const API_KEY_CODES = new Set\(\["ai_key_required", "ai_quota_exceeded"\]\)/);
+  assert.match(guidance, /API_KEY_CODES\.has\(code\) \|\| error\.action === "update_api_key"/);
 });

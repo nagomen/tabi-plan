@@ -32,7 +32,11 @@ export interface Bootstrap {
   }[];
   links: { id: string; plan_id: string; link_key: string; label: string; url: string; caption: string | null; sort_order: number }[];
   checklist: { id: string; plan_id: string; label: string; status: "todo" | "doing" | "done"; sort_order: number }[];
-  candidates: { id: string; plan_id: string; title: string; place: string | null; proposed_by_id: string | null; adopted_at: string | null }[];
+  candidates: {
+    id: string; plan_id: string; title: string; place: string | null; proposed_by_id: string | null; adopted_at: string | null;
+    slot_id: string | null; item_date: string | null; start_time: string | null; kind: string | null;
+    duration_minutes: number | null; lat: number | null; lng: number | null; note: string | null; member_ids: string[] | string | null;
+  }[];
   candidateVotes: { candidate_id: string; user_id: string }[];
   expenses: ExpenseRow[];
   expenseShares: ExpenseShareRow[];

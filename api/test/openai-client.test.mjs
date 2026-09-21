@@ -130,7 +130,8 @@ test("認証・課金・content filterは再試行せず管理者/入力対応�
       return new Response(JSON.stringify({ error: { code: "insufficient_quota" } }), { status: 429 });
     },
     sleep: async () => {},
-  }), (error) => error.code === "ai_quota_exceeded" && error.retryable === false && error.action === "contact_support");
+  }), (error) => error.code === "ai_quota_exceeded" && error.retryable === false &&
+    error.action === "update_api_key" && /自分のOpenAI APIキー/.test(error.message));
   assert.equal(calls, 1, "課金枯渇の429は一時的な429と区別して再試行しない");
 
   await assert.rejects(() => structuredResponse({

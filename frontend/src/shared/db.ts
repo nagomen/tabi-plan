@@ -35,7 +35,11 @@ export interface CityRow {
 }
 export interface LinkRow { id: string; plan_id: string; link_key: string; label: string; url: string; caption: string | null; sort_order: number }
 export interface ChecklistRow { id: string; plan_id: string; label: string; status: "todo" | "doing" | "done"; sort_order: number }
-export interface CandidateRow { id: string; plan_id: string; title: string; place: string | null; proposed_by_id: string | null; adopted_at: string | null }
+export interface CandidateRow {
+  id: string; plan_id: string; title: string; place: string | null; proposed_by_id: string | null; adopted_at: string | null;
+  slot_id: string | null; item_date: string | null; start_time: string | null; kind: string | null;
+  duration_minutes: number | null; lat: number | null; lng: number | null; note: string | null; member_ids: string[] | null;
+}
 export interface CandidateVoteRow { candidate_id: string; user_id: string }
 export interface ViewRow { plan_id: string; view_count: number }
 export interface PaymentLinkRow { user_id: string; provider: string; handle: string }
@@ -1088,15 +1092,25 @@ export async function createPlaceholderMember(
   planId: string,
   displayName: string,
   role: "editor" | "viewer" = "editor",
+  options: { fromDate?: string; toDate?: string; trackMemberIds?: string[] } = {},
 ): Promise<{
   user: UserRow;
   member: PlanMemberRow;
+  assignedItineraryItems: number;
   version: number;
 }> {
-  const result = await request<{ user: UserRow; member: PlanMemberRow; version: number }>(
+  const result = await request<{
+    user: UserRow; member: PlanMemberRow; assignedItineraryItems?: number; version: number;
+  }>(
     "POST",
     `/api/plans/${encodeURIComponent(planId)}/placeholder-members`,
-    { display_name: displayName, role },
+    {
+      display_name: displayName,
+      role,
+      from_date: options.fromDate || "",
+      to_date: options.toDate || "",
+      track_member_ids: options.trackMemberIds || [],
+    },
   );
   if (!snap.users.some((row) => row.id === result.user.id)) snap.users.push(result.user);
   snap.members.push(result.member);
@@ -1115,7 +1129,8 @@ export async function createPlaceholderMember(
     plan.updated_at = new Date().toISOString();
   }
   writeCache(snap);
-  return result;
+  if (result.assignedItineraryItems) await reload();
+  return { ...result, assignedItineraryItems: Number(result.assignedItineraryItems) || 0 };
 }
 
 export function inspectInvite(token: string): Promise<InviteInspection> {
@@ -1154,6 +1169,18 @@ export async function undoPlaceholderClaim(planId: string, placeholderUserId: st
 export async function leavePlan(planId: string): Promise<void> {
   await request("DELETE", `/api/plans/${encodeURIComponent(planId)}/members/me`);
   await reload();
+}
+
+export async function removePlanMember(
+  planId: string,
+  userId: string,
+): Promise<{ removedItineraryItems: number }> {
+  const result = await request<{ removed_itinerary_items?: number }>(
+    "DELETE",
+    `/api/plans/${encodeURIComponent(planId)}/members/${encodeURIComponent(userId)}`,
+  );
+  await reload();
+  return { removedItineraryItems: Number(result.removed_itinerary_items) || 0 };
 }
 
 export async function revokeMemberAccess(planId: string, userId: string): Promise<void> {
@@ -1260,7 +1287,11 @@ export interface PlanContent {
   cities?: { name: string; from_date?: string | null; to_date?: string | null; lat?: number | null; lng?: number | null }[];
   links?: Omit<LinkRow, "id" | "plan_id" | "sort_order">[];
   checklist?: { label: string; status?: ChecklistRow["status"] }[];
-  candidates?: { id?: string; title: string; place?: string | null; proposed_by_id?: string | null; adopted?: boolean; votes?: string[] }[];
+  candidates?: {
+    id?: string; title: string; place?: string | null; proposed_by_id?: string | null; adopted?: boolean; votes?: string[];
+    slot_id?: string | null; item_date?: string | null; start_time?: string | null; kind?: string | null;
+    duration_minutes?: number | null; lat?: number | null; lng?: number | null; note?: string | null; member_ids?: string[] | null;
+  }[];
 }
 
 function applyPlanContentLocal(planId: string, content: PlanContent): void {
@@ -1299,6 +1330,10 @@ function applyPlanContentLocal(planId: string, content: PlanContent): void {
       snap.candidates.push({
         id, plan_id: planId, title: c.title, place: c.place ?? null,
         proposed_by_id: c.proposed_by_id ?? null, adopted_at: c.adopted ? new Date().toISOString() : null,
+        slot_id: c.slot_id ?? null, item_date: c.item_date ?? null, start_time: c.start_time ?? null,
+        kind: c.kind ?? null, duration_minutes: c.duration_minutes ?? null, lat: c.lat ?? null, lng: c.lng ?? null,
+        note: c.note ?? null,
+        member_ids: c.member_ids?.length ? [...c.member_ids] : null,
       });
       for (const uid of new Set(c.votes || [])) snap.candidateVotes.push({ candidate_id: id, user_id: uid });
     }
@@ -1313,6 +1348,43 @@ export function replacePlanContent(planId: string, content: PlanContent): void {
   applyPlanContentLocal(planId, content);
   plan.version = expectedVersion + 1;
   send("PUT", `/api/plans/${encodeURIComponent(planId)}/content`, { ...content, expected_version: expectedVersion });
+}
+
+export interface CandidateVoteResult {
+  resolved: boolean;
+  readyToFinalize: boolean;
+  tied: boolean;
+  winnerCandidateId: string | null;
+  votedCount: number;
+  eligibleCount: number;
+}
+
+/** 時間枠内の候補を一つ選ぶ。全員投票後も、マスターが終了するまでは変更できる。 */
+export async function voteForCandidateSlot(
+  planId: string,
+  slotId: string,
+  candidateId: string,
+): Promise<CandidateVoteResult> {
+  const result = await request<CandidateVoteResult>(
+    "PUT",
+    `/api/plans/${encodeURIComponent(planId)}/candidate-slots/${encodeURIComponent(slotId)}/vote`,
+    { candidate_id: candidateId },
+  );
+  await reload();
+  return result;
+}
+
+/** 旅行マスターが投票を終了し、単独最多の候補を通常予定へ確定する。 */
+export async function finalizeCandidateSlot(
+  planId: string,
+  slotId: string,
+): Promise<CandidateVoteResult> {
+  const result = await request<CandidateVoteResult>(
+    "POST",
+    `/api/plans/${encodeURIComponent(planId)}/candidate-slots/${encodeURIComponent(slotId)}/finalize`,
+  );
+  await reload();
+  return result;
 }
 
 export function countView(planId: string): void {

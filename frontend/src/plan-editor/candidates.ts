@@ -9,6 +9,7 @@ import { candMount, candInput, candCountEl, toast, isComposingKey } from "./edit
 import { markDirty } from "./persist";
 import { renderDays } from "./days-render";
 import { refreshMap } from "./map-controller";
+import { formatDurationMinutes, parseDurationMinutes } from "../shared/travel-duration";
 
 function candId(): string {
   return "cand_" + state.seq++ + "_" + Math.random().toString(36).slice(2, 6);
@@ -17,9 +18,93 @@ function candId(): string {
 /** 票数の多い順（同数は作成順）に並べる。 */
 function sortedCandidates(): Candidate[] {
   return model.candidates
+    .filter((candidate) => !candidate.slotId)
     .map((c, i) => ({ c, i }))
     .sort((a, b) => (b.c.voteIds?.length ?? b.c.votes?.length ?? 0) - (a.c.voteIds?.length ?? a.c.votes?.length ?? 0) || a.i - b.i)
     .map((x) => x.c);
+}
+
+export function convertItemToCandidateSlot(itemId: number): boolean {
+  const found = model.days.flatMap((day) => day.items.map((item) => ({ day, item })))
+    .find(({ item }) => item.id === itemId);
+  if (!found) return false;
+  if (!found.item.title.trim()) {
+    toast("候補にする予定の名前を先に入力してください");
+    return false;
+  }
+  const me = getUser().name.trim();
+  const meId = currentAccount()?.id || "";
+  const slotId = `slot_${Date.now().toString(36)}${state.seq++}`.slice(0, 32);
+  model.candidates.push({
+    id: candId(), slotId, date: found.day.date, time: found.item.time.slice(0, 5),
+    title: found.item.title, place: found.item.place, note: found.item.note,
+    lat: found.item.lat || undefined, lng: found.item.lng || undefined,
+    type: found.item.kind, durationMinutes: parseDurationMinutes(found.item.duration) ?? undefined,
+    memberIds: found.item.members.length ? [...found.item.members] : undefined,
+    proposer: me || undefined, proposerId: meId || undefined,
+    votes: [], voteIds: [], createdAt: new Date().toISOString(),
+  });
+  found.day.items = found.day.items.filter((item) => item.id !== itemId);
+  state.openItemId = null;
+  markDirty();
+  renderCandidates();
+  renderDays();
+  refreshMap(false);
+  return true;
+}
+
+export function addCandidateToSlot(slotId: string, title: string): boolean {
+  const source = model.candidates.find((candidate) => candidate.slotId === slotId);
+  const value = title.trim();
+  if (!source || !value) return false;
+  if (model.candidates.some((candidate) => candidate.slotId === slotId && candidate.title.trim() === value)) {
+    toast("同じ名前の候補があります");
+    return false;
+  }
+  const me = getUser().name.trim();
+  const meId = currentAccount()?.id || "";
+  model.candidates.push({
+    ...source, id: candId(), title: value, place: "", note: "", adopted: false,
+    proposer: me || undefined, proposerId: meId || undefined, votes: [], voteIds: [],
+    createdAt: new Date().toISOString(),
+  });
+  markDirty(); renderDays();
+  return true;
+}
+
+export function removeCandidateSlotOption(candidateId: string): void {
+  const candidate = model.candidates.find((row) => row.id === candidateId && row.slotId);
+  if (!candidate) return;
+  const options = model.candidates.filter((row) => row.slotId === candidate.slotId);
+  if (options.length <= 2) {
+    toast("投票枠には候補を2つ以上残してください");
+    return;
+  }
+  model.candidates = model.candidates.filter((row) => row.id !== candidateId);
+  markDirty(); renderDays();
+}
+
+export function updateCandidateSlotOption(candidateId: string, field: "title" | "place", value: string): void {
+  const candidate = model.candidates.find((row) => row.id === candidateId && row.slotId);
+  if (!candidate) return;
+  if (field === "title" && !value.trim()) return;
+  candidate[field] = value;
+  markDirty();
+}
+
+export function cancelCandidateSlot(slotId: string): void {
+  const options = model.candidates.filter((candidate) => candidate.slotId === slotId);
+  const first = options[0];
+  const day = model.days.find((row) => row.date === first?.date);
+  if (!first || !day) return;
+  day.items.push(newItem(normalizeKind(first.type), {
+    time: first.time || "", title: first.title, place: first.place || "", note: first.note || "",
+    lat: first.lat != null ? String(first.lat) : "", lng: first.lng != null ? String(first.lng) : "",
+    duration: first.durationMinutes != null ? formatDurationMinutes(first.durationMinutes) : "",
+    members: first.memberIds || [],
+  }));
+  model.candidates = model.candidates.filter((candidate) => candidate.slotId !== slotId);
+  markDirty(); renderCandidates(); renderDays(); refreshMap(false);
 }
 
 function candidateDayOptions(): string {

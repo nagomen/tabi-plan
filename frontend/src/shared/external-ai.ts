@@ -607,6 +607,22 @@ export async function copyExternalAiPrompt(prompt: string): Promise<boolean> {
   }
 }
 
-export function openExternalAi(provider: ExternalAiProvider = "chatgpt"): Window | null {
-  return window.open(PROVIDER_URLS[provider], "_blank", "noopener");
+/**
+ * 開けたかどうかを返す。第3引数に noopener を渡すと戻り値が常に null になり
+ * ポップアップ遮断と見分けられないので、開いてから opener を切る。
+ */
+export function openExternalAi(provider: ExternalAiProvider = "chatgpt"): boolean {
+  try {
+    const opened = window.open(PROVIDER_URLS[provider], "_blank");
+    if (!opened) return false;
+    opened.opener = null;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** リンク(<a href>)として開く用。JS の window.open はポップアップ扱いで塞がれることがある。 */
+export function externalAiUrl(provider: ExternalAiProvider = "chatgpt"): string {
+  return PROVIDER_URLS[provider];
 }

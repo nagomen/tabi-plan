@@ -226,6 +226,15 @@ export function getData(slug: string): LocalPlanData | null {
       proposer: db.nameOf(c.proposed_by_id) || undefined,
       proposerId: c.proposed_by_id || undefined,
       adopted: Boolean(c.adopted_at),
+      slotId: c.slot_id || undefined,
+      date: c.item_date || undefined,
+      time: (c.start_time || "").slice(0, 5) || undefined,
+      type: c.kind || undefined,
+      durationMinutes: c.duration_minutes ?? undefined,
+      lat: c.lat ?? undefined,
+      lng: c.lng ?? undefined,
+      note: c.note || undefined,
+      memberIds: c.member_ids?.length ? [...c.member_ids] : undefined,
       voteIds: votes.filter((v) => v.candidate_id === c.id).map((v) => v.user_id),
       votes: votes.filter((v) => v.candidate_id === c.id).map((v) => db.nameOf(v.user_id)).filter(Boolean),
       createdAt: "",
@@ -425,6 +434,15 @@ export function saveLocalPlan(
       proposed_by_id: c.proposerId || null,
       adopted: Boolean(c.adopted),
       votes: [...new Set(c.voteIds || [])],
+      slot_id: c.slotId || null,
+      item_date: c.date || null,
+      start_time: c.time ? `${c.time.slice(0, 5)}:00` : null,
+      kind: c.type || null,
+      duration_minutes: c.durationMinutes ?? null,
+      lat: num(c.lat),
+      lng: num(c.lng),
+      note: c.note || null,
+      member_ids: c.memberIds?.length ? [...new Set(c.memberIds)] : null,
     })),
   };
 
@@ -656,6 +674,7 @@ export function toDashboardData(data: LocalPlanData | null): TripData {
     localInfo: Array.isArray(source.localInfo) ? source.localInfo : [],
     settlement: {},
     cities: Array.isArray(source.cities) ? source.cities : undefined,
+    candidates: Array.isArray(source.candidates) ? source.candidates : [],
   };
 }
 

@@ -21,7 +21,7 @@ import { setExpenseSheet } from "./expense-entry";
 import { applyMoneyTab } from "./settlement";
 import { setupPhotoAlbumEditor } from "./photo-album";
 import { bindChecklist } from "./checklist";
-import { leaveTrip, shareTripInvite } from "./members";
+import { leaveTrip, removeTripMember, shareExistingMemberInvite, shareTripInvite } from "./members";
 import { shareSchedule } from "./itinerary-feed";
 import { setupAiChat } from "./ai-chat";
 import { copyPlanToMine } from "./plan-copy";
@@ -102,6 +102,31 @@ async function init(): Promise<void> {
       }
     });
   }
+  const membersList = root.querySelector<HTMLElement>("[data-members-list]");
+  if (membersList) {
+    membersList.addEventListener("click", (event) => {
+      const inviteButton = event.target instanceof Element
+        ? event.target.closest<HTMLButtonElement>("[data-invite-member]")
+        : null;
+      if (inviteButton) {
+        void shareExistingMemberInvite(
+          inviteButton.dataset.inviteMember || "",
+          inviteButton.dataset.inviteMemberName || "この参加者",
+          inviteButton,
+        );
+        return;
+      }
+      const button = event.target instanceof Element
+        ? event.target.closest<HTMLButtonElement>("[data-remove-member]")
+        : null;
+      if (!button) return;
+      void removeTripMember(
+        button.dataset.removeMember || "",
+        button.dataset.removeMemberName || "この参加者",
+        button,
+      );
+    });
+  }
   syncStickyOffsets();
   window.addEventListener("resize", () => {
     syncStickyOffsets();
@@ -113,7 +138,7 @@ async function init(): Promise<void> {
   }
   // 下部ナビにアイコンを差し込む（セクション見出しと同じ heroicon を使う）。
   const MOBILE_NAV_ICONS: Record<string, IconName> = {
-    home: "home", map: "map", members: "users", money: "banknotes", links: "link",
+    home: "home", map: "map", members: "users", money: "banknotes", links: "squares2x2",
   };
   qsa<HTMLElement>("[data-mobile-nav]").forEach((button) => {
     const name = MOBILE_NAV_ICONS[button.dataset.mobileNav || ""];

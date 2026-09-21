@@ -4,7 +4,7 @@ import { escapeHtml, errorMessage } from "../shared/dom";
 import { normalizeDate } from "./api-data-source";
 import { mdLabel } from "../shared/date";
 import { formatDurationMinutes, parseDurationMinutes } from "../shared/travel-duration";
-import { buildExternalAiRefinePrompt, copyExternalAiPrompt, openExternalAi, parseExternalAiRefineJson } from "../shared/external-ai";
+import { buildExternalAiRefinePrompt, copyExternalAiPrompt, externalAiUrl, parseExternalAiRefineJson } from "../shared/external-ai";
 import type { ItineraryItem } from "../shared/types";
 import { CONFIG, hooks, state } from "./state";
 import { root } from "./dom";
@@ -16,6 +16,7 @@ interface AiChatEntry {
   text: string;
   proposal?: db.ItineraryRefineResult;
   externalPrompt?: string;
+  showApiKeySetup?: boolean;
   applied?: boolean;
 }
 
@@ -146,6 +147,14 @@ function externalAiRefinePrompt(instruction: string): string {
   });
 }
 
+/** 入力欄は送信後に空になるため、直前の失敗時に作った質問文を再利用する。 */
+function latestExternalPrompt(): string {
+  for (let index = aiChatEntries.length - 1; index >= 0; index -= 1) {
+    if (aiChatEntries[index].externalPrompt) return aiChatEntries[index].externalPrompt!;
+  }
+  return "";
+}
+
 function importExternalAiRefineJson(raw: string): void {
   const status = root.querySelector<HTMLElement>("[data-ai-chat-import-status]");
   if (!status) return;
@@ -212,20 +221,21 @@ function renderAiChat(): void {
     <div class="tl-ai-message is-${entry.role}">
       <span>${escapeHtml(entry.text).replace(/\n/g, "<br>")}</span>
       ${entry.proposal ? `<button type="button" data-ai-apply="${index}" ${entry.applied ? "disabled" : ""}>${entry.applied ? "反映済み" : "この提案を行程に反映"}</button>` : ""}
-      ${entry.externalPrompt ? `<button type="button" data-ai-external="${index}">ChatGPTで続きを作る</button>` : ""}
+      ${entry.externalPrompt ? `<a class="tl-ai-key-action" data-ai-external="${index}" href="${externalAiUrl("chatgpt")}" target="_blank" rel="noopener noreferrer">ChatGPTで続きを作る</a>` : ""}
+      ${entry.showApiKeySetup ? `<a class="tl-ai-key-action" href="mypage.html?tab=pay#ai-key" target="_blank" rel="noopener">自分のAPIキーを設定</a>` : ""}
     </div>`).join("") + (aiChatBusy ? `
     <div class="tl-ai-message is-assistant is-thinking"><span>全日程を確認して修正案を作っています…</span></div>` : "");
   log.scrollTop = log.scrollHeight;
   log.querySelectorAll<HTMLButtonElement>("[data-ai-apply]").forEach((button) => {
     button.addEventListener("click", () => void applyAiProposal(Number(button.dataset.aiApply)));
   });
-  log.querySelectorAll<HTMLButtonElement>("[data-ai-external]").forEach((button) => {
-    button.addEventListener("click", async () => {
-      const entry = aiChatEntries[Number(button.dataset.aiExternal)];
-      if (!entry?.externalPrompt) return;
+  log.querySelectorAll<HTMLAnchorElement>("[data-ai-external]").forEach((link) => {
+    link.addEventListener("click", async (event) => {
+      const entry = aiChatEntries[Number(link.dataset.aiExternal)];
+      if (!entry?.externalPrompt) { event.preventDefault(); return; }
       const importPanel = root.querySelector<HTMLDetailsElement>("[data-ai-chat-import]");
       if (importPanel) importPanel.open = true;
-      openExternalAi("chatgpt");
+      // ChatGPT はリンクの既定動作で開く。コピーはこのクリックのうちに始める。
       const copied = await copyExternalAiPrompt(entry.externalPrompt);
       const status = root.querySelector<HTMLElement>("[data-ai-chat-status]");
       if (status) status.textContent = copied
@@ -271,7 +281,7 @@ export function setupAiChat(aiSupport: HTMLButtonElement): void {
   const send = root.querySelector<HTMLButtonElement>("[data-ai-chat-send]");
   const status = root.querySelector<HTMLElement>("[data-ai-chat-status]");
   const importDetails = root.querySelector<HTMLDetailsElement>("[data-ai-chat-import]");
-  const importOpen = root.querySelector<HTMLButtonElement>("[data-ai-chat-import-open]");
+  const importOpen = root.querySelector<HTMLAnchorElement>("[data-ai-chat-import-open]");
   const importJson = root.querySelector<HTMLTextAreaElement>("[data-ai-chat-import-json]");
   const importApply = root.querySelector<HTMLButtonElement>("[data-ai-chat-import-apply]");
   if (!chat || !close || !form || !input || !send || !status || !importDetails || !importOpen || !importJson || !importApply) return;
@@ -289,16 +299,24 @@ export function setupAiChat(aiSupport: HTMLButtonElement): void {
   aiSupport.setAttribute("aria-expanded", "false");
   aiSupport.addEventListener("click", () => setOpen(chat.hidden));
   close.addEventListener("click", () => setOpen(false));
-  importOpen.addEventListener("click", async () => {
+  importOpen.addEventListener("click", async (event) => {
     const instruction = input.value.trim();
     const importStatus = root.querySelector<HTMLElement>("[data-ai-chat-import-status]");
-    if (!instruction) {
+    const prompt = instruction ? externalAiRefinePrompt(instruction) : latestExternalPrompt();
+    if (!prompt) {
+      event.preventDefault();
+      // 押した場所のそばにも出す。上の欄だけだと「押しても何も起きない」と見える。
       status.textContent = "まず上の相談欄に、変えたいことを書いてください。";
+      if (importStatus) {
+        importStatus.textContent = "まず上の相談欄に、変えたいことを書いてください。";
+        importStatus.className = "is-warn";
+      }
       input.focus();
       return;
     }
-    openExternalAi("chatgpt");
-    const copied = await copyExternalAiPrompt(externalAiRefinePrompt(instruction));
+    // ChatGPTは通常のリンクとしてブラウザに開かせる。JSのポップアップ扱いで
+    // モバイルブラウザに遮断されるのを避けつつ、同じタップで質問文をコピーする。
+    const copied = await copyExternalAiPrompt(prompt);
     if (importStatus) {
       importStatus.textContent = copied
         ? "質問文をコピーしました。開いたChatGPTへ貼り付けてください。"
@@ -340,11 +358,15 @@ export function setupAiChat(aiSupport: HTMLButtonElement): void {
       aiChatEntries.push({ role: "assistant", text: proposal.message, proposal });
       status.textContent = "提案を確認して、反映するか選んでください。";
     } catch (error) {
-      if (error instanceof db.ApiRequestError && (error.code === "ai_daily_limit" || error.action === "use_external_ai")) {
+      if (error instanceof db.ApiRequestError && (
+        ["ai_daily_limit", "ai_output_too_long", "ai_quota_exceeded", "ai_key_required"].includes(error.code) ||
+        error.action === "use_external_ai" || error.action === "update_api_key"
+      )) {
         aiChatEntries.push({
           role: "assistant",
-          text: errorMessage(error) || "本日のAI利用上限に達しました。ChatGPTを使って続けられます。",
+          text: errorMessage(error) || "この画面のAIを利用できません。ChatGPTで続けるか、自分のAPIキーを設定できます。",
           externalPrompt: externalAiRefinePrompt(instruction),
+          showApiKeySetup: true,
         });
       } else {
         aiChatEntries.push({ role: "assistant", text: errorMessage(error) || "修正案を作れませんでした。もう一度お試しください。" });

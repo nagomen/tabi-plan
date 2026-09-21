@@ -185,7 +185,7 @@
                         <div>
                           <strong>ChatGPTを開く</strong>
                           <p>旅行の条件が入った質問文を自動でコピーして、ChatGPTを開きます。</p>
-                          <button class="pe-ai-secondary pe-ai-import-open" type="button" data-ai-import-open>質問文をコピーしてChatGPTを開く</button>
+                          <a class="pe-ai-secondary pe-ai-import-open" data-ai-import-open href="https://chatgpt.com/" target="_blank" rel="noopener noreferrer">質問文をコピーしてChatGPTを開く</a>
                         </div>
                       </li>
                       <li>
@@ -208,6 +208,13 @@
                         </div>
                       </li>
                     </ol>
+                    <div class="pe-ai-own-key">
+                      <div>
+                        <strong>この画面のAIを自分の利用枠で使う</strong>
+                        <p>自分のOpenAI APIキーを登録すると、サービス共通枠ではなく自分のOpenAIプロジェクトへ料金が計上されます。</p>
+                      </div>
+                      <a href="mypage.html?tab=pay#ai-key" target="_blank" rel="noopener">自分のAPIキーを設定</a>
+                    </div>
                     <p class="pe-ai-import-note">貼り付けた内容は、このアプリが旅行計画として読める形に自動で整えます。</p>
                   </div>
                 </details>
@@ -231,8 +238,8 @@
         <p class="pe-hint">場所を入力すると地図に表示されます。見つからない場合は予定内の「検索」「地図で指定」から。</p>
       </section>
       <section class="pe-cand pe-panel" data-cand-section>
-        <h3 class="pe-sec-title" data-ic-cand>行きたい候補 <span class="pe-cand-count" data-cand-count></span></h3>
-        <p class="pe-sec-note">行きたい場所を出し合って投票。決まったら「行程に追加」で日程に入れられます。</p>
+        <h3 class="pe-sec-title" data-ic-cand>いつか行きたい候補 <span class="pe-cand-count" data-cand-count></span></h3>
+        <p class="pe-sec-note">日時がまだ決まっていない候補です。時間を決めて全員で選ぶ場合は、行程の予定を開いて「候補にする」を押してください。</p>
         <div class="pe-cand-add">
           <input data-cand-input type="text" maxlength="200" autocomplete="off" placeholder="例: 中尊寺、〇〇ラーメン" aria-label="候補を追加">
           <button class="pe-mini" type="button" data-cand-add data-ic-candadd>追加</button>

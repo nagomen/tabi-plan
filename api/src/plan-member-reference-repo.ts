@@ -70,4 +70,19 @@ export async function reassignPlanMemberReferences(
       // 壊れた旧JSONがあっても、本人紐付けや取消そのものは止めない。
     }
   }
+
+  const [candidateRows] = await conn.query<Row[]>(
+    "SELECT id, member_ids FROM plan_candidates WHERE plan_id = ? AND member_ids IS NOT NULL FOR UPDATE",
+    [planId],
+  );
+  for (const row of candidateRows as unknown as { id: string; member_ids: string }[]) {
+    try {
+      const parsed = JSON.parse(String(row.member_ids || "")) as unknown;
+      if (!Array.isArray(parsed) || !parsed.includes(fromUserId)) continue;
+      const next = [...new Set(parsed.map((id) => id === fromUserId ? toUserId : id))];
+      await conn.query("UPDATE plan_candidates SET member_ids = ? WHERE id = ?", [JSON.stringify(next), row.id]);
+    } catch {
+      // 候補枠の旧JSONが壊れていても、本人紐付けや取消そのものは止めない。
+    }
+  }
 }

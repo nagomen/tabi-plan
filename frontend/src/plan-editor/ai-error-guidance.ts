@@ -31,10 +31,11 @@ const SUPPORT_CODES = new Set([
   "ai_authentication_failed",
   "ai_internal_error",
   "ai_model_unavailable",
-  "ai_quota_exceeded",
   "ai_request_invalid",
   "ai_unavailable",
 ]);
+// 利用枠切れは管理者待ちにしない。自分のOpenAI APIキーを登録すれば続けられる。
+const API_KEY_CODES = new Set(["ai_key_required", "ai_quota_exceeded"]);
 const RETRY_CODES = new Set([
   "ai_cancelled",
   "ai_cooldown",
@@ -74,7 +75,7 @@ export function aiErrorGuidance(error: AiErrorLike, phase: AiErrorPhase): AiErro
   if (code === "session_required" || error.action === "sign_in") {
     return { title: "ログインが必要です", message, action: "sign_in", actionLabel: "ログインする", retryAfter: 0, requestId };
   }
-  if (code === "ai_key_required" || error.action === "update_api_key") {
+  if (API_KEY_CODES.has(code) || error.action === "update_api_key") {
     return {
       title: code === "ai_key_required" ? "OpenAI APIキーが必要です" : "OpenAI APIキーを確認してください",
       message,

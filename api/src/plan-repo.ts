@@ -234,7 +234,10 @@ const CONTENT_ITEM_FIELDS = {
   cities: new Set(["name", "from_date", "to_date", "lat", "lng"]),
   links: new Set(["link_key", "label", "url", "caption"]),
   checklist: new Set(["label", "status"]),
-  candidates: new Set(["id", "title", "place", "proposed_by_id", "adopted", "votes"]),
+  candidates: new Set([
+    "id", "title", "place", "proposed_by_id", "adopted", "votes",
+    "slot_id", "item_date", "start_time", "kind", "duration_minutes", "lat", "lng", "note", "member_ids",
+  ]),
 };
 
 function assertLength(value: unknown, maximum: number, label: string): void {
@@ -341,13 +344,54 @@ export function validatePlanContent(body: Record<string, unknown>): void {
     if (!String(candidate.title || "").trim()) throw new BadRequest(`候補${index + 1}件目のタイトルを入力してください`);
     assertLength(candidate.title, 200, `候補${index + 1}件目のタイトル`);
     assertLength(candidate.place, 200, `候補${index + 1}件目の場所`);
+    assertLength(candidate.note, 5000, `候補${index + 1}件目のメモ`);
     if (candidate.id && !/^[\w-]{1,32}$/.test(String(candidate.id))) {
       throw new BadRequest(`候補${index + 1}件目のIDが正しくありません`);
+    }
+    if (candidate.slot_id && !/^[\w-]{1,32}$/.test(String(candidate.slot_id))) {
+      throw new BadRequest(`候補${index + 1}件目の投票枠IDが正しくありません`);
+    }
+    assertOptionalDate(candidate.item_date, `候補${index + 1}件目の日付`);
+    if (candidate.start_time !== null && candidate.start_time !== undefined && candidate.start_time !== "" &&
+        !/^(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/.test(String(candidate.start_time))) {
+      throw new BadRequest(`候補${index + 1}件目の時刻が正しくありません`);
+    }
+    if (candidate.kind !== null && candidate.kind !== undefined && candidate.kind !== "" &&
+        !ITINERARY_KINDS.has(String(candidate.kind))) {
+      throw new BadRequest(`候補${index + 1}件目の種別が正しくありません`);
+    }
+    assertOptionalNumber(candidate.duration_minutes, 0, 65_535, `候補${index + 1}件目の所要時間`);
+    assertOptionalNumber(candidate.lat, -90, 90, `候補${index + 1}件目の緯度`);
+    assertOptionalNumber(candidate.lng, -180, 180, `候補${index + 1}件目の経度`);
+    if (candidate.member_ids !== null && candidate.member_ids !== undefined &&
+        (!Array.isArray(candidate.member_ids) || candidate.member_ids.length > 50 ||
+          candidate.member_ids.some((id) => typeof id !== "string" || !/^[\w-]{1,32}$/.test(id)))) {
+      throw new BadRequest(`候補${index + 1}件目の対象メンバーが正しくありません`);
     }
     if (candidate.votes !== undefined && (!Array.isArray(candidate.votes) || candidate.votes.length > 100 ||
         candidate.votes.some((id) => typeof id !== "string" || !/^[\w-]{1,32}$/.test(id)))) {
       throw new BadRequest(`候補${index + 1}件目の投票者が正しくありません`);
     }
+  });
+  const slotShapes = new Map<string, string>();
+  ((body.candidates || []) as Record<string, unknown>[]).forEach((candidate, index) => {
+    const slotId = String(candidate.slot_id || "");
+    if (!slotId) return;
+    const members = Array.isArray(candidate.member_ids)
+      ? [...new Set(candidate.member_ids.map(String))].sort()
+      : [];
+    const shape = JSON.stringify({
+      date: candidate.item_date || null,
+      time: candidate.start_time || null,
+      kind: candidate.kind || null,
+      duration: candidate.duration_minutes ?? null,
+      members,
+    });
+    const previous = slotShapes.get(slotId);
+    if (previous && previous !== shape) {
+      throw new BadRequest(`候補${index + 1}件目の日時または対象メンバーが同じ投票枠の他候補と一致しません`);
+    }
+    slotShapes.set(slotId, shape);
   });
 }
 
@@ -357,7 +401,11 @@ export async function replacePlanContent(planId: string, body: {
   cities?: { name: string; from_date?: string | null; to_date?: string | null; lat?: number | null; lng?: number | null }[];
   links?: Record<string, unknown>[];
   checklist?: { label: string; status?: string }[];
-  candidates?: { id?: string; title: string; place?: string | null; proposed_by_id?: string | null; adopted?: boolean; votes?: string[] }[];
+  candidates?: {
+    id?: string; title: string; place?: string | null; proposed_by_id?: string | null; adopted?: boolean; votes?: string[];
+    slot_id?: string | null; item_date?: string | null; start_time?: string | null; kind?: string | null;
+    duration_minutes?: number | null; lat?: number | null; lng?: number | null; note?: string | null; member_ids?: string[] | null;
+  }[];
   }, expectedVersion: number, actorUserId: string, existingConnection?: mysql.PoolConnection,
   incrementVersion = true): Promise<number> {
   const work = async (conn: mysql.PoolConnection): Promise<number> => {
@@ -390,6 +438,11 @@ export async function replacePlanContent(planId: string, body: {
     for (const item of body.itinerary || []) {
       if (Array.isArray(item.member_ids)) {
         for (const userId of item.member_ids) requestedMemberIds.add(String(userId));
+      }
+    }
+    for (const candidate of body.candidates || []) {
+      if (Array.isArray(candidate.member_ids)) {
+        for (const userId of candidate.member_ids) requestedMemberIds.add(String(userId));
       }
     }
     if (requestedMemberIds.size) {
@@ -513,14 +566,31 @@ export async function replacePlanContent(planId: string, body: {
         const cid = c.id && /^[\w-]{1,32}$/.test(c.id) ? c.id : newId("cnd");
         const old = oldCandidates.get(cid);
         const proposerId = old?.proposed_by_id || actorUserId;
-        candRows.push([cid, planId, String(c.title).slice(0, 200), c.place || null, proposerId, c.adopted ? new Date() : null]);
+        const memberIds = Array.isArray(c.member_ids)
+          ? [...new Set(c.member_ids.filter((id) => typeof id === "string" && id))].slice(0, 50)
+          : [];
+        const startTime = /^(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/.test(String(c.start_time || ""))
+          ? String(c.start_time)
+          : null;
+        candRows.push([
+          cid, planId, String(c.title).slice(0, 200), c.place || null, proposerId,
+          c.slot_id || null, safeDate(c.item_date), startTime,
+          ITINERARY_KINDS.has(String(c.kind || "")) ? c.kind : null,
+          boundedNumber(c.duration_minutes, 0, 65_535), boundedNumber(c.lat, -90, 90), boundedNumber(c.lng, -180, 180), c.note || null,
+          memberIds.length ? JSON.stringify(memberIds) : null,
+          c.adopted ? new Date() : null,
+        ]);
         // 他人の票は現在値を保存し、操作本人の票だけを入力から反映する。
         const voters = new Set([...(oldVotes.get(cid) || [])].filter((uid) => uid !== actorUserId));
         if (new Set(c.votes || []).has(actorUserId)) voters.add(actorUserId);
         for (const uid of voters) voteRows.push([cid, uid]);
       }
       if (candRows.length) {
-        await conn.query("INSERT INTO plan_candidates (id, plan_id, title, place, proposed_by_id, adopted_at) VALUES ?", [candRows]);
+        await conn.query(
+          `INSERT INTO plan_candidates (id, plan_id, title, place, proposed_by_id, slot_id, item_date,
+             start_time, kind, duration_minutes, lat, lng, note, member_ids, adopted_at) VALUES ?`,
+          [candRows],
+        );
       }
       if (voteRows.length) {
         await conn.query("INSERT IGNORE INTO plan_candidate_votes (candidate_id, user_id) VALUES ?", [voteRows]);

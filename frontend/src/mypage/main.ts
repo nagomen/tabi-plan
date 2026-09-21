@@ -171,6 +171,18 @@ async function init(): Promise<void> {
   // カレンダー・支払い・友達のぶんまで初回の処理時間に乗ってしまう。
   if (wideLayout.matches) renderHiddenViews();
   if (initialTab && tabs.some((tab) => tab.dataset.tab === initialTab)) showTab(initialTab);
+  scrollToHashTarget();
+}
+
+/**
+ * 読み込み時点では目的の欄がタブに隠れていて、ブラウザ任せの #リンク移動が
+ * 効かない。タブを開いたあとで自分で送る（例: AI利用設定への案内リンク）。
+ */
+function scrollToHashTarget(): void {
+  const id = location.hash.slice(1);
+  if (!id) return;
+  const target = document.getElementById(id);
+  if (target) target.scrollIntoView({ block: "start" });
 }
 
 void db.load().then(init);

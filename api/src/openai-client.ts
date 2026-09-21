@@ -118,8 +118,8 @@ function classifiedError(response: Response, data: OpenAiResponse | null, userMa
       "ai_quota_exceeded",
       userManagedKey
         ? "OpenAI APIの残高またはプロジェクトの支払い上限に達しています。OpenAI Platformで課金設定を確認してください。"
-        : "AI機能の利用枠または支払い上限に達しています。管理者へお知らせください。",
-      options({ action: userManagedKey ? "update_api_key" : "contact_support" }),
+        : "サービス共通のAI利用枠に達しています。ChatGPTで続けるか、マイページで自分のOpenAI APIキーを登録してください。",
+      options({ action: "update_api_key" }),
     );
   }
   if (status === 413 || INPUT_TOO_LARGE_CODES.has(code)) {
@@ -164,11 +164,11 @@ function extractOutput(data: OpenAiResponse, requestId: string, userManagedKey =
       quota
         ? userManagedKey
           ? "OpenAI APIの残高またはプロジェクトの支払い上限に達しています。OpenAI Platformで課金設定を確認してください。"
-          : "AI機能の利用枠または支払い上限に達しています。管理者へお知らせください。"
+          : "サービス共通のAI利用枠に達しています。ChatGPTで続けるか、マイページで自分のOpenAI APIキーを登録してください。"
         : "AIサービスが行程生成を完了できませんでした。時間を置いてお試しください。",
       {
         retryable: !quota,
-        action: quota ? (userManagedKey ? "update_api_key" : "contact_support") : "retry_later",
+        action: quota ? "update_api_key" : "retry_later",
         requestId,
         causeDetail: safeUpstreamDetail(data),
       },

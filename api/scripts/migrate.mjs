@@ -434,6 +434,35 @@ async function migrate016() {
   ) ENGINE=InnoDB`);
 }
 
+async function migrate017() {
+  // 行程上の「未確定枠」。同じ slot_id の候補から各参加者が一つを選ぶ。
+  const columns = [
+    ["slot_id", "VARCHAR(32) NULL AFTER proposed_by_id"],
+    ["item_date", "DATE NULL AFTER slot_id"],
+    ["start_time", "TIME NULL AFTER item_date"],
+    ["kind", "ENUM('sight','move','food','stay','todo','form') NULL AFTER start_time"],
+    ["duration_minutes", "SMALLINT UNSIGNED NULL AFTER kind"],
+    ["lat", "DECIMAL(9,6) NULL AFTER duration_minutes"],
+    ["lng", "DECIMAL(9,6) NULL AFTER lat"],
+    ["note", "TEXT NULL AFTER lng"],
+    ["member_ids", "TEXT NULL AFTER note"],
+  ];
+  for (const [column, definition] of columns) {
+    if (!(await exists(
+      "SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'plan_candidates' AND COLUMN_NAME = ?",
+      [database, column],
+    ))) {
+      await conn.query(`ALTER TABLE plan_candidates ADD COLUMN \`${column}\` ${definition}`);
+    }
+  }
+  if (!(await exists(
+    "SELECT 1 FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'plan_candidates' AND INDEX_NAME = 'idx_candidates_slot'",
+    [database],
+  ))) {
+    await conn.query("ALTER TABLE plan_candidates ADD KEY idx_candidates_slot (plan_id, slot_id)");
+  }
+}
+
 async function main() {
   await conn.query(`CREATE TABLE IF NOT EXISTS schema_migrations (
     id VARCHAR(64) NOT NULL PRIMARY KEY,
@@ -454,6 +483,7 @@ async function main() {
   await applyMigration("014_plan_flight_notes", migrate014);
   await applyMigration("015_separate_plan_access", migrate015);
   await applyMigration("016_user_ai_credentials", migrate016);
+  await applyMigration("017_candidate_time_slots", migrate017);
 }
 
 // 同時デプロイが同じDDLを並走させないよう、DB側の advisory lock で直列化する。

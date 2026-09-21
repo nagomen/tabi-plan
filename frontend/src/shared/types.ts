@@ -190,6 +190,14 @@ export interface Candidate {
   /** 行程へ採用済みなら true（ボード上で薄く表示） */
   adopted?: boolean;
   createdAt?: string;
+  /** 同じ時間帯で投票する候補を束ねるID。未設定は従来の「行きたい候補」。 */
+  slotId?: string;
+  /** 投票枠を置く日付・時刻。 */
+  date?: string;
+  time?: string;
+  durationMinutes?: number;
+  /** 投票枠の対象メンバー。空または未設定は当日の参加者全員。 */
+  memberIds?: string[];
 }
 
 /** 各画面が描画する正規化済みデータ */
@@ -202,6 +210,8 @@ export interface TripData {
   itinerary: ItineraryItem[];
   /** 滞在都市（任意）。無ければダッシュボードは行程の area から推定する */
   cities?: RouteCity[];
+  /** ワークスペース参加者だけに返される候補・投票情報。 */
+  candidates?: Candidate[];
 }
 
 /** 緯度経度ペア */

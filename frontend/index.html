@@ -40,21 +40,41 @@
         <span class="tl-sec-meta" data-members-count></span>
       </div>
       <p class="tl-members-note">この旅行に参加しているメンバーです。招待した人だけがこの計画を見られます。</p>
+      <p class="tl-members-status" data-members-status aria-live="polite"></p>
       <div class="tl-members-list" data-members-list></div>
       <div class="tl-members-invite" data-members-invite hidden>
+        <h3>メンバーを追加</h3>
         <label class="tl-members-field">
-          <span>招待リンクの表示名（任意）</span>
-          <input type="text" data-invite-name placeholder="例：さくらさん用" autocomplete="off">
+          <span>参加者の名前</span>
+          <input type="text" data-invite-name maxlength="64" placeholder="例：さくら" autocomplete="off" required>
         </label>
-        <label class="tl-members-field">
-          <span>招待後の権限</span>
-          <select data-invite-role aria-label="招待後の権限">
-            <option value="editor">編集できる</option>
-            <option value="viewer">閲覧のみ</option>
-          </select>
-        </label>
-        <button class="tl-button primary" type="button" data-invite-share>招待リンクを発行して共有</button>
-        <p class="tl-members-invite-note">表示名は目印で、招待相手のアカウントを限定しません。リンクは参加してほしい本人だけに共有してください。登録済みの友達だけに限定する場合は、旅行編集画面で相手を選んで招待できます。受け取った人が参加を確定するまで限定情報は表示されません。ブラウザに表示中のURLでは参加できません。</p>
+        <div class="tl-members-fields-row">
+          <label class="tl-members-field">
+            <span>旅程の分類</span>
+            <select data-invite-track aria-label="参加する旅程の分類">
+              <option value="">全員の予定を基本にする</option>
+            </select>
+          </label>
+          <label class="tl-members-field">
+            <span>招待後の権限</span>
+            <select data-invite-role aria-label="招待後の権限">
+              <option value="editor">編集できる</option>
+              <option value="viewer">閲覧のみ</option>
+            </select>
+          </label>
+        </div>
+        <div class="tl-members-fields-row">
+          <label class="tl-members-field">
+            <span>参加開始（空欄は初日）</span>
+            <input type="date" data-invite-from aria-label="参加開始日">
+          </label>
+          <label class="tl-members-field">
+            <span>参加終了（空欄は最終日）</span>
+            <input type="date" data-invite-to aria-label="参加終了日">
+          </label>
+        </div>
+        <button class="tl-button primary" type="button" data-invite-share>追加して招待リンクを共有</button>
+        <p class="tl-members-invite-note">先に旅行メンバーとして登録し、本人専用の招待リンクを作成します。「旅程の分類」を選ぶと、その班の予定へ追加されます。共有をキャンセルしてもメンバー登録は残り、一覧から再送できます。</p>
       </div>
       <div class="tl-members-leave" data-members-leave hidden>
         <button class="tl-members-leave-btn" type="button" data-leave-trip>この旅行から脱退する</button>
@@ -126,7 +146,7 @@
                   <div>
                     <strong>ChatGPTを開く</strong>
                     <p>今の旅行日程と相談内容が入った質問文を、自動でコピーします。</p>
-                    <button type="button" data-ai-chat-import-open>質問文をコピーしてChatGPTを開く</button>
+                    <a class="tl-ai-open-chatgpt" data-ai-chat-import-open href="https://chatgpt.com/" target="_blank" rel="noopener noreferrer">質問文をコピーしてChatGPTを開く</a>
                   </div>
                 </li>
                 <li>
@@ -149,6 +169,13 @@
                   </div>
                 </li>
               </ol>
+              <div class="tl-ai-own-key">
+                <div>
+                  <strong>この画面のAIを自分の利用枠で使う</strong>
+                  <p>自分のOpenAI APIキーを登録すると、サービス共通枠ではなく自分のOpenAIプロジェクトへ料金が計上されます。</p>
+                </div>
+                <a href="mypage.html?tab=pay#ai-key" target="_blank" rel="noopener">自分のAPIキーを設定</a>
+              </div>
               <p class="tl-ai-import-note">取り込んだあとに内容を確認できます。確認するまでは日程は変わりません。</p>
             </div>
           </details>
@@ -257,7 +284,7 @@
     <button type="button" data-mobile-nav="map" aria-selected="false"><span class="tl-nav-ic"></span><span class="tl-nav-label">地図</span></button>
     <button type="button" data-mobile-nav="members" aria-selected="false" data-members-nav><span class="tl-nav-ic"></span><span class="tl-nav-label">メンバー</span></button>
     <button type="button" data-mobile-nav="money" aria-selected="false"><span class="tl-nav-ic"></span><span class="tl-nav-label">費用</span></button>
-    <button type="button" data-mobile-nav="links" aria-selected="false"><span class="tl-nav-ic"></span><span class="tl-nav-label">リンク</span></button>
+    <button type="button" data-mobile-nav="links" aria-selected="false"><span class="tl-nav-ic"></span><span class="tl-nav-label">データ</span></button>
   </nav>
 </div>
 

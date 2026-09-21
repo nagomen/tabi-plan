@@ -16,6 +16,7 @@ import { buildItineraryShareText } from "../shared/itinerary-text";
 import { mdLabel } from "../shared/date";
 import { mapsSearchUrl } from "../shared/maps";
 import type { ItineraryItem } from "../shared/types";
+import type { Candidate } from "../shared/types";
 import { CONFIG, state } from "./state";
 import { flashLabel, root } from "./dom";
 import { planId } from "./plan-access";
@@ -227,6 +228,83 @@ function relatedCasinoGuideHtml(item: ItineraryItem): string {
   </a>`;
 }
 
+function candidateSlotGroups(date: string): Candidate[][] {
+  const groups = new Map<string, Candidate[]>();
+  (state.data.candidates || []).filter((candidate) => candidate.slotId && candidate.date === date)
+    .forEach((candidate) => {
+      const list = groups.get(candidate.slotId!) || [];
+      list.push(candidate);
+      groups.set(candidate.slotId!, list);
+    });
+  return [...groups.values()]
+    .filter((options) => !options.some((candidate) => candidate.adopted))
+    .sort((a, b) => String(a[0]?.time || "").localeCompare(String(b[0]?.time || "")));
+}
+
+function candidateSlotHtml(options: Candidate[]): string {
+  const first = options[0];
+  if (!first?.slotId) return "";
+  const id = planId();
+  const me = currentUserId();
+  const isOwner = Boolean(id && me && db.planById(id)?.owner_user_id === me);
+  const accepted = id ? db.members().filter((member) =>
+    member.plan_id === id && member.status === "active" && member.access_status === "active"
+  ).map((member) => member.user_id) : [];
+  const present = id ? TripPlans.memberIdsPresentOn(id, first.date || "") : [];
+  const scope = first.memberIds?.length ? new Set(first.memberIds) : null;
+  const eligible = accepted.filter((userId) => present.includes(userId) && (!scope || scope.has(userId)));
+  const voters = new Set(options.flatMap((candidate) => candidate.voteIds || []).filter((userId) => eligible.includes(userId)));
+  const remainingNames = eligible.filter((userId) => !voters.has(userId)).map((userId) => db.nameOf(userId)).filter(Boolean);
+  const mine = options.find((candidate) => me && candidate.voteIds?.includes(me));
+  const allVoted = eligible.length > 0 && voters.size === eligible.length;
+  const max = Math.max(0, ...options.map((candidate) => candidate.voteIds?.filter((id) => eligible.includes(id)).length || 0));
+  const tied = allVoted && options.filter((candidate) => (candidate.voteIds?.filter((id) => eligible.includes(id)).length || 0) === max).length > 1;
+  const canVote = Boolean(me && eligible.includes(me));
+  const progress = eligible.length
+    ? `${voters.size}/${eligible.length}人 投票済み`
+    : "投票対象を確認中";
+  return `<section class="tl-vote-slot" data-candidate-slot="${escapeHtml(first.slotId)}">
+    <div class="tl-vote-slot-rail" aria-hidden="true"><span>${icon("star")}</span></div>
+    <div class="tl-vote-slot-main">
+      <div class="tl-vote-slot-head">
+        <time>${escapeHtml(first.time || "時刻未定")}</time>
+        <span class="tl-vote-label">みんなで決める</span>
+        <span class="tl-vote-progress">${escapeHtml(progress)}</span>
+      </div>
+      <h3>この時間、どう過ごす？</h3>
+      <p class="tl-vote-guide">一人ひとつ選択。投票後も全候補を読んで変更できます。全員が投票したあと、旅行マスターが終了すると最多票の候補が日程へ確定します。</p>
+      <div class="tl-vote-options" role="radiogroup" aria-label="この時間の候補">${options.map((candidate) => {
+        const votes = candidate.voteIds?.filter((userId) => eligible.includes(userId)).length || 0;
+        const selected = mine?.id === candidate.id;
+        return `<button type="button" class="tl-vote-option${selected ? " is-selected" : ""}"
+          data-candidate-vote="${escapeHtml(candidate.id)}" data-candidate-slot-id="${escapeHtml(first.slotId!)}"
+          role="radio" aria-checked="${selected}" ${canVote ? "" : "disabled"}>
+          <span class="tl-vote-radio" aria-hidden="true"></span>
+          <span class="tl-vote-copy">
+            <strong>${escapeHtml(candidate.title)}</strong>
+            ${candidate.place ? `<small>${escapeHtml(candidate.place)}</small>` : ""}
+            ${candidate.note ? `<span class="tl-vote-note">${escapeHtml(candidate.note)}</span>` : ""}
+          </span>
+          <span class="tl-vote-total">${votes}<small>票</small></span>
+        </button>`;
+      }).join("")}</div>
+      <p class="tl-vote-status" data-candidate-vote-status="${escapeHtml(first.slotId)}">${
+        tied ? "全員投票済みですが同票です。誰かが投票を変更すると終了できます。"
+            : allVoted
+              ? isOwner ? "全員投票済み。内容を確認して投票を終了できます。" : "全員投票済み。旅行マスターの確定待ちです。"
+            : mine
+              ? `「${escapeHtml(mine.title)}」に投票中。${remainingNames.length ? `未投票: ${escapeHtml(remainingNames.join("・"))}` : "終了前なら変更できます。"}`
+              : canVote ? `あなたの選択を待っています。${remainingNames.length ? ` 未投票: ${escapeHtml(remainingNames.join("・"))}` : ""}`
+                : "投票対象の参加メンバーのみ選択できます。"
+      }</p>${isOwner ? `<div class="tl-vote-finalize-row">
+        <span>終了すると最多票の候補を予定に追加します</span>
+        <button type="button" class="tl-vote-finalize" data-candidate-finalize="${escapeHtml(first.slotId)}"
+          ${allVoted && !tied ? "" : "disabled"}>${tied ? "同票を解消してください" : allVoted ? "投票を終了して確定" : "全員の投票待ち"}</button>
+      </div>` : ""}
+    </div>
+  </section>`;
+}
+
 function timelineHtmlForDay(idx: number): string {
   const day = state.days[idx];
   if (!day) return "";
@@ -237,7 +315,13 @@ function timelineHtmlForDay(idx: number): string {
   const everyone = everyoneIds(day.items.map((item) => item.members), presentIdsOf(day));
   const alternateTracks = alternateTrackLinksHtml(day, track);
   let casinoGuideShown = false;
-  return trackItems(day, track).filter((i) => String(i.type) !== "stay").map((item) => {
+  const pendingSlots = candidateSlotGroups(day.date);
+  const visibleItems = trackItems(day, track).filter((i) => String(i.type) !== "stay");
+  const rendered = visibleItems.map((item) => {
+    const before: string[] = [];
+    while (pendingSlots.length && String(pendingSlots[0][0]?.time || "99:99") <= String(item.time || "99:99")) {
+      before.push(candidateSlotHtml(pendingSlots.shift()!));
+    }
     const type = String(item.type || "todo");
     let segA = item.origin || "";
     let segB = item.destination || "";
@@ -276,7 +360,7 @@ function timelineHtmlForDay(idx: number): string {
           </span>
         </div>`
       : "";
-    return `${rejoin}<article class="tl-item${isBranchSpecific ? " is-branch-specific" : ""}" data-kind="${escapeHtml(type)}">
+    return `${before.join("")}${rejoin}<article class="tl-item${isBranchSpecific ? " is-branch-specific" : ""}" data-kind="${escapeHtml(type)}">
       <time class="tl-time">${escapeHtml(item.time || "")}</time>
       <span class="tl-rail"><span class="tl-dot ${escapeHtml(type)}">${kindIcon(type)}</span></span>
       <div class="tl-plan">
@@ -288,6 +372,7 @@ function timelineHtmlForDay(idx: number): string {
       </div>
     </article>`;
   }).join("");
+  return rendered + pendingSlots.map(candidateSlotHtml).join("");
 }
 
 /** 表示中の各日について、座標と日付から天気を非同期取得してチップを埋める。 */

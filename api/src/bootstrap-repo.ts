@@ -100,7 +100,8 @@ export async function bootstrapForUser(userId = ""): Promise<Bootstrap> {
       all<Bootstrap["checklist"][number]>(`SELECT id, plan_id, label, status, sort_order FROM plan_checklist_items
          WHERE plan_id IN (${workspaceIn.sql})
          ORDER BY plan_id, sort_order`, workspaceIn.params),
-      all<Bootstrap["candidates"][number]>(`SELECT id, plan_id, title, place, proposed_by_id, adopted_at FROM plan_candidates
+      all<Bootstrap["candidates"][number]>(`SELECT id, plan_id, title, place, proposed_by_id, adopted_at,
+             slot_id, item_date, start_time, kind, duration_minutes, lat, lng, note, member_ids FROM plan_candidates
          WHERE plan_id IN (${workspaceIn.sql})
          ORDER BY plan_id, created_at`, workspaceIn.params),
       all<ExpenseRow>(`SELECT id, plan_id, paid_on, payer_user_id, category, title, amount_minor, currency,
@@ -118,6 +119,17 @@ export async function bootstrapForUser(userId = ""): Promise<Bootstrap> {
          ORDER BY plan_id, settled_at`, workspaceIn.params),
     ])
     : [[], [], [], [], [], [], []];
+
+  for (const row of candidates as Bootstrap["candidates"]) {
+    const raw = row.member_ids;
+    if (typeof raw !== "string" || !raw) { row.member_ids = null; continue; }
+    try {
+      const parsed: unknown = JSON.parse(raw);
+      row.member_ids = Array.isArray(parsed) && parsed.length
+        ? parsed.filter((value): value is string => typeof value === "string")
+        : null;
+    } catch { row.member_ids = null; }
+  }
 
   const candidateIn = inClause(candidates.map((candidate) => String(candidate.id)));
   const candidateVotes = candidates.length
