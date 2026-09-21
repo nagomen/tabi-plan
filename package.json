@@ -19,7 +19,8 @@
     "deploy:production": "node tools/deploy-production.mjs",
     "preview": "npm run preview -w frontend",
     "typecheck": "npm run typecheck -w frontend && npm run typecheck -w api",
-    "build:api": "npm run build -w api"
+    "build:api": "npm run build -w api",
+    "plan:data": "node tools/plan-data.mjs"
   },
   "devDependencies": {
     "eslint": "^10.10.0",
