@@ -19,6 +19,7 @@ api/dist/
 
 # Local agent/editor state
 .claude/
+.codex-data-backups/
 
 # ローカル開発用のドメインデータ。
 # 本番の正は MySQL（共有ストア API）なので、git で配らない。

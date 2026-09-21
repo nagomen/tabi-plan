@@ -125,6 +125,7 @@ npm run deploy:production
 | --- | --- |
 | [docs/onboarding.md](docs/onboarding.md) | 参加したときの初回セットアップ(SSH 鍵、`.env`、最初の push まで) |
 | [docs/local-development.md](docs/local-development.md) | `dev:full` の動作、ローカルデータの扱い |
+| [docs/codex-data-editing.md](docs/codex-data-editing.md) | CodexからSSHトンネル経由で旅行データを直接編集する手順 |
 | [docs/architecture.md](docs/architecture.md) | 画面構成、計画の作成と選択、共同計画、権限モデル、費用、地図 |
 | [docs/ai-consultation.md](docs/ai-consultation.md) | AI 旅行相談、外部 AI 導線、移動候補検索、タイムアウト設計 |
 | [docs/error-contract.md](docs/error-contract.md) | API エラーの共通形式とフロントでの扱い |

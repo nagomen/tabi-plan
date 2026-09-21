@@ -22,7 +22,7 @@ export async function reassignPlanMemberReferences(
      SELECT s.expense_id, ?, s.amount_base_minor
        FROM expense_shares s JOIN expenses e ON e.id = s.expense_id
       WHERE e.plan_id = ? AND s.user_id = ?
-     ON DUPLICATE KEY UPDATE amount_base_minor = amount_base_minor + VALUES(amount_base_minor)`,
+     ON DUPLICATE KEY UPDATE amount_base_minor = expense_shares.amount_base_minor + VALUES(amount_base_minor)`,
     [toUserId, planId, fromUserId],
   );
   await conn.query(
