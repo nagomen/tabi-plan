@@ -48,6 +48,42 @@ export function unitRateFromFxRate(fxRate: number, currency: string, baseCurrenc
   return rate * 10 ** currencyDecimals(currency) / 10 ** currencyDecimals(baseCurrency);
 }
 
+/**
+ * 通貨コードと国旗の対応。「MOP」「XPF」だけでは何の通貨か分からないため、
+ * 選択肢には旗を添える。ユーロのように国が特定できないものはEU旗を使う。
+ */
+const CURRENCY_FLAG: Record<string, string> = {
+  JPY: "🇯🇵", USD: "🇺🇸", EUR: "🇪🇺", GBP: "🇬🇧", CHF: "🇨🇭",
+  HKD: "🇭🇰", MOP: "🇲🇴", TWD: "🇹🇼", KRW: "🇰🇷", CNY: "🇨🇳", MNT: "🇲🇳",
+  THB: "🇹🇭", VND: "🇻🇳", LAK: "🇱🇦", KHR: "🇰🇭", MMK: "🇲🇲", MYR: "🇲🇾", BND: "🇧🇳",
+  PHP: "🇵🇭", IDR: "🇮🇩", SGD: "🇸🇬",
+  INR: "🇮🇳", NPR: "🇳🇵", BTN: "🇧🇹", BDT: "🇧🇩", LKR: "🇱🇰", MVR: "🇲🇻", PKR: "🇵🇰",
+  KZT: "🇰🇿", UZS: "🇺🇿", GEL: "🇬🇪", AMD: "🇦🇲", AZN: "🇦🇿",
+  AED: "🇦🇪", SAR: "🇸🇦", QAR: "🇶🇦", KWD: "🇰🇼", BHD: "🇧🇭", OMR: "🇴🇲",
+  JOD: "🇯🇴", ILS: "🇮🇱", LBP: "🇱🇧", TRY: "🇹🇷",
+  CZK: "🇨🇿", PLN: "🇵🇱", HUF: "🇭🇺", BAM: "🇧🇦", RSD: "🇷🇸", MKD: "🇲🇰", ALL: "🇦🇱",
+  BGN: "🇧🇬", RON: "🇷🇴", MDL: "🇲🇩", UAH: "🇺🇦", BYN: "🇧🇾", RUB: "🇷🇺",
+  DKK: "🇩🇰", SEK: "🇸🇪", NOK: "🇳🇴", ISK: "🇮🇸",
+  MAD: "🇲🇦", TND: "🇹🇳", DZD: "🇩🇿", EGP: "🇪🇬", XOF: "🇸🇳", GHS: "🇬🇭", NGN: "🇳🇬",
+  ETB: "🇪🇹", KES: "🇰🇪", TZS: "🇹🇿", UGX: "🇺🇬", RWF: "🇷🇼",
+  ZAR: "🇿🇦", NAD: "🇳🇦", BWP: "🇧🇼", MUR: "🇲🇺",
+  CAD: "🇨🇦", MXN: "🇲🇽", GTQ: "🇬🇹", CRC: "🇨🇷", CUP: "🇨🇺", DOP: "🇩🇴", JMD: "🇯🇲", BSD: "🇧🇸",
+  COP: "🇨🇴", VES: "🇻🇪", PEN: "🇵🇪", BOB: "🇧🇴", BRL: "🇧🇷", PYG: "🇵🇾", UYU: "🇺🇾",
+  CLP: "🇨🇱", ARS: "🇦🇷",
+  AUD: "🇦🇺", NZD: "🇳🇿", FJD: "🇫🇯", PGK: "🇵🇬", XPF: "🇵🇫",
+};
+
+export function currencyFlag(code: string): string {
+  return CURRENCY_FLAG[String(code || "").toUpperCase()] || "";
+}
+
+/** 選択肢に出す「🇭🇰 HKD」。旗を知らない通貨はコードだけを返す。 */
+export function currencyLabel(code: string): string {
+  const currency = String(code || "").toUpperCase();
+  const flag = currencyFlag(currency);
+  return flag ? `${flag} ${currency}` : currency;
+}
+
 /** 最小単位の額を通貨つきで表示する。 */
 export function formatMoneyMinor(minor: number, code: string): string {
   const currency = String(code || "JPY").toUpperCase();

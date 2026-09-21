@@ -30,6 +30,45 @@ test("主要な旅行先を共通の国レジストリで判定する", () => {
   }
 });
 
+// 矩形は必ず重なる。国を足したときに隣国を飲み込んでいないかは、
+// 実際に取り違えやすい国境沿いの都市で確かめる。
+test("国境をまたぐ矩形でも、隣国の主要都市を取り違えない", () => {
+  const { countryCodeOf } = loadCountry();
+  const fixtures = [
+    [21.03, 105.85, "VN"],   // ハノイ: ラオスの矩形の東
+    [10.82, 106.63, "VN"],   // ホーチミン: カンボジアの矩形の東
+    [48.14, 11.58, "DE"],    // ミュンヘン: オーストリア西部の北
+    [47.8, 13.04, "AT"],     // ザルツブルク
+    [45.81, 15.98, "HR"],    // ザグレブ: スロベニアの東
+    [46.05, 14.51, "SI"],    // リュブリャナ
+    [59.93, 30.34, "RU"],    // サンクトペテルブルク: ノルウェー・フィンランドの矩形の外
+    [60.17, 24.94, "FI"],    // ヘルシンキ
+    [36.75, 3.06, "DZ"],     // アルジェ: スペインの矩形の内側
+    [36.72, -4.42, "ES"],    // マラガ
+    [-26.2, 28.05, "ZA"],    // ヨハネスブルグ: ボツワナの矩形の南
+    [-24.65, 25.91, "BW"],   // ハボローネ
+    [-34.6, -58.38, "AR"],   // ブエノスアイレス: ウルグアイの対岸
+    [-34.9, -56.16, "UY"],   // モンテビデオ
+    [30.32, 35.44, "JO"],    // ペトラ: イスラエルの矩形の東
+    [31.78, 35.21, "IL"],    // エルサレム
+    [22.57, 88.36, "IN"],    // コルカタ: バングラデシュの矩形の西
+    [26.85, 80.95, "IN"],    // ラクナウ: ネパールの矩形の南
+    [25.06, -77.34, "BS"],   // ナッソー
+    [25.77, -80.19, "US"],   // マイアミ
+  ];
+  for (const [lat, lng, code] of fixtures) assert.equal(countryCodeOf(lat, lng), code, `${lat},${lng}`);
+});
+
+test("行き先の通貨は国レジストリから引く", () => {
+  const { currencyOfCountry, countryCodeOf } = loadCountry();
+  assert.equal(currencyOfCountry(countryCodeOf(25.033, 121.565)), "TWD");
+  assert.equal(currencyOfCountry(countryCodeOf(48.86, 2.35)), "EUR");
+  assert.equal(currencyOfCountry(countryCodeOf(51.51, -0.13)), "GBP");
+  assert.equal(currencyOfCountry(countryCodeOf(47.37, 8.54)), "CHF");
+  assert.equal(currencyOfCountry(countryCodeOf(-0.18, -78.47)), "USD");
+  assert.equal(currencyOfCountry(null), "");
+});
+
 test("計画エディタはLeaflet地図を軽量ファサード越しに遅延読込する", () => {
   const files = ["main.ts", "place-geocode.ts", "date-range.ts", "cities.ts", "candidates.ts", "days-render.ts", "ai-consultation.ts", "days-actions.ts"];
   for (const file of files) assert.doesNotMatch(read(`src/plan-editor/${file}`), /from ["']\.\/map["']/);

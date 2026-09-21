@@ -3,7 +3,9 @@ import * as TripPlans from "../shared/plans-store";
 import * as db from "../shared/db";
 import * as ExpenseStore from "../shared/expense-store";
 import { escapeHtml } from "../shared/dom";
-import { currencyStep, fxRateFromUnitRate, toMajor, toMinor, unitRateFromFxRate } from "../shared/currency";
+import {
+  currencyLabel, currencyStep, fxRateFromUnitRate, toMajor, toMinor, unitRateFromFxRate,
+} from "../shared/currency";
 import { bindExpenseSplitForm } from "../shared/expense-form";
 import { mdLabel } from "../shared/date";
 import type { TripData } from "../shared/types";
@@ -114,7 +116,10 @@ export function renderExpenseEntry(data: TripData, options: { force?: boolean } 
     return;
   }
   const baseCurrency = planBaseCurrency();
-  const currencyOptions = expenseCurrencies(data).map((code) => `<option>${escapeHtml(code)}</option>`).join("");
+  // value は ISO コードのまま。略称だけでは伝わらないので、表示には国旗を添える。
+  const currencyOptions = expenseCurrencies(data)
+    .map((code) => `<option value="${escapeHtml(code)}">${escapeHtml(currencyLabel(code))}</option>`)
+    .join("");
   const profileName = currentProfileName(participants);
   // value は user_id。表示名は同名メンバーがいると誰の負担か決められないため、ラベルにだけ使う。
   const payerOptions = members.map((member) => `<option value="${escapeHtml(member.id)}" ${member.name === profileName ? "selected" : ""}>${escapeHtml(member.label)}</option>`).join("");
@@ -339,7 +344,7 @@ function setupExpenseEntryHandlers(form: HTMLFormElement, members: FormMember[],
   const updateEditorSummaries = (): void => {
     setSummary("[data-expense-summary-date]", mdLabel((field("paidDate") as HTMLInputElement).value || todayISO()));
     setSummary("[data-expense-summary-category]", (field("category") as HTMLSelectElement).value || "食費");
-    setSummary("[data-expense-summary-currency]", selectedCurrency());
+    setSummary("[data-expense-summary-currency]", currencyLabel(selectedCurrency()));
     setSummary("[data-expense-summary-payment]", (field("paymentMethod") as HTMLSelectElement).value || "カード");
     const note = ((field("note") as HTMLTextAreaElement).value || "").trim();
     setSummary("[data-expense-summary-note]", note ? "入力済み" : "任意");

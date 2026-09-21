@@ -181,3 +181,26 @@ test("現地情報に書かれた通貨コードも候補へ含める", () => {
   }, []);
   assert.deepEqual(Array.from(codes), ["JPY", "TWD", "CNY", "USD"]);
 });
+
+test("通貨コードには国旗を添える（ユーロはEU旗）", () => {
+  assert.equal(currency.currencyLabel("JPY"), "🇯🇵 JPY");
+  assert.equal(currency.currencyLabel("EUR"), "🇪🇺 EUR");
+  assert.equal(currency.currencyLabel("twd"), "🇹🇼 TWD");
+  assert.equal(currency.currencyLabel("MOP"), "🇲🇴 MOP");
+  // 表に無い通貨でもコードだけは必ず返す。
+  assert.equal(currency.currencyLabel("ZZZ"), "ZZZ");
+  assert.equal(currency.currencyFlag("ZZZ"), "");
+});
+
+test("台湾・ヨーロッパ・イギリスの旅行で現地通貨が候補に出る", () => {
+  const taiwan = expenseForm.expenseCurrencyCodes({ cities: [{ name: "台北", lat: 25.03, lng: 121.56 }] }, []);
+  assert.deepEqual(Array.from(taiwan), ["JPY", "TWD", "USD"]);
+  const europe = expenseForm.expenseCurrencyCodes({
+    cities: [
+      { name: "パリ", lat: 48.86, lng: 2.35 },
+      { name: "ロンドン", lat: 51.51, lng: -0.13 },
+      { name: "チューリッヒ", lat: 47.37, lng: 8.54 },
+    ],
+  }, []);
+  assert.deepEqual(Array.from(europe), ["JPY", "EUR", "GBP", "CHF", "USD"]);
+});
