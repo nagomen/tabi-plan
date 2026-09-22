@@ -114,7 +114,9 @@ export function groupDays(itinerary: ItineraryItem[], data: TripData = state.dat
     })
     .map((day, index) => ({
       ...day,
-      day: day.day || `Day ${index + 1}`,
+      // DB の day_index は 0 始まりの数値。予定に入っている生値を表示すると
+      // 2日目だけ "1" のようになるため、日付順から表示用ラベルを作る。
+      day: `Day ${index + 1}`,
       area: day.area || cityNameForDate(data, day.date),
     }));
 }

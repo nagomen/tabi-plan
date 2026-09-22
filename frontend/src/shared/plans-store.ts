@@ -65,6 +65,20 @@ const SOURCE_TO_ROW: Record<PlanSource, db.PlanRow["source"]> = {
 };
 const KINDS = new Set<string>(["sight", "move", "food", "stay", "todo", "form"]);
 
+function dayLabelFromIndex(dayIndex: number | null): string | undefined {
+  return dayIndex != null && Number.isInteger(dayIndex) && dayIndex >= 0
+    ? `Day ${dayIndex + 1}`
+    : undefined;
+}
+
+function dayIndexFromLabel(value: unknown): number | null {
+  const text = String(value ?? "").trim();
+  const label = /^Day\s+(\d+)$/i.exec(text);
+  if (label) return Math.max(0, Number(label[1]) - 1);
+  const number = Number(text);
+  return Number.isInteger(number) && number >= 0 ? number : null;
+}
+
 function fmtDate(iso: string): string {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
   return m ? `${m[1]}/${Number(m[2])}/${Number(m[3])}` : iso;
@@ -183,7 +197,7 @@ export function getData(slug: string): LocalPlanData | null {
     } as TripInfo,
     itinerary: db.itinerary().filter((i) => i.plan_id === row.id).map((it) => ({
       itemId: it.id,
-      day: it.day_index ?? undefined,
+      day: dayLabelFromIndex(it.day_index),
       date: it.item_date || "",
       time: (it.start_time || "").slice(0, 5),
       type: it.kind,
@@ -391,7 +405,7 @@ export function saveLocalPlan(
       return {
         ...(typeof item.itemId === "string" && item.itemId ? { id: item.itemId } : {}),
         item_date: /^\d{4}-\d{2}-\d{2}/.test(String(item.date || "")) ? String(item.date).slice(0, 10) : null,
-        day_index: num(item.day),
+        day_index: dayIndexFromLabel(item.day),
         kind: (KINDS.has(kind) ? kind : "sight") as ItemType,
         start_time: /^\d{1,2}:\d{2}/.test(time) ? `${time.slice(0, 5)}:00` : null,
         title: String(item.title || ""),

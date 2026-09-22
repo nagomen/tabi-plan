@@ -19,6 +19,16 @@ test("編集画面の期間と都市詳細をDB往復で保持する", () => {
   }
 });
 
+test("DBの0始まり日番号をDay N表示へ変換し、日付順のタブ名を崩さない", () => {
+  const store = read("src/shared/plans-store.ts");
+  const days = read("src/dashboard/days.ts");
+  assert.match(store, /day: dayLabelFromIndex\(it\.day_index\)/);
+  assert.match(store, /day_index: dayIndexFromLabel\(item\.day\)/);
+  assert.match(store, /`Day \$\{dayIndex \+ 1\}`/);
+  assert.match(days, /day: `Day \$\{index \+ 1\}`/);
+  assert.doesNotMatch(days, /day: day\.day \|\| `Day/);
+});
+
 test("公開共同編集者はメタPATCHを送らず行程と都市だけを保存する", () => {
   const store = read("src/shared/plans-store.ts");
   const editor = read("src/plan-editor/main.ts");
