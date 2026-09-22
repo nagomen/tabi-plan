@@ -63,7 +63,7 @@ test("AIで登録した移動端点の座標もDB往復で保持する", () => {
   assert.match(store, /String\(v\)\.trim\(\) === ""\) return null/);
 });
 
-test("旅行詳細では編集メンバーだけが全日程対応のAIチャットを使える", () => {
+test("旅行詳細のAIチャットは対象日だけを編集し、履歴から復元できる", () => {
   const html = read("index.html");
   const dashboard = read("src/dashboard/main.ts");
   const aiChat = read("src/dashboard/ai-chat.ts");
@@ -74,6 +74,8 @@ test("旅行詳細では編集メンバーだけが全日程対応のAIチャッ
   assert.match(html, /data-ai-chat-import-json/);
   assert.match(html, /data-ai-chat-import-apply/);
   assert.match(html, /data-ai-chat-import-open/);
+  assert.match(html, /data-ai-chat-scope/);
+  assert.match(html, /data-ai-history/);
   assert.match(html, /ChatGPTにも相談する/);
   assert.match(html, /旅行の修正案として取り込む/);
   assert.doesNotMatch(html, />[^<]*(?:外部AI|JSON|プロンプト)[^<]*</);
@@ -81,6 +83,8 @@ test("旅行詳細では編集メンバーだけが全日程対応のAIチャッ
   assert.match(dashboard, /aiSupport\.hidden = false/);
   assert.match(dashboard, /setupAiChat\(aiSupport\)/);
   assert.match(aiChat, /current_itinerary: latestAiItinerary\(\)/);
+  assert.match(aiChat, /scope_dates: scopeDates/);
+  assert.match(aiChat, /!scopeDates\.has\(normalizeDate\(item\.date\)\)/);
   assert.match(aiChat, /members: Array\.isArray\(item\.members\)/);
   assert.match(aiChat, /cities: citiesForAiRefinement\(\)/);
   assert.match(aiChat, /members: membersForAiRefinement\(\)/);
@@ -97,6 +101,8 @@ test("旅行詳細では編集メンバーだけが全日程対応のAIチャッ
   assert.match(aiChat, /この提案を行程に反映/);
   assert.match(aiChat, /await db\.flushMutations\(checkpoint\)/);
   assert.match(db, /"POST", "\/api\/ai\/itinerary-refine"/);
+  assert.match(db, /itineraryVersions/);
+  assert.match(db, /restoreItineraryVersion/);
   assert.match(db, /searchTransportOptions/);
   assert.match(db, /"POST", "\/api\/transport\/search"/);
   assert.match(style, /\.tl-ai-support \{[\s\S]*border-radius: 999px/);

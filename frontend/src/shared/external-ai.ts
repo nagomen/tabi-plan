@@ -132,6 +132,7 @@ export function buildExternalAiRefinePrompt(input: {
   startDate: string;
   endDate: string;
   instruction: string;
+  scopeDates?: string[];
   cities: RouteCity[] | ItineraryRefineCity[];
   members: ItineraryRefineMember[];
   currentItinerary: ItineraryItem[] | ItineraryRefineItem[];
@@ -142,16 +143,20 @@ export function buildExternalAiRefinePrompt(input: {
   const currentItinerary = input.currentItinerary.map((item) =>
     "kind" in item ? item : itineraryItemForExternalAi(item)
   );
+  const scopeDates = input.scopeDates?.length
+    ? input.scopeDates
+    : [...new Set(currentItinerary.map((item) => item.date).filter(Boolean))];
   return [
-    "あなたはTabi Plan用に既存の旅行計画を修正するアシスタントです。以下の依頼を反映し、旅行全体の完全な行程をJSONだけで出力してください。",
+    "あなたはTabi Plan用に既存の旅行計画を部分修正するアシスタントです。以下の依頼を反映し、変更対象日だけをJSONで出力してください。",
     "説明文、Markdown、コードフェンスは不要です。JSONオブジェクトだけを返してください。",
     "利用者はあなたの出力JSONをTabi Planへ貼り付けて、現在の旅行計画へ反映します。",
     "",
     "守ること:",
     `- formatは必ず"${EXTERNAL_AI_JSON_FORMAT}"にする。`,
-    "- daysは旅行期間の全日付を1回ずつ返す。空の日もitemsを空配列にして返す。",
-    "- 依頼で触れていない日・予定は維持する。",
-    "- 全日程を日付順に作る。",
+    "- daysは変更対象日だけを1回ずつ返す。対象日を空にする場合もitemsを空配列にする。",
+    "- 変更対象外の日は返さず、変更しない。",
+    "- 対象日の依頼で触れていない予定は維持する。",
+    "- 対象日を日付順に作る。",
     "- stay以外の予定にはHH:MM形式のtimeを入れ、同じ開始時刻を重ねない。",
     "- 複数都市の日は、Aの観光→AからBへの移動→Bの観光→BからCへの移動→Cの観光のように、実際の現在地順で交互に置く。移動だけを先頭や末尾へまとめない。",
     "- moveはfrom_city/from_place/to_city/to_place/transport/duration_minutesを必須にし、到着前に次の予定を置かない。cityはto_cityと同じにする。",
@@ -165,10 +170,11 @@ export function buildExternalAiRefinePrompt(input: {
     "",
     `旅行名: ${input.title || "旅行計画"}`,
     `期間: ${input.startDate}〜${input.endDate}`,
+    `変更対象日: ${scopeDates.join(", ")}`,
     `今回の依頼: ${input.instruction}`,
     `登録済み訪問地: ${compactJson(cities)}`,
     `参加メンバーと参加期間: ${compactJson(input.members)}`,
-    `現在の全行程: ${compactJson(currentItinerary)}`,
+    `変更対象日の現在行程: ${compactJson(currentItinerary)}`,
     "",
     `厳守する出力JSON形式: ${compactJson(OUTPUT_SCHEMA)}`,
   ].join("\n");
@@ -593,6 +599,7 @@ export function parseExternalAiRefineJson(text: string, dates: string[]): Itiner
   validateRequiredDates(days, dates);
   return {
     message: str(root.message, 500) || "ChatGPTの旅行案を取り込みました。",
+    scope_dates: dates,
     itinerary: days.flatMap((day) => day.items),
   };
 }

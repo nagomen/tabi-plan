@@ -596,6 +596,22 @@ async function migrate021() {
   ) ENGINE=InnoDB`);
 }
 
+async function migrate022() {
+  await conn.query(`CREATE TABLE IF NOT EXISTS itinerary_versions (
+    id            VARCHAR(32) NOT NULL,
+    plan_id       VARCHAR(32) NOT NULL,
+    plan_version  BIGINT UNSIGNED NOT NULL,
+    actor_user_id VARCHAR(32) NULL,
+    content_json  JSON NOT NULL,
+    created_at    DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_itinerary_versions_plan_version (plan_id, plan_version),
+    KEY idx_itinerary_versions_plan_created (plan_id, created_at),
+    CONSTRAINT fk_itinerary_versions_plan FOREIGN KEY (plan_id) REFERENCES plans (id) ON DELETE CASCADE,
+    CONSTRAINT fk_itinerary_versions_actor FOREIGN KEY (actor_user_id) REFERENCES users (id) ON DELETE SET NULL
+  ) ENGINE=InnoDB`);
+}
+
 async function main() {
   await conn.query(`CREATE TABLE IF NOT EXISTS schema_migrations (
     id VARCHAR(64) NOT NULL PRIMARY KEY,
@@ -621,6 +637,7 @@ async function main() {
   await applyMigration("019_trip_mcp_oauth", migrate019);
   await applyMigration("020_exact_date_exchange_rates", migrate020);
   await applyMigration("021_mcp_itinerary_editing", migrate021);
+  await applyMigration("022_itinerary_versions", migrate022);
 }
 
 // 同時デプロイが同じDDLを並走させないよう、DB側の advisory lock で直列化する。

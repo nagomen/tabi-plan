@@ -150,7 +150,7 @@ function normalizeItem(
   };
 }
 
-/** AIの完全な修正案を、日付欠落と移動順の破綻がないときだけ受理する。 */
+/** AIの対象日修正案を、日付欠落と移動順の破綻がないときだけ受理する。 */
 export function finalizeRefinedItinerary(
   raw: RawRefineResult,
   dates: string[],
@@ -211,7 +211,7 @@ export function finalizeRefinedItinerary(
   }
   const message = String(raw.message || "").trim();
   if (!message) throw new AiOutputError("AIの変更説明がありません");
-  return { message: message.slice(0, 500), itinerary };
+  return { message: message.slice(0, 500), scope_dates: dates, itinerary };
 }
 
 function refinementPrompt(input: ItineraryRefineInput, dates: string[]): string {
@@ -227,18 +227,18 @@ function refinementPrompt(input: ItineraryRefineInput, dates: string[]): string 
   const transportOptions = (input.transport_options || []).slice(0, 16);
   return [
     `旅行期間: ${input.start_date}〜${input.end_date}`,
-    `対象日: ${dates.join(", ")}`,
+    `変更対象日（返すのはこの日だけ）: ${dates.join(", ")}`,
     `画面で選択中の日: ${input.active_date}`,
     cityLines ? `登録済みの訪問地メタ:\n${cityLines}` : "",
     memberLines ? `参加メンバーと参加期間:\n${memberLines}` : "",
     transportOptions.length ? `APIで検索済みの移動候補（この候補を優先。候補外の便名・価格は断定しない）:\n${JSON.stringify(transportOptions)}` : "",
     history ? `直前の会話:\n${history}` : "",
     `今回の依頼: ${input.instruction}`,
-    `現在の全行程(JSON):\n${JSON.stringify(input.current_itinerary)}`,
+    `変更対象日の現在行程(JSON):\n${JSON.stringify(input.current_itinerary)}`,
     "",
-    "依頼を反映した旅行全体の完全な行程を返してください。依頼で触れていない日・予定は維持してください。",
+    "変更対象日の完成後の行程だけを返してください。対象外の日は返さず、変更もしません。",
     "守ること:",
-    "- daysは旅行期間の全日付を1回ずつ返す。空の日もitemsを空配列にして返す。",
+    "- daysは変更対象日だけを1回ずつ返す。対象日を空にする場合もitemsを空配列にする。",
     "- 予定は実行時刻順。stay以外はHH:MMを必須とし、同じ開始時刻に重ねない。",
     "- 複数都市の日は、Aの観光→AからBへの移動→Bの観光→BからCへの移動→Cの観光、のように現在地の順で交互に配置する。移動だけを先頭や末尾へまとめない。",
     "- moveはfrom_city/from_place/to_city/to_place/transport/duration_minutesを必須にし、到着見込みより前に次の予定を置かない。cityはto_cityと同じにする。",
@@ -264,8 +264,16 @@ export async function refineItinerary(
   if (!apiKey) throw new AiUnavailableError("AI旅行相談は現在利用できません");
   const instruction = input.instruction.trim();
   if (!instruction) throw new AiInputError("変更したい内容を入力してください");
-  const dates = daysBetween(input.start_date, input.end_date);
-  if (!dates.includes(input.active_date)) throw new AiInputError("選択中の日付が旅行期間外です");
+  const tripDates = daysBetween(input.start_date, input.end_date);
+  if (!tripDates.includes(input.active_date)) throw new AiInputError("選択中の日付が旅行期間外です");
+  const requestedScope = input.scope_dates?.length ? input.scope_dates : [input.active_date];
+  const dates = [...new Set(requestedScope)];
+  if (!dates.length || dates.some((date) => !tripDates.includes(date))) {
+    throw new AiInputError("変更対象の日付が旅行期間外です");
+  }
+  if (input.current_itinerary.some((item) => !dates.includes(item.date))) {
+    throw new AiInputError("変更対象外の行程が含まれています");
+  }
   if (input.current_itinerary.length > dates.length * MAX_ITEMS_PER_DAY) {
     throw new AiInputError("現在の行程が多すぎるためAI旅行相談を利用できません");
   }

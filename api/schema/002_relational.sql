@@ -339,6 +339,21 @@ CREATE TABLE itinerary_audit_logs (
   CONSTRAINT fk_itinerary_audit_actor FOREIGN KEY (actor_user_id) REFERENCES users (id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
+-- 行程を一括保存する直前のスナップショット。AI・手動編集のどちらも版単位で戻せる。
+CREATE TABLE itinerary_versions (
+  id            VARCHAR(32) NOT NULL,
+  plan_id       VARCHAR(32) NOT NULL,
+  plan_version  BIGINT UNSIGNED NOT NULL,
+  actor_user_id VARCHAR(32) NULL,
+  content_json  JSON NOT NULL,
+  created_at    DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_itinerary_versions_plan_version (plan_id, plan_version),
+  KEY idx_itinerary_versions_plan_created (plan_id, created_at),
+  CONSTRAINT fk_itinerary_versions_plan FOREIGN KEY (plan_id) REFERENCES plans (id) ON DELETE CASCADE,
+  CONSTRAINT fk_itinerary_versions_actor FOREIGN KEY (actor_user_id) REFERENCES users (id) ON DELETE SET NULL
+) ENGINE=InnoDB;
+
 -- MCPの再試行による行程の二重登録を防ぐ。
 CREATE TABLE mcp_itinerary_requests (
   user_id           VARCHAR(32) NOT NULL,

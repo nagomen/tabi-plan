@@ -135,12 +135,19 @@
           <div class="tl-ai-chat-log" data-ai-chat-log aria-live="polite"></div>
           <form class="tl-ai-chat-form" data-ai-chat-form>
             <label for="tl-ai-chat-input">どう変えたいですか？</label>
+            <label class="tl-ai-chat-scope">編集範囲
+              <select data-ai-chat-scope aria-label="AIが編集する日程"></select>
+            </label>
             <textarea id="tl-ai-chat-input" data-ai-chat-input rows="3" maxlength="1200" placeholder="例：この日は午前中に深圳を観光してから廈門へ移動。6日目は金門島をゆっくり回る行程にして"></textarea>
             <div class="tl-ai-chat-actions">
               <span data-ai-chat-status></span>
               <button type="submit" data-ai-chat-send>AIに相談する</button>
             </div>
           </form>
+          <details class="tl-ai-history" data-ai-history>
+            <summary>変更履歴から元に戻す</summary>
+            <div data-ai-history-list><p>履歴を読み込んでいます…</p></div>
+          </details>
           <details class="tl-ai-import" data-ai-chat-import>
             <summary>
               <span>ChatGPTにも相談する</span>

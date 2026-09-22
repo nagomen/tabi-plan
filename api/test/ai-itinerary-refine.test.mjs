@@ -39,6 +39,7 @@ test("チャット修正案も観光と都市間移動を実行順に保持す�
   assert.deepEqual(result.itinerary.map((entry) => entry.title), [
     "深圳観光", "深圳 → 廈門", "廈門観光", "廈門 → 金門島", "金門島観光",
   ]);
+  assert.deepEqual(result.scope_dates, ["2026-10-13"]);
 });
 
 test("移動到着前の予定と旅行日の欠落を拒否する", () => {

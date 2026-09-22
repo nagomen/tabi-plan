@@ -75,10 +75,25 @@ function itineraryForAi(items: ItineraryItem[]): db.ItineraryRefineItem[] {
 }
 
 function latestAiItinerary(): db.ItineraryRefineItem[] {
-  for (let index = aiChatEntries.length - 1; index >= 0; index -= 1) {
-    if (aiChatEntries[index].proposal) return aiChatEntries[index].proposal!.itinerary;
-  }
   return itineraryForAi(state.data.itinerary || []);
+}
+
+function selectedScopeDates(): string[] {
+  const select = root.querySelector<HTMLSelectElement>("[data-ai-chat-scope]");
+  const dates = tripDateRange(state.data);
+  if (select?.value === "all") return dates;
+  const selected = select?.value || state.days[state.active]?.date || dates[0] || "";
+  return dates.includes(selected) ? [selected] : [];
+}
+
+function syncScopeSelect(): void {
+  const select = root.querySelector<HTMLSelectElement>("[data-ai-chat-scope]");
+  if (!select) return;
+  const dates = tripDateRange(state.data);
+  const activeDate = state.days[state.active]?.date || dates[0] || "";
+  select.innerHTML = dates.map((date, index) =>
+    `<option value="${escapeHtml(date)}"${date === activeDate ? " selected" : ""}>Day ${index + 1}・${escapeHtml(mdLabel(date))}</option>`
+  ).join("") + (dates.length > 1 ? '<option value="all">全日程（データ量大）</option>' : "");
 }
 
 function itineraryFromAi(items: db.ItineraryRefineItem[]): ItineraryItem[] {
@@ -136,14 +151,16 @@ function membersForAiRefinement(): db.ItineraryRefineMember[] {
 
 function externalAiRefinePrompt(instruction: string): string {
   const dates = tripDateRange(state.data);
+  const scopeDates = selectedScopeDates();
   return buildExternalAiRefinePrompt({
     title: state.data.trip?.title || CONFIG.tripTitle || "旅行計画",
     startDate: dates[0] || "",
     endDate: dates[dates.length - 1] || "",
     instruction,
+    scopeDates,
     cities: state.data.cities || [],
     members: membersForAiRefinement(),
-    currentItinerary: latestAiItinerary(),
+    currentItinerary: latestAiItinerary().filter((item) => scopeDates.includes(item.date)),
   });
 }
 
@@ -164,8 +181,7 @@ function importExternalAiRefineJson(raw: string): void {
     return;
   }
   try {
-    const dates = tripDateRange(state.data);
-    const proposal = parseExternalAiRefineJson(raw, dates);
+    const proposal = parseExternalAiRefineJson(raw, selectedScopeDates());
     aiChatEntries.push({ role: "assistant", text: proposal.message, proposal });
     status.textContent = "旅行の修正案を読み込みました。内容を確認して反映してください。";
     status.className = "is-ok";
@@ -245,12 +261,45 @@ function renderAiChat(): void {
   });
 }
 
+async function renderItineraryHistory(): Promise<void> {
+  const list = root.querySelector<HTMLElement>("[data-ai-history-list]");
+  const id = planId();
+  if (!list || !id) return;
+  list.innerHTML = "<p>履歴を読み込んでいます…</p>";
+  try {
+    const versions = await db.itineraryVersions(id);
+    list.innerHTML = versions.length ? versions.map((version) => {
+      const created = new Date(version.created_at.replace(" ", "T"));
+      const when = Number.isNaN(created.getTime()) ? version.created_at : created.toLocaleString("ja-JP");
+      return `<div class="tl-ai-history-row"><span><b>Version ${version.plan_version}</b><small>${escapeHtml(when)}・${escapeHtml(version.actor_name)}・${version.item_count}件</small></span><button type="button" data-ai-restore="${escapeHtml(version.id)}">この版へ戻す</button></div>`;
+    }).join("") : "<p>復元できる履歴はまだありません。</p>";
+    list.querySelectorAll<HTMLButtonElement>("[data-ai-restore]").forEach((button) => {
+      button.addEventListener("click", async () => {
+        if (!window.confirm("現在の行程をこの版へ戻しますか？現在の状態も履歴へ残ります。")) return;
+        button.disabled = true;
+        try {
+          await db.restoreItineraryVersion(id, button.dataset.aiRestore || "");
+          await hooks.syncData(false);
+          await renderItineraryHistory();
+        } catch (error) {
+          list.insertAdjacentHTML("afterbegin", `<p class="is-warn">${escapeHtml(errorMessage(error) || "履歴を復元できませんでした。")}</p>`);
+          button.disabled = false;
+        }
+      });
+    });
+  } catch (error) {
+    list.innerHTML = `<p class="is-warn">${escapeHtml(errorMessage(error) || "履歴を読み込めませんでした。")}</p>`;
+  }
+}
+
 async function applyAiProposal(index: number): Promise<void> {
   const entry = aiChatEntries[index];
   if (!entry?.proposal || entry.applied || aiChatBusy) return;
   const status = root.querySelector<HTMLElement>("[data-ai-chat-status]");
   const checkpoint = db.mutationCheckpoint();
-  state.data.itinerary = carryOverItemMembers(itineraryFromAi(entry.proposal.itinerary));
+  const scopeDates = new Set(entry.proposal.scope_dates);
+  const untouched = (state.data.itinerary || []).filter((item) => !scopeDates.has(normalizeDate(item.date)));
+  state.data.itinerary = carryOverItemMembers([...untouched, ...itineraryFromAi(entry.proposal.itinerary)]);
   const saved = TripPlans.saveData(CONFIG.tripSlug, state.data as TripPlans.LocalPlanData);
   if (!saved) {
     if (status) status.textContent = "行程を保存できませんでした。";
@@ -281,15 +330,20 @@ export function setupAiChat(aiSupport: HTMLButtonElement): void {
   const send = root.querySelector<HTMLButtonElement>("[data-ai-chat-send]");
   const status = root.querySelector<HTMLElement>("[data-ai-chat-status]");
   const importDetails = root.querySelector<HTMLDetailsElement>("[data-ai-chat-import]");
+  const historyDetails = root.querySelector<HTMLDetailsElement>("[data-ai-history]");
   const importOpen = root.querySelector<HTMLAnchorElement>("[data-ai-chat-import-open]");
   const importJson = root.querySelector<HTMLTextAreaElement>("[data-ai-chat-import-json]");
   const importApply = root.querySelector<HTMLButtonElement>("[data-ai-chat-import-apply]");
   if (!chat || !close || !form || !input || !send || !status || !importDetails || !importOpen || !importJson || !importApply) return;
+  historyDetails?.addEventListener("toggle", () => {
+    if (historyDetails.open) void renderItineraryHistory();
+  });
   const setOpen = (open: boolean): void => {
     chat.hidden = !open;
     aiSupport.setAttribute("aria-expanded", String(open));
     if (open) {
       updateAiChatContext();
+      syncScopeSelect();
       renderAiChat();
       chat.scrollIntoView({ behavior: "smooth", block: "nearest" });
       input.focus({ preventScroll: true });
@@ -331,6 +385,7 @@ export function setupAiChat(aiSupport: HTMLButtonElement): void {
     if (!instruction || aiChatBusy) return;
     const dates = tripDateRange(state.data);
     const activeDate = state.days[state.active]?.date || dates[0] || "";
+    const scopeDates = selectedScopeDates();
     if (!dates.length || !activeDate || !planId()) {
       status.textContent = "旅行期間または旅行計画を確認できませんでした。";
       return;
@@ -349,9 +404,10 @@ export function setupAiChat(aiSupport: HTMLButtonElement): void {
         start_date: dates[0],
         end_date: dates[dates.length - 1],
         active_date: activeDate,
+        scope_dates: scopeDates,
         instruction,
         history,
-        current_itinerary: latestAiItinerary(),
+        current_itinerary: latestAiItinerary().filter((item) => scopeDates.includes(item.date)),
         cities: citiesForAiRefinement(),
         members: membersForAiRefinement(),
       });

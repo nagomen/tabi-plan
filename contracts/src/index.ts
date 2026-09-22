@@ -274,6 +274,8 @@ export interface ItineraryRefineInput {
   instruction: string;
   history: ItineraryRefineMessage[];
   current_itinerary: ItineraryRefineItem[];
+  /** AIへ渡して置換する日付。省略時はactive_dateだけを対象にする。 */
+  scope_dates?: string[];
   /** 計画に登録済みの訪問地メタ。AIは依頼がない限りこの順序・期間を維持する。 */
   cities?: ItineraryRefineCity[];
   /** 参加期間つきメンバー。分岐日程のmembers判定に使う。 */
@@ -284,6 +286,8 @@ export interface ItineraryRefineInput {
 
 export interface ItineraryRefineResult {
   message: string;
+  /** itineraryで置換する日付。含まれない日程はクライアントが維持する。 */
+  scope_dates: string[];
   itinerary: ItineraryRefineItem[];
 }
 

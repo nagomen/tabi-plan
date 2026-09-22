@@ -911,9 +911,35 @@ export async function generateItinerary(input: ItineraryAiGenerateInput): Promis
   return request<ItineraryDraft>("POST", "/api/ai/itinerary", input);
 }
 
-/** 旅行詳細のAIチャットから、現在の全行程に対する修正案を作る。 */
+/** 旅行詳細のAIチャットから、指定した日だけの修正案を作る。 */
 export async function refineItinerary(input: ItineraryRefineInput): Promise<ItineraryRefineResult> {
   return request<ItineraryRefineResult>("POST", "/api/ai/itinerary-refine", input);
+}
+
+export interface ItineraryVersion {
+  id: string;
+  plan_version: number;
+  actor_name: string;
+  item_count: number;
+  created_at: string;
+}
+
+export async function itineraryVersions(planId: string): Promise<ItineraryVersion[]> {
+  const result = await request<{ versions: ItineraryVersion[] }>(
+    "GET", `/api/plans/${encodeURIComponent(planId)}/itinerary-versions`,
+  );
+  return result.versions || [];
+}
+
+export async function restoreItineraryVersion(planId: string, versionId: string): Promise<void> {
+  const plan = planById(planId);
+  if (!plan) throw new Error("旅行計画を確認できませんでした");
+  await request(
+    "POST",
+    `/api/plans/${encodeURIComponent(planId)}/itinerary-versions/${encodeURIComponent(versionId)}/restore`,
+    { expected_version: plan.version },
+  );
+  await reload();
 }
 
 export async function searchTransportOptions(input: TransportSearchInput): Promise<TransportSearchResult> {

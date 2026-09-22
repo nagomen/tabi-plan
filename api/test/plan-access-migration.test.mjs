@@ -80,3 +80,15 @@ test("支払日別為替レートは日付と通貨ペアで一意に保存す�
   assert.match(migration, /020_exact_date_exchange_rates/);
   assert.match(migration, /CREATE TABLE IF NOT EXISTS exchange_rates/);
 });
+
+test("行程保存前の版をDBへ残し、編集メンバーだけが復元できる", () => {
+  const schema = read("schema/002_relational.sql");
+  const migration = read("scripts/migrate.mjs");
+  const plans = read("src/plan-repo.ts");
+  const routes = read("src/routes.ts");
+  assert.match(schema, /CREATE TABLE itinerary_versions[\s\S]*content_json\s+JSON NOT NULL/);
+  assert.match(migration, /022_itinerary_versions/);
+  assert.match(plans, /INSERT IGNORE INTO itinerary_versions/);
+  assert.match(plans, /restoreItineraryVersion/);
+  assert.match(routes, /itinerary-versions[\s\S]*access\.canEditWorkspace/);
+});

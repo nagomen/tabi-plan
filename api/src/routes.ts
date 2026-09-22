@@ -16,6 +16,8 @@
 //   DELETE /api/plans/<id>/members/<user>    ownerが参加者を計画から削除
 //   DELETE /api/plans/<id>/members/<user>/access 会計履歴を残してアクセスだけ停止
 //   PUT    /api/plans/<id>/content           行程・都市・リンク・チェックリスト・候補を一括置換
+//   GET    /api/plans/<id>/itinerary-versions 行程の保存履歴
+//   POST   /api/plans/<id>/itinerary-versions/<version>/restore 行程を復元
 //   PUT    /api/plans/<id>/candidate-slots/<slot>/vote     候補へ投票・変更
 //   POST   /api/plans/<id>/candidate-slots/<slot>/finalize ownerが投票を終了して最多票を確定
 //   PUT    /api/plans/<id>/flight-notes/<便名> 自分の便メモ（リンク・予約番号・座席・QR）を保存
@@ -226,6 +228,7 @@ function itineraryRefineInput(body: Body): ItineraryRefineInput {
     instruction,
     history,
     current_itinerary: currentItinerary,
+    scope_dates: strArr(body.scope_dates).slice(0, 14).map((value) => value.slice(0, 10)),
     cities,
     members,
     transport_options: transportOptions,
@@ -582,6 +585,21 @@ export async function route(method: string, path: string, body: Body, actorUserI
     const version = await repo.replacePlanContent(
       m[1], content as Parameters<typeof repo.replacePlanContent>[1], requestedVersion, actorUserId,
     );
+    return { status: 200, body: { ok: true, version } };
+  }
+  m = /^\/api\/plans\/([\w-]{1,32})\/itinerary-versions$/.exec(path);
+  if (m && method === "GET") {
+    const access = await accessRepo.getPlanAccess(m[1], actorUserId);
+    if (!access.canEditWorkspace) return forbidden();
+    return { status: 200, body: { versions: await repo.listItineraryVersions(m[1]) } };
+  }
+  m = /^\/api\/plans\/([\w-]{1,32})\/itinerary-versions\/([\w-]{1,32})\/restore$/.exec(path);
+  if (m && method === "POST") {
+    const requestedVersion = expectedVersion(body);
+    if (requestedVersion === null) return badRequest("expected_version には1以上の整数が必要です");
+    const access = await accessRepo.getPlanAccess(m[1], actorUserId);
+    if (!access.canEditWorkspace) return forbidden();
+    const version = await repo.restoreItineraryVersion(m[1], m[2], requestedVersion, actorUserId);
     return { status: 200, body: { ok: true, version } };
   }
   // 便ごとの個人メモ（リンク・予約番号・座席・QR）。自分の行だけを書ける。

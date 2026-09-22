@@ -101,12 +101,14 @@ test("external AI prompt asks for the strict Tabi Plan JSON format", () => {
     startDate: "2026-10-09",
     endDate: "2026-10-10",
     instruction: "10日の夜にマカオへ移動",
+    scopeDates: ["2026-10-10"],
     cities: sample.cities,
     members: [{ user_id: "usr_a", name: "A", from_date: null, to_date: null }],
     currentItinerary: [],
   });
   assert.match(prompt, new RegExp(EXTERNAL_AI_JSON_FORMAT));
-  assert.match(prompt, /daysは旅行期間の全日付を1回ずつ返す/);
+  assert.match(prompt, /daysは変更対象日だけを1回ずつ返す/);
+  assert.match(prompt, /変更対象日: 2026-10-10/);
   assert.match(prompt, /Tabi Planへ貼り付け/);
   assert.match(prompt, /移動だけを先頭や末尾へまとめない/);
 });
@@ -171,6 +173,7 @@ test("external AI refine JSON requires every trip date", () => {
 test("external AI refine JSON becomes an applyable proposal", () => {
   const proposal = parseExternalAiRefineJson(`\n\`\`\`json\n${JSON.stringify(sample)}\n\`\`\`\n`, ["2026-10-09", "2026-10-10"]);
   assert.equal(proposal.message, sample.message);
+  assert.deepEqual(Array.from(proposal.scope_dates), ["2026-10-09", "2026-10-10"]);
   assert.equal(proposal.itinerary.length, 2);
   assert.equal(proposal.itinerary[1].from_city, "香港");
   assert.deepEqual(Array.from(proposal.itinerary[1].members), ["usr_a"]);

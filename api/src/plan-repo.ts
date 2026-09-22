@@ -593,6 +593,13 @@ export async function replacePlanContent(planId: string, body: {
           .map((row) => normalizeStoredItinerary(row))
           .map((row) => [row.id, row]),
       );
+      // この保存で壊れても版単位で戻せるよう、変更前の行程を一度だけ保存する。
+      await conn.query(
+        `INSERT IGNORE INTO itinerary_versions
+           (id, plan_id, plan_version, actor_user_id, content_json)
+         VALUES (?, ?, ?, ?, ?)`,
+        [newId("itv"), planId, currentVersion, actorUserId || null, JSON.stringify([...current.values()])],
+      );
       const desired = body.itinerary.map(normalizeItineraryInput);
       const desiredIds = new Set<string>();
       for (const item of desired) {
@@ -761,6 +768,64 @@ export async function replacePlanContent(planId: string, body: {
     return currentVersion + (incrementVersion ? 1 : 0);
   };
   return existingConnection ? work(existingConnection) : withTransaction(work);
+}
+
+export interface ItineraryVersion {
+  id: string;
+  plan_version: number;
+  actor_name: string;
+  item_count: number;
+  created_at: string;
+}
+
+function itineraryVersionContent(value: unknown): Record<string, unknown>[] | null {
+  if (Array.isArray(value)) return value as Record<string, unknown>[];
+  if (typeof value === "string") {
+    try {
+      const parsed: unknown = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed as Record<string, unknown>[] : null;
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+export async function listItineraryVersions(planId: string): Promise<ItineraryVersion[]> {
+  const rows = await all<{
+    id: string; plan_version: number; actor_name: string | null; content_json: unknown; created_at: string;
+  }>(
+    `SELECT v.id, v.plan_version, u.display_name AS actor_name, v.content_json, v.created_at
+       FROM itinerary_versions v
+       LEFT JOIN users u ON u.id = v.actor_user_id
+      WHERE v.plan_id = ?
+      ORDER BY v.plan_version DESC LIMIT 50`,
+    [planId],
+  );
+  return rows.map((row) => ({
+    id: row.id,
+    plan_version: Number(row.plan_version),
+    actor_name: row.actor_name || "不明なユーザー",
+    item_count: itineraryVersionContent(row.content_json)?.length || 0,
+    created_at: row.created_at,
+  }));
+}
+
+export async function restoreItineraryVersion(
+  planId: string,
+  versionId: string,
+  expectedVersion: number,
+  actorUserId: string,
+): Promise<number> {
+  const rows = await all<{ content_json: unknown }>(
+    "SELECT content_json FROM itinerary_versions WHERE id = ? AND plan_id = ? LIMIT 1",
+    [versionId, planId],
+  );
+  const content = itineraryVersionContent(rows[0]?.content_json);
+  if (!rows[0] || !content) {
+    throw new BadRequest("復元する履歴が見つかりません");
+  }
+  return replacePlanContent(planId, { itinerary: content }, expectedVersion, actorUserId);
 }
 
 export async function countView(planId: string): Promise<void> {
