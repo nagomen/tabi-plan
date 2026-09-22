@@ -29,7 +29,7 @@ export async function duplicateToMine(slug: string, fromPublic: boolean): Promis
   const already = TripPlans.existingCopyOf(slug);
   if (already) {
     showToast("すでにコピーがあります。そのコピーを開きます");
-    navigateWithPageTransition("plan-editor.html?plan=" + encodeURIComponent(already.slug));
+    navigateWithPageTransition("index.html?plan=" + encodeURIComponent(already.slug) + "#edit");
     return;
   }
   let copy: PlanMeta | null = null;
@@ -48,7 +48,7 @@ export async function duplicateToMine(slug: string, fromPublic: boolean): Promis
   // 参加者は duplicate() が複製者ひとりに揃えるので、ここでは触らない。
   render();
   showToast(fromPublic ? "自分の計画に複製しました。編集画面を開きます" : "計画を複製しました。編集画面を開きます");
-  navigateWithPageTransition("plan-editor.html?plan=" + encodeURIComponent(copy.slug));
+  navigateWithPageTransition("index.html?plan=" + encodeURIComponent(copy.slug) + "#edit");
 }
 
 export function openAuthorPage(link: HTMLElement): void {

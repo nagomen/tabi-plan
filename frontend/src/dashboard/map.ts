@@ -1,4 +1,5 @@
 import { renderLeafletMap } from "./leaflet-map";
+import { mapEditHooks } from "./inline-map-edit";
 import type { DayGroup } from "./types";
 import { mapsSearchUrl } from "../shared/maps";
 import type { ItineraryItem } from "../shared/types";
@@ -96,7 +97,7 @@ export async function renderMapEmbed(activePlaces: ItineraryItem[], _day: DayGro
     src = mapsEmbedDirections(activePlaces);
   } else if (CONFIG.mapEmbed.mode === "leaflet") {
     try {
-      await renderLeafletMap(map, leafletState, state.days, state.active, CONFIG.mapDefaults);
+      await renderLeafletMap(map, leafletState, state.days, state.active, CONFIG.mapDefaults, mapEditHooks());
       refreshMapLayout();
     } catch (error) {
       console.warn(error);

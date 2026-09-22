@@ -98,7 +98,7 @@ hub.addEventListener("click", (event) => {
   if (target.closest("[data-edit]")) {
     event.preventDefault();
     TripPlans.setActiveSlug(slug);
-    navigateWithPageTransition("plan-editor.html?plan=" + encodeURIComponent(slug));
+    navigateWithPageTransition("index.html?plan=" + encodeURIComponent(slug) + "#edit");
     return;
   }
   if (target.closest("[data-dup]")) {

@@ -18,7 +18,7 @@ export async function copyPlanToMine(button: HTMLButtonElement): Promise<void> {
   const already = TripPlans.existingCopyOf(CONFIG.tripSlug);
   if (already) {
     TripPlans.setActiveSlug(already.slug);
-    location.href = "plan-editor.html?plan=" + encodeURIComponent(already.slug);
+    location.href = "index.html?plan=" + encodeURIComponent(already.slug) + "#edit";
     return;
   }
   button.disabled = true;
@@ -29,7 +29,7 @@ export async function copyPlanToMine(button: HTMLButtonElement): Promise<void> {
       return;
     }
     TripPlans.setActiveSlug(copy.slug);
-    location.href = "plan-editor.html?plan=" + encodeURIComponent(copy.slug);
+    location.href = "index.html?plan=" + encodeURIComponent(copy.slug) + "#edit";
   } catch (error) {
     window.alert("コピーを保存できませんでした。" + (error instanceof Error ? error.message : ""));
   } finally {

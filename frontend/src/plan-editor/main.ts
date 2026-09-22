@@ -54,6 +54,10 @@ import { onMapClick, applyGeo } from "./place-geocode";
 import { onDaysClick, onDaysInput, onDaysKeydown, onDayStripClick } from "./days-actions";
 import { onCityInputKeydown, onCityAddClick, onCitiesChange, onCitiesClick, onCitiesInput } from "./cities";
 import { restoreRecoveryDraft } from "./draft-recovery";
+import { handOffExistingPlanToDashboard } from "./editing-handoff";
+
+// 既にある計画の編集は観覧画面に一本化した。この画面は新規作成のウィザードとして残す。
+const handedOff = handOffExistingPlanToDashboard();
 
 initPageTransitions();
 
@@ -282,10 +286,13 @@ function bootstrapEditor(): void {
 
 // 編集画面は控え（キャッシュ）を使わずサーバーの最新を待つ。
 // 裏で snap が差し替わると、編集中の内容と食い違うため。
-void db.load({ fresh: true, strict: db.isEnabled() }).then(bootstrapEditor).catch((error) => {
-  lockEditor("旅行データを読み込めませんでした。接続を確認して再読み込みしてください");
-  savebarNoteEl.textContent = errorMessage(error);
-  applyEditorLock();
-});
+// 観覧画面へ渡した直後は、遷移するだけなので読み込まない。
+if (!handedOff) {
+  void db.load({ fresh: true, strict: db.isEnabled() }).then(bootstrapEditor).catch((error) => {
+    lockEditor("旅行データを読み込めませんでした。接続を確認して再読み込みしてください");
+    savebarNoteEl.textContent = errorMessage(error);
+    applyEditorLock();
+  });
+}
 
 registerServiceWorker();

@@ -14,6 +14,7 @@ import {
   memberNameInput, memberHint, activeInvitesMount, toast,
 } from "./editor-dom";
 import { markDirty, persist } from "./persist";
+import { markEditorDraft } from "./editing-handoff";
 import { buildData } from "./plan-data";
 import { renderDays } from "./days-render";
 
@@ -568,7 +569,11 @@ export async function shareInvite(
 ): Promise<void> {
   if (state.editorLocked) return;
   if (!model.title.trim()) { toast("先に旅行名を入力してください"); return; }
-  if (!state.slug) { state.slug = TripPlans.uniqueSlug(model.title); model.slug = state.slug; }
+  if (!state.slug) {
+    state.slug = TripPlans.uniqueSlug(model.title);
+    model.slug = state.slug;
+    markEditorDraft(state.slug);
+  }
   if (!(await persist(true))) {
     toast("計画を保存できなかったため、招待を作成しませんでした");
     return;

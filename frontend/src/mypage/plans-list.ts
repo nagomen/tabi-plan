@@ -21,7 +21,7 @@ export function mountPlansList(els: PlansListEls): { renderPlans: () => void } {
     const meta = [plan.dates, plan.members].filter(Boolean).map(escapeHtml).join(" ・ ");
     const draft = !TripPlans.isPublished(plan);
     const href = draft
-      ? `plan-editor.html?plan=${encodeURIComponent(plan.slug)}`
+      ? `index.html?plan=${encodeURIComponent(plan.slug)}#edit`
       : planDashboardHref(plan.slug);
     const dotColor = draft ? "#b87418" : bandColor(plan.slug, allSlugs);
     return (

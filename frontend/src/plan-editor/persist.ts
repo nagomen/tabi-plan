@@ -6,6 +6,7 @@ import { statusEl, savebarNoteEl } from "./editor-dom";
 import { buildData, contentFingerprint } from "./plan-data";
 import { updateSteps } from "./steps";
 import { clearRecoveryDraft, saveRecoveryDraftNow, scheduleRecoveryDraft } from "./draft-recovery";
+import { markEditorDraft } from "./editing-handoff";
 
 let lastSavedContentFingerprint = "";
 let persistRunning: Promise<boolean> | null = null;
@@ -84,6 +85,8 @@ async function performPersist(explicit = false, slugRetry = 0): Promise<boolean>
   if (!state.slug) {
     state.slug = TripPlans.uniqueSlug(model.title.trim() || UNTITLED);
     model.slug = state.slug;
+    // このタブのウィザードが作った下書きとして覚える（再読み込みで観覧画面へ飛ばさない）。
+    markEditorDraft(state.slug);
     // 失敗時も生成済みURLから端末内下書きを復元できるよう、新しいキーへ即時保存する。
     saveRecoveryDraftNow();
     try { history.replaceState(null, "", "plan-editor.html?plan=" + encodeURIComponent(state.slug)); } catch { /* ignore */ }
@@ -133,6 +136,7 @@ async function performPersist(explicit = false, slugRetry = 0): Promise<boolean>
     if (slugRetry < 2 && error instanceof db.ApiRequestError && error.code === "ER_DUP_ENTRY" && !TripPlans.get(state.slug)) {
       state.slug = TripPlans.uniqueSlug(model.title.trim() || UNTITLED);
       model.slug = state.slug;
+      markEditorDraft(state.slug);
       try { history.replaceState(null, "", "plan-editor.html?plan=" + encodeURIComponent(state.slug)); } catch { /* ignore */ }
       return performPersist(explicit, slugRetry + 1);
     }

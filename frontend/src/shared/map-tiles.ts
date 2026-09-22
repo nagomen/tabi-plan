@@ -1,96 +1,51 @@
 // 地図の下地（背景の地図そのもの）の指定を1か所にまとめる。
 //
-// 鮮明さを優先し、OpenFreeMap Liberty のベクタータイルを MapLibre GL で描画する。
-// 画像タイルを拡大しないため、ズームしてもモザイク状にならない。
-// WebGL が使えない端末や読み込み失敗時だけ CARTO Voyager へフォールバックする。
+// もとは CARTO Voyager を使っていたが、CARTO が鍵なしの配信に
+// 「API KEY REQUIRED」の透かしを焼き込むようになり、全タイルが読めなくなった。
+// 鍵なしで @2x（512px）を配信しているサービスは現状ほかに無いため、
+// OpenStreetMap の標準タイルに戻し、高解像度は Leaflet 側で作る。
+//
+// MapLibre の約1MBの実行コードと WebGL 初期化は引き続き不要。
 
 import type * as LType from "leaflet";
-import "maplibre-gl/dist/maplibre-gl.css";
 
-const VECTOR_STYLE = "https://tiles.openfreemap.org/styles/liberty";
+const RASTER_URL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
 
-const VECTOR_ATTRIBUTION =
-  '<a href="https://openfreemap.org/">OpenFreeMap</a>' +
-  ' &copy; <a href="https://www.openmaptiles.org/">OpenMapTiles</a>' +
-  ' Data from <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
+/** OpenStreetMap 標準タイルが配信している最大ズーム。 */
+const MAX_ZOOM = 19;
 
-const FALLBACK_RASTER_URL = "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png";
+const ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
 
-const FALLBACK_RASTER_OPTIONS = {
-  subdomains: "abcd",
-  maxZoom: 20,
-  attribution:
-    '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' +
-    ' &copy; <a href="https://carto.com/attributions">CARTO</a>',
-};
-
-function supportsWebGL(): boolean {
-  try {
-    const canvas = document.createElement("canvas");
-    return Boolean(canvas.getContext("webgl2") || canvas.getContext("webgl"));
-  } catch {
-    return false;
-  }
+interface NetworkConnectionLike {
+  saveData?: boolean;
+  effectiveType?: string;
 }
 
-/** 地図に鮮明なベクター下地を敷く。 */
+/**
+ * 高解像度タイルを取りに行ってよいかを決める。
+ *
+ * detectRetina は 1枚のタイルの代わりに1段深いズームのタイルを4枚取る。
+ * 高DPI端末では実質2倍の精細さになる代わりに通信量も増えるので、
+ * ブラウザの通信量節約指定と低速回線では諦めて等倍のままにする。
+ */
+export function shouldUseRetinaTiles(connection?: NetworkConnectionLike): boolean {
+  if (connection?.saveData) return false;
+  if (connection?.effectiveType === "slow-2g" || connection?.effectiveType === "2g") return false;
+  return true;
+}
+
+function currentConnection(): NetworkConnectionLike | undefined {
+  if (typeof navigator === "undefined") return undefined;
+  return (navigator as Navigator & { connection?: NetworkConnectionLike }).connection;
+}
+
+/**
+ * 地図に軽量な下地を敷く。
+ */
 export function addBaseLayer(L: typeof LType, map: LType.Map): void {
-  if (!supportsWebGL()) {
-    addFallbackRasterLayer(L, map);
-    return;
-  }
-
-  void (async () => {
-    try {
-      // 連携プラグインが MapLibre 本体も読み込む。地図の初期化時に確実に完了させ、
-      // 失敗した場合だけ通常画像タイルへ切り替える。
-      const { maplibreGL } = await import("@maplibre/maplibre-gl-leaflet");
-      const layer = maplibreGL({ style: VECTOR_STYLE });
-      layer.addTo(map);
-      map.attributionControl?.addAttribution(VECTOR_ATTRIBUTION);
-      useJapaneseLabels(layer);
-    } catch (error) {
-      console.warn("[map] ベクター地図を読み込めないため通常地図へ切り替えます", error);
-      addFallbackRasterLayer(L, map);
-    }
-  })();
-}
-
-function addFallbackRasterLayer(L: typeof LType, map: LType.Map): void {
-  L.tileLayer(FALLBACK_RASTER_URL, FALLBACK_RASTER_OPTIONS).addTo(map);
-}
-
-/** ベクタースタイル内の地名を、日本語・現地名・ローマ字の順で表示する。 */
-function useJapaneseLabels(layer: LType.Layer): void {
-  const gl = (layer as unknown as { getMaplibreMap?: () => MaplibreMap }).getMaplibreMap?.();
-  if (!gl) return;
-
-  const apply = (): void => {
-    const layers = gl.getStyle()?.layers ?? [];
-    for (const entry of layers) {
-      if (entry.type !== "symbol") continue;
-      const field = entry.layout?.["text-field"];
-      if (!field || !JSON.stringify(field).includes("name")) continue;
-      try {
-        gl.setLayoutProperty(entry.id, "text-field", [
-          "coalesce",
-          ["get", "name:ja"],
-          ["get", "name"],
-          ["get", "name:latin"],
-        ]);
-      } catch {
-        // 一部の記号レイヤーで弾かれても、ほかの地名は日本語化する。
-      }
-    }
-  };
-
-  if (gl.isStyleLoaded()) apply();
-  else gl.once("styledata", apply);
-}
-
-interface MaplibreMap {
-  isStyleLoaded: () => boolean;
-  once: (event: string, handler: () => void) => void;
-  getStyle: () => { layers?: { id: string; type: string; layout?: Record<string, unknown> }[] } | undefined;
-  setLayoutProperty: (layerId: string, name: string, value: unknown) => void;
+  L.tileLayer(RASTER_URL, {
+    maxZoom: MAX_ZOOM,
+    detectRetina: shouldUseRetinaTiles(currentConnection()),
+    attribution: ATTRIBUTION,
+  }).addTo(map);
 }

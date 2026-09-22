@@ -22,6 +22,7 @@ import { computeRoute, renderDayTabs } from "./route";
 import { openFlightNoteEditor, openFlightQr } from "./flight-notes";
 import { dayBlockHtml, dayTrackChoice, hydrateWeather, nowNextHtml, selectedTrack, trackItems } from "./itinerary-feed";
 import { updateAiChatContext } from "./ai-chat";
+import { bindInlineEditing } from "./inline-editor";
 
 // ---- 描画フロー ---------------------------------------------------------
 
@@ -265,4 +266,5 @@ export function renderActive(): void {
       if (event.key === "Enter") open();
     });
   });
+  bindInlineEditing();
 }

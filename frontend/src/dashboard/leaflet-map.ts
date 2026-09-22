@@ -146,12 +146,19 @@ function boundsAroundPoints(points: { lat: number; lng: number }[], radiusKm: nu
  * leafletState は main.ts 側の状態オブジェクトをそのまま渡してもらい、
  * map/layer の生成結果をその場で書き戻す（呼び出し側は同じ参照を見続けられる）。
  */
+/** 編集モードのときだけ渡される、地図上での編集の受け口。 */
+export interface MapEditHooks {
+  onMove: (point: RoutePoint, lat: number, lng: number) => void;
+  onEdit: (point: RoutePoint) => void;
+}
+
 export async function renderLeafletMap(
   mapEl: HTMLElement,
   leafletState: LeafletState,
   days: DayGroup[],
   activeIndex: number,
   mapDefaults: MapDefaults,
+  edit?: MapEditHooks,
 ): Promise<void> {
   mapEl.classList.remove("has-embed");
   mapEl.classList.add("has-leaflet");
@@ -242,17 +249,32 @@ export async function renderLeafletMap(
 
   if (showActiveDetail) {
     displayActivePoints.forEach((point) => {
+      const editable = Boolean(edit && point.itemId);
       const icon = L.divIcon({
         className: "",
-        html: `<div class="tl-map-marker is-active" tabindex="0" aria-label="${escapeHtml(shortDate(point.date))} ${escapeHtml(point.place || point.area || point.title || "")}">
+        html: `<div class="tl-map-marker is-active${editable ? " is-editable" : ""}" tabindex="0" aria-label="${escapeHtml(shortDate(point.date))} ${escapeHtml(point.place || point.area || point.title || "")}">
           <span class="tl-map-marker-num">${escapeHtml(shortDate(point.date) || String(point.dayIndex + 1))}</span>
         </div>`,
         iconSize: [46, 28],
         iconAnchor: [21, 16],
       });
-      L.marker([point.lat, point.lng], { icon })
-        .bindPopup(`<b>${escapeHtml(shortDate(point.date))} / ${escapeHtml(point.place || point.area || "")}</b><br>${escapeHtml(point.title || "")}<br>${escapeHtml(point.note || "")}`)
+      const marker = L.marker([point.lat, point.lng], { icon, draggable: editable })
+        .bindPopup(`<b>${escapeHtml(shortDate(point.date))} / ${escapeHtml(point.place || point.area || "")}</b><br>${escapeHtml(point.title || "")}<br>${escapeHtml(point.note || "")}` +
+          (editable ? `<br><button type="button" class="tl-map-edit" data-map-edit>この予定を編集</button>` : ""))
         .addTo(layer);
+      if (!editable || !edit) return;
+      // ドラッグで座標だけを更新する。掴んだ地点（場所／出発地／到着地）の列へ書き戻す。
+      marker.on("dragend", () => {
+        const next = marker.getLatLng();
+        edit.onMove(point, next.lat, next.lng);
+      });
+      marker.on("popupopen", (event: L.PopupEvent) => {
+        event.popup.getElement()?.querySelector<HTMLElement>("[data-map-edit]")
+          ?.addEventListener("click", () => {
+            marker.closePopup();
+            edit.onEdit(point);
+          });
+      });
     });
   }
 

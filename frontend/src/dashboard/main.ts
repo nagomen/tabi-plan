@@ -27,6 +27,7 @@ import { setupAiChat } from "./ai-chat";
 import { copyPlanToMine } from "./plan-copy";
 import { renderActive, renderBase, renderData } from "./render";
 import { syncData } from "./sync";
+import { setupInlineEditor } from "./inline-editor";
 
 initPageTransitions();
 
@@ -190,27 +191,17 @@ async function init(): Promise<void> {
   });
   // マイページはヘッダーの [data-mypage] を共通ドロワー（mypage-drawer）が拾って
   // 右からスライドインで開く。ここでの遷移は不要。
-  // ローカル計画は計画エディタで編集する。サンプルは閲覧のみ。
-  const editWrap = root.querySelector<HTMLElement>("[data-edit-wrap]");
-  const editLink = root.querySelector<HTMLAnchorElement>("[data-edit-link]");
-  const editHead = root.querySelector<HTMLAnchorElement>("[data-edit-head]");
-  const planQuery = "?plan=" + encodeURIComponent(CONFIG.tripSlug);
+  // 観覧画面をそのまま編集モードへ切り替える。別の編集ページには遷移しない。
+  const editHead = root.querySelector<HTMLElement>("[data-edit-head]");
   // 読み取り専用ビューでは編集導線（ヘッダー鉛筆 / フッター編集）を出さない。
-  const editTarget =
-    isReadOnly() ? null
-    : CONFIG.mode === "local" ? { href: "plan-editor.html" + planQuery, label: "計画を編集" }
-    : null;
-  if (editWrap && editLink && editTarget) {
-    editLink.href = editTarget.href;
-    editLink.textContent = editTarget.label;
-    editWrap.hidden = false;
-  }
+  const editTarget = !isReadOnly() && CONFIG.mode === "local";
   if (editHead) {
     if (editTarget) {
-      editHead.href = editTarget.href;
-      editHead.setAttribute("aria-label", editTarget.label);
-      editHead.setAttribute("title", editTarget.label);
+      editHead.setAttribute("href", "#edit");
+      editHead.setAttribute("aria-label", "計画を編集");
+      editHead.setAttribute("title", "計画を編集");
       editHead.hidden = false;
+      setupInlineEditor(editHead);
     } else {
       editHead.hidden = true;
     }

@@ -22,6 +22,7 @@ import { flashLabel, root } from "./dom";
 import { planId } from "./plan-access";
 import { dayCoord, nowHM, nowMinutes, timeToMinutes, todayISO, untilLabel } from "./days";
 import { flightTicketHtml, trainTicketHtml } from "./flight-notes";
+import { isInlineEditing } from "./inline-mode";
 
 /** 旅行の全日程を LINE で送れるテキストにして共有／コピーする。 */
 export async function shareSchedule(): Promise<void> {
@@ -61,6 +62,35 @@ function kindIcon(type: string): string {
   return icon(KIND_ICON[type] || "check");
 }
 
+// ---- 編集モードの目印 ---------------------------------------------------
+//
+// 編集モードのときだけ、予定カードに「どの行か」を持たせる。inline-editor が
+// この目印からダイアログを開き、ドラッグの並べ替えもこの単位で行う。
+
+function inlineItemAttrs(item: ItineraryItem): string {
+  if (!isInlineEditing()) return "";
+  return ` data-inline-item-index="${state.data.itinerary.indexOf(item)}" data-inline-item-id="${escapeHtml(item.itemId || "")}"`;
+}
+
+/** 日ごとの見出しに出す編集操作（予定の追加・日の挿入・日の削除）。 */
+function inlineDayActionsHtml(date: string): string {
+  if (!isInlineEditing() || !date || date === "undated") return "";
+  const day = escapeHtml(date);
+  return `<span class="tl-inline-day-actions">
+    <button class="tl-inline-add" type="button" data-inline-add-date="${day}">＋ 予定</button>
+    <button class="tl-inline-add" type="button" data-inline-day-insert="${day}" title="この日の後ろに空の1日を差し込みます">＋ 翌日を挿入</button>
+    <button class="tl-inline-add is-remove" type="button" data-inline-day-remove="${day}" title="この日を旅程から外し、以降を1日前へ詰めます">この日を削除</button>
+  </span>`;
+}
+
+function inlineEditButtonHtml(draggable: boolean): string {
+  if (!isInlineEditing()) return "";
+  const grip = draggable
+    ? `<button class="tl-inline-grip" type="button" aria-label="ドラッグして並べ替え" title="ドラッグして並べ替え">${icon("bars3")}</button>`
+    : "";
+  return `${grip}<button class="tl-inline-card-edit" type="button" data-inline-item-edit>編集</button>`;
+}
+
 // ---- 1日分の「予定」ブロック（複数日を縦に積めるように分離） ----------
 
 function stayOfDay(d: DayGroup | undefined): ItineraryItem | null {
@@ -76,7 +106,7 @@ function stayRowHtml(s: ItineraryItem, variant: string, label: string): string {
   const sub = variant === " is-prev"
     ? `${label} ・ チェックアウト`
     : s.time ? `${label} ・ IN ${s.time}` : label;
-  return `<div class="tl-stay${variant}">
+  return `<div class="tl-stay${variant}"${inlineItemAttrs(s)}>
     <span class="tl-stay-ic">${icon("buildingOffice2")}</span>
     <div class="tl-stay-body">
       <span class="tl-stay-label">${escapeHtml(sub)}</span>
@@ -84,6 +114,7 @@ function stayRowHtml(s: ItineraryItem, variant: string, label: string): string {
       ${place ? `<span class="tl-stay-place">${escapeHtml(place)}</span>` : ""}
     </div>
     <a class="tl-stay-map" href="${mapsSearchUrl(s.mapQuery || s.place || s.title)}" target="_blank" rel="noopener">地図 ${icon("arrowTopRightOnSquare")}</a>
+    ${inlineEditButtonHtml(false)}
   </div>`;
 }
 
@@ -360,10 +391,11 @@ function timelineHtmlForDay(idx: number): string {
           </span>
         </div>`
       : "";
-    return `${before.join("")}${rejoin}<article class="tl-item${isBranchSpecific ? " is-branch-specific" : ""}" data-kind="${escapeHtml(type)}">
+    return `${before.join("")}${rejoin}<article class="tl-item${isBranchSpecific ? " is-branch-specific" : ""}" data-kind="${escapeHtml(type)}"${inlineItemAttrs(item)}>
       <time class="tl-time">${escapeHtml(item.time || "")}</time>
       <span class="tl-rail"><span class="tl-dot ${escapeHtml(type)}">${kindIcon(type)}</span></span>
       <div class="tl-plan">
+        ${inlineEditButtonHtml(true)}
         <div class="tl-plan-line">${label}${title}</div>
         ${flight ? flightTicketHtml(flight, item.duration, segA, segB) : train ? trainTicketHtml(train, item.duration, segA, segB, item.time) : ""}
         ${item.needed ? `<p class="tl-needed">${escapeHtml(item.needed)}</p>` : ""}
@@ -414,7 +446,7 @@ export function dayBlockHtml(idx: number): string {
   const weather = `<span class="tl-dayblock-weather" data-weather-for="${escapeHtml(day.date)}">${day.weather ? "☀ " + escapeHtml(day.weather) : ""}</span>`;
   const items = timelineHtmlForDay(idx);
   return `<section class="tl-dayblock" data-day-block="${idx}">
-    <div class="tl-dayblock-head"><span class="tl-dayblock-lead"><span>${escapeHtml(head)}</span>${presenceBadgesHtml(day)}</span>${weather}</div>
+    <div class="tl-dayblock-head"><span class="tl-dayblock-lead"><span>${escapeHtml(head)}</span>${presenceBadgesHtml(day)}</span>${weather}${inlineDayActionsHtml(day.date)}</div>
     ${dayTrackTabsHtml(day)}
     ${stayHtmlForDay(idx)}
     ${items || `<p class="tl-dayblock-empty">予定はまだありません</p>`}
