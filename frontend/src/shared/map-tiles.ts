@@ -1,26 +1,22 @@
 // 地図の下地（背景の地図そのもの）の指定を1か所にまとめる。
 //
-// もともとは OpenStreetMap の標準タイルを4画面それぞれで直に書いていた。
-// 標準タイルは彩度が高く、道路の階層や地名の優先度が分かりにくい。
-//
-// 旅行中のモバイル回線と省電力端末を優先し、軽量なCARTO Voyagerを使う。
-// 広域表示は256px、街区を見るズームでは512pxのタイルへ切り替え、
-// MapLibre/WebGLの初期化コストなしで、通信量と鮮明さを両立する。
+// 鮮明さを優先し、OpenFreeMap Liberty のベクタータイルを MapLibre GL で描画する。
+// 画像タイルを拡大しないため、ズームしてもモザイク状にならない。
+// WebGL が使えない端末や読み込み失敗時だけ CARTO Voyager へフォールバックする。
 
 import type * as LType from "leaflet";
+import "maplibre-gl/dist/maplibre-gl.css";
 
-const STANDARD_RASTER_URL = "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png";
-const HIGH_RESOLUTION_RASTER_URL = "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png";
+const VECTOR_STYLE = "https://tiles.openfreemap.org/styles/liberty";
 
-/** 市街地レベルに入ったら高解像度タイルへ切り替える。 */
-export const HIGH_RESOLUTION_TILE_MIN_ZOOM = 12;
+const VECTOR_ATTRIBUTION =
+  '<a href="https://openfreemap.org/">OpenFreeMap</a>' +
+  ' &copy; <a href="https://www.openmaptiles.org/">OpenMapTiles</a>' +
+  ' Data from <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
 
-interface NetworkConnectionLike {
-  saveData?: boolean;
-  effectiveType?: string;
-}
+const FALLBACK_RASTER_URL = "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png";
 
-const RASTER_OPTIONS = {
+const FALLBACK_RASTER_OPTIONS = {
   subdomains: "abcd",
   maxZoom: 20,
   attribution:
@@ -28,43 +24,73 @@ const RASTER_OPTIONS = {
     ' &copy; <a href="https://carto.com/attributions">CARTO</a>',
 };
 
-/**
- * 拡大時に高解像度タイルを使うかを決める。
- * ブラウザの通信量節約指定と2G回線は常に軽量版を優先する。
- */
-export function tileDensityAtZoom(
-  zoom: number,
-  connection?: NetworkConnectionLike,
-): "standard" | "high" {
-  if (zoom < HIGH_RESOLUTION_TILE_MIN_ZOOM) return "standard";
-  if (connection?.saveData) return "standard";
-  if (connection?.effectiveType === "slow-2g" || connection?.effectiveType === "2g") return "standard";
-  return "high";
+function supportsWebGL(): boolean {
+  try {
+    const canvas = document.createElement("canvas");
+    return Boolean(canvas.getContext("webgl2") || canvas.getContext("webgl"));
+  } catch {
+    return false;
+  }
 }
 
-function currentConnection(): NetworkConnectionLike | undefined {
-  if (typeof navigator === "undefined") return undefined;
-  return (navigator as Navigator & { connection?: NetworkConnectionLike }).connection;
-}
-
-/**
- * 地図に、ズームと回線状況に合わせた下地を敷く。
- */
+/** 地図に鮮明なベクター下地を敷く。 */
 export function addBaseLayer(L: typeof LType, map: LType.Map): void {
-  const connection = currentConnection();
-  if (tileDensityAtZoom(HIGH_RESOLUTION_TILE_MIN_ZOOM, connection) === "standard") {
-    L.tileLayer(STANDARD_RASTER_URL, RASTER_OPTIONS).addTo(map);
+  if (!supportsWebGL()) {
+    addFallbackRasterLayer(L, map);
     return;
   }
 
-  // minZoom/maxZoomでLeaflet自身に切り替えさせ、同一ズームで
-  // 標準版と高解像度版を二重にダウンロードしない。
-  L.tileLayer(STANDARD_RASTER_URL, {
-    ...RASTER_OPTIONS,
-    maxZoom: HIGH_RESOLUTION_TILE_MIN_ZOOM - 1,
-  }).addTo(map);
-  L.tileLayer(HIGH_RESOLUTION_RASTER_URL, {
-    ...RASTER_OPTIONS,
-    minZoom: HIGH_RESOLUTION_TILE_MIN_ZOOM,
-  }).addTo(map);
+  void (async () => {
+    try {
+      // 連携プラグインが MapLibre 本体も読み込む。地図の初期化時に確実に完了させ、
+      // 失敗した場合だけ通常画像タイルへ切り替える。
+      const { maplibreGL } = await import("@maplibre/maplibre-gl-leaflet");
+      const layer = maplibreGL({ style: VECTOR_STYLE });
+      layer.addTo(map);
+      map.attributionControl?.addAttribution(VECTOR_ATTRIBUTION);
+      useJapaneseLabels(layer);
+    } catch (error) {
+      console.warn("[map] ベクター地図を読み込めないため通常地図へ切り替えます", error);
+      addFallbackRasterLayer(L, map);
+    }
+  })();
+}
+
+function addFallbackRasterLayer(L: typeof LType, map: LType.Map): void {
+  L.tileLayer(FALLBACK_RASTER_URL, FALLBACK_RASTER_OPTIONS).addTo(map);
+}
+
+/** ベクタースタイル内の地名を、日本語・現地名・ローマ字の順で表示する。 */
+function useJapaneseLabels(layer: LType.Layer): void {
+  const gl = (layer as unknown as { getMaplibreMap?: () => MaplibreMap }).getMaplibreMap?.();
+  if (!gl) return;
+
+  const apply = (): void => {
+    const layers = gl.getStyle()?.layers ?? [];
+    for (const entry of layers) {
+      if (entry.type !== "symbol") continue;
+      const field = entry.layout?.["text-field"];
+      if (!field || !JSON.stringify(field).includes("name")) continue;
+      try {
+        gl.setLayoutProperty(entry.id, "text-field", [
+          "coalesce",
+          ["get", "name:ja"],
+          ["get", "name"],
+          ["get", "name:latin"],
+        ]);
+      } catch {
+        // 一部の記号レイヤーで弾かれても、ほかの地名は日本語化する。
+      }
+    }
+  };
+
+  if (gl.isStyleLoaded()) apply();
+  else gl.once("styledata", apply);
+}
+
+interface MaplibreMap {
+  isStyleLoaded: () => boolean;
+  once: (event: string, handler: () => void) => void;
+  getStyle: () => { layers?: { id: string; type: string; layout?: Record<string, unknown> }[] } | undefined;
+  setLayoutProperty: (layerId: string, name: string, value: unknown) => void;
 }
