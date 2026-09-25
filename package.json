@@ -11,6 +11,7 @@
     "prepare": "git config core.hooksPath .githooks || true",
     "dev": "npm run dev -w frontend",
     "dev:full": "node tools/dev-full.mjs",
+    "plan:data": "node tools/plan-data.mjs",
     "build": "npm run build -w frontend",
     "test": "npm test -w frontend && npm test -w api",
     "test:coverage": "npm run test:coverage -w api",
