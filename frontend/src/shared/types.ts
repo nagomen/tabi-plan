@@ -165,6 +165,17 @@ export interface LocalInfoItem {
   order?: number;
 }
 
+export interface PaymentInfoItem {
+  region: string;
+  currencyCode: string;
+  currencyName: string;
+  cardNote: string;
+  cashNote: string;
+  transportNote: string;
+  setupNote: string;
+  sourceUrl: string;
+}
+
 /** ルート上の滞在都市（大まかな場所＋滞在期間） */
 export interface RouteCity {
   name: string;
@@ -216,6 +227,7 @@ export interface TripData {
   settlement: Settlement;
   checklist: ChecklistItem[];
   localInfo: LocalInfoItem[];
+  paymentInfo?: PaymentInfoItem[];
   itinerary: ItineraryItem[];
   /** 滞在都市（任意）。無ければダッシュボードは行程の area から推定する */
   cities?: RouteCity[];

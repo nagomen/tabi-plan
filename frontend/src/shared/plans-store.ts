@@ -17,7 +17,7 @@ import { formatDurationMinutes, parseDurationMinutes } from "./travel-duration";
 import { collisionResistantPlanSlug } from "./plan-slug";
 import { presentMemberIds, type MemberPeriod } from "./member-period";
 import type {
-  TripData, TripInfo, ItineraryItem, TripLink, ChecklistItem, LocalInfoItem,
+  TripData, TripInfo, ItineraryItem, TripLink, ChecklistItem, LocalInfoItem, PaymentInfoItem,
   RouteCity, Candidate, ItemType,
 } from "./types";
 
@@ -53,6 +53,7 @@ export interface LocalPlanData {
   links?: TripLink[];
   checklist?: ChecklistItem[];
   localInfo?: LocalInfoItem[];
+  paymentInfo?: PaymentInfoItem[];
   cities?: RouteCity[];
   candidates?: Candidate[];
 }
@@ -228,6 +229,11 @@ export function getData(slug: string): LocalPlanData | null {
       label: c.label, done: c.status === "done", status: c.status,
     })) as unknown as ChecklistItem[],
     localInfo: [],
+    paymentInfo: db.paymentInfo().filter((item) => item.plan_id === row.id).map((item) => ({
+      region: item.region, currencyCode: item.currency_code, currencyName: item.currency_name,
+      cardNote: item.card_note, cashNote: item.cash_note, transportNote: item.transport_note,
+      setupNote: item.setup_note, sourceUrl: item.source_url,
+    })),
     cities: db.cities().filter((c) => c.plan_id === row.id).map((c) => ({
       name: c.name,
       fromDate: c.from_date || "",
@@ -689,6 +695,7 @@ export function toDashboardData(data: LocalPlanData | null): TripData {
     links: Array.isArray(source.links) ? source.links : [],
     checklist: Array.isArray(source.checklist) ? source.checklist : [],
     localInfo: Array.isArray(source.localInfo) ? source.localInfo : [],
+    paymentInfo: Array.isArray(source.paymentInfo) ? source.paymentInfo : [],
     settlement: {},
     cities: Array.isArray(source.cities) ? source.cities : undefined,
     candidates: Array.isArray(source.candidates) ? source.candidates : [],

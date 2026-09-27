@@ -1,8 +1,24 @@
-import { escapeHtml } from "../shared/dom";
-import type { LocalInfoItem } from "../shared/types";
-import { setHtml } from "./dom";
+import { escapeHtml, safeHref } from "../shared/dom";
+import type { LocalInfoItem, PaymentInfoItem } from "../shared/types";
+import { qs, setHtml } from "./dom";
 
-export function renderLocalInfo(rows: LocalInfoItem[]): void {
+export function renderLocalInfo(rows: LocalInfoItem[], paymentInfo: PaymentInfoItem[] = []): void {
+  const container = qs<HTMLElement>("[data-local-info]");
+  container.classList.toggle("is-payment-guide", paymentInfo.length > 0);
+  if (paymentInfo.length) {
+    setHtml("[data-local-info]", paymentInfo.slice(0, 9).map((item) => {
+      const notes = [
+        ["カード", item.cardNote], ["現金", item.cashNote],
+        ["交通", item.transportNote], ["事前準備", item.setupNote],
+      ].filter((entry) => entry[1]);
+      return `<article class="tl-payment-place">
+        <h3>${escapeHtml(item.region)} <span>${escapeHtml([item.currencyCode, item.currencyName].filter(Boolean).join("・"))}</span></h3>
+        ${notes.map(([label, value]) => `<p><b>${label}</b> ${escapeHtml(value)}</p>`).join("")}
+        ${item.sourceUrl ? `<a href="${escapeHtml(safeHref(item.sourceUrl))}" target="_blank" rel="noopener">公式情報</a>` : ""}
+      </article>`;
+    }).join(""));
+    return;
+  }
   const items = (rows || []).slice(0, 9);
   setHtml("[data-local-info]", items.map((item) => {
     const currency = [item.currencyCode, item.currencyName].filter(Boolean).join(" / ");
