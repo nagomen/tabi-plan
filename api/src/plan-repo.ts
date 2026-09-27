@@ -225,6 +225,7 @@ const CONTENT_COLLECTION_LIMITS: Record<string, number> = {
   cities: 100,
   links: 100,
   checklist: 500,
+  paymentInfo: 30,
   candidates: 500,
 };
 const ITINERARY_KINDS = new Set(["sight", "move", "food", "stay", "todo", "form"]);
@@ -238,6 +239,9 @@ const CONTENT_ITEM_FIELDS = {
   cities: new Set(["name", "from_date", "to_date", "lat", "lng"]),
   links: new Set(["link_key", "label", "url", "caption"]),
   checklist: new Set(["label", "status"]),
+  paymentInfo: new Set([
+    "region", "currency_code", "currency_name", "card_note", "cash_note", "transport_note", "setup_note", "source_url",
+  ]),
   candidates: new Set([
     "id", "title", "place", "proposed_by_id", "adopted", "votes",
     "slot_id", "item_date", "start_time", "kind", "duration_minutes", "lat", "lng", "note", "member_ids",
@@ -345,6 +349,17 @@ export function validatePlanContent(body: Record<string, unknown>): void {
     if (item.status !== undefined && !CHECKLIST_STATUSES.has(String(item.status))) {
       throw new BadRequest(`チェックリスト${index + 1}件目の状態が正しくありません`);
     }
+  });
+  ((body.paymentInfo || []) as Record<string, unknown>[]).forEach((item, index) => {
+    const row = `決済情報${index + 1}件目の`;
+    assertKnownFields(item, CONTENT_ITEM_FIELDS.paymentInfo, `決済情報${index + 1}件目`);
+    if (!String(item.region || "").trim()) throw new BadRequest(`${row}地域を入力してください`);
+    for (const [field, max, label] of [
+      ["region", 80, "地域"], ["currency_code", 12, "通貨コード"], ["currency_name", 80, "通貨名"],
+      ["card_note", 500, "カード"], ["cash_note", 500, "現金"],
+      ["transport_note", 500, "交通"], ["setup_note", 500, "準備"], ["source_url", 1024, "出典URL"],
+    ] as const) assertLength(item[field], max, `${row}${label}`);
+    if (item.source_url && !safeUrl(item.source_url)) throw new BadRequest(`${row}出典URLが正しくありません`);
   });
   ((body.candidates || []) as Record<string, unknown>[]).forEach((candidate, index) => {
     assertKnownFields(candidate, CONTENT_ITEM_FIELDS.candidates, `候補${index + 1}件目`);
@@ -520,6 +535,10 @@ export async function replacePlanContent(planId: string, body: {
   cities?: { name: string; from_date?: string | null; to_date?: string | null; lat?: number | null; lng?: number | null }[];
   links?: Record<string, unknown>[];
   checklist?: { label: string; status?: string }[];
+  paymentInfo?: {
+    region: string; currency_code?: string; currency_name?: string; card_note?: string; cash_note?: string;
+    transport_note?: string; setup_note?: string; source_url?: string;
+  }[];
   candidates?: {
     id?: string; title: string; place?: string | null; proposed_by_id?: string | null; adopted?: boolean; votes?: string[];
     slot_id?: string | null; item_date?: string | null; start_time?: string | null; kind?: string | null;
@@ -692,6 +711,19 @@ export async function replacePlanContent(planId: string, body: {
       const rows = body.checklist.filter((c) => c && c.label)
         .map((c, i) => [newId("chk"), planId, String(c.label).slice(0, 200), c.status || "todo", i]);
       if (rows.length) await conn.query("INSERT INTO plan_checklist_items (id, plan_id, label, status, sort_order) VALUES ?", [rows]);
+    }
+
+    if (body.paymentInfo) {
+      await conn.query("DELETE FROM plan_payment_info WHERE plan_id = ?", [planId]);
+      const rows = body.paymentInfo.map((item, index) => [
+        newId("pay"), planId, item.region.trim(), item.currency_code || "", item.currency_name || "",
+        item.card_note || "", item.cash_note || "", item.transport_note || "", item.setup_note || "",
+        item.source_url || "", index,
+      ]);
+      if (rows.length) {
+        await conn.query(`INSERT INTO plan_payment_info (id, plan_id, region, currency_code, currency_name,
+          card_note, cash_note, transport_note, setup_note, source_url, sort_order) VALUES ?`, [rows]);
+      }
     }
 
     if (body.candidates) {

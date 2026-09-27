@@ -638,6 +638,24 @@ async function main() {
   await applyMigration("020_exact_date_exchange_rates", migrate020);
   await applyMigration("021_mcp_itinerary_editing", migrate021);
   await applyMigration("022_itinerary_versions", migrate022);
+  await applyMigration("023_plan_payment_info", async () => {
+    await conn.query(`CREATE TABLE IF NOT EXISTS plan_payment_info (
+      id VARCHAR(32) NOT NULL,
+      plan_id VARCHAR(32) NOT NULL,
+      region VARCHAR(80) NOT NULL,
+      currency_code VARCHAR(12) NOT NULL,
+      currency_name VARCHAR(80) NOT NULL,
+      card_note VARCHAR(500) NOT NULL DEFAULT '',
+      cash_note VARCHAR(500) NOT NULL DEFAULT '',
+      transport_note VARCHAR(500) NOT NULL DEFAULT '',
+      setup_note VARCHAR(500) NOT NULL DEFAULT '',
+      source_url VARCHAR(1024) NOT NULL DEFAULT '',
+      sort_order INT NOT NULL DEFAULT 0,
+      PRIMARY KEY (id),
+      KEY idx_payment_info_plan (plan_id, sort_order),
+      CONSTRAINT fk_payment_info_plan FOREIGN KEY (plan_id) REFERENCES plans (id) ON DELETE CASCADE
+    ) ENGINE=InnoDB`);
+  });
 }
 
 // 同時デプロイが同じDDLを並走させないよう、DB側の advisory lock で直列化する。

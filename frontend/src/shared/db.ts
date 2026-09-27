@@ -33,6 +33,11 @@ export interface CityRow {
   id: string; plan_id: string; name: string; from_date: string | null; to_date: string | null;
   lat: number | null; lng: number | null; sort_order: number;
 }
+export interface PaymentInfoRow {
+  id: string; plan_id: string; region: string; currency_code: string; currency_name: string;
+  card_note: string; cash_note: string; transport_note: string; setup_note: string;
+  source_url: string; sort_order: number;
+}
 export interface LinkRow { id: string; plan_id: string; link_key: string; label: string; url: string; caption: string | null; sort_order: number }
 export interface ChecklistRow { id: string; plan_id: string; label: string; status: "todo" | "doing" | "done"; sort_order: number }
 export interface CandidateRow {
@@ -80,6 +85,7 @@ interface Snapshot {
   memberPlaceholders: PlanMemberPlaceholderRow[];
   itinerary: ItineraryRow[];
   cities: CityRow[];
+  paymentInfo?: PaymentInfoRow[];
   links: LinkRow[];
   checklist: ChecklistRow[];
   candidates: CandidateRow[];
@@ -98,7 +104,7 @@ interface Snapshot {
 
 function emptySnapshot(): Snapshot {
   return {
-    users: [], credentials: [], plans: [], members: [], memberPlaceholders: [], itinerary: [], cities: [], links: [],
+    users: [], credentials: [], plans: [], members: [], memberPlaceholders: [], itinerary: [], cities: [], paymentInfo: [], links: [],
     checklist: [], candidates: [], candidateVotes: [], expenses: [], expenseShares: [],
     settlements: [], views: [], paymentLinks: [], flightNotes: [], userSettings: [], pendingInvites: [], friendships: [],
     viewer: null, identities: [],
@@ -769,6 +775,7 @@ function renderFingerprint(value: Snapshot): string {
     memberPlaceholders: value.memberPlaceholders,
     itinerary: value.itinerary,
     cities: value.cities,
+    paymentInfo: value.paymentInfo,
     links: value.links,
     checklist: value.checklist,
     candidates: value.candidates,
@@ -875,6 +882,7 @@ export const members = (): PlanMemberRow[] => snap.members;
 export const memberPlaceholders = (): PlanMemberPlaceholderRow[] => snap.memberPlaceholders || [];
 export const itinerary = (): ItineraryRow[] => snap.itinerary;
 export const cities = (): CityRow[] => snap.cities;
+export const paymentInfo = (): PaymentInfoRow[] => snap.paymentInfo || [];
 export const links = (): LinkRow[] => snap.links;
 export const checklist = (): ChecklistRow[] => snap.checklist;
 export const candidates = (): CandidateRow[] => snap.candidates;

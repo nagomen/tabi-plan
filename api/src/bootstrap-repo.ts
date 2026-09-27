@@ -48,7 +48,7 @@ export async function bootstrapForUser(userId = ""): Promise<Bootstrap> {
 
   const visibleIn = inClause(visiblePlanIds);
   const publicOnlyIn = inClause(publicOnlyPlanIds);
-  const [itinerary, cities, views, publicMemberPeriods] = visiblePlanIds.length
+  const [itinerary, cities, paymentInfo, views, publicMemberPeriods] = visiblePlanIds.length
     ? await Promise.all([
       all<Bootstrap["itinerary"][number]>(`SELECT id, plan_id, item_date, day_index, sort_order, kind, start_time, title, place,
            area, note, map_query, lat, lng, from_place, from_lat, from_lng,
@@ -59,6 +59,9 @@ export async function bootstrapForUser(userId = ""): Promise<Bootstrap> {
       all<Bootstrap["cities"][number]>(`SELECT id, plan_id, name, from_date, to_date, lat, lng, sort_order FROM plan_cities
          WHERE plan_id IN (${visibleIn.sql})
          ORDER BY plan_id, sort_order`, visibleIn.params),
+      all<Bootstrap["paymentInfo"][number]>(`SELECT id, plan_id, region, currency_code, currency_name,
+           card_note, cash_note, transport_note, setup_note, source_url, sort_order FROM plan_payment_info
+         WHERE plan_id IN (${visibleIn.sql}) ORDER BY plan_id, sort_order`, visibleIn.params),
       all<Bootstrap["views"][number]>(`SELECT plan_id, CAST(SUM(view_count) AS SIGNED) AS view_count FROM plan_view_daily
          WHERE plan_id IN (${visibleIn.sql})
          GROUP BY plan_id`, visibleIn.params),
@@ -68,7 +71,7 @@ export async function bootstrapForUser(userId = ""): Promise<Bootstrap> {
             WHERE status = 'active' AND plan_id IN (${publicOnlyIn.sql})`, publicOnlyIn.params)
         : [],
     ])
-    : [[], [], [], []];
+    : [[], [], [], [], []];
 
   // 公開閲覧では実user IDを日付内だけの匿名IDへ変換し、班構成だけを保持する。
   // ワークスペース利用者には従来どおり実IDのJSON配列を戻す。
@@ -206,7 +209,7 @@ export async function bootstrapForUser(userId = ""): Promise<Bootstrap> {
   return {
     viewer: userId ? { id: userId } : null,
     identities,
-    users, credentials, plans, members, memberPlaceholders, itinerary, cities, links, checklist,
+    users, credentials, plans, members, memberPlaceholders, itinerary, cities, paymentInfo, links, checklist,
     candidates, candidateVotes, expenses, expenseShares, settlements, views,
     paymentLinks, flightNotes, userSettings, friendships, pendingInvites,
   } as Bootstrap;

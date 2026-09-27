@@ -382,6 +382,23 @@ CREATE TABLE plan_cities (
   CONSTRAINT fk_plan_cities_plan FOREIGN KEY (plan_id) REFERENCES plans (id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
+CREATE TABLE plan_payment_info (
+  id              VARCHAR(32) NOT NULL,
+  plan_id         VARCHAR(32) NOT NULL,
+  region          VARCHAR(80) NOT NULL,
+  currency_code   VARCHAR(12) NOT NULL,
+  currency_name   VARCHAR(80) NOT NULL,
+  card_note       VARCHAR(500) NOT NULL DEFAULT '',
+  cash_note       VARCHAR(500) NOT NULL DEFAULT '',
+  transport_note  VARCHAR(500) NOT NULL DEFAULT '',
+  setup_note      VARCHAR(500) NOT NULL DEFAULT '',
+  source_url      VARCHAR(1024) NOT NULL DEFAULT '',
+  sort_order      INT NOT NULL DEFAULT 0,
+  PRIMARY KEY (id),
+  KEY idx_payment_info_plan (plan_id, sort_order),
+  CONSTRAINT fk_payment_info_plan FOREIGN KEY (plan_id) REFERENCES plans (id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
 CREATE TABLE plan_links (
   id          VARCHAR(32) NOT NULL,
   plan_id     VARCHAR(32) NOT NULL,

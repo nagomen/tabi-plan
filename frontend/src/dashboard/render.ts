@@ -120,7 +120,7 @@ export function renderBase(): void {
     saveExpenseEntryCache(data);
     renderExpenseEntry(data);
   }
-  renderLocalInfo(data.localInfo || []);
+  renderLocalInfo(data.localInfo || [], data.paymentInfo || []);
 
   const primaryLinkKeys = workspaceView ? ["itinerary", "maps", "expenseSheet", "photos"] : ["itinerary", "maps", "photos"];
   const primaryLinks = primaryLinkKeys.map(linkByKey).filter((link): link is TripLink => Boolean(link.url));
