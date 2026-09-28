@@ -229,6 +229,14 @@
             <button class="tl-money-tab" type="button" role="tab" data-money-tab="settle" aria-selected="true">精算</button>
             <button class="tl-money-tab" type="button" role="tab" data-money-tab="details" aria-selected="false" data-expense-detail-toggle>台帳</button>
           </div>
+          <div class="tl-expense-share" aria-label="費用明細を共有">
+            <div class="tl-expense-share-copy"><b>明細を友人へ送る</b><span>アプリを使っていない相手にも送れます</span></div>
+            <div class="tl-expense-share-actions">
+              <button type="button" data-expense-share><span data-ic="paperAirplane"></span><b data-expense-share-label>文章で共有</b></button>
+              <button type="button" data-expense-pdf><span data-ic="documentText"></span><b data-expense-pdf-label>PDFで保存</b></button>
+            </div>
+            <p data-expense-share-status aria-live="polite"></p>
+          </div>
           <div class="tl-money-panel" data-money-panel="settle">
             <div class="tl-transfer-list" data-transfers></div>
           </div>

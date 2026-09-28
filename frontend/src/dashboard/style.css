@@ -2967,6 +2967,80 @@
 
   .tl-money-panel[data-money-panel="details"] { margin-top: 4px; }
 
+  .tl-expense-share {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px 16px;
+    align-items: center;
+    margin-top: 12px;
+    padding: 12px 0;
+    border-top: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+  }
+
+  .tl-expense-share-copy {
+    display: grid;
+    gap: 2px;
+  }
+
+  .tl-expense-share-copy b {
+    font-size: 13px;
+    font-weight: 700;
+  }
+
+  .tl-expense-share-copy span,
+  .tl-expense-share > p {
+    color: var(--muted);
+    font-size: 11.5px;
+    font-weight: 500;
+  }
+
+  .tl-expense-share-actions {
+    display: flex;
+    gap: 7px;
+  }
+
+  .tl-expense-share-actions button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-height: 42px;
+    border: 1px solid var(--line-strong);
+    background: #fff;
+    color: var(--green);
+    padding: 0 12px;
+    font: inherit;
+    cursor: pointer;
+  }
+
+  .tl-expense-share-actions button:hover,
+  .tl-expense-share-actions button:focus-visible {
+    outline: none;
+    border-color: var(--green);
+    background: var(--green-soft);
+  }
+
+  .tl-expense-share-actions button span,
+  .tl-expense-share-actions button svg {
+    width: 17px;
+    height: 17px;
+  }
+
+  .tl-expense-share-actions button b {
+    font-size: 12px;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+
+  .tl-expense-share > p {
+    grid-column: 1 / -1;
+    min-height: 17px;
+    margin: 0;
+  }
+
+  .tl-expense-share > p.is-error { color: var(--red); }
+
   /* 読み取り専用（他人の公開計画）ビューのバッジ */
   .tl-ro-badge {
     display: inline-flex;
@@ -3487,7 +3561,7 @@
 
   .tl-segments {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
     gap: 1px;
     border: 1px solid var(--line-strong);
     background: var(--line-strong);
@@ -3535,6 +3609,13 @@
     display: grid;
   }
 
+  .tl-split-hint {
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 500;
+    line-height: 1.5;
+  }
+
   .tl-participant-picks {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -3568,6 +3649,14 @@
     border-color: var(--green);
     background: var(--green-soft);
     color: var(--green);
+  }
+
+  .tl-pick input:disabled + span {
+    border-color: var(--line);
+    background: var(--line);
+    color: var(--muted);
+    cursor: not-allowed;
+    opacity: .65;
   }
 
   .tl-individual-grid {
@@ -4720,6 +4809,18 @@
   .tl-ledger-meta i { margin: 0 5px; font-style: normal; color: var(--line-strong); }
   .tl-ledger-cat { font-weight: 700; }
 
+  .tl-ledger-breakdown {
+    color: var(--ink-soft, var(--muted));
+    font-size: 11.5px;
+    font-weight: 500;
+    line-height: 1.45;
+  }
+
+  .tl-ledger-breakdown b {
+    color: var(--green);
+    font-weight: 700;
+  }
+
   .tl-ledger-amount { display: grid; gap: 1px; justify-items: end; }
   .tl-ledger-amount strong {
     color: var(--green);
@@ -4751,6 +4852,9 @@
   .tl-ledger-amount strong { font-size: 16px; }
   .tl-ledger-row { gap: 0 8px; }
   .tl-ledger-title { font-size: 14px; }
+  .tl-expense-share { grid-template-columns: 1fr; }
+  .tl-expense-share-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .tl-expense-share-actions button { padding: 0 8px; }
 }
 
 /* ---- タスク -----------------------------------------------------------

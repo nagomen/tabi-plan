@@ -92,6 +92,8 @@ export function bindExpenseSplitForm(
 ): ExpenseSplitController {
   const selectedDetail = form.querySelector<HTMLElement>("[data-selected-detail]");
   const individualDetail = form.querySelector<HTMLElement>("[data-individual-detail]");
+  const targetsLabel = form.querySelector<HTMLElement>("[data-targets-label]");
+  const targetsHint = form.querySelector<HTMLElement>("[data-targets-hint]");
   const totalNode = form.querySelector<HTMLElement>("[data-share-total]");
   const amountInput = form.elements.namedItem("amount") as HTMLInputElement | null;
   const currencyInput = form.elements.namedItem("currency") as HTMLSelectElement | null;
@@ -114,6 +116,8 @@ export function bindExpenseSplitForm(
   const selectedIds = (): string[] => Array.from(
     form.querySelectorAll<HTMLInputElement>("input[name='targets']:checked"),
   ).map((input) => input.value);
+  const payerId = (): string =>
+    (form.elements.namedItem("payer") as HTMLSelectElement | null)?.value || "";
   const currency = (): string => currencyInput.value || "JPY";
   const formatAmount = (value: number): string => formatMoneyMinor(toMinor(value, currency()), currency());
   // 表示上の端数ではなく、保存する最小単位で比べる（0.1+0.2 のような誤差を持ち込まない）。
@@ -121,8 +125,17 @@ export function bindExpenseSplitForm(
     toMinor(total, currency()) !== toMinor(amount(), currency());
   const update = (): void => {
     const activeMode = mode();
-    selectedDetail.classList.toggle("is-visible", /選んだ人だけ/.test(activeMode));
+    const advance = activeMode === "立て替え";
+    selectedDetail.classList.toggle("is-visible", /選んだ人だけ/.test(activeMode) || advance);
     individualDetail.classList.toggle("is-visible", /個別金額/.test(activeMode));
+    if (targetsLabel) targetsLabel.textContent = advance ? "立て替えた相手" : "割り勘する人";
+    if (targetsHint) targetsHint.textContent = advance
+      ? "この人たちの負担分を支払者がまとめて立て替えます。"
+      : "";
+    form.querySelectorAll<HTMLInputElement>("input[name='targets']").forEach((input) => {
+      input.disabled = advance && input.value === payerId();
+      if (input.disabled) input.checked = false;
+    });
     const total = individualTotal();
     const paid = amount();
     totalNode.textContent = paid
@@ -134,6 +147,8 @@ export function bindExpenseSplitForm(
   };
   const validationMessage = (): string => {
     if (/選んだ人だけ/.test(mode()) && !selectedIds().length) return "割り勘する人を1人以上選んでください。";
+    if (mode() === "立て替え" && !selectedIds().length) return "立て替えた相手を1人以上選んでください。";
+    if (mode() === "立て替え" && selectedIds().includes(payerId())) return "支払者以外を立て替えた相手に選んでください。";
     if (/個別金額/.test(mode())) {
       const total = individualTotal();
       if (!total) return "個別金額を入力してください。";

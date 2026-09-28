@@ -219,9 +219,20 @@ function amountLabel(row: ExpenseRow): string {
   return formatMoneyMinor(row.amount_minor, row.currency || "JPY");
 }
 
+/** 支払者自身の負担がなく、選んだ相手の全額を支払った費用は「立て替え」として扱う。 */
+export function isAdvanceEntry(entry: ExpenseEntry): boolean {
+  const { row, shares } = entry;
+  if (row.split_method !== "equal_selected" || !shares.length) return false;
+  return !shares.some((share) =>
+    share.user_id === row.payer_user_id && Number(share.amount_base_minor || 0) > 0
+  );
+}
+
 export function entryDetail(entry: ExpenseEntry, selfUserId = ""): ExpenseDetail {
   const { row, shares } = entry;
   const mine = selfUserId ? shares.find((s) => s.user_id === selfUserId) : undefined;
+  const payerShare = shares.find((s) => s.user_id === row.payer_user_id)?.amount_base_minor || 0;
+  const isAdvance = isAdvanceEntry(entry);
   return {
     id: row.id,
     kind: "expense",
@@ -230,10 +241,12 @@ export function entryDetail(entry: ExpenseEntry, selfUserId = ""): ExpenseDetail
     payer: db.planMemberName(row.plan_id, row.payer_user_id),
     category: CATEGORY_LABEL[row.category] || "その他",
     title: row.title || "立替",
-    mode: SPLIT_LABEL[row.split_method] || "",
+    mode: isAdvance ? "立て替え" : SPLIT_LABEL[row.split_method] || "",
     amountLabel: amountLabel(row),
     convertedLabel: formatYen(row.amount_base_minor),
     myShareLabel: selfUserId ? formatYen(mine ? mine.amount_base_minor : 0) : "",
+    advanceLabel: isAdvance ? formatYen(Math.max(0, row.amount_base_minor - payerShare)) : undefined,
+    isAdvance,
     targetIds: shares.map((s) => s.user_id),
     targetNames: shares.map((s) => db.planMemberName(row.plan_id, s.user_id)),
     shares: shares.map((s) => ({

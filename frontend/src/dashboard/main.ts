@@ -28,6 +28,7 @@ import { copyPlanToMine } from "./plan-copy";
 import { renderActive, renderBase, renderData } from "./render";
 import { syncData } from "./sync";
 import { setupInlineEditor } from "./inline-editor";
+import { setupExpenseSharing } from "./expense-sharing";
 
 initPageTransitions();
 
@@ -78,6 +79,7 @@ async function init(): Promise<void> {
   // 日程を LINE 用テキストで共有／コピー
   const copyScheduleBtn = root.querySelector<HTMLButtonElement>("[data-copy-schedule]");
   if (copyScheduleBtn) copyScheduleBtn.addEventListener("click", () => void shareSchedule());
+  setupExpenseSharing();
   // タスク（チェックリスト）の状態変更・追加・削除
   bindChecklist();
   // 招待リンクの共有ボタン（メンバー画面）

@@ -62,6 +62,8 @@ function categoryFromLabel(label: string): ExpenseStore.ExpenseCategory {
   return (ExpenseStore.CATEGORIES.find((c) => ExpenseStore.CATEGORY_LABEL[c] === label) || "other");
 }
 function splitFromLabel(label: string): ExpenseStore.SplitMethod {
+  // 「立て替え」は、支払者を負担者に含めず、選んだ相手だけへ全額を割り当てる。
+  if (label === "立て替え") return "equal_selected";
   return (ExpenseStore.SPLIT_METHODS.find((m) => ExpenseStore.SPLIT_LABEL[m] === label) || "equal_all");
 }
 function paymentFromLabel(label: string): ExpenseStore.PaymentMethod | null {
@@ -190,15 +192,17 @@ export function renderExpenseEntry(data: TripData, options: { force?: boolean } 
       <div class="tl-split">
         <span class="tl-split-label">精算方法 <b class="tl-required-mark" aria-label="必須">*</b></span>
         <div class="tl-segments">
-          <label class="tl-segment"><input type="radio" name="splitMode" value="全員で等分" required checked><span>全員で等分</span></label>
-          <label class="tl-segment"><input type="radio" name="splitMode" value="選んだ人だけで等分" required><span>選んだ人だけ</span></label>
+          <label class="tl-segment"><input type="radio" name="splitMode" value="全員で等分" required checked><span>全員で割り勘</span></label>
+          <label class="tl-segment"><input type="radio" name="splitMode" value="選んだ人だけで等分" required><span>選んで割り勘</span></label>
+          <label class="tl-segment"><input type="radio" name="splitMode" value="立て替え" required><span>立て替え</span></label>
           <label class="tl-segment"><input type="radio" name="splitMode" value="個別金額を入力" required><span>個別金額</span></label>
           <label class="tl-segment"><input type="radio" name="splitMode" value="精算不要" required><span>精算不要</span></label>
         </div>
       </div>
 
       <div class="tl-split-detail" data-selected-detail>
-        <span class="tl-split-label">割り勘する人</span>
+        <span class="tl-split-label" data-targets-label>割り勘する人</span>
+        <small class="tl-split-hint" data-targets-hint></small>
         <div class="tl-participant-picks">${targetPicks}</div>
       </div>
 
@@ -262,7 +266,7 @@ function fillExpenseForm(
     amount: toMajor(entry.row.amount_minor, currency),
     currency,
     fxRate: currency === baseCurrency ? "" : unitRateFromFxRate(rate, currency, baseCurrency),
-    splitMode: ExpenseStore.SPLIT_LABEL[entry.row.split_method],
+    splitMode: ExpenseStore.isAdvanceEntry(entry) ? "立て替え" : ExpenseStore.SPLIT_LABEL[entry.row.split_method],
     paymentMethod: entry.row.payment_method ? ExpenseStore.PAYMENT_LABEL[entry.row.payment_method] : "",
     note: entry.row.note || "",
     targets: entry.shares.map((s) => s.user_id).filter(Boolean),

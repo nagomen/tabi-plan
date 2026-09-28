@@ -153,6 +153,9 @@ test("費用フォームは人をuser_idで指し、外貨は支払日別レー�
   // 過去の「全員」は登録時点の集合。メンバー削除後の編集で勝手に再配分しない。
   assert.match(entry, /savedEqualAllIds[\s\S]*editingRecord\?\.shares/);
   assert.match(entry, /savedEqualAllIds\.length \? savedEqualAllIds : currentMemberIds/);
+  // 立て替えは専用の選択肢として入力でき、既存の負担者構造へ保存する。
+  assert.match(entry, /name="splitMode" value="立て替え"/);
+  assert.match(entry, /label === "立て替え"[^]*return "equal_selected"/);
 });
 
 test("スマホで入力しても画面が拡大・再描画されない", () => {
@@ -175,6 +178,14 @@ test("閲覧のみのモードでは精算完了を描画も実行もしない",
   const settlement = read("src/dashboard/settlement.ts");
   assert.match(settlement, /isReadOnly\(\) \? "" : `<button[^`]*data-settlement-complete/);
   assert.match(settlement, /data-settlement-complete[\s\S]*?addEventListener\("click"[\s\S]*?if \(isReadOnly\(\)\) return;/);
+});
+
+test("立て替えの明細は0円ではなく立替額と返済先を表示する", () => {
+  const settlement = read("src/dashboard/settlement.ts");
+  assert.match(settlement, /detail\.advanceLabel \|\| detail\.convertedLabel/);
+  assert.match(settlement, /role: "立替額"/);
+  assert.match(settlement, /class="tl-ledger-breakdown"><b>立替先<\/b>/);
+  assert.doesNotMatch(settlement, /if \(detail\.myShareLabel\) return detail\.myShareLabel/);
 });
 
 test("デプロイ設定生成は実在するTripConfig項目だけを必須にする", () => {

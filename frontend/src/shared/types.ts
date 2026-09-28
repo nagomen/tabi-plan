@@ -112,6 +112,10 @@ export interface ExpenseDetail {
   amountLabel: string;
   convertedLabel: string;
   myShareLabel: string;
+  /** 支払者が自分の負担分を除いて立て替えた金額。 */
+  advanceLabel?: string;
+  /** 「立て替え」として登録された明細。旧データでは mode からも判定する。 */
+  isAdvance?: boolean;
   /** 負担者の user_id。旧表示データでは未設定。 */
   targetIds?: string[];
   targetNames: string[];

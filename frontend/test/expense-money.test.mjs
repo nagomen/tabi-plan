@@ -170,6 +170,32 @@ test("費用明細も同名メンバーをuser_idで区別できる", () => {
   assert.equal(detail.myShareLabel, "¥300");
 });
 
+test("立て替えは支払者の0円負担ではなく、立替額と相手別内訳として扱う", () => {
+  const rows = [
+    { id: "e1", plan_id: "p1", payer_user_id: "u1", amount_base_minor: 1200, amount_minor: 1200,
+      currency: "JPY", fx_rate: 1, category: "transport", title: "タクシー", split_method: "equal_selected", deleted_at: null },
+  ];
+  const shares = [
+    { expense_id: "e1", user_id: "u2", amount_base_minor: 600 },
+    { expense_id: "e1", user_id: "u3", amount_base_minor: 600 },
+  ];
+  const names = { u1: "あき", u2: "ゆう", u3: "そら" };
+  const store = expenseStoreWith({
+    expenses: () => rows,
+    expenseShares: () => shares,
+    settlements: () => [],
+    planMemberName: (_planId, id) => names[id],
+  });
+  const detail = store.computeSettlement("p1", ["u1", "u2", "u3"], "u1").expenseDetails[0];
+  assert.equal(detail.isAdvance, true);
+  assert.equal(detail.mode, "立て替え");
+  assert.equal(detail.advanceLabel, "¥1,200");
+  assert.equal(detail.myShareLabel, "¥0");
+  assert.deepEqual(Array.from(detail.shares, (share) => [share.name, share.amountLabel]), [
+    ["ゆう", "¥600"], ["そら", "¥600"],
+  ]);
+});
+
 const expenseForm = load("src/shared/expense-form.ts", {
   "./country": load("src/shared/country.ts"),
   "./currency": currency,

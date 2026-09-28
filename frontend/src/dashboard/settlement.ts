@@ -259,26 +259,30 @@ export function renderExpenseDetails(settlement: Settlement): void {
     return;
   }
 
-  const shareFor = (detail: ExpenseDetail): string => {
+  const displayAmountFor = (detail: ExpenseDetail): { amount: string; role: string } => {
     const shares = detail.shares || [];
     const share = shares.find((item) => item.userId === profileId) ||
       (!shares.some((item) => item.userId) ? shares.find((item) => item.name === profileName) : undefined);
-    if (share) return share.amountLabel || formatYen(share.amount);
-    if (detail.myShareLabel) return detail.myShareLabel;
-    return "-";
-  };
-  const roleFor = (detail: ExpenseDetail): string => {
-    const shares = detail.shares || [];
     const hasIds = Boolean(detail.payerId || detail.targetIds?.length || shares.some((item) => item.userId));
     const isPayer = hasIds ? detail.payerId === profileId : detail.payer === profileName;
-    const hasShare = hasIds
-      ? shares.some((item) => item.userId === profileId && Number(item.amount || 0) > 0) ||
-        (detail.targetIds || []).includes(profileId)
-      : shares.some((item) => item.name === profileName && Number(item.amount || 0) > 0) ||
-        (detail.targetNames || []).includes(profileName);
-    if (isPayer && hasShare) return "支払・負担";
-    if (isPayer) return "立替のみ";
-    return "負担";
+    const isAdvance = Boolean(detail.isAdvance || detail.mode === "立て替え");
+    if (isAdvance) {
+      if (share && !isPayer) {
+        return { amount: share.amountLabel || formatYen(share.amount), role: `${detail.payer}へ返す` };
+      }
+      return {
+        amount: detail.advanceLabel || detail.convertedLabel || detail.amountLabel || "-",
+        role: "立替額",
+      };
+    }
+    if (share) {
+      return {
+        amount: share.amountLabel || formatYen(share.amount),
+        role: isPayer ? "支払・負担" : "負担額",
+      };
+    }
+    // 全件を見られる編集者が当事者でない場合も、0円ではなく明細の支払額を示す。
+    return { amount: detail.convertedLabel || detail.amountLabel || "-", role: "支払額" };
   };
   const canceled = canManageExpenses
     ? ExpenseStore.canceledList(planId()).map((entry) => ExpenseStore.entryDetail(entry, currentUserId()))
@@ -303,6 +307,13 @@ export function renderExpenseDetails(settlement: Settlement): void {
   const rowsHtml = related.length ? related.map((detail) => {
     const tone = CAT_TONE[detail.category || ""] || "other";
     const paid = detail.convertedLabel || detail.amountLabel || "";
+    const display = displayAmountFor(detail);
+    const isAdvance = Boolean(detail.isAdvance || detail.mode === "立て替え");
+    const advanceBreakdown = isAdvance && detail.shares?.length
+      ? `<span class="tl-ledger-breakdown"><b>立替先</b> ${detail.shares.map((share) =>
+        `${escapeHtml(share.name)} ${escapeHtml(share.amountLabel || formatYen(share.amount))}`
+      ).join(" · ")}</span>`
+      : "";
     return `
     <li class="tl-ledger-row" data-expense-row="${escapeHtml(detail.id || "")}">
       <span class="tl-ledger-dot" data-cat="${tone}" aria-hidden="true"></span>
@@ -311,12 +322,13 @@ export function renderExpenseDetails(settlement: Settlement): void {
         <span class="tl-ledger-meta">
           <span class="tl-ledger-cat">${escapeHtml(detail.category || "その他")}</span>
           <i>·</i>${escapeHtml(mdLabel(detail.date || ""))}
-          <i>·</i>${escapeHtml(detail.payer || "")}が${escapeHtml(paid)}
+          <i>·</i>${escapeHtml(detail.payer || "")}が${escapeHtml(paid)}${isAdvance ? "を立て替え" : "を支払い"}
         </span>
+        ${advanceBreakdown}
       </div>
       <div class="tl-ledger-amount">
-        <strong>${escapeHtml(shareFor(detail))}</strong>
-        <span>${escapeHtml(roleFor(detail))}</span>
+        <strong>${escapeHtml(display.amount)}</strong>
+        <span>${escapeHtml(display.role)}</span>
       </div>
       ${canManageExpenses ? `<div class="tl-ledger-act">
         <button type="button" class="tl-icon-action" data-expense-edit="${escapeHtml(detail.id || "")}" aria-label="${escapeHtml(detail.title || "費用")}を編集" title="編集">${icon("pencilSquare")}</button>
