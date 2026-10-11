@@ -656,6 +656,42 @@ async function main() {
       CONSTRAINT fk_payment_info_plan FOREIGN KEY (plan_id) REFERENCES plans (id) ON DELETE CASCADE
     ) ENGINE=InnoDB`);
   });
+  await applyMigration("024_debt_share", async () => {
+    await conn.query(`CREATE TABLE IF NOT EXISTS debt_plans (
+      id               VARCHAR(32) NOT NULL,
+      slug             VARCHAR(64) NOT NULL,
+      borrower_name    VARCHAR(64) NOT NULL,
+      borrower_email   VARCHAR(255) NOT NULL,
+      creditor_name    VARCHAR(64) NOT NULL,
+      creditor_email   VARCHAR(255) NOT NULL,
+      principal_yen    INT UNSIGNED NOT NULL,
+      interest_yen     INT UNSIGNED NOT NULL,
+      total_yen        INT UNSIGNED NOT NULL,
+      paid_yen         INT UNSIGNED NOT NULL DEFAULT 0,
+      schedule_json    JSON NOT NULL,
+      document_json    JSON NOT NULL,
+      document_pdf     LONGBLOB NOT NULL,
+      pdf_filename     VARCHAR(191) NOT NULL DEFAULT 'repayment-plan.pdf',
+      created_at       TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at       TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (id),
+      UNIQUE KEY uq_debt_plans_slug (slug),
+      CONSTRAINT chk_debt_plan_total CHECK (total_yen = principal_yen + interest_yen),
+      CONSTRAINT chk_debt_plan_paid CHECK (paid_yen <= total_yen)
+    ) ENGINE=InnoDB`);
+    await conn.query(`CREATE TABLE IF NOT EXISTS debt_share_links (
+      id          VARCHAR(32) NOT NULL,
+      plan_id     VARCHAR(32) NOT NULL,
+      token_hash  VARBINARY(32) NOT NULL,
+      expires_at  TIMESTAMP NULL DEFAULT NULL,
+      revoked_at  TIMESTAMP NULL DEFAULT NULL,
+      created_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (id),
+      UNIQUE KEY uq_debt_share_token (token_hash),
+      KEY idx_debt_share_plan (plan_id, revoked_at),
+      CONSTRAINT fk_debt_share_plan FOREIGN KEY (plan_id) REFERENCES debt_plans (id) ON DELETE CASCADE
+    ) ENGINE=InnoDB`);
+  });
 }
 
 // 同時デプロイが同じDDLを並走させないよう、DB側の advisory lock で直列化する。

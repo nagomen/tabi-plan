@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#f4f1e9">
+<meta name="robots" content="noindex,nofollow,noarchive,nosnippet">
+<meta name="referrer" content="no-referrer">
+<title>返済計画 | 返す日</title>
+</head>
+<body>
+<header class="dn-header">
+  <a class="dn-brand" href="../" aria-label="Tabi Plan トップへ">
+    <span class="dn-brand-mark" aria-hidden="true">返</span>
+    <span><strong>返す日</strong><small>PAYBACK NOTE</small></span>
+  </a>
+  <span class="dn-readonly">閲覧専用</span>
+</header>
+
+<main class="dn-shell">
+  <section class="dn-loading" data-loading aria-live="polite">
+    <span class="dn-loader" aria-hidden="true"></span>
+    <p>返済計画を安全に読み込んでいます</p>
+  </section>
+
+  <section class="dn-error" data-error hidden>
+    <p class="dn-eyebrow">LINK UNAVAILABLE</p>
+    <h1>共有リンクを確認できませんでした</h1>
+    <p data-error-message>URLが途中で切れていないか、送信者に確認してください。</p>
+  </section>
+
+  <div data-content hidden>
+    <div class="dn-intro">
+      <div>
+        <p class="dn-eyebrow">REPAYMENT PLAN / 2026–2027</p>
+        <h1><span data-borrower></span>さんの返済計画</h1>
+        <p class="dn-lead"><span data-creditor></span>さんへ共有された、閲覧専用の返済記録です。</p>
+      </div>
+      <p class="dn-updated">最終更新 <time data-updated></time></p>
+    </div>
+
+    <section class="dn-summary" aria-label="返済状況">
+      <div class="dn-balance">
+        <p>残りの返済額</p>
+        <strong data-remaining></strong>
+        <div class="dn-progress" aria-hidden="true"><span data-progress></span></div>
+        <div class="dn-balance-meta"><span data-progress-label></span><span data-count-label></span></div>
+      </div>
+      <div class="dn-next">
+        <p>次回の返済</p>
+        <strong data-next-date></strong>
+        <b data-next-amount></b>
+        <span data-next-status></span>
+      </div>
+    </section>
+
+    <section class="dn-facts" aria-label="借入条件">
+      <dl>
+        <div><dt>借入元金</dt><dd data-principal></dd></div>
+        <div><dt>利息</dt><dd data-interest></dd></div>
+        <div><dt>返済総額</dt><dd data-total></dd></div>
+        <div><dt>完済予定</dt><dd data-completion></dd></div>
+      </dl>
+    </section>
+
+    <section class="dn-section">
+      <div class="dn-section-head"><div><p class="dn-section-no">01</p><h2>毎月の返済スケジュール</h2></div><span data-schedule-count></span></div>
+      <div class="dn-table-wrap">
+        <table>
+          <thead><tr><th>回</th><th>返済期日</th><th>返済額</th><th>累計</th><th>状態</th></tr></thead>
+          <tbody data-schedule></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="dn-section dn-document">
+      <div class="dn-section-head">
+        <div><p class="dn-section-no">02</p><h2>借入・返済計画書</h2></div>
+        <button class="dn-download" type="button" data-download>原本PDFをダウンロード</button>
+      </div>
+      <p class="dn-doc-intro">現在の債務を整理し、責任を持って返済するための計画書です。原本の内容を画面上でも確認できます。</p>
+      <div class="dn-doc-grid">
+        <section>
+          <h3>借入希望額・現在の債務</h3>
+          <p data-income></p>
+          <dl class="dn-debts" data-existing-debts></dl>
+          <p data-difference></p>
+        </section>
+        <section>
+          <h3>返済に関するお願いと約束</h3>
+          <div class="dn-promises" data-promises></div>
+        </section>
+        <section>
+          <h3>担保について</h3>
+          <p data-collateral></p>
+        </section>
+        <section class="dn-pledge">
+          <h3>ギャンブルをしない誓約</h3>
+          <p data-pledge></p>
+        </section>
+      </div>
+      <p class="dn-closing" data-closing></p>
+      <p class="dn-submitted">提出日 <time data-submitted></time></p>
+    </section>
+
+    <footer class="dn-footer">
+      <p>このページは共有リンクを知っている人だけが閲覧できます。リンクを第三者へ転送しないでください。</p>
+      <p>メールアドレスは表示されません。返済状態の変更もこの画面からはできません。</p>
+    </footer>
+  </div>
+</main>
+
+<script src="../trip-config.js"></script>
+<script type="module" src="../src/debt/main.ts"></script>
+</body>
+</html>

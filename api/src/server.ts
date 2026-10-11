@@ -293,6 +293,8 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
     "/api/mcp/oauth/request", "/api/mcp/oauth/approve",
     // 招待トークンは総当たりの対象になるため、認証と同じ厳しい制限を当てる。
     "/api/invites/accept", "/api/invites/inspect",
+    // 共有トークンは256 bitだが、不要な照会とPDF転送にも厳しい上限を当てる。
+    "/api/debt/share", "/api/debt/share/pdf",
   ];
   if (authPaths.includes(path)) {
     const authWait = rateLimitCheck(authHits, ip, config.authRateLimitPerMinute);

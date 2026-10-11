@@ -5,6 +5,9 @@ import fs from "node:fs";
 
 const rootDir = dirname(fileURLToPath(import.meta.url));
 const htmlFiles = fs.readdirSync(rootDir).filter((file) => file.endsWith(".html")).sort();
+// 共有URLを /debt/ に保つため、このページだけディレクトリ形式で配信する。
+// トークンは #fragment に置き、GitHub Pages・Cloudflare・Refererへ送らない。
+if (fs.existsSync(resolve(rootDir, "debt/index.html"))) htmlFiles.push("debt/index.html");
 const htmlInput = Object.fromEntries(
   htmlFiles.map((file) => [file.replace(/\.html$/, "").replace(/[^a-zA-Z0-9]+(.)/g, (_m, char: string) => char.toUpperCase()), resolve(rootDir, file)]),
 );

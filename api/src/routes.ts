@@ -64,6 +64,7 @@ import { searchTransportOptions, transportOptionsForCities } from "./transport-s
 import * as aiCredentialRepo from "./ai-credential-repo.js";
 import { validOpenAiApiKey } from "./ai-credential-crypto.js";
 import { verifyOpenAiApiKey } from "./openai-client.js";
+import * as debtShareRepo from "./debt-share-repo.js";
 
 export interface Handled {
   status: number;
@@ -377,6 +378,15 @@ async function forbiddenUnless(ok: boolean | Promise<boolean>): Promise<Handled 
 }
 
 export async function route(method: string, path: string, body: Body, actorUserId = ""): Promise<Handled | null> {
+  // ---- 借入・返済計画の閲覧専用共有 ----
+  // bearer token はURLの #fragment からPOST本文へ移し、アクセスログやRefererへ残さない。
+  if (method === "POST" && path === "/api/debt/share") {
+    return { status: 200, body: await debtShareRepo.loadSharedDebt(str(body.token)) };
+  }
+  if (method === "POST" && path === "/api/debt/share/pdf") {
+    return { status: 200, body: await debtShareRepo.loadSharedDebtPdf(str(body.token)) };
+  }
+
   // ---- 起動時の一括取得 ----
   if (method === "GET" && path === "/api/bootstrap") {
     return { status: 200, body: await bootstrapRepo.bootstrapForUser(actorUserId) };
