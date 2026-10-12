@@ -294,7 +294,7 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
     // 招待トークンは総当たりの対象になるため、認証と同じ厳しい制限を当てる。
     "/api/invites/accept", "/api/invites/inspect",
     // 共有トークンは256 bitだが、不要な照会とPDF転送にも厳しい上限を当てる。
-    "/api/debt/share", "/api/debt/share/pdf",
+    "/api/debt/share", "/api/debt/share/pdf", "/api/debt/manage", "/api/debt/manage/pdf", "/api/debt/manage/paid",
   ];
   if (authPaths.includes(path)) {
     const authWait = rateLimitCheck(authHits, ip, config.authRateLimitPerMinute);

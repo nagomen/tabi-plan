@@ -314,6 +314,15 @@ h1,h2,h3,h4,td,dd,.dn-plan-summary strong,.dn-reduced-income-grid strong { font-
 
 /* ---- 計画書PDF: 冒頭の台帳に続く1行。塗りや影は使わず罫線で区切る ---- */
 .dn-overview { margin-bottom:0; }
+.dn-payment-action { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:24px; margin-top:16px; padding:24px 32px; border:1px solid var(--green); border-left:5px solid var(--green); background:var(--surface); }
+.dn-payment-eyebrow { margin:0 0 5px; color:var(--green); font-size:10px; font-weight:900; letter-spacing:.16em; }
+.dn-payment-action h2 { margin:0; font-size:21px; }
+.dn-payment-action [data-payment-copy] { margin:6px 0 0; color:var(--muted); font-size:13px; line-height:1.7; }
+.dn-payment-feedback { min-height:1.5em; margin:7px 0 0; color:var(--green); font-size:12px; font-weight:700; }
+.dn-payment-action button { min-width:150px; min-height:48px; padding:0 22px; border:1px solid var(--accent); border-radius:0; background:var(--accent); color:#fff; font-size:14px; font-weight:850; cursor:pointer; }
+.dn-payment-action button:hover { border-color:var(--ink); background:var(--ink); }
+.dn-payment-action button:focus-visible { outline:3px solid var(--green); outline-offset:3px; }
+.dn-payment-action button:disabled { opacity:.6; cursor:wait; }
 .dn-pdf { display:grid; grid-template-columns:auto minmax(0,1fr) auto; align-items:center; gap:16px 24px; padding:22px 0; border-bottom:1px solid var(--line); }
 .dn-pdf-mark { font-size:30px; align-self:start; }
 .dn-pdf-eyebrow { margin:0 0 4px; color:var(--green); font-size:10px; font-weight:900; letter-spacing:.16em; }
@@ -331,6 +340,9 @@ h1,h2,h3,h4,td,dd,.dn-plan-summary strong,.dn-reduced-income-grid strong { font-
   .dn-pdf-button:hover { border-color:var(--green); background:var(--green); }
 }
 @media (max-width:760px) {
+  .dn-payment-action { grid-template-columns:1fr; gap:12px; margin-top:10px; padding:16px 14px; }
+  .dn-payment-action h2 { font-size:17px; }
+  .dn-payment-action button { width:100%; }
   .dn-pdf { grid-template-columns:auto minmax(0,1fr); gap:10px 12px; padding:14px 0; }
   .dn-pdf-mark { font-size:22px; }
   .dn-pdf h2 { font-size:16px; }
@@ -473,3 +485,11 @@ h1,h2,h3,h4,td,dd,.dn-plan-summary strong,.dn-reduced-income-grid strong { font-
   .dn-flow-equation strong,.dn-flow-equation li.is-final strong { font-size:12px; }
   .dn-flow-total strong { font-size:15px; }
 }
+
+/* ---- 残るお金: 計算式の注記と、返済額ごとの期間表示 ---- */
+.dn-formula { display:block; margin-top:2px; color:var(--muted); font-size:10px; font-weight:600; }
+.dn-leftover-period { display:flex; align-items:baseline; justify-content:space-between; gap:8px; }
+.dn-leftover-period+.dn-leftover-period { margin-top:4px; padding-top:4px; border-top:1px dashed var(--line); }
+.dn-leftover-period small { flex:none; color:var(--muted); font-size:11px; font-weight:800; }
+.dn-leftover-period>span { font-size:.82em; text-align:right; }
+[data-selected-buffer] .dn-money,[data-available] .dn-money,[data-monthly-buffer] .dn-money { white-space:nowrap; }

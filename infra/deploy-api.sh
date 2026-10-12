@@ -31,6 +31,10 @@ BACKUP_SERVICE_NAME="travel-mysql-backup.service"
 BACKUP_TIMER_NAME="travel-mysql-backup.timer"
 BACKUP_SERVICE_PATH="/etc/systemd/system/$BACKUP_SERVICE_NAME"
 BACKUP_TIMER_PATH="/etc/systemd/system/$BACKUP_TIMER_NAME"
+DEBT_REMINDER_SERVICE_NAME="travel-debt-reminder.service"
+DEBT_REMINDER_TIMER_NAME="travel-debt-reminder.timer"
+DEBT_REMINDER_SERVICE_PATH="/etc/systemd/system/$DEBT_REMINDER_SERVICE_NAME"
+DEBT_REMINDER_TIMER_PATH="/etc/systemd/system/$DEBT_REMINDER_TIMER_NAME"
 NGINX_CONF="${NGINX_CONF:-/etc/nginx/conf.d/travel-api.conf}"
 # TLS は Cloudflare Origin Certificate を流用する（*.vote-jt.com を含むため certbot 不要）
 SSL_CERT="${SSL_CERT:-/etc/ssl/cloudflare/vote-jt.com.pem}"
@@ -137,6 +141,24 @@ install_backup_timer() {
   sudo systemctl is-active --quiet "$BACKUP_TIMER_NAME"
 }
 
+install_debt_reminder_timer() {
+  local service_tmp timer_tmp
+  service_tmp="$(mktemp)"
+  timer_tmp="$(mktemp)"
+  sed -e "s|__APP_USER__|$APP_USER|g" \
+      -e "s|__APP_DIR__|$APP_DIR|g" \
+      -e "s|__ENV_FILE__|$ENV_FILE|g" \
+      "$APP_DIR/infra/travel-debt-reminder.service" > "$service_tmp"
+  cp "$APP_DIR/infra/travel-debt-reminder.timer" "$timer_tmp"
+  sudo install -m 0644 "$service_tmp" "$DEBT_REMINDER_SERVICE_PATH"
+  sudo install -m 0644 "$timer_tmp" "$DEBT_REMINDER_TIMER_PATH"
+  rm -f "$service_tmp" "$timer_tmp"
+  sudo systemctl daemon-reload
+  sudo systemctl enable --now "$DEBT_REMINDER_TIMER_NAME"
+  sudo systemctl is-enabled --quiet "$DEBT_REMINDER_TIMER_NAME"
+  sudo systemctl is-active --quiet "$DEBT_REMINDER_TIMER_NAME"
+}
+
 install_nginx() {
   if [[ -z "$API_DOMAIN" ]]; then
     echo "[deploy-api] --install-nginx には API_DOMAIN が必要です。" >&2
@@ -183,6 +205,7 @@ main() {
   build_api
   install_service
   install_backup_timer
+  install_debt_reminder_timer
   health_check
   if [[ "$INSTALL_NGINX" == "1" ]]; then
     install_nginx

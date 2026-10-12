@@ -386,6 +386,15 @@ export async function route(method: string, path: string, body: Body, actorUserI
   if (method === "POST" && path === "/api/debt/share/pdf") {
     return { status: 200, body: await debtShareRepo.loadSharedDebtPdf(str(body.token)) };
   }
+  if (method === "POST" && path === "/api/debt/manage") {
+    return { status: 200, body: await debtShareRepo.loadManagedDebt(str(body.token)) };
+  }
+  if (method === "POST" && path === "/api/debt/manage/pdf") {
+    return { status: 200, body: await debtShareRepo.loadManagedDebtPdf(str(body.token)) };
+  }
+  if (method === "POST" && path === "/api/debt/manage/paid") {
+    return { status: 200, body: await debtShareRepo.markDebtInstallmentPaid(str(body.token), str(body.due_date)) };
+  }
 
   // ---- 起動時の一括取得 ----
   if (method === "GET" && path === "/api/bootstrap") {

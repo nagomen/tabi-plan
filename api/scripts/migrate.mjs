@@ -692,6 +692,39 @@ async function main() {
       CONSTRAINT fk_debt_share_plan FOREIGN KEY (plan_id) REFERENCES debt_plans (id) ON DELETE CASCADE
     ) ENGINE=InnoDB`);
   });
+  await applyMigration("025_debt_notifications", async () => {
+    await conn.query(`CREATE TABLE IF NOT EXISTS debt_action_links (
+      id               VARCHAR(32) NOT NULL,
+      plan_id          VARCHAR(32) NOT NULL,
+      token_hash       VARBINARY(32) NOT NULL,
+      token_ciphertext VARBINARY(255) NOT NULL,
+      expires_at       TIMESTAMP NULL DEFAULT NULL,
+      revoked_at       TIMESTAMP NULL DEFAULT NULL,
+      created_at       TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (id),
+      UNIQUE KEY uq_debt_action_token (token_hash),
+      KEY idx_debt_action_plan (plan_id, revoked_at),
+      CONSTRAINT fk_debt_action_plan FOREIGN KEY (plan_id) REFERENCES debt_plans (id) ON DELETE CASCADE
+    ) ENGINE=InnoDB`);
+    await conn.query(`CREATE TABLE IF NOT EXISTS debt_notification_deliveries (
+      id               VARCHAR(32) NOT NULL,
+      plan_id          VARCHAR(32) NOT NULL,
+      due_date         DATE NOT NULL,
+      kind             ENUM('reminder','payment_confirmation') NOT NULL,
+      status           ENUM('pending','sending','sent','failed') NOT NULL DEFAULT 'pending',
+      attempts         SMALLINT UNSIGNED NOT NULL DEFAULT 0,
+      message_id       VARCHAR(255) NULL,
+      last_error       VARCHAR(500) NULL,
+      sent_at          TIMESTAMP NULL DEFAULT NULL,
+      next_attempt_at  TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+      created_at       TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at       TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (id),
+      UNIQUE KEY uq_debt_delivery (plan_id, due_date, kind),
+      KEY idx_debt_delivery_queue (status, next_attempt_at),
+      CONSTRAINT fk_debt_delivery_plan FOREIGN KEY (plan_id) REFERENCES debt_plans (id) ON DELETE CASCADE
+    ) ENGINE=InnoDB`);
+  });
 }
 
 // 同時デプロイが同じDDLを並走させないよう、DB側の advisory lock で直列化する。

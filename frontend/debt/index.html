@@ -18,7 +18,7 @@
     <span><strong>返す日</strong><small>PAYBACK NOTE</small></span>
   </a>
   <div class="dn-header-actions">
-    <span class="dn-readonly">閲覧専用</span>
+    <span class="dn-readonly" data-access-label>閲覧専用</span>
     <button class="dn-menu-button" type="button" aria-expanded="false" aria-controls="dn-menu" data-menu-toggle hidden>
       <span class="dn-menu-icon" aria-hidden="true"><i></i><i></i><i></i></span>
       <span class="dn-menu-label">メニュー</span>
@@ -86,6 +86,16 @@
       </dl>
     </section>
 
+    <aside class="dn-payment-action" data-payment-action hidden>
+      <div>
+        <p class="dn-payment-eyebrow">DEBTOR ACTION</p>
+        <h2>振り込みは完了しましたか？</h2>
+        <p data-payment-copy></p>
+        <p class="dn-payment-feedback" data-payment-feedback aria-live="polite"></p>
+      </div>
+      <button type="button" data-mark-paid><span>返済した</span></button>
+    </aside>
+
     <aside class="dn-pdf" id="pdf" aria-labelledby="dn-pdf-title" data-nav="計画書PDF">
       <span class="dn-pdf-mark" data-ic="documentText"></span>
       <div class="dn-pdf-copy">
@@ -116,7 +126,7 @@
         <div class="dn-plan-summary" aria-live="polite">
           <div><span>4月以降の想定手取り</span><strong data-selected-income></strong></div>
           <div><span>毎月の返済</span><strong data-selected-repayment></strong></div>
-          <div><span>返済後の予備費</span><strong data-selected-buffer></strong></div>
+          <div><span>返済後に残るお金</span><small class="dn-formula">手取り − 支出 − 返済</small><strong data-selected-buffer></strong></div>
           <div><span>完済予定</span><strong data-selected-completion></strong></div>
         </div>
         <p class="dn-plan-note" data-selected-note></p>
@@ -172,9 +182,9 @@
       <ol class="dn-flow-equation" aria-label="毎月の収支計算">
         <li class="is-plus"><span>手取り</span><strong data-cashflow-income></strong></li>
         <li class="is-minus"><span>支出合計</span><strong data-cashflow-expenses></strong></li>
-        <li class="is-result"><span>返済前の余力</span><strong data-available></strong></li>
+        <li class="is-result"><span>返済前に残るお金</span><strong data-available></strong></li>
         <li class="is-minus"><span>毎月の返済</span><strong data-monthly-repayment></strong></li>
-        <li class="is-final"><span>返済後の余力</span><strong data-monthly-buffer></strong></li>
+        <li class="is-final"><span>返済後に残るお金</span><strong data-monthly-buffer></strong></li>
       </ol>
       <aside class="dn-special-expense"><strong>旅行予定と必要資金</strong><p data-special-expense></p></aside>
       <section class="dn-reduced-income" data-reduced-income-panel hidden>
@@ -223,7 +233,7 @@
 
     <footer class="dn-footer">
       <p>このページは共有リンクを知っている人だけが閲覧できます。リンクを第三者へ転送しないでください。</p>
-      <p>氏名・メールアドレスは表示されません。返済状態の変更もこの画面からはできません。</p>
+      <p data-access-note>氏名・メールアドレスは表示されません。返済状態の変更もこの画面からはできません。</p>
     </footer>
   </div>
 </main>

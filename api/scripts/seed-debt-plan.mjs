@@ -17,7 +17,7 @@ if (!inputPath || !pdfPath) {
   console.error("Usage: node api/scripts/seed-debt-plan.mjs --input plan.json --pdf document.pdf");
   process.exit(1);
 }
-for (const name of ["DB_USER", "DB_PASSWORD"]) {
+for (const name of ["DB_USER", "DB_PASSWORD", "SESSION_SECRET"]) {
   if (!process.env[name]) throw new Error(`環境変数 ${name} が設定されていません`);
 }
 
@@ -55,6 +55,19 @@ if (!pdf.subarray(0, 5).equals(Buffer.from("%PDF-"))) throw new Error("PDF原本
 const randomId = (prefix) => `${prefix}_${crypto.randomBytes(12).toString("hex")}`;
 const token = crypto.randomBytes(32).toString("base64url");
 const tokenHash = crypto.createHash("sha256").update(token, "utf8").digest();
+const actionToken = crypto.randomBytes(32).toString("base64url");
+const actionTokenHash = crypto.createHash("sha256").update(actionToken, "utf8").digest();
+const actionKey = crypto.createHash("sha256")
+  .update("tabi-plan:debt-action-token:v1:", "utf8")
+  .update(process.env.SESSION_SECRET, "utf8")
+  .digest();
+const encryptActionToken = (planId) => {
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv("aes-256-gcm", actionKey, iv);
+  cipher.setAAD(Buffer.from(`tabi-plan:${planId}:debt-action:v1`, "utf8"));
+  const ciphertext = Buffer.concat([cipher.update(actionToken, "utf8"), cipher.final()]);
+  return Buffer.concat([Buffer.from([1]), iv, cipher.getAuthTag(), ciphertext]);
+};
 const connection = await mysql.createConnection({
   host: process.env.DB_HOST || "127.0.0.1",
   port: Number(process.env.DB_PORT || 3306),
@@ -98,9 +111,17 @@ try {
     "INSERT INTO debt_share_links (id, plan_id, token_hash) VALUES (?, ?, ?)",
     [randomId("dshr"), planId, tokenHash],
   );
+  await connection.query(
+    "UPDATE debt_action_links SET revoked_at = CURRENT_TIMESTAMP WHERE plan_id = ? AND revoked_at IS NULL",
+    [planId],
+  );
+  await connection.query(
+    "INSERT INTO debt_action_links (id, plan_id, token_hash, token_ciphertext) VALUES (?, ?, ?, ?)",
+    [randomId("dact"), planId, actionTokenHash, encryptActionToken(planId)],
+  );
   await connection.commit();
   const base = String(process.env.DEBT_VIEWER_BASE_URL || "https://nagomen.github.io/tabi-plan/debt/").replace(/\/?$/, "/");
-  process.stdout.write(`${base}#${token}\n`);
+  process.stdout.write(`閲覧用: ${base}#${token}\n債務者操作用: ${base}#manage=${actionToken}\n`);
 } catch (error) {
   await connection.rollback();
   throw error;

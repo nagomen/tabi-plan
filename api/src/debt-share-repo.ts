@@ -1,6 +1,9 @@
-import { firstRow, pool } from "./db.js";
-import { DataIntegrityError, NotFound } from "./errors.js";
+import { firstRow, pool, withTransaction } from "./db.js";
+import { BadRequest, DataIntegrityError, NotFound } from "./errors.js";
 import { debtShareTokenHash, isDebtShareToken } from "./debt-share-token.js";
+import { debtActionTokenHash, isDebtActionToken } from "./debt-action-token.js";
+import { deliverPendingNotifications } from "./debt-notification-repo.js";
+import { newId } from "./ids.js";
 
 export interface DebtInstallment {
   number: number;
@@ -21,6 +24,7 @@ export interface DebtDocument {
 }
 
 export interface DebtRow {
+  id?: string;
   borrower_name: string;
   creditor_name: string;
   principal_yen: number | string;
@@ -30,6 +34,10 @@ export interface DebtRow {
   schedule_json: unknown;
   document_json: unknown;
   updated_at: Date | string | null;
+}
+
+interface ManagedDebtRow extends DebtRow {
+  id: string;
 }
 
 const BROKEN_DATA = "返済計画のデータを読み取れませんでした。お手数ですが、問い合わせ番号を添えて送信者へお知らせください。";
@@ -159,6 +167,72 @@ export async function loadSharedDebt(token: string): Promise<Record<string, unkn
   return toSharedDebt(await debtRow(token));
 }
 
+async function managedDebtRow(token: string): Promise<ManagedDebtRow> {
+  if (!isDebtActionToken(token)) inaccessible();
+  const row = await firstRow<ManagedDebtRow>(
+    pool,
+    `SELECT p.id, p.borrower_name, p.creditor_name, p.principal_yen, p.interest_yen,
+            p.total_yen, p.paid_yen, p.schedule_json, p.document_json, p.updated_at
+       FROM debt_action_links l
+       JOIN debt_plans p ON p.id = l.plan_id
+      WHERE l.token_hash = ?
+        AND l.revoked_at IS NULL
+        AND (l.expires_at IS NULL OR l.expires_at > CURRENT_TIMESTAMP)
+      LIMIT 1`,
+    [debtActionTokenHash(token)],
+  );
+  if (!row) inaccessible();
+  return row;
+}
+
+export async function loadManagedDebt(token: string): Promise<Record<string, unknown>> {
+  return { ...toSharedDebt(await managedDebtRow(token)), can_manage: true };
+}
+
+export async function markDebtInstallmentPaid(token: string, dueDate: string): Promise<Record<string, unknown>> {
+  if (!isDebtActionToken(token)) inaccessible();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) throw new BadRequest("返済日を確認できませんでした。");
+  const changed = await withTransaction(async (connection) => {
+    const row = await firstRow<ManagedDebtRow>(
+      connection,
+      `SELECT p.id, p.borrower_name, p.creditor_name, p.principal_yen, p.interest_yen,
+              p.total_yen, p.paid_yen, p.schedule_json, p.document_json, p.updated_at
+         FROM debt_action_links l
+         JOIN debt_plans p ON p.id = l.plan_id
+        WHERE l.token_hash = ?
+          AND l.revoked_at IS NULL
+          AND (l.expires_at IS NULL OR l.expires_at > CURRENT_TIMESTAMP)
+        LIMIT 1 FOR UPDATE`,
+      [debtActionTokenHash(token)],
+    );
+    if (!row) inaccessible();
+    const installments = schedule(row.schedule_json);
+    const target = installments.find((item) => item.due_date === dueDate && item.amount_yen > 0);
+    if (!target) throw new BadRequest("対象の返済予定が見つかりませんでした。");
+    if (target.paid_at) return { planId: row.id, alreadyPaid: true };
+    target.paid_at = new Date().toISOString();
+    const paid = installments.reduce((sum, item) => sum + (item.paid_at ? item.amount_yen : 0), 0);
+    await connection.query(
+      "UPDATE debt_plans SET schedule_json = ?, paid_yen = ? WHERE id = ?",
+      [JSON.stringify(installments), paid, row.id],
+    );
+    await connection.query(
+      `INSERT IGNORE INTO debt_notification_deliveries
+        (id, plan_id, due_date, kind, status, next_attempt_at)
+       VALUES (?, ?, ?, 'payment_confirmation', 'pending', CURRENT_TIMESTAMP)`,
+      [newId("dmail"), row.id, dueDate],
+    );
+    return { planId: row.id, alreadyPaid: false };
+  });
+  const delivery = await deliverPendingNotifications(changed.planId);
+  return {
+    ok: true,
+    already_paid: changed.alreadyPaid,
+    notification: delivery.configured ? (delivery.sent ? "sent" : "queued") : "queued",
+    plan: await loadManagedDebt(token),
+  };
+}
+
 export async function loadSharedDebtPdf(token: string): Promise<{
   filename: string;
   mime_type: "application/pdf";
@@ -178,6 +252,32 @@ export async function loadSharedDebtPdf(token: string): Promise<{
   );
   if (!row) inaccessible();
   // 有効なリンクを持つ人には、PDFだけ未登録であることを伝えてよい。
+  if (!row.document_pdf?.length) throw new NotFound("原本PDFはまだ登録されていません。送信者へお問い合わせください。");
+  return {
+    filename: row.pdf_filename || "repayment-plan.pdf",
+    mime_type: "application/pdf",
+    data_base64: row.document_pdf.toString("base64"),
+  };
+}
+
+export async function loadManagedDebtPdf(token: string): Promise<{
+  filename: string;
+  mime_type: "application/pdf";
+  data_base64: string;
+}> {
+  if (!isDebtActionToken(token)) inaccessible();
+  const row = await firstRow<{ document_pdf: Buffer | null; pdf_filename: string | null }>(
+    pool,
+    `SELECT p.document_pdf, p.pdf_filename
+       FROM debt_action_links l
+       JOIN debt_plans p ON p.id = l.plan_id
+      WHERE l.token_hash = ?
+        AND l.revoked_at IS NULL
+        AND (l.expires_at IS NULL OR l.expires_at > CURRENT_TIMESTAMP)
+      LIMIT 1`,
+    [debtActionTokenHash(token)],
+  );
+  if (!row) inaccessible();
   if (!row.document_pdf?.length) throw new NotFound("原本PDFはまだ登録されていません。送信者へお問い合わせください。");
   return {
     filename: row.pdf_filename || "repayment-plan.pdf",

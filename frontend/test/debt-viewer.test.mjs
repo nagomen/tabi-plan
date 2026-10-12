@@ -35,6 +35,16 @@ test("公開返済ページは氏名やメールアドレスを表示しない",
   assert.match(normalize, /EMAIL/);
 });
 
+test("債務者専用リンクだけに返済記録ボタンを表示し、管理APIへ送る", () => {
+  const html = readFileSync(new URL("../debt/index.html", import.meta.url), "utf8");
+  const viewer = readFileSync(new URL("../src/debt/viewer.ts", import.meta.url), "utf8");
+  assert.match(html, /data-payment-action[^>]*hidden/);
+  assert.match(html, /data-mark-paid/);
+  assert.match(viewer, /params\.get\("manage"\)/);
+  assert.match(viewer, /\/api\/debt\/manage\/paid/);
+  assert.match(viewer, /貸主へメール/);
+});
+
 test("返済共有ページは返済原資と月次収支の内訳を表示する", () => {
   const html = readFileSync(new URL("../debt/index.html", import.meta.url), "utf8");
   // 収支の描画は funding.ts に分けたので、両方をまとめて検査する

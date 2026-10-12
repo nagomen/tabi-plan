@@ -1,5 +1,5 @@
 import { DebtViewerError, post } from "./api";
-import { renderFundingPlan } from "./funding";
+import { renderFundingPlan, renderScenarioLeftover } from "./funding";
 import { initDebtNav } from "./nav";
 import {
   normalizePdf, normalizePlan,
@@ -21,14 +21,16 @@ function one<T extends Element>(selector: string): T {
   return node;
 }
 
-function tokenFromFragment(): string {
+function accessFromFragment(): { token: string; manage: boolean } {
   const fragment = location.hash.slice(1);
-  const token = new URLSearchParams(fragment).get("token") || fragment;
   try {
-    return decodeURIComponent(token).trim();
+    const params = new URLSearchParams(fragment);
+    const managementToken = params.get("manage");
+    const token = managementToken || params.get("token") || fragment;
+    return { token: decodeURIComponent(token).trim(), manage: Boolean(managementToken) };
   } catch {
     // %の後ろが欠けた貼り付けなど。形式チェックで「URLが正しくない」と案内する。
-    return "";
+    return { token: "", manage: false };
   }
 }
 
@@ -164,7 +166,7 @@ function renderPlanSwitch(plan: DebtPlan): void {
     }
     setText("[data-selected-income]", yenRange(scenario.net_income_min_yen, scenario.net_income_yen));
     setText("[data-selected-repayment]", scenario.repayment_summary || yen.format(scenario.monthly_repayment_yen));
-    setText("[data-selected-buffer]", yenRange(scenario.monthly_buffer_min_yen, scenario.monthly_buffer_yen));
+    renderScenarioLeftover(one<HTMLElement>("[data-selected-buffer]"), scenario);
     setText("[data-selected-completion]", displayDate(scenario.completion_date));
     setText("[data-selected-note]", scenario.note);
     renderScheduleOverview(scheduleForScenario(plan, scenario));
@@ -260,7 +262,7 @@ function base64Bytes(data: string): ArrayBuffer {
   return buffer;
 }
 
-async function downloadPdf(button: HTMLButtonElement, token: string): Promise<void> {
+async function downloadPdf(button: HTMLButtonElement, token: string, manage: boolean): Promise<void> {
   if (button.disabled) return;
   const label = button.querySelector<HTMLElement>("[data-download-label]");
   const original = label?.textContent || button.textContent || "原本PDFをダウンロード";
@@ -272,7 +274,7 @@ async function downloadPdf(button: HTMLButtonElement, token: string): Promise<vo
   button.setAttribute("aria-busy", "true");
   setLabel("PDFを準備中…");
   try {
-    const pdf = normalizePdf(await post("/api/debt/share/pdf", { token }));
+    const pdf = normalizePdf(await post(manage ? "/api/debt/manage/pdf" : "/api/debt/share/pdf", { token }));
     const blob = new Blob([base64Bytes(pdf.data_base64)], { type: pdf.mime_type });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -296,7 +298,44 @@ async function downloadPdf(button: HTMLButtonElement, token: string): Promise<vo
   }
 }
 
-function render(plan: DebtPlan, token: string): void {
+function renderManagement(plan: DebtPlan, token: string): void {
+  const panel = one<HTMLElement>("[data-payment-action]");
+  const button = one<HTMLButtonElement>("[data-mark-paid]");
+  const feedback = one<HTMLElement>("[data-payment-feedback]");
+  const next = plan.schedule.find((item) => item.amount_yen > 0 && !item.paid_at);
+  panel.hidden = false;
+  one<HTMLElement>("[data-access-label]").textContent = "債務者用";
+  one<HTMLElement>("[data-access-note]").textContent = "氏名・メールアドレスは表示されません。この債務者専用URLは第三者へ転送しないでください。";
+  feedback.textContent = "";
+  if (!next) {
+    setText("[data-payment-copy]", "すべての返済が記録されています。");
+    button.hidden = true;
+    return;
+  }
+  button.hidden = false;
+  button.disabled = false;
+  setText("[data-payment-copy]", `${displayDate(next.due_date)}・${yen.format(next.amount_yen)}の返済を記録し、貸主へメールで知らせます。`);
+  button.onclick = async () => {
+    if (!confirm(`${displayDate(next.due_date)}の${yen.format(next.amount_yen)}を振り込み済みとして記録しますか？`)) return;
+    button.disabled = true;
+    feedback.textContent = "返済を記録しています…";
+    try {
+      const result = await post("/api/debt/manage/paid", { token, due_date: next.due_date });
+      const body = result && typeof result === "object" && !Array.isArray(result) ? result as Record<string, unknown> : {};
+      const updated = normalizePlan(body.plan);
+      render(updated, token, true);
+      one<HTMLElement>("[data-payment-feedback]").textContent = body.notification === "sent"
+        ? "返済を記録し、貸主へメールを送信しました。"
+        : "返済を記録しました。貸主へのメールは送信待ちです。";
+    } catch (error) {
+      const problem = describe(error, "返済を記録できませんでした。");
+      feedback.textContent = problem.message;
+      button.disabled = false;
+    }
+  };
+}
+
+function render(plan: DebtPlan, token: string, manage: boolean): void {
   const remaining = Math.max(0, plan.total_yen - plan.paid_yen);
   const progress = plan.total_yen ? Math.min(100, Math.round(plan.paid_yen / plan.total_yen * 100)) : 0;
   setText("[data-remaining]", yen.format(remaining));
@@ -308,10 +347,11 @@ function render(plan: DebtPlan, token: string): void {
   setText("[data-updated]", displayDate(plan.updated_at.slice(0, 10)));
   renderDocument(plan.document);
   renderPlanSwitch(plan);
+  if (manage) renderManagement(plan, token);
 
   // onclick への代入なので、描き直しても処理が二重登録されない。
   const download = one<HTMLButtonElement>("[data-download]");
-  download.onclick = () => { void downloadPdf(download, token); };
+  download.onclick = () => { void downloadPdf(download, token, manage); };
 }
 
 function startRetryCountdown(button: HTMLButtonElement, seconds: number): void {
@@ -365,15 +405,16 @@ export async function initDebtViewer(): Promise<void> {
   // 別の共有URLを同じタブへ貼り直したとき、前の計画を表示したままにしない。
   window.addEventListener("hashchange", () => location.reload());
   try {
-    const token = tokenFromFragment();
+    const access = accessFromFragment();
+    const { token } = access;
     if (!TOKEN.test(token)) {
       throw new DebtViewerError(
         "共有URLが正しくありません。途中で切れていないか確認し、URL全体をコピーして開いてください。",
         "共有リンクを確認できませんでした",
       );
     }
-    const plan = normalizePlan(await post("/api/debt/share", { token }));
-    render(plan, token);
+    const plan = normalizePlan(await post(access.manage ? "/api/debt/manage" : "/api/debt/share", { token }));
+    render(plan, token, access.manage);
     one<HTMLElement>("[data-content]").hidden = false;
     // 目次は表示中のセクションから作るので、本文を出したあとに組み立てる。
     initDebtNav();

@@ -1,0 +1,11 @@
+[Unit]
+Description=Send debt repayment reminders every morning
+
+[Timer]
+OnCalendar=*-*-* 09:00:00 Asia/Tokyo
+Persistent=true
+RandomizedDelaySec=5m
+Unit=travel-debt-reminder.service
+
+[Install]
+WantedBy=timers.target

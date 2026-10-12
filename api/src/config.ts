@@ -103,6 +103,20 @@ export const config = {
     ),
   },
 
+  /** 返済リマインダー。SMTP資格情報はサーバー側だけに置く。 */
+  mail: {
+    host: optional("SMTP_HOST", ""),
+    port: integer("SMTP_PORT", "587", 1, 65_535),
+    secure: optional("SMTP_SECURE", "false") === "true",
+    user: optional("SMTP_USER", ""),
+    password: optional("SMTP_PASSWORD", ""),
+    from: optional("MAIL_FROM", ""),
+    debtViewerBaseUrl: optional(
+      "DEBT_VIEWER_BASE_URL",
+      "https://nagomen.github.io/tabi-plan/debt/",
+    ).replace(/\/?$/, "/"),
+  },
+
   /**
    * 失敗を知らせるために戻すログイン画面。
    * 許可オリジンの直下にアプリが無い（GitHub Pages のサブパス）ので、
