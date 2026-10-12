@@ -75,11 +75,11 @@ test("進路を切り替えると3月までを維持し、4月以降だけ選択
     updated_at: "2026-10-12",
     schedule: [
       { number: 1, due_date: "2026-11-21", amount_yen: 20000 },
-      { number: 0, due_date: "2026-12-21", amount_yen: 0 },
-      { number: 0, due_date: "2027-01-21", amount_yen: 0 },
-      { number: 2, due_date: "2027-02-21", amount_yen: 20000 },
-      { number: 3, due_date: "2027-03-21", amount_yen: 20000 },
-      { number: 4, due_date: "2027-04-21", amount_yen: 20000 },
+      { number: 2, due_date: "2026-12-21", amount_yen: 10000 },
+      { number: 3, due_date: "2027-01-21", amount_yen: 10000 },
+      { number: 4, due_date: "2027-02-21", amount_yen: 20000 },
+      { number: 5, due_date: "2027-03-21", amount_yen: 20000 },
+      { number: 6, due_date: "2027-04-21", amount_yen: 20000 },
     ],
     document: { repayment_scenarios: [] },
   });
@@ -93,7 +93,7 @@ test("進路を切り替えると3月までを維持し、4月以降だけ選択
     completion_date: "2027-06-21",
     note: "",
     schedule: [
-      { due_date: "2027-06-21", amount_yen: 60000 },
+      { due_date: "2027-06-21", amount_yen: 40000 },
       { due_date: "2027-04-21", amount_yen: 60000 },
       { due_date: "2027-05-21", amount_yen: 60000 },
     ],
@@ -104,7 +104,7 @@ test("進路を切り替えると3月までを維持し、4月以降だけ選択
     "2027-04-21", "2027-05-21", "2027-06-21",
   ]);
   assert.equal(schedule.reduce((sum, item) => sum + item.amount_yen, 0), 240000);
-  assert.deepEqual(Array.from(schedule.slice(5), (item) => item.number), [4, 5, 6]);
+  assert.deepEqual(Array.from(schedule.slice(5), (item) => item.number), [6, 7, 8]);
 });
 
 test("HTMLのプロキシエラーやレート制限も日本語で説明し、再試行可否を返す", () => {
