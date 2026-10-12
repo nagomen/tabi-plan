@@ -493,3 +493,19 @@ h1,h2,h3,h4,td,dd,.dn-plan-summary strong,.dn-reduced-income-grid strong { font-
 .dn-leftover-period small { flex:none; color:var(--muted); font-size:11px; font-weight:800; }
 .dn-leftover-period>span { font-size:.82em; text-align:right; }
 [data-selected-buffer] .dn-money,[data-available] .dn-money,[data-monthly-buffer] .dn-money { white-space:nowrap; }
+/* プラン要約のラベル用 span 指定（display:block・灰色）が金額の span にまで掛からないようにする */
+:root { --plus:#17664f; --minus:#a8392b; }
+.dn-plan-summary [data-selected-buffer] span { display:inline; margin:0; font-size:inherit; font-weight:inherit; }
+.dn-plan-summary [data-selected-buffer] .dn-leftover-period { display:flex; }
+.dn-plan-summary [data-selected-buffer] .dn-money.is-positive { color:var(--plus); }
+.dn-plan-summary [data-selected-buffer] .dn-money.is-negative { color:var(--minus); }
+.dn-plan-summary [data-selected-buffer] .dn-range-dash { color:var(--muted); }
+.dn-plan-summary [data-selected-buffer] .dn-leftover-period>span { font-size:16px; white-space:nowrap; }
+@media (max-width:760px) {
+  .dn-plan-summary [data-selected-buffer] .dn-leftover-period { display:block; }
+  .dn-plan-summary [data-selected-buffer] .dn-leftover-period small { display:block; margin-bottom:1px; }
+  .dn-plan-summary [data-selected-buffer] .dn-leftover-period>span { display:block; font-size:13px; text-align:left; }
+}
+@media (max-width:360px) {
+  .dn-plan-summary [data-selected-buffer] .dn-leftover-period>span { font-size:11px; }
+}

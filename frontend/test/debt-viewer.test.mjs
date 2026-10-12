@@ -322,3 +322,21 @@ test("収支セクションは収入(＋)と支出(−)を列・符号・色で�
   assert.match(viewer, /from "\.\/funding"/);
   assert.doesNotMatch(viewer, /function renderFundingPlan/);
 });
+
+test("返済後に残るお金は「手取り − 支出 − 返済」を返済額の期間ごとに計算する", () => {
+  const html = readFileSync(new URL("../debt/index.html", import.meta.url), "utf8");
+  assert.match(html, /返済後に残るお金<\/span><small class="dn-formula">手取り − 支出 − 返済<\/small>/);
+  assert.doesNotMatch(html, /返済後の予備費|返済後の余力|返済前の余力/);
+  const { repaymentPeriods } = loadModule("../src/debt/funding.ts");
+  const schedule = (pairs) => pairs.map(([month, amount]) => ({ due_date: `${month}-21`, amount_yen: amount }));
+  // 留年ルート: 4・5月は1万円、6月以降は2万円。完済月の端数(2月 1万円)は独立した期間にしない
+  const repeat = repaymentPeriods(schedule([["2027-04", 10000], ["2027-05", 10000], ["2027-06", 20000], ["2027-07", 20000], ["2028-01", 20000], ["2028-02", 10000]]));
+  // vm 内で作られた配列は別レルムなので JSON で比べる
+  assert.equal(JSON.stringify(repeat.map((period) => [period.months.length, period.amount])), "[[2,10000],[3,20000]]");
+  // アクセンチュアルート: 6万円×3回のあと完済の1万円 → 期間は1つ
+  const accenture = repaymentPeriods(schedule([["2027-04", 60000], ["2027-05", 60000], ["2027-06", 60000], ["2027-07", 10000]]));
+  assert.equal(JSON.stringify(accenture.map((period) => period.amount)), "[60000]");
+  // 手取り169,000円 − 支出152,000円 − 返済20,000円 = 3,000円不足（DB保存値 -3,000 と一致）
+  assert.equal(169000 - 152000 - repeat[1].amount, -3000);
+  assert.equal(169000 - 152000 - repeat[0].amount, 7000);
+});
