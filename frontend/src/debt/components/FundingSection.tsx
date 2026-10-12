@@ -1,4 +1,4 @@
-import { yen } from "../format";
+import { monthNames, yen } from "../format";
 import { flowChart, SEGMENTS, type FlowChart } from "../flow";
 import type { BudgetItem, DebtDocument } from "../normalize";
 import { Icon } from "./Icon";
@@ -123,9 +123,9 @@ export function FundingSection({ documentData }: { documentData: DebtDocument })
       {income.reduced_income_months.length > 0 && (
         <section className="dn-reduced-income dn-subcard">
           <div>
-            <p className="dn-section-no">TEMPORARY INCOME CHANGE</p>
-            <h3><Icon name="calendarDays" />12月・1月の収入減と少額返済</h3>
-            <p>官庁訪問に伴い収入が下がる2か月も、返済額を各1万円に抑えて支払いを継続します。留年ルートでは6月21日から月2万円へ増額します。</p>
+            <p className="dn-section-no">MINIMUM WORK MONTHS</p>
+            <h3><Icon name="calendarDays" />{monthNames(income.reduced_income_months.map((month) => month.label))}は最低勤務で少額返済</h3>
+            <p>官庁訪問のため勤務を最低時間に抑える月です。返済額を少額にして支払いを続けます。各月の手取りと、支出・返済後に残る見込みは次のとおりです。</p>
           </div>
           <div className="dn-reduced-income-grid">
             {income.reduced_income_months.map((month) => (

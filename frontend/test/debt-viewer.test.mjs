@@ -449,3 +449,14 @@ test("PDF応答は base64 とファイル名を検査する", () => {
   }
 });
 
+
+test("最低勤務の月のカードは、見出しの月を保存データから作る", () => {
+  const { FundingSection } = load("../src/debt/components/FundingSection.tsx");
+  const { monthNames } = load("../src/debt/format.ts");
+  assert.equal(monthNames(["2026年12月", "2027年1月"]), "12月・1月");
+  assert.equal(monthNames([]), "該当月");
+  const markup = render(FundingSection, { documentData: samplePlan().document });
+  assert.match(markup, /12月は最低勤務で少額返済/);
+  const source = readFileSync(new URL("../src/debt/components/FundingSection.tsx", import.meta.url), "utf8");
+  assert.doesNotMatch(source, /6月21日|各1万円|収入減と少額返済/);
+});

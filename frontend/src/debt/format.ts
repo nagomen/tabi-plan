@@ -22,3 +22,9 @@ export function todayInJapan(now = new Date()): string {
   const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
   return `${values.year}-${values.month}-${values.day}`;
 }
+
+/** 「2026年12月」「2027年1月」→「12月・1月」。月の表記は保存データから作り、コードに固定しない。 */
+export function monthNames(labels: string[]): string {
+  const names = labels.map((label) => /(\d{1,2})月/.exec(label)?.[1]).filter(Boolean).map((month) => `${Number(month)}月`);
+  return names.length ? names.join("・") : "該当月";
+}
