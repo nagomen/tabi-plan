@@ -208,6 +208,21 @@ function renderBudgetItems(selector: string, items: Array<{ label: string; amoun
   }
 }
 
+function renderLivingCostGroup(expenses: DebtDocument["expense_plan"]): void {
+  const group = expenses?.living_cost_group;
+  const panel = one<HTMLElement>("[data-living-cost-group]");
+  if (!group) {
+    panel.hidden = true;
+    return;
+  }
+  setText("[data-living-cost-label]", group.label);
+  setText("[data-living-cost-subtotal]", `小計 ${yen.format(group.subtotal_yen)}`);
+  setText("[data-living-cost-total]", yen.format(group.total_yen));
+  renderBudgetItems("[data-living-cost-items]", group.items);
+  renderBudgetItems("[data-living-cost-deductions]", group.deduction_items);
+  panel.hidden = false;
+}
+
 function renderFundingPlan(documentData: DebtDocument): void {
   const income = documentData.income_plan;
   const expenses = documentData.expense_plan;
@@ -221,6 +236,7 @@ function renderFundingPlan(documentData: DebtDocument): void {
   setText("[data-net-income]", yenRange(income.estimated_net_income_min_yen, income.estimated_net_income_yen));
   renderBudgetItems("[data-fixed-expenses]", expenses.fixed_items);
   renderBudgetItems("[data-variable-expenses]", expenses.variable_items);
+  renderLivingCostGroup(expenses);
   setText("[data-fixed-total]", yen.format(expenses.fixed_total_yen));
   setText("[data-variable-total]", yen.format(expenses.variable_total_yen));
   setText("[data-cashflow-income]", yenRange(income.estimated_net_income_min_yen, income.estimated_net_income_yen));

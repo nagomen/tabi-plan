@@ -64,6 +64,13 @@ th:nth-child(2),td:nth-child(2) { text-align:left; }
 .dn-budget-grid section>p { display:flex; justify-content:space-between; gap:16px; margin:0; padding:13px 0; background:var(--soft); font-size:13px; }
 .dn-budget-grid section>p span { padding-left:10px; }
 .dn-budget-grid section>p strong { padding-right:10px; }
+.dn-expense-group { margin:14px 0; border:1px solid var(--line); background:#f8faf8; }
+.dn-expense-group-head { display:flex; justify-content:space-between; gap:12px; padding:12px; border-bottom:1px solid var(--line); color:var(--ink); font-size:13px; }
+.dn-expense-group-head span { color:var(--muted); font-size:12px; }
+.dn-expense-group dl { padding:0 12px; }
+.dn-expense-group dt,.dn-expense-group dd { font-size:12px; }
+.dn-expense-group .dn-expense-deductions dt,.dn-expense-group .dn-expense-deductions dd { color:#14614f; font-weight:800; }
+.dn-expense-group>p { display:flex; justify-content:space-between; gap:12px; margin:0; padding:11px 12px; border-top:1px solid var(--line); background:#edf4ef; font-size:12px; }
 .dn-cashflow { display:grid; grid-template-columns:repeat(5,1fr); margin-top:28px; border:1px solid var(--line); }
 .dn-cashflow>div { padding:18px; border-right:1px solid var(--line); }
 .dn-cashflow>div:last-child { border-right:0; }

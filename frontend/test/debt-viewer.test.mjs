@@ -204,6 +204,35 @@ test("月収と返済後余力は下限から上限までの幅を保持する",
   assert.equal(plan.document.repayment_scenarios[0].monthly_buffer_min_yen, -33000);
 });
 
+test("交通費と生活費は内訳・交通費支給・差引負担額を一つのグループで保持する", () => {
+  const plan = normalizePlan({
+    schedule: [{ due_date: "2026-11-21", amount_yen: 10000 }],
+    document: {
+      expense_plan: {
+        variable_items: [{ label: "飲み代", amount_yen: 48000 }],
+        living_cost_group: {
+          label: "交通費・生活費等",
+          items: [
+            { label: "交通チャージ", amount_yen: 12000 },
+            { label: "生活費の予備", amount_yen: 3000 },
+          ],
+          subtotal_yen: 60000,
+          deduction_items: [{ label: "会社からの交通費支給", amount_yen: -10000 }],
+          total_yen: 50000,
+        },
+        variable_total_yen: 128000,
+        monthly_total_yen: 160700,
+      },
+    },
+  });
+  const group = plan.document.expense_plan?.living_cost_group;
+  assert.equal(group?.label, "交通費・生活費等");
+  assert.equal(group?.subtotal_yen, 60000);
+  assert.equal(group?.deduction_items[0].amount_yen, -10000);
+  assert.equal(group?.total_yen, 50000);
+  assert.equal(plan.document.expense_plan?.monthly_total_yen, 160700);
+});
+
 test("PDF応答は base64 とファイル名を検査する", () => {
   const pdf = normalizePdf({ filename: "計画:書/最終\u0007.pdf", data_base64: "JVBE\nRi0x" });
   assert.equal(pdf.filename, "計画_書_最終.pdf");

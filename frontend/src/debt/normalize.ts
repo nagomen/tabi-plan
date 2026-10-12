@@ -14,6 +14,14 @@ export interface BudgetItem {
   amount_yen: number;
 }
 
+export interface ExpenseGroup {
+  label: string;
+  items: BudgetItem[];
+  subtotal_yen: number;
+  deduction_items: BudgetItem[];
+  total_yen: number;
+}
+
 export interface IncomePlan {
   hourly_wage_yen: number;
   monthly_hours_min: number;
@@ -29,6 +37,7 @@ export interface IncomePlan {
 export interface ExpensePlan {
   fixed_items: BudgetItem[];
   variable_items: BudgetItem[];
+  living_cost_group?: ExpenseGroup;
   fixed_total_yen: number;
   variable_total_yen: number;
   monthly_total_yen: number;
@@ -162,9 +171,17 @@ function incomePlan(value: unknown, privateNames: Array<[string, string]>): Inco
 function expensePlan(value: unknown, privateNames: Array<[string, string]>): ExpensePlan | undefined {
   const raw = obj(value);
   if (!raw) return undefined;
+  const living = obj(raw.living_cost_group);
   return {
     fixed_items: budget(raw.fixed_items, privateNames),
     variable_items: budget(raw.variable_items, privateNames),
+    living_cost_group: living ? {
+      label: publicText(living.label, privateNames),
+      items: budget(living.items, privateNames),
+      subtotal_yen: yen(living.subtotal_yen),
+      deduction_items: budget(living.deduction_items, privateNames),
+      total_yen: yen(living.total_yen),
+    } : undefined,
     fixed_total_yen: yen(raw.fixed_total_yen),
     variable_total_yen: yen(raw.variable_total_yen),
     monthly_total_yen: yen(raw.monthly_total_yen),
