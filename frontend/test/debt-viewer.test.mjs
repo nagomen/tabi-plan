@@ -7,15 +7,18 @@ test("返済共有ページはhidden属性をCSSのdisplay指定より優先す�
   assert.match(css, /\[hidden\]\s*\{\s*display\s*:\s*none\s*!important\s*;?\s*\}/);
 });
 
-test("返済共有ページは収入減と進路別の返済シナリオを表示する", () => {
+test("返済共有ページは返済表の中で進路別プランを切り替える", () => {
   const html = readFileSync(new URL("../debt/index.html", import.meta.url), "utf8");
   const viewer = readFileSync(new URL("../src/debt/viewer.ts", import.meta.url), "utf8");
-  for (const marker of ["data-reduced-income-panel", "data-scenarios-panel", "data-repayment-scenarios"]) {
+  for (const marker of ["data-reduced-income-panel", "data-schedule-plans", "data-plan-tabs", "data-selected-repayment", "data-selected-completion"]) {
     assert.match(html, new RegExp(marker));
   }
+  assert.doesNotMatch(html, /data-scenarios-panel|data-repayment-scenarios|dn-scenarios/);
   for (const field of ["reduced_income_months", "repayment_scenarios", "monthly_repayment_yen", "completion_date"]) {
     assert.match(viewer, new RegExp(field));
   }
+  assert.match(viewer, /scheduleForScenario/);
+  assert.match(viewer, /aria-selected/);
   assert.match(viewer, /返済猶予/);
 });
 
@@ -58,6 +61,51 @@ function loadModule(relativePath, stubs = {}) {
 
 const api = loadModule("../src/debt/api.ts");
 const { normalizePlan, normalizePdf } = loadModule("../src/debt/normalize.ts", { "./api": api });
+const { scheduleForScenario } = loadModule("../src/debt/viewer.ts", {
+  "./api": api,
+  "./normalize": { normalizePlan, normalizePdf },
+});
+
+test("進路を切り替えると3月までを維持し、4月以降だけ選択プランへ差し替える", () => {
+  const plan = normalizePlan({
+    principal_yen: 230000,
+    interest_yen: 10000,
+    total_yen: 240000,
+    paid_yen: 0,
+    updated_at: "2026-10-12",
+    schedule: [
+      { number: 1, due_date: "2026-11-21", amount_yen: 20000 },
+      { number: 0, due_date: "2026-12-21", amount_yen: 0 },
+      { number: 0, due_date: "2027-01-21", amount_yen: 0 },
+      { number: 2, due_date: "2027-02-21", amount_yen: 20000 },
+      { number: 3, due_date: "2027-03-21", amount_yen: 20000 },
+      { number: 4, due_date: "2027-04-21", amount_yen: 20000 },
+    ],
+    document: { repayment_scenarios: [] },
+  });
+  const schedule = scheduleForScenario(plan, {
+    id: "accenture",
+    title: "アクセンチュアルート",
+    net_income_yen: 350000,
+    monthly_expenses_yen: 170000,
+    monthly_repayment_yen: 60000,
+    monthly_buffer_yen: 120000,
+    completion_date: "2027-06-21",
+    note: "",
+    schedule: [
+      { due_date: "2027-06-21", amount_yen: 60000 },
+      { due_date: "2027-04-21", amount_yen: 60000 },
+      { due_date: "2027-05-21", amount_yen: 60000 },
+    ],
+  });
+
+  assert.deepEqual(Array.from(schedule, (item) => item.due_date), [
+    "2026-11-21", "2026-12-21", "2027-01-21", "2027-02-21", "2027-03-21",
+    "2027-04-21", "2027-05-21", "2027-06-21",
+  ]);
+  assert.equal(schedule.reduce((sum, item) => sum + item.amount_yen, 0), 240000);
+  assert.deepEqual(Array.from(schedule.slice(5), (item) => item.number), [4, 5, 6]);
+});
 
 test("HTMLのプロキシエラーやレート制限も日本語で説明し、再試行可否を返す", () => {
   const gateway = api.errorFromResponse(502, "<html>Bad Gateway</html>", null);

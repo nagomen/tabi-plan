@@ -1,7 +1,7 @@
 import { DebtViewerError, post } from "./api";
 import {
   normalizePdf, normalizePlan,
-  type DebtDocument, type DebtPlan, type Installment,
+  type DebtDocument, type DebtPlan, type Installment, type RepaymentScenario,
 } from "./normalize";
 
 const yen = new Intl.NumberFormat("ja-JP", { style: "currency", currency: "JPY", maximumFractionDigits: 0 });
@@ -54,13 +54,13 @@ function statusFor(item: Installment, today: string): { label: string; className
   return { label: "予定", className: "is-pending" };
 }
 
-function renderSchedule(plan: DebtPlan): void {
+function renderSchedule(schedule: Installment[]): void {
   const tbody = one<HTMLTableSectionElement>("[data-schedule]");
   // 再試行で描き直しても行が二重にならないよう、毎回空にしてから積む。
   tbody.replaceChildren();
   const today = todayInJapan();
   let cumulative = 0;
-  for (const item of plan.schedule) {
+  for (const item of schedule) {
     cumulative += item.amount_yen;
     const row = document.createElement("tr");
     const status = statusFor(item, today);
@@ -78,7 +78,7 @@ function renderSchedule(plan: DebtPlan): void {
     row.append(stateCell);
     tbody.append(row);
   }
-  if (!plan.schedule.length) {
+  if (!schedule.length) {
     const row = document.createElement("tr");
     const cell = document.createElement("td");
     cell.colSpan = 5;
@@ -86,9 +86,109 @@ function renderSchedule(plan: DebtPlan): void {
     row.append(cell);
     tbody.append(row);
   }
-  const paymentCount = plan.schedule.filter((item) => item.amount_yen > 0).length;
-  const deferredCount = plan.schedule.length - paymentCount;
+  const paymentCount = schedule.filter((item) => item.amount_yen > 0).length;
+  const deferredCount = schedule.length - paymentCount;
   setText("[data-schedule-count]", deferredCount ? `全${paymentCount}回返済・${deferredCount}か月猶予` : `全${paymentCount}回`);
+}
+
+export function scheduleForScenario(plan: DebtPlan, scenario: RepaymentScenario): Installment[] {
+  const scenarioSchedule = [...scenario.schedule].sort((a, b) => a.due_date.localeCompare(b.due_date));
+  const firstScenarioDate = scenarioSchedule.at(0)?.due_date;
+  const common = firstScenarioDate
+    ? plan.schedule.filter((item) => item.due_date < firstScenarioDate)
+    : [...plan.schedule];
+  const savedByDate = new Map(plan.schedule.map((item) => [item.due_date, item]));
+  let paymentNumber = common.filter((item) => item.amount_yen > 0).length;
+  const selected = scenarioSchedule.map((item) => {
+    const saved = savedByDate.get(item.due_date);
+    if (item.amount_yen > 0) paymentNumber += 1;
+    return {
+      number: item.amount_yen > 0 ? paymentNumber : 0,
+      due_date: item.due_date,
+      amount_yen: item.amount_yen,
+      paid_at: saved?.amount_yen === item.amount_yen ? saved.paid_at : null,
+    };
+  });
+  return [...common, ...selected];
+}
+
+function renderScheduleOverview(schedule: Installment[]): void {
+  const payments = schedule.filter((item) => item.amount_yen > 0);
+  const paid = payments.filter((item) => Boolean(item.paid_at)).length;
+  const next = payments.find((item) => !item.paid_at);
+  setText("[data-count-label]", `残り ${payments.length - paid}回`);
+  setText("[data-completion]", displayDate(schedule.at(-1)?.due_date || ""));
+
+  const nextStatus = one<HTMLElement>("[data-next-status]");
+  if (next) {
+    setText("[data-next-date]", displayDate(next.due_date));
+    setText("[data-next-amount]", yen.format(next.amount_yen));
+    const status = statusFor(next, todayInJapan());
+    nextStatus.textContent = status.label;
+    nextStatus.className = `dn-state ${status.className}`;
+  } else if (!payments.length) {
+    setText("[data-next-date]", "未定");
+    setText("[data-next-amount]", "—");
+    nextStatus.textContent = "返済予定未登録";
+    nextStatus.className = "dn-state is-pending";
+  } else {
+    setText("[data-next-date]", "完済");
+    setText("[data-next-amount]", yen.format(0));
+    nextStatus.textContent = "すべて返済済み";
+    nextStatus.className = "dn-state is-paid";
+  }
+  renderSchedule(schedule);
+}
+
+function renderPlanSwitch(plan: DebtPlan): void {
+  const scenarios = plan.document.repayment_scenarios;
+  if (!scenarios.length) {
+    renderScheduleOverview(plan.schedule);
+    return;
+  }
+
+  const tabs = one<HTMLElement>("[data-plan-tabs]");
+  tabs.replaceChildren();
+  const buttons = new Map<string, HTMLButtonElement>();
+  const select = (scenario: RepaymentScenario): void => {
+    for (const [id, button] of buttons) {
+      const active = id === scenario.id;
+      button.setAttribute("aria-selected", String(active));
+      button.tabIndex = active ? 0 : -1;
+    }
+    setText("[data-selected-income]", yen.format(scenario.net_income_yen));
+    setText("[data-selected-repayment]", yen.format(scenario.monthly_repayment_yen));
+    setText("[data-selected-buffer]", yen.format(scenario.monthly_buffer_yen));
+    setText("[data-selected-completion]", displayDate(scenario.completion_date));
+    setText("[data-selected-note]", scenario.note);
+    renderScheduleOverview(scheduleForScenario(plan, scenario));
+  };
+
+  scenarios.forEach((scenario, index) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "dn-plan-tab";
+    button.setAttribute("role", "tab");
+    button.setAttribute("aria-selected", "false");
+    button.textContent = scenario.title;
+    button.onclick = () => select(scenario);
+    button.onkeydown = (event) => {
+      let nextIndex: number | undefined;
+      if (event.key === "ArrowRight" || event.key === "ArrowDown") nextIndex = (index + 1) % scenarios.length;
+      if (event.key === "ArrowLeft" || event.key === "ArrowUp") nextIndex = (index - 1 + scenarios.length) % scenarios.length;
+      if (event.key === "Home") nextIndex = 0;
+      if (event.key === "End") nextIndex = scenarios.length - 1;
+      if (nextIndex === undefined) return;
+      event.preventDefault();
+      const nextScenario = scenarios[nextIndex];
+      select(nextScenario);
+      buttons.get(nextScenario.id)?.focus();
+    };
+    buttons.set(scenario.id, button);
+    tabs.append(button);
+  });
+  one<HTMLElement>("[data-schedule-plans]").hidden = false;
+  select(scenarios.find((scenario) => scenario.id === "repeat-year") || scenarios[0]);
 }
 
 function renderBudgetItems(selector: string, items: Array<{ label: string; amount_yen: number }>): void {
@@ -153,50 +253,6 @@ function renderFundingPlan(documentData: DebtDocument): void {
   one<HTMLElement>("[data-funding-plan]").hidden = false;
 }
 
-function renderRepaymentScenarios(documentData: DebtDocument): void {
-  const scenarios = documentData.repayment_scenarios;
-  if (!scenarios.length) return;
-  const container = one<HTMLElement>("[data-repayment-scenarios]");
-  container.replaceChildren();
-  for (const scenario of scenarios) {
-    const card = document.createElement("article");
-    card.className = "dn-scenario";
-    card.dataset.scenario = scenario.id;
-
-    const heading = document.createElement("h3");
-    heading.textContent = scenario.title;
-    const income = document.createElement("p");
-    income.className = "dn-scenario-income";
-    income.textContent = `4月以降の想定手取り ${yen.format(scenario.net_income_yen)}`;
-
-    const metrics = document.createElement("dl");
-    for (const [label, value] of [
-      ["月の支出", yen.format(scenario.monthly_expenses_yen)],
-      ["毎月の返済", yen.format(scenario.monthly_repayment_yen)],
-      ["返済後の予備費", yen.format(scenario.monthly_buffer_yen)],
-      ["完済予定", displayDate(scenario.completion_date)],
-    ]) {
-      const term = document.createElement("dt");
-      term.textContent = label;
-      const detail = document.createElement("dd");
-      detail.textContent = value;
-      metrics.append(term, detail);
-    }
-
-    const schedule = document.createElement("p");
-    schedule.className = "dn-scenario-schedule";
-    schedule.textContent = scenario.schedule
-      .map((item) => `${Number(item.due_date.slice(5, 7))}/${Number(item.due_date.slice(8, 10))} ${yen.format(item.amount_yen)}`)
-      .join(" · ");
-    const note = document.createElement("p");
-    note.className = "dn-scenario-note";
-    note.textContent = scenario.note;
-    card.append(heading, income, metrics, schedule, note);
-    container.append(card);
-  }
-  one<HTMLElement>("[data-scenarios-panel]").hidden = false;
-}
-
 function renderDocument(documentData: DebtDocument): void {
   setText("[data-income]", `現在の月収：約${yen.format(documentData.monthly_income_yen)}。`);
   const debts = one<HTMLElement>("[data-existing-debts]");
@@ -234,7 +290,6 @@ function renderDocument(documentData: DebtDocument): void {
   setText("[data-closing]", documentData.closing_note);
   setText("[data-submitted]", displayDate(documentData.submitted_on));
   renderFundingPlan(documentData);
-  renderRepaymentScenarios(documentData);
 }
 
 /** 利用者へ出す文言。想定外の例外（描画の不具合など）は英語の内部メッセージを見せない。 */
@@ -292,40 +347,16 @@ async function downloadPdf(button: HTMLButtonElement, token: string): Promise<vo
 
 function render(plan: DebtPlan, token: string): void {
   const remaining = Math.max(0, plan.total_yen - plan.paid_yen);
-  const paymentSchedule = plan.schedule.filter((item) => item.amount_yen > 0);
-  const paid = paymentSchedule.filter((item) => Boolean(item.paid_at)).length;
-  const next = paymentSchedule.find((item) => !item.paid_at);
   const progress = plan.total_yen ? Math.min(100, Math.round(plan.paid_yen / plan.total_yen * 100)) : 0;
   setText("[data-remaining]", yen.format(remaining));
   setText("[data-progress-label]", `${progress}% 返済済み`);
-  setText("[data-count-label]", `残り ${paymentSchedule.length - paid}回`);
   one<HTMLElement>("[data-progress]").style.width = `${progress}%`;
   setText("[data-principal]", yen.format(plan.principal_yen));
   setText("[data-interest]", yen.format(plan.interest_yen));
   setText("[data-total]", yen.format(plan.total_yen));
-  setText("[data-completion]", displayDate(plan.schedule.at(-1)?.due_date || ""));
   setText("[data-updated]", displayDate(plan.updated_at.slice(0, 10)));
-  const nextStatus = one<HTMLElement>("[data-next-status]");
-  if (next) {
-    setText("[data-next-date]", displayDate(next.due_date));
-    setText("[data-next-amount]", yen.format(next.amount_yen));
-    const status = statusFor(next, todayInJapan());
-    nextStatus.textContent = status.label;
-    nextStatus.className = `dn-state ${status.className}`;
-  } else if (!paymentSchedule.length) {
-    // 返済予定が未登録のときに「完済」と誤表示しない。
-    setText("[data-next-date]", "未定");
-    setText("[data-next-amount]", "—");
-    nextStatus.textContent = "返済予定未登録";
-    nextStatus.className = "dn-state is-pending";
-  } else {
-    setText("[data-next-date]", "完済");
-    setText("[data-next-amount]", yen.format(0));
-    nextStatus.textContent = "すべて返済済み";
-    nextStatus.className = "dn-state is-paid";
-  }
-  renderSchedule(plan);
   renderDocument(plan.document);
+  renderPlanSwitch(plan);
 
   // onclick への代入なので、描き直しても処理が二重登録されない。
   const download = one<HTMLButtonElement>("[data-download]");

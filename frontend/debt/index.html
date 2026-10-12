@@ -74,6 +74,21 @@
 
     <section class="dn-section">
       <div class="dn-section-head"><div><p class="dn-section-no">01</p><h2>毎月の返済スケジュール</h2></div><span data-schedule-count></span></div>
+      <div class="dn-schedule-plans" data-schedule-plans hidden>
+        <div class="dn-plan-switch-copy">
+          <p class="dn-section-no">APRIL 2027 — SELECT A PLAN</p>
+          <h3>4月以降の進路別返済プラン</h3>
+          <p>11月から3月までは共通の返済計画です。進路を選ぶと、4月以降の返済額・予備費・完済予定が下の表へ反映されます。</p>
+        </div>
+        <div class="dn-plan-tabs" role="tablist" aria-label="4月以降の返済プラン" data-plan-tabs></div>
+        <div class="dn-plan-summary" aria-live="polite">
+          <div><span>4月以降の想定手取り</span><strong data-selected-income></strong></div>
+          <div><span>毎月の返済</span><strong data-selected-repayment></strong></div>
+          <div><span>返済後の予備費</span><strong data-selected-buffer></strong></div>
+          <div><span>完済予定</span><strong data-selected-completion></strong></div>
+        </div>
+        <p class="dn-plan-note" data-selected-note></p>
+      </div>
       <div class="dn-table-wrap">
         <table>
           <thead><tr><th>回</th><th>返済期日</th><th>返済額</th><th>累計</th><th>状態</th></tr></thead>
@@ -128,18 +143,9 @@
       </div>
     </section>
 
-    <section class="dn-section dn-scenarios" data-scenarios-panel hidden>
-      <div class="dn-section-head">
-        <div><p class="dn-section-no">03</p><h2>4月以降の進路別返済プラン</h2></div>
-        <span>3つの IF</span>
-      </div>
-      <p class="dn-scenario-intro">2027年3月末までに進路を確定し、4月21日以降は実際の手取りに合わせて次のいずれかへ切り替えます。支出予算は月17万円で統一しています。</p>
-      <div class="dn-scenario-grid" data-repayment-scenarios></div>
-    </section>
-
     <section class="dn-section dn-document">
       <div class="dn-section-head">
-        <div><p class="dn-section-no">04</p><h2>借入・返済計画書</h2></div>
+        <div><p class="dn-section-no">03</p><h2>借入・返済計画書</h2></div>
         <button class="dn-download" type="button" data-download>原本PDFをダウンロード</button>
       </div>
       <p class="dn-doc-intro">現在の債務を整理し、責任を持って返済するための計画書です。原本の内容を画面上でも確認できます。</p>
