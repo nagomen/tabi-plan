@@ -1,4 +1,5 @@
 import { defineConfig, type Plugin } from "vite";
+import react from "@vitejs/plugin-react";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import fs from "node:fs";
@@ -167,9 +168,10 @@ function securityMetaHead(): Plugin {
     "base-uri 'self'",
     "object-src 'none'",
     "script-src 'self'",
-    "style-src 'self' 'unsafe-inline'",
+    // 返済共有ページの Noto Sans JP（Google Fonts）を読み込めるようにする。
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "img-src 'self' data: blob: https:",
-    "font-src 'self' data:",
+    "font-src 'self' data: https://fonts.gstatic.com",
     "connect-src 'self' https: ws: wss:",
     "frame-src 'self' https:",
     "form-action 'self' https:",
@@ -223,6 +225,8 @@ export default defineConfig({
   root: ".",
   publicDir: "public",
   plugins: [
+    // 返済共有ページ（/debt/）は React。他の画面は素の TypeScript のまま。
+    react(),
     securityMetaHead(),
     pageTransitionHead(),
     serviceWorkerAssetManifest(),

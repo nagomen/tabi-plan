@@ -26,7 +26,7 @@ button { font:inherit; }
 @keyframes spin { to { transform:rotate(360deg); } }
 .dn-error { justify-items:start; max-width:680px; text-align:left; }
 .dn-error h1 { margin:10px 0 18px; font-family:inherit; font-size:clamp(34px,6vw,58px); line-height:1.1; }
-.dn-error p:last-child,.dn-error [data-error-message] { color:var(--muted); line-height:1.8; }
+.dn-error p:last-child,.dn-error .dn-error-message { color:var(--muted); line-height:1.8; }
 .dn-error-reference { margin:0 0 18px; color:var(--muted); font-size:12px; font-variant-numeric:tabular-nums; user-select:all; }
 .dn-retry { margin-top:6px; }
 .dn-eyebrow,.dn-section-no { margin:0 0 12px; color:var(--green); font-size:11px; font-weight:900; letter-spacing:.16em; }
@@ -235,8 +235,8 @@ html { -webkit-text-size-adjust:100%; text-size-adjust:100%; }
 .dn-menu a:hover { background:var(--soft); }
 .dn-menu a[aria-current] { background:var(--soft); color:var(--green); box-shadow:inset 3px 0 var(--green); }
 .dn-menu-no { flex:none; min-width:18px; color:var(--muted); font-size:11px; font-weight:900; letter-spacing:.06em; }
-[data-nav] { scroll-margin-top:92px; }
-[data-nav]:focus { outline:none; }
+[data-content]>[id] { scroll-margin-top:92px; }
+[data-content]>[id]:focus { outline:none; }
 @media (prefers-reduced-motion:reduce) {
   .dn-menu-icon i { transition:none; }
 }
@@ -245,7 +245,7 @@ html { -webkit-text-size-adjust:100%; text-size-adjust:100%; }
   .dn-menu-button { min-height:34px; gap:6px; padding:0 9px; font-size:11px; }
   .dn-menu { top:100%; right:max(12px,env(safe-area-inset-right)); max-height:calc(100vh - 80px - env(safe-area-inset-top)); }
   .dn-menu a { padding:12px 14px; font-size:13px; }
-  [data-nav] { scroll-margin-top:calc(64px + env(safe-area-inset-top)); }
+  [data-content]>[id] { scroll-margin-top:calc(64px + env(safe-area-inset-top)); }
 }
 @media (max-width:360px) {
   .dn-readonly { display:none; }
@@ -559,3 +559,6 @@ h1,h2,h3,h4,td,dd,.dn-plan-summary strong,.dn-reduced-income-grid strong { font-
 @media (max-width:360px) {
   .dn-reduced-income-grid { grid-template-columns:1fr; }
 }
+
+/* React 版: 状態アイコンは span で包まれるので、行内に並べる */
+.dn-state-ic { display:inline-flex; }

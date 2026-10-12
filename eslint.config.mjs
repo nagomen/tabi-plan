@@ -15,7 +15,7 @@ export default tseslint.config(
     ignores: ["**/dist/**", "**/coverage/**", "**/node_modules/**"],
   },
   {
-    files: ["api/src/**/*.ts", "frontend/src/**/*.ts"],
+    files: ["api/src/**/*.ts", "frontend/src/**/*.{ts,tsx}"],
     plugins: { "@typescript-eslint": tseslint.plugin },
     languageOptions: {
       parser: tseslint.parser,
@@ -35,9 +35,10 @@ export default tseslint.config(
     // フロントの async イベントハンドラは意図した書き方。拒否は
     // session-notice.ts の unhandledrejection ハンドラが帯表示へ流すため、
     // コールバック引数のvoidチェックだけ緩める（それ以外の誤用検査は維持）。
-    files: ["frontend/src/**/*.ts"],
+    // React の onClick={async () => ...} も同じ扱い（JSX属性の void 戻り値チェックだけ緩める）。
+    files: ["frontend/src/**/*.{ts,tsx}"],
     rules: {
-      "@typescript-eslint/no-misused-promises": ["error", { checksVoidReturn: { arguments: false } }],
+      "@typescript-eslint/no-misused-promises": ["error", { checksVoidReturn: { arguments: false, attributes: false } }],
     },
   },
   {

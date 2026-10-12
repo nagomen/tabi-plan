@@ -1,83 +1,267 @@
+// 返済共有ページ（React）のテスト。純粋なロジックは関数を直接呼び、
+// 表示は react-dom/server で実際にコンポーネントを描いて確かめる。
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import fs, { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import test from "node:test";
+import ts from "typescript";
+
+const nodeRequire = createRequire(import.meta.url);
+const cache = new Map();
+
+/** src 配下の .ts/.tsx を TypeScript で変換して読み込む。相対 import は再帰的に解決し、react などは node_modules から読む。 */
+function load(relativePath, base = import.meta.url) {
+  const url = new URL(relativePath, base);
+  if (cache.has(url.href)) return cache.get(url.href).exports;
+  const javascript = ts.transpileModule(readFileSync(url, "utf8"), {
+    compilerOptions: { target: ts.ScriptTarget.ES2020, module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true },
+    fileName: url.pathname,
+  }).outputText;
+  const module = { exports: {} };
+  cache.set(url.href, module);
+  const require = (id) => {
+    if (!id.startsWith(".")) return nodeRequire(id);
+    for (const ext of [".ts", ".tsx"]) {
+      const candidate = new URL(id + ext, url);
+      if (fs.existsSync(candidate)) return load(candidate.href);
+    }
+    throw new Error(`モジュールが見つかりません: ${id}`);
+  };
+  new Function("module", "exports", "require", javascript)(module, module.exports, require);
+  return module.exports;
+}
+
+const { createElement: h } = nodeRequire("react");
+const { renderToStaticMarkup } = nodeRequire("react-dom/server");
+const render = (component, props) => renderToStaticMarkup(h(component, props));
+
+const api = load("../src/debt/api.ts");
+const { normalizePlan, normalizePdf } = load("../src/debt/normalize.ts");
+const { scheduleForScenario, repaymentPeriods, scenarioLeftover, statusFor, defaultScenario } = load("../src/debt/schedule.ts");
+const { accessFromFragment } = load("../src/debt/access.ts");
+const { flowChart } = load("../src/debt/flow.ts");
+
+/** 実データと同じ形の計画（留年ルートを含む3つの進路、交通費支給の差し引き、収入減の月）。 */
+function samplePlan() {
+  const months = (pairs) => pairs.map(([month, amount]) => ({ due_date: `${month}-21`, amount_yen: amount }));
+  return normalizePlan({
+    principal_yen: 300000, interest_yen: 0, total_yen: 300000, paid_yen: 20000, updated_at: "2026-10-12T02:00:00Z",
+    schedule: [
+      { number: 1, due_date: "2026-11-21", amount_yen: 20000, paid_at: "2026-11-20" },
+      { number: 2, due_date: "2026-12-21", amount_yen: 10000 },
+      { number: 3, due_date: "2027-01-21", amount_yen: 10000 },
+      { number: 4, due_date: "2027-02-21", amount_yen: 20000 },
+      { number: 5, due_date: "2027-03-21", amount_yen: 20000 },
+    ],
+    document: {
+      submitted_on: "2026-10-01", monthly_income_yen: 180000,
+      existing_debts: [{ creditor: "既存債務1", amount_yen: 120000 }, { creditor: "既存債務2", amount_yen: 80000 }],
+      promises: [{ title: "毎月21日に返済します", body: "給与日の翌営業日までに振り込みます。" }],
+      collateral_note: "担保はありません。", gambling_pledge: "ギャンブルをしません。", closing_note: "責任を持って返済します。",
+      income_plan: {
+        hourly_wage_yen: 3000, monthly_hours_min: 60, monthly_hours_cap: 80, gross_income_min_yen: 180000, gross_income_yen: 240000,
+        estimated_net_income_min_yen: 169000, estimated_net_income_yen: 225000, description: "アルバイト収入を返済原資とします。",
+        reduced_income_months: [{ label: "2026年12月", net_income_yen: 150000, note: "官庁訪問で勤務が減るため" }],
+      },
+      expense_plan: {
+        fixed_items: [{ label: "家賃", amount_yen: 26000 }], variable_items: [{ label: "食費", amount_yen: 30000 }],
+        living_cost_group: { label: "交通費・生活費等", items: [{ label: "交通チャージ", amount_yen: 12000 }], subtotal_yen: 60000, deduction_items: [{ label: "会社からの交通費支給", amount_yen: -10000 }], total_yen: 50000 },
+        fixed_total_yen: 32700, variable_total_yen: 128000, monthly_total_yen: 160700, special_expense_note: "2027年1月に北京旅行を予定しています。",
+      },
+      funding_plan: { monthly_available_min_yen: 8300, monthly_available_yen: 64300, monthly_repayment_yen: 10000, monthly_buffer_min_yen: -1700, monthly_buffer_yen: 54300, actions: ["給与受取後に最初に確保します。"] },
+      repayment_scenarios: [
+        { id: "accenture", title: "アクセンチュアルート", net_income_yen: 350000, net_income_min_yen: 350000, monthly_expenses_yen: 152000, monthly_repayment_yen: 60000, completion_date: "2027-07-21", schedule: months([["2027-04", 60000], ["2027-05", 60000], ["2027-06", 60000], ["2027-07", 10000]]) },
+        { id: "repeat-year", title: "留年ルート", net_income_yen: 225000, net_income_min_yen: 169000, monthly_expenses_yen: 152000, monthly_repayment_yen: 20000, repayment_summary: "4・5月：10,000円／6月以降：20,000円", completion_date: "2028-02-21", note: "6月からは20,000円を返済します。", schedule: months([["2027-04", 10000], ["2027-05", 10000], ["2027-06", 20000], ["2027-07", 20000], ["2028-01", 20000], ["2028-02", 10000]]) },
+      ],
+    },
+  });
+}
+
+// ---- 構成 ----
 
 test("返済共有ページはhidden属性をCSSのdisplay指定より優先する", () => {
   const css = readFileSync(new URL("../src/debt/style.css", import.meta.url), "utf8");
   assert.match(css, /\[hidden\]\s*\{\s*display\s*:\s*none\s*!important\s*;?\s*\}/);
 });
 
-test("返済共有ページは返済表の中で進路別プランを切り替える", () => {
+
+test("返済共有ページは Vite + React（main.tsx）で描き、JS 到着前と無効時の表示を持つ", () => {
   const html = readFileSync(new URL("../debt/index.html", import.meta.url), "utf8");
-  // 収支の描画は funding.ts に分けたので、両方をまとめて検査する
-  const viewer = readFileSync(new URL("../src/debt/viewer.ts", import.meta.url), "utf8")
-    + readFileSync(new URL("../src/debt/funding.ts", import.meta.url), "utf8");
-  for (const marker of ["data-reduced-income-panel", "data-schedule-plans", "data-plan-tabs", "data-selected-repayment", "data-selected-completion"]) {
-    assert.match(html, new RegExp(marker));
-  }
-  assert.doesNotMatch(html, /data-scenarios-panel|data-repayment-scenarios|dn-scenarios/);
-  for (const field of ["reduced_income_months", "repayment_scenarios", "monthly_repayment_yen", "completion_date"]) {
-    assert.match(viewer, new RegExp(field));
-  }
-  assert.match(viewer, /scheduleForScenario/);
-  assert.match(viewer, /aria-selected/);
-  assert.match(viewer, /返済猶予/);
+  assert.match(html, /<div id="root">[\s\S]*dn-loading[\s\S]*<\/div>/);
+  assert.match(html, /<script type="module" src="\.\.\/src\/debt\/main\.tsx"><\/script>/);
+  assert.match(html, /<noscript>[\s\S]*JavaScriptを有効にしてください/);
+  const config = readFileSync(new URL("../vite.config.ts", import.meta.url), "utf8");
+  assert.match(config, /import react from "@vitejs\/plugin-react"/);
+  assert.match(config, /react\(\)/);
+  // 本番 CSP で Google Fonts（Noto Sans JP）が弾かれないこと
+  assert.match(config, /style-src[^"]*https:\/\/fonts\.googleapis\.com/);
+  assert.match(config, /font-src[^"]*https:\/\/fonts\.gstatic\.com/);
 });
 
 test("公開返済ページは氏名やメールアドレスを表示しない", () => {
   const html = readFileSync(new URL("../debt/index.html", import.meta.url), "utf8");
-  const viewer = readFileSync(new URL("../src/debt/viewer.ts", import.meta.url), "utf8");
   const normalize = readFileSync(new URL("../src/debt/normalize.ts", import.meta.url), "utf8");
   assert.doesNotMatch(html, /data-borrower|data-creditor/);
-  assert.doesNotMatch(viewer, /\[data-borrower\]|\[data-creditor\]/);
-  assert.match(html, /氏名・メールアドレスは表示されません/);
+  const { App } = load("../src/debt/App.tsx");
+  const markup = render(App, { initialHash: "" });
+  assert.match(markup, /閲覧専用/);
   assert.match(normalize, /既存債務/);
   assert.match(normalize, /EMAIL/);
 });
 
-test("債務者専用リンクだけに返済記録ボタンを表示し、管理APIへ送る", () => {
-  const html = readFileSync(new URL("../debt/index.html", import.meta.url), "utf8");
-  const viewer = readFileSync(new URL("../src/debt/viewer.ts", import.meta.url), "utf8");
-  assert.match(html, /data-payment-action[^>]*hidden/);
-  assert.match(html, /data-mark-paid/);
-  assert.match(viewer, /params\.get\("manage"\)/);
-  assert.match(viewer, /\/api\/debt\/manage\/paid/);
-  assert.match(viewer, /貸主へメール/);
+test("最初の描画は読み込み表示で、本文と目次はまだ出さない", () => {
+  const { App } = load("../src/debt/App.tsx");
+  const markup = render(App, { initialHash: "#token=" + "A".repeat(43) });
+  assert.match(markup, /返済計画を安全に読み込んでいます/);
+  assert.doesNotMatch(markup, /data-content|dn-menu-button/);
 });
 
-test("返済共有ページは返済原資と月次収支の内訳を表示する", () => {
-  const html = readFileSync(new URL("../debt/index.html", import.meta.url), "utf8");
-  // 収支の描画は funding.ts に分けたので、両方をまとめて検査する
-  const viewer = readFileSync(new URL("../src/debt/viewer.ts", import.meta.url), "utf8")
-    + readFileSync(new URL("../src/debt/funding.ts", import.meta.url), "utf8");
-  for (const marker of ["data-funding-plan", "data-fixed-expenses", "data-variable-expenses", "data-monthly-buffer"]) {
-    assert.match(html, new RegExp(marker));
-  }
-  for (const field of ["income_plan", "expense_plan", "funding_plan"]) {
-    assert.match(viewer, new RegExp(field));
-  }
+test("共有URLは #token= と債務者用の #manage= を区別し、壊れた URL は空トークンにする", () => {
+  const token = "A".repeat(43);
+  assert.equal(JSON.stringify(accessFromFragment(`#token=${token}`)), JSON.stringify({ token, manage: false }));
+  assert.equal(JSON.stringify(accessFromFragment(`#manage=${token}`)), JSON.stringify({ token, manage: true }));
+  assert.equal(accessFromFragment(`#${token}`).token, token);
+  assert.equal(accessFromFragment("#token=%E3%8").token, "");
 });
 
-// ---- エラー処理: 通信・応答・データ形式 ----
-import fs from "node:fs";
-import vm from "node:vm";
-import ts from "typescript";
+// ---- 表示 ----
 
-function loadModule(relativePath, stubs = {}) {
-  const source = fs.readFileSync(new URL(relativePath, import.meta.url), "utf8");
-  const javascript = ts.transpileModule(source, {
-    compilerOptions: { target: ts.ScriptTarget.ES2020, module: ts.ModuleKind.CommonJS },
-  }).outputText;
-  const module = { exports: {} };
-  vm.runInNewContext(javascript, { module, exports: module.exports, require: (id) => stubs[id] || {} });
-  return module.exports;
-}
+test("冒頭は残額・次回の返済・借入条件を heroicon 付きで示す", () => {
+  const { Overview } = load("../src/debt/components/Overview.tsx");
+  const plan = samplePlan();
+  const markup = render(Overview, { plan, schedule: plan.schedule });
+  assert.match(markup, /残りの返済額/);
+  assert.match(markup, /280,000/);
+  assert.match(markup, /7% 返済済み/);
+  assert.match(markup, /2026年12月21日（月）/);
+  for (const label of ["借入元金", "利息", "返済総額", "完済予定"]) assert.match(markup, new RegExp(label));
+  assert.ok((markup.match(/<svg/g) || []).length >= 7, "heroicon が描かれていない");
+  assert.doesNotMatch(markup, /dn-summary|dn-balance/);
+});
 
-const api = loadModule("../src/debt/api.ts");
-const { normalizePlan, normalizePdf } = loadModule("../src/debt/normalize.ts", { "./api": api });
-const { scheduleForScenario } = loadModule("../src/debt/viewer.ts", {
-  "./api": api,
-  "./normalize": { normalizePlan, normalizePdf },
+test("返済予定が無いときは「完済」と誤表示しない", () => {
+  const { Overview } = load("../src/debt/components/Overview.tsx");
+  const plan = normalizePlan({ total_yen: 0, schedule: [], document: {} });
+  const markup = render(Overview, { plan, schedule: [] });
+  assert.match(markup, /返済予定未登録/);
+  assert.doesNotMatch(markup, />完済</);
+});
+
+test("返済スケジュールは返済額を主役に、状態を heroicon と文字で示す", () => {
+  const { ScheduleSection } = load("../src/debt/components/ScheduleSection.tsx");
+  const plan = samplePlan();
+  const scenarios = plan.document.repayment_scenarios;
+  const selected = defaultScenario(scenarios);
+  assert.equal(selected.id, "repeat-year");
+  const schedule = scheduleForScenario(plan, selected);
+  const markup = render(ScheduleSection, { scenarios, selected, onSelect() {}, schedule });
+  assert.match(markup, /role="tab" aria-selected="true"[^>]*>留年ルート/);
+  assert.match(markup, /返済済み/);
+  assert.match(markup, /返済後に残るお金<\/span><small class="dn-formula">手取り − 支出 − 返済<\/small>/);
+  assert.match(markup, /4・5月/);
+  assert.match(markup, /6月以降/);
+  assert.match(markup, /3,000 不足/);
+  assert.equal((markup.match(/<tr>/g) || []).length - 1, schedule.length);
+});
+
+test("収支は収入(＋)と支出(−)を分け、交通費支給はプラス、不足は「不足」で示す", () => {
+  const { FundingSection } = load("../src/debt/components/FundingSection.tsx");
+  const markup = render(FundingSection, { documentData: samplePlan().document });
+  assert.match(markup, /dn-flow-col is-plus/);
+  assert.match(markup, /dn-flow-col is-minus/);
+  assert.match(markup, /会社からの交通費支給<\/dt><dd><span class="dn-money is-positive">\+/);
+  assert.match(markup, /−[^<]*160,700/);
+  assert.match(markup, /返済後に残るお金/);
+  assert.match(markup, /1,700 不足/);
+  assert.match(markup, /dn-flow-shortage/);
+  assert.equal((markup.match(/dn-subcard/g) || []).length, 3);
+});
+
+test("収支計画が無い計画では収支セクションを描かない", () => {
+  const { FundingSection } = load("../src/debt/components/FundingSection.tsx");
+  assert.equal(render(FundingSection, { documentData: normalizePlan({ schedule: [], document: {} }).document }), "");
+});
+
+test("計画書は既存債務の合計と誓約を示す", () => {
+  const { DocumentSection } = load("../src/debt/components/DocumentSection.tsx");
+  const markup = render(DocumentSection, { documentData: samplePlan().document });
+  assert.match(markup, /合計<\/dt><dd class="is-total">[^<]*200,000/);
+  assert.match(markup, /ギャンブルをしない誓約/);
+});
+
+test("目次は各セクションへのリンクを持ち、債務者リンクでは見出しが変わる", () => {
+  const { Header } = load("../src/debt/components/Header.tsx");
+  const markup = render(Header, { accessLabel: "債務者用", sections: [{ id: "status", label: "返済状況" }, { id: "schedule", label: "毎月の返済スケジュール", no: "01" }] });
+  assert.match(markup, /債務者用/);
+  assert.match(markup, /href="#schedule"[^>]*><span class="dn-menu-no">01<\/span>毎月の返済スケジュール/);
+  assert.match(markup, /aria-controls="dn-menu"/);
+  const source = readFileSync(new URL("../src/debt/components/Header.tsx", import.meta.url), "utf8");
+  // ハッシュには共有トークンが入っているので、目次のリンクで書き換えない
+  assert.match(source, /preventDefault\(\)/);
+});
+
+test("債務者専用リンクだけに返済記録ボタンを出し、管理APIへ送る", () => {
+  const { PaymentAction } = load("../src/debt/components/PaymentAction.tsx");
+  const markup = render(PaymentAction, { plan: samplePlan(), token: "x", onUpdated() {} });
+  assert.match(markup, /返済した/);
+  assert.match(markup, /貸主へメールで知らせます/);
+  const source = readFileSync(new URL("../src/debt/components/PaymentAction.tsx", import.meta.url), "utf8");
+  assert.match(source, /\/api\/debt\/manage\/paid/);
+  const app = readFileSync(new URL("../src/debt/App.tsx", import.meta.url), "utf8");
+  assert.match(app, /manage && <PaymentAction/);
+  assert.match(app, /hashchange/);
+});
+
+test("PDF の導線は罫線の1行で、ボタンを持つ", () => {
+  const { PdfCard } = load("../src/debt/components/PdfCard.tsx");
+  const markup = render(PdfCard, { token: "x", manage: false });
+  assert.match(markup, /class="dn-pdf"/);
+  assert.match(markup, /PDFをダウンロード/);
+  for (const text of ["全4ページ", "個人情報非表示", "保存・印刷対応"]) assert.match(markup, new RegExp(text));
+});
+
+test("読み込みエラーは問い合わせ番号と、待ち時間付きの再試行ボタンを出す", () => {
+  const { ErrorPanel } = load("../src/debt/components/ErrorPanel.tsx");
+  const markup = render(ErrorPanel, { problem: new api.DebtViewerError("混み合っています", "アクセスが集中しています", true, 5, "req123") });
+  assert.match(markup, /問い合わせ番号：req123/);
+  assert.match(markup, /5秒後に再試行できます/);
+  assert.match(markup, /disabled/);
+  const fatal = render(ErrorPanel, { problem: new api.DebtViewerError("無効です", "共有リンクを確認できませんでした") });
+  assert.doesNotMatch(fatal, /再試行|もう一度読み込む/);
+});
+
+// ---- ロジック ----
+
+test("返済の状態は期日と支払い記録から決まる", () => {
+  const today = "2026-10-12";
+  const state = (item) => statusFor({ number: 1, paid_at: null, amount_yen: 10000, ...item }, today);
+  assert.equal(state({ amount_yen: 0, due_date: "2026-12-21" }).icon, "pauseCircle");
+  assert.equal(state({ due_date: "2026-09-21", paid_at: "2026-09-20" }).label, "返済済み");
+  assert.equal(state({ due_date: "2026-09-21" }).label, "期日超過");
+  assert.equal(state({ due_date: today }).label, "本日期日");
+  assert.equal(state({ due_date: "2026-11-21" }).icon, "clock");
+});
+
+test("返済後に残るお金は「手取り − 支出 − 返済」を返済額の期間ごとに計算する", () => {
+  const scenarios = samplePlan().document.repayment_scenarios;
+  const repeat = scenarios.find((scenario) => scenario.id === "repeat-year");
+  // 完済月の端数(2月 1万円)は独立した期間にしない
+  assert.equal(JSON.stringify(repaymentPeriods(repeat.schedule).map((period) => [period.months.length, period.amount])), "[[2,10000],[3,20000]]");
+  assert.equal(JSON.stringify(scenarioLeftover(repeat)), JSON.stringify([
+    { label: "4・5月", minimum: 7000, maximum: 63000 },
+    { label: "6月以降", minimum: -3000, maximum: 53000 },
+  ]));
+  const accenture = scenarios.find((scenario) => scenario.id === "accenture");
+  assert.equal(JSON.stringify(scenarioLeftover(accenture)), JSON.stringify([{ label: "", minimum: 138000, maximum: 138000 }]));
+});
+
+test("手取りの使い道の帯は、手取りを超える月の不足分を返す", () => {
+  const chart = flowChart(samplePlan().document);
+  assert.equal(chart.cases.length, 2);
+  const low = chart.cases.find((flow) => flow.label === "収入が少ない月");
+  assert.equal(low.buffer, -1700);
+  assert.ok(low.shortage && low.shortage.width > 0);
+  assert.equal(chart.cases.find((flow) => flow.label === "収入が多い月").shortage, undefined);
 });
 
 test("進路を切り替えると3月までを維持し、4月以降だけ選択プランへ差し替える", () => {
@@ -120,6 +304,9 @@ test("進路を切り替えると3月までを維持し、4月以降だけ選択
   assert.equal(schedule.reduce((sum, item) => sum + item.amount_yen, 0), 240000);
   assert.deepEqual(Array.from(schedule.slice(5), (item) => item.number), [6, 7, 8]);
 });
+
+
+// ---- エラー処理・データ形式 ----
 
 test("HTMLのプロキシエラーやレート制限も日本語で説明し、再試行可否を返す", () => {
   const gateway = api.errorFromResponse(502, "<html>Bad Gateway</html>", null);
@@ -257,103 +444,3 @@ test("PDF応答は base64 とファイル名を検査する", () => {
   }
 });
 
-test("返済共有画面はエラー表示・再試行・二重描画防止の仕組みを持つ", () => {
-  const html = readFileSync(new URL("../debt/index.html", import.meta.url), "utf8");
-  const viewer = readFileSync(new URL("../src/debt/viewer.ts", import.meta.url), "utf8");
-  for (const marker of ["data-error-title", "data-error-reference", "data-error-retry", "<noscript>"]) {
-    assert.match(html, new RegExp(marker));
-  }
-  for (const marker of ["class=\"dn-pdf\"", "data-ic=\"arrowDownTray\"", "data-download-label", "全4ページ", "個人情報非表示", "保存・印刷対応"]) {
-    assert.match(html, new RegExp(marker));
-  }
-  assert.match(viewer, /replaceChildren\(\)/);
-  assert.match(viewer, /download\.onclick\s*=/);
-  assert.match(viewer, /aria-busy/);
-  assert.match(viewer, /hashchange/);
-  assert.doesNotMatch(viewer, /addEventListener\("click"/);
-});
-
-test("返済共有ページはヘッダーのメニューから各セクションへ移動できる", () => {
-  const html = readFileSync(new URL("../debt/index.html", import.meta.url), "utf8");
-  const nav = readFileSync(new URL("../src/debt/nav.ts", import.meta.url), "utf8");
-  const viewer = readFileSync(new URL("../src/debt/viewer.ts", import.meta.url), "utf8");
-  assert.match(html, /data-menu-toggle[^>]*aria-controls="dn-menu"|aria-controls="dn-menu"[^>]*data-menu-toggle/);
-  for (const id of ["status", "pdf", "schedule", "funding", "document"]) {
-    assert.match(html, new RegExp(`id="${id}"[^>]*data-nav=`));
-  }
-  // ハッシュには共有トークンが入っているので、目次のリンクで書き換えない
-  assert.match(nav, /preventDefault\(\)/);
-  assert.match(nav, /scrollIntoView/);
-  assert.match(nav, /closest\("\[hidden\]"\)/);
-  assert.match(viewer, /initDebtNav\(\)/);
-});
-
-test("冒頭の返済計画は heroicon と仕切り線で組み、描画用の目印を保つ", () => {
-  const html = readFileSync(new URL("../debt/index.html", import.meta.url), "utf8");
-  const css = readFileSync(new URL("../src/debt/style.css", import.meta.url), "utf8");
-  const main = readFileSync(new URL("../src/debt/main.ts", import.meta.url), "utf8");
-  const overview = html.match(/<section class="dn-overview"[\s\S]*?<\/section>/)?.[0] || "";
-  assert.ok(overview);
-  for (const hook of ["data-remaining", "data-progress", "data-progress-label", "data-count-label", "data-next-date",
-    "data-next-amount", "data-next-status", "data-principal", "data-interest", "data-total", "data-completion", "data-updated"]) {
-    assert.match(overview, new RegExp(hook));
-  }
-  for (const name of ["banknotes", "calendarDays", "currencyYen", "receiptPercent", "calculator", "flag", "clock"]) {
-    assert.match(overview, new RegExp(`data-ic="${name}"`));
-  }
-  assert.match(main, /fillIcons\(\)/);
-  // 旧デザインの箱（塗りつぶしの残高カード）を残さない
-  assert.doesNotMatch(css, /\.dn-summary|\.dn-balance/);
-});
-
-test("収支セクションは収入(＋)と支出(−)を列・符号・色で分け、計算式で結論を示す", () => {
-  const html = readFileSync(new URL("../debt/index.html", import.meta.url), "utf8");
-  const funding = readFileSync(new URL("../src/debt/funding.ts", import.meta.url), "utf8");
-  const viewer = readFileSync(new URL("../src/debt/viewer.ts", import.meta.url), "utf8");
-  assert.match(html, /dn-flow-col is-plus[\s\S]*data-ic="plusCircle"/);
-  assert.match(html, /dn-flow-col is-minus[\s\S]*data-ic="minusCircle"/);
-  for (const hook of ["data-flow-bars", "data-flow-legend", "data-cashflow-income", "data-cashflow-expenses", "data-available", "data-monthly-repayment", "data-monthly-buffer"]) {
-    assert.match(html, new RegExp(hook));
-  }
-  // 交通費支給などの差し引きは支出を減らす＝プラスとして表示する
-  assert.match(funding, /deduction_items\.map\([\s\S]*Math\.abs[\s\S]*"plus"/);
-  // 手取りを超える月は不足として示す
-  assert.match(funding, /dn-flow-shortage/);
-  assert.match(viewer, /from "\.\/funding"/);
-  assert.doesNotMatch(viewer, /function renderFundingPlan/);
-});
-
-test("返済後に残るお金は「手取り − 支出 − 返済」を返済額の期間ごとに計算する", () => {
-  const html = readFileSync(new URL("../debt/index.html", import.meta.url), "utf8");
-  assert.match(html, /返済後に残るお金<\/span><small class="dn-formula">手取り − 支出 − 返済<\/small>/);
-  assert.doesNotMatch(html, /返済後の予備費|返済後の余力|返済前の余力/);
-  const { repaymentPeriods } = loadModule("../src/debt/funding.ts");
-  const schedule = (pairs) => pairs.map(([month, amount]) => ({ due_date: `${month}-21`, amount_yen: amount }));
-  // 留年ルート: 4・5月は1万円、6月以降は2万円。完済月の端数(2月 1万円)は独立した期間にしない
-  const repeat = repaymentPeriods(schedule([["2027-04", 10000], ["2027-05", 10000], ["2027-06", 20000], ["2027-07", 20000], ["2028-01", 20000], ["2028-02", 10000]]));
-  // vm 内で作られた配列は別レルムなので JSON で比べる
-  assert.equal(JSON.stringify(repeat.map((period) => [period.months.length, period.amount])), "[[2,10000],[3,20000]]");
-  // アクセンチュアルート: 6万円×3回のあと完済の1万円 → 期間は1つ
-  const accenture = repaymentPeriods(schedule([["2027-04", 60000], ["2027-05", 60000], ["2027-06", 60000], ["2027-07", 10000]]));
-  assert.equal(JSON.stringify(accenture.map((period) => period.amount)), "[60000]");
-  // 手取り169,000円 − 支出152,000円 − 返済20,000円 = 3,000円不足（DB保存値 -3,000 と一致）
-  assert.equal(169000 - 152000 - repeat[1].amount, -3000);
-  assert.equal(169000 - 152000 - repeat[0].amount, 7000);
-});
-
-test("返済の状態は heroicon と文字の組み合わせで表示する", () => {
-  const viewer = readFileSync(new URL("../src/debt/viewer.ts", import.meta.url), "utf8");
-  for (const [label, name] of [["返済猶予", "pauseCircle"], ["返済済み", "checkCircle"], ["期日超過", "exclamationTriangle"], ["本日期日", "calendarDays"], ["予定", "clock"]]) {
-    assert.match(viewer, new RegExp(`label: "${label}"[^}]*icon: "${name}"`));
-  }
-  assert.match(viewer, /function paintState[\s\S]*icon\(state\.icon/);
-  assert.doesNotMatch(viewer, /nextStatus\.textContent\s*=/);
-});
-
-test("収支セクション下部の旅行予定・収入減・実行計画はそれぞれカードで囲む", () => {
-  const html = readFileSync(new URL("../debt/index.html", import.meta.url), "utf8");
-  for (const block of ["dn-special-expense", "dn-reduced-income", "dn-funding-actions"]) {
-    assert.match(html, new RegExp(`class="${block} dn-subcard"`));
-  }
-  for (const name of ["paperAirplane", "calendarDays", "listBullet"]) assert.match(html, new RegExp(`data-ic="${name}"`));
-});

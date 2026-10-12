@@ -12,233 +12,33 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;800&display=swap">
 </head>
 <body>
-<header class="dn-header">
-  <a class="dn-brand" href="../" aria-label="Tabi Plan トップへ">
-    <span class="dn-brand-mark" aria-hidden="true">返</span>
-    <span><strong>返す日</strong><small>PAYBACK NOTE</small></span>
-  </a>
-  <div class="dn-header-actions">
-    <span class="dn-readonly" data-access-label>閲覧専用</span>
-    <button class="dn-menu-button" type="button" aria-expanded="false" aria-controls="dn-menu" data-menu-toggle hidden>
-      <span class="dn-menu-icon" aria-hidden="true"><i></i><i></i><i></i></span>
-      <span class="dn-menu-label">メニュー</span>
-    </button>
-  </div>
-  <nav class="dn-menu" id="dn-menu" aria-label="ページ内の目次" data-menu hidden>
-    <ol data-menu-list></ol>
-  </nav>
-</header>
-
-<main class="dn-shell">
-  <section class="dn-loading" data-loading aria-live="polite">
-    <span class="dn-loader" aria-hidden="true"></span>
-    <p>返済計画を安全に読み込んでいます</p>
-  </section>
-
-  <section class="dn-error" data-error hidden>
-    <p class="dn-eyebrow">LINK UNAVAILABLE</p>
-    <h1 data-error-title>共有リンクを確認できませんでした</h1>
-    <p data-error-message>URLが途中で切れていないか、送信者に確認してください。</p>
-    <p class="dn-error-reference" data-error-reference hidden></p>
-    <button class="dn-download dn-retry" type="button" data-error-retry hidden>もう一度読み込む</button>
-  </section>
-  <noscript>
+<!-- 本文は React（src/debt/main.tsx）が描く。JS が届くまでの間だけ、同じ見た目の読み込み表示を出しておく。 -->
+<div id="root">
+  <header class="dn-header">
+    <a class="dn-brand" href="../" aria-label="Tabi Plan トップへ">
+      <span class="dn-brand-mark" aria-hidden="true">返</span>
+      <span><strong>返す日</strong><small>PAYBACK NOTE</small></span>
+    </a>
+    <div class="dn-header-actions"><span class="dn-readonly">閲覧専用</span></div>
+  </header>
+  <main class="dn-shell">
+    <section class="dn-loading" aria-live="polite">
+      <span class="dn-loader" aria-hidden="true"></span>
+      <p>返済計画を安全に読み込んでいます</p>
+    </section>
+  </main>
+</div>
+<noscript>
+  <main class="dn-shell">
     <section class="dn-error">
       <p class="dn-eyebrow">JAVASCRIPT REQUIRED</p>
       <h1>JavaScriptを有効にしてください</h1>
       <p>返済計画の表示にはJavaScriptが必要です。ブラウザの設定で有効にしてから開き直してください。</p>
     </section>
-  </noscript>
-
-  <div data-content hidden>
-    <section class="dn-overview" id="status" aria-labelledby="dn-overview-title" data-nav="返済状況">
-      <header class="dn-ov-head">
-        <div>
-          <p class="dn-eyebrow">REPAYMENT PLAN / 2026–2027</p>
-          <h1 id="dn-overview-title">返済計画</h1>
-          <p class="dn-ov-lead">個人情報を表示しない、閲覧専用の返済記録です。</p>
-        </div>
-        <p class="dn-ov-updated"><span data-ic="clock"></span>最終更新 <time data-updated></time></p>
-      </header>
-
-      <div class="dn-ov-main">
-        <div class="dn-ov-balance">
-          <p class="dn-ov-label"><span data-ic="banknotes"></span>残りの返済額</p>
-          <strong class="dn-ov-amount" data-remaining></strong>
-          <div class="dn-ov-progress" aria-hidden="true"><span data-progress></span></div>
-          <p class="dn-ov-meta"><span><span data-ic="checkCircle"></span><span data-progress-label></span></span><span data-count-label></span></p>
-        </div>
-        <div class="dn-ov-next">
-          <p class="dn-ov-label"><span data-ic="calendarDays"></span>次回の返済</p>
-          <div class="dn-ov-next-body">
-            <strong class="dn-ov-next-date" data-next-date></strong>
-            <b class="dn-ov-next-amount" data-next-amount></b>
-          </div>
-          <span data-next-status></span>
-        </div>
-      </div>
-
-      <dl class="dn-ov-facts" aria-label="借入条件">
-        <div><dt><span data-ic="currencyYen"></span>借入元金</dt><dd data-principal></dd></div>
-        <div><dt><span data-ic="receiptPercent"></span>利息</dt><dd data-interest></dd></div>
-        <div><dt><span data-ic="calculator"></span>返済総額</dt><dd data-total></dd></div>
-        <div><dt><span data-ic="flag"></span>完済予定</dt><dd data-completion></dd></div>
-      </dl>
-    </section>
-
-    <aside class="dn-payment-action" data-payment-action hidden>
-      <div>
-        <p class="dn-payment-eyebrow">DEBTOR ACTION</p>
-        <h2>振り込みは完了しましたか？</h2>
-        <p data-payment-copy></p>
-        <p class="dn-payment-feedback" data-payment-feedback aria-live="polite"></p>
-      </div>
-      <button type="button" data-mark-paid><span>返済した</span></button>
-    </aside>
-
-    <aside class="dn-pdf" id="pdf" aria-labelledby="dn-pdf-title" data-nav="計画書PDF">
-      <span class="dn-pdf-mark" data-ic="documentText"></span>
-      <div class="dn-pdf-copy">
-        <p class="dn-pdf-eyebrow">DOCUMENT / PDF</p>
-        <h2 id="dn-pdf-title">返済計画書（PDF）</h2>
-        <p class="dn-pdf-desc">借入条件、毎月の返済予定、収支計画、進路別プランを4ページにまとめています。</p>
-        <ul class="dn-pdf-meta" aria-label="PDFの内容">
-          <li>全4ページ</li><li>個人情報非表示</li><li>保存・印刷対応</li>
-        </ul>
-      </div>
-      <div class="dn-pdf-action">
-        <button class="dn-pdf-button" type="button" data-download>
-          <span data-ic="arrowDownTray"></span><span data-download-label>PDFをダウンロード</span>
-        </button>
-        <small class="dn-pdf-file">repayment_plan_final.pdf</small>
-      </div>
-    </aside>
-
-    <section class="dn-section" id="schedule" data-nav="毎月の返済スケジュール" data-nav-no="01">
-      <div class="dn-section-head"><div><p class="dn-section-no">01</p><h2>毎月の返済スケジュール</h2></div><span data-schedule-count></span></div>
-      <div class="dn-schedule-plans" data-schedule-plans hidden>
-        <div class="dn-plan-switch-copy">
-          <p class="dn-section-no">APRIL 2027 — SELECT A PLAN</p>
-          <h3>4月以降の進路別返済プラン</h3>
-          <p>11月から3月までは共通の返済計画です。進路を選ぶと、4月以降の返済額・予備費・完済予定が下の表へ反映されます。</p>
-        </div>
-        <div class="dn-plan-tabs" role="tablist" aria-label="4月以降の返済プラン" data-plan-tabs></div>
-        <div class="dn-plan-summary" aria-live="polite">
-          <div><span>4月以降の想定手取り</span><strong data-selected-income></strong></div>
-          <div><span>毎月の返済</span><strong data-selected-repayment></strong></div>
-          <div><span>返済後に残るお金</span><small class="dn-formula">手取り − 支出 − 返済</small><strong data-selected-buffer></strong></div>
-          <div><span>完済予定</span><strong data-selected-completion></strong></div>
-        </div>
-        <p class="dn-plan-note" data-selected-note></p>
-      </div>
-      <div class="dn-table-wrap">
-        <table>
-          <thead><tr><th>回</th><th>返済期日</th><th>返済額</th><th>累計</th><th>状態</th></tr></thead>
-          <tbody data-schedule></tbody>
-        </table>
-      </div>
-    </section>
-
-    <section class="dn-section dn-funding" id="funding" data-funding-plan data-nav="返済原資と月次収支計画" data-nav-no="02" hidden>
-      <div class="dn-section-head">
-        <div><p class="dn-section-no">02</p><h2>返済原資と月次収支計画</h2></div>
-        <span>毎月の返済可能性</span>
-      </div>
-      <p class="dn-funding-intro" data-funding-intro></p>
-      <div class="dn-flow-chart">
-        <div class="dn-flow-chart-head"><h3>手取りの使い道</h3><span>1か月あたり</span></div>
-        <div class="dn-flow-bars" data-flow-bars></div>
-        <ul class="dn-flow-legend" data-flow-legend></ul>
-      </div>
-
-      <div class="dn-flow-ledger">
-        <section class="dn-flow-col is-plus" aria-labelledby="dn-flow-income-title">
-          <h3 id="dn-flow-income-title"><span data-ic="plusCircle"></span>収入<em>プラス</em></h3>
-          <dl class="dn-flow-rows">
-            <div><dt>時給</dt><dd data-hourly-wage></dd></div>
-            <div><dt>勤務時間</dt><dd data-monthly-hours></dd></div>
-            <div><dt>額面収入</dt><dd data-gross-income></dd></div>
-          </dl>
-          <p class="dn-flow-total"><span>手取り</span><strong data-net-income></strong></p>
-        </section>
-        <section class="dn-flow-col is-minus" aria-labelledby="dn-flow-expense-title">
-          <h3 id="dn-flow-expense-title"><span data-ic="minusCircle"></span>支出<em>マイナス</em></h3>
-          <h4>固定費</h4>
-          <dl class="dn-flow-rows" data-fixed-expenses></dl>
-          <p class="dn-flow-subtotal"><span>固定費 計</span><strong data-fixed-total></strong></p>
-          <h4>変動費</h4>
-          <dl class="dn-flow-rows" data-variable-expenses></dl>
-          <div class="dn-flow-group" data-living-cost-group hidden>
-            <p class="dn-flow-group-head"><span data-living-cost-label></span><span data-living-cost-subtotal></span></p>
-            <dl class="dn-flow-rows is-nested" data-living-cost-items></dl>
-            <dl class="dn-flow-rows is-nested" data-living-cost-deductions></dl>
-            <p class="dn-flow-group-total"><span>差引負担額</span><strong data-living-cost-total></strong></p>
-          </div>
-          <p class="dn-flow-subtotal"><span>変動費 計</span><strong data-variable-total></strong></p>
-          <p class="dn-flow-total"><span>支出合計</span><strong data-monthly-expenses></strong></p>
-        </section>
-      </div>
-
-      <ol class="dn-flow-equation" aria-label="毎月の収支計算">
-        <li class="is-plus"><span>手取り</span><strong data-cashflow-income></strong></li>
-        <li class="is-minus"><span>支出合計</span><strong data-cashflow-expenses></strong></li>
-        <li class="is-result"><span>返済前に残るお金</span><strong data-available></strong></li>
-        <li class="is-minus"><span>毎月の返済</span><strong data-monthly-repayment></strong></li>
-        <li class="is-final"><span>返済後に残るお金</span><strong data-monthly-buffer></strong></li>
-      </ol>
-      <aside class="dn-special-expense dn-subcard"><strong><span data-ic="paperAirplane"></span>旅行予定と必要資金</strong><p data-special-expense></p></aside>
-      <section class="dn-reduced-income dn-subcard" data-reduced-income-panel hidden>
-        <div>
-          <p class="dn-section-no">TEMPORARY INCOME CHANGE</p>
-          <h3><span data-ic="calendarDays"></span>12月・1月の収入減と少額返済</h3>
-          <p>官庁訪問に伴い収入が下がる2か月も、返済額を各1万円に抑えて支払いを継続します。留年ルートでは6月21日から月2万円へ増額します。</p>
-        </div>
-        <div class="dn-reduced-income-grid" data-reduced-income></div>
-      </section>
-      <div class="dn-funding-actions dn-subcard">
-        <h3><span data-ic="listBullet"></span>返済資金を確保するための実行計画</h3>
-        <ol data-funding-actions></ol>
-      </div>
-    </section>
-
-    <section class="dn-section dn-document" id="document" data-nav="借入・返済計画書" data-nav-no="03">
-      <div class="dn-section-head">
-        <div><p class="dn-section-no">03</p><h2>借入・返済計画書</h2></div>
-        <span>画面でも内容を確認できます</span>
-      </div>
-      <p class="dn-doc-intro">現在の債務を整理し、責任を持って返済するための計画書です。原本の内容を画面上でも確認できます。</p>
-      <div class="dn-doc-grid">
-        <section>
-          <h3>借入希望額・現在の債務</h3>
-          <p data-income></p>
-          <dl class="dn-debts" data-existing-debts></dl>
-          <p data-difference></p>
-        </section>
-        <section>
-          <h3>返済に関するお願いと約束</h3>
-          <div class="dn-promises" data-promises></div>
-        </section>
-        <section>
-          <h3>担保について</h3>
-          <p data-collateral></p>
-        </section>
-        <section class="dn-pledge">
-          <h3>ギャンブルをしない誓約</h3>
-          <p data-pledge></p>
-        </section>
-      </div>
-      <p class="dn-closing" data-closing></p>
-      <p class="dn-submitted">提出日 <time data-submitted></time></p>
-    </section>
-
-    <footer class="dn-footer">
-      <p>このページは共有リンクを知っている人だけが閲覧できます。リンクを第三者へ転送しないでください。</p>
-      <p data-access-note>氏名・メールアドレスは表示されません。返済状態の変更もこの画面からはできません。</p>
-    </footer>
-  </div>
-</main>
+  </main>
+</noscript>
 
 <script src="../trip-config.js"></script>
-<script type="module" src="../src/debt/main.ts"></script>
+<script type="module" src="../src/debt/main.tsx"></script>
 </body>
 </html>
