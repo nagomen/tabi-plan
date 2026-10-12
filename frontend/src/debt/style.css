@@ -11,7 +11,7 @@
 }
 * { box-sizing:border-box; }
 [hidden] { display:none !important; }
-body { margin:0; min-height:100vh; background:var(--paper); color:var(--ink); font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans JP",sans-serif; }
+body { margin:0; min-height:100vh; background:var(--paper); color:var(--ink); font-family:"Noto Sans JP","Hiragino Sans","Hiragino Kaku Gothic ProN",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; font-variant-numeric:tabular-nums; -webkit-font-smoothing:antialiased; }
 button { font:inherit; }
 .dn-header { height:76px; display:flex; align-items:center; justify-content:space-between; padding:0 max(24px,calc((100vw - 1160px)/2)); border-bottom:1px solid var(--line); background:rgba(255,254,250,.94); }
 .dn-brand { display:flex; align-items:center; gap:12px; color:inherit; text-decoration:none; }
@@ -25,35 +25,35 @@ button { font:inherit; }
 .dn-loading p { margin:18px 0 0; color:var(--muted); font-size:14px; }
 @keyframes spin { to { transform:rotate(360deg); } }
 .dn-error { justify-items:start; max-width:680px; text-align:left; }
-.dn-error h1 { margin:10px 0 18px; font-family:Georgia,"Yu Mincho",serif; font-size:clamp(34px,6vw,58px); line-height:1.1; }
+.dn-error h1 { margin:10px 0 18px; font-family:inherit; font-size:clamp(34px,6vw,58px); line-height:1.1; }
 .dn-error p:last-child,.dn-error [data-error-message] { color:var(--muted); line-height:1.8; }
 .dn-error-reference { margin:0 0 18px; color:var(--muted); font-size:12px; font-variant-numeric:tabular-nums; user-select:all; }
 .dn-retry { margin-top:6px; }
 .dn-intro { display:flex; align-items:end; justify-content:space-between; gap:40px; margin-bottom:40px; }
 .dn-eyebrow,.dn-section-no { margin:0 0 12px; color:var(--green); font-size:11px; font-weight:900; letter-spacing:.16em; }
-.dn-intro h1 { margin:0; font-family:Georgia,"Yu Mincho",serif; font-size:clamp(38px,6vw,66px); line-height:1.08; letter-spacing:-.025em; }
+.dn-intro h1 { margin:0; font-family:inherit; font-size:clamp(38px,6vw,66px); line-height:1.08; letter-spacing:.01em; }
 .dn-lead { margin:18px 0 0; color:var(--muted); font-size:15px; }
 .dn-updated { flex:none; margin:0; padding-bottom:8px; color:var(--muted); font-size:12px; }
 .dn-summary { display:grid; grid-template-columns:1.8fr 1fr; border:1px solid var(--ink); background:var(--surface); }
 .dn-balance,.dn-next { padding:34px 38px; }
 .dn-balance { background:var(--green); color:#fff; }
 .dn-balance>p,.dn-next>p { margin:0 0 20px; font-size:12px; font-weight:850; letter-spacing:.08em; }
-.dn-balance>strong { display:block; font-family:Georgia,serif; font-size:clamp(48px,7vw,78px); line-height:1; }
+.dn-balance>strong { display:block; font-family:inherit; font-size:clamp(48px,7vw,78px); line-height:1; }
 .dn-progress { height:5px; margin:28px 0 12px; background:rgba(255,255,255,.2); }
 .dn-progress span { display:block; width:0; height:100%; background:#fff; transition:width .5s ease; }
 .dn-balance-meta { display:flex; justify-content:space-between; color:rgba(255,255,255,.72); font-size:12px; }
 .dn-next { display:flex; flex-direction:column; align-items:flex-start; border-left:1px solid var(--ink); }
-.dn-next>strong { font-family:Georgia,"Yu Mincho",serif; font-size:clamp(25px,4vw,38px); line-height:1.2; }
-.dn-next>b { margin:10px 0 20px; color:var(--accent); font-family:Georgia,serif; font-size:32px; }
+.dn-next>strong { font-family:inherit; font-size:clamp(25px,4vw,38px); line-height:1.2; }
+.dn-next>b { margin:10px 0 20px; color:var(--accent); font-family:inherit; font-size:32px; }
 .dn-facts { margin-top:18px; border-top:2px solid var(--ink); border-bottom:1px solid var(--line); background:var(--surface); }
 .dn-facts dl { display:grid; grid-template-columns:repeat(4,1fr); margin:0; }
 .dn-facts dl>div { padding:20px 24px; border-right:1px solid var(--line); }
 .dn-facts dl>div:last-child { border-right:0; }
 dt { color:var(--muted); font-size:12px; font-weight:750; }
-dd { margin:8px 0 0; font-family:Georgia,"Yu Mincho",serif; font-size:21px; font-weight:750; }
+dd { margin:8px 0 0; font-family:inherit; font-size:21px; font-weight:750; }
 .dn-pdf-download { display:grid; grid-template-columns:minmax(0,1fr) minmax(280px,340px); align-items:center; gap:36px; margin-top:18px; padding:26px 28px; border:1px solid var(--ink); border-left:6px solid var(--accent); background:var(--ink); color:#fff; }
 .dn-pdf-copy .dn-section-no { margin-bottom:8px; color:#b8d2c9; }
-.dn-pdf-copy h2 { margin:0; font-family:Georgia,"Yu Mincho",serif; font-size:clamp(23px,3vw,31px); line-height:1.25; }
+.dn-pdf-copy h2 { margin:0; font-family:inherit; font-size:clamp(23px,3vw,31px); line-height:1.25; }
 .dn-pdf-copy>p:not(.dn-section-no) { margin:10px 0 0; color:rgba(255,255,255,.76); font-size:13px; line-height:1.75; }
 .dn-pdf-meta { display:flex; flex-wrap:wrap; gap:8px 18px; margin-top:15px; color:#fff; font-size:11px; font-weight:800; }
 .dn-pdf-meta span { display:inline-flex; align-items:center; gap:7px; }
@@ -61,7 +61,7 @@ dd { margin:8px 0 0; font-family:Georgia,"Yu Mincho",serif; font-size:21px; font
 .dn-section { margin-top:64px; }
 .dn-section-head { display:flex; align-items:end; justify-content:space-between; gap:20px; padding-bottom:18px; border-bottom:2px solid var(--ink); }
 .dn-section-no { margin-bottom:5px; }
-.dn-section h2 { margin:0; font-family:Georgia,"Yu Mincho",serif; font-size:clamp(25px,4vw,38px); }
+.dn-section h2 { margin:0; font-family:inherit; font-size:clamp(25px,4vw,38px); }
 .dn-section-head>span { color:var(--muted); font-size:12px; font-weight:800; }
 .dn-table-wrap { overflow-x:auto; background:var(--surface); }
 table { width:100%; border-collapse:collapse; min-width:700px; }
@@ -80,10 +80,10 @@ th:nth-child(2),td:nth-child(2) { text-align:left; }
 .dn-income-metrics>div { padding:20px; border-right:1px solid var(--line); }
 .dn-income-metrics>div:last-child { border-right:0; }
 .dn-income-metrics span { display:block; color:var(--muted); font-size:11px; font-weight:800; }
-.dn-income-metrics strong { display:block; margin-top:8px; font-family:Georgia,"Yu Mincho",serif; font-size:25px; }
+.dn-income-metrics strong { display:block; margin-top:8px; font-family:inherit; font-size:25px; }
 .dn-budget-grid { display:grid; grid-template-columns:1fr 1fr; gap:28px; margin-top:28px; }
 .dn-budget-grid section { border-top:1px solid var(--ink); }
-.dn-budget-grid h3,.dn-funding-actions h3 { margin:18px 0; font-family:Georgia,"Yu Mincho",serif; font-size:19px; }
+.dn-budget-grid h3,.dn-funding-actions h3 { margin:18px 0; font-family:inherit; font-size:19px; }
 .dn-budget-grid dl { display:grid; grid-template-columns:1fr auto; margin:0; }
 .dn-budget-grid dt,.dn-budget-grid dd { margin:0; padding:10px 0; border-bottom:1px solid var(--line); font-family:inherit; font-size:13px; }
 .dn-budget-grid dd { text-align:right; font-weight:800; }
@@ -94,19 +94,19 @@ th:nth-child(2),td:nth-child(2) { text-align:left; }
 .dn-cashflow>div { padding:18px; border-right:1px solid var(--line); }
 .dn-cashflow>div:last-child { border-right:0; }
 .dn-cashflow span { display:block; min-height:30px; color:var(--muted); font-size:11px; font-weight:800; }
-.dn-cashflow strong { display:block; margin-top:7px; font-family:Georgia,"Yu Mincho",serif; font-size:19px; }
+.dn-cashflow strong { display:block; margin-top:7px; font-family:inherit; font-size:19px; }
 .dn-cashflow .is-emphasis { background:var(--green); color:#fff; }
 .dn-cashflow .is-emphasis span { color:rgba(255,255,255,.72); }
 .dn-special-expense { display:grid; grid-template-columns:180px 1fr; gap:24px; margin-top:28px; padding:20px; border:1px solid var(--line); background:#f8f3e9; }
 .dn-special-expense strong { color:var(--green); }
 .dn-special-expense p { margin:0; color:#3e514c; font-size:13px; line-height:1.8; }
 .dn-reduced-income { display:grid; grid-template-columns:1fr 1.5fr; gap:34px; margin-top:28px; padding:24px; border:1px solid #a8823b; background:#fbf5e7; }
-.dn-reduced-income h3 { margin:0 0 10px; font-family:Georgia,"Yu Mincho",serif; font-size:21px; }
+.dn-reduced-income h3 { margin:0 0 10px; font-family:inherit; font-size:21px; }
 .dn-reduced-income>div>p:last-child { margin:0; color:#5d5547; font-size:13px; line-height:1.8; }
 .dn-reduced-income-grid { display:grid; grid-template-columns:1fr 1fr; border-left:1px solid #d7c9a8; }
 .dn-reduced-income-grid article { padding:4px 22px; border-right:1px solid #d7c9a8; }
 .dn-reduced-income-grid h4 { margin:0; color:#6f5524; font-size:12px; }
-.dn-reduced-income-grid strong { display:block; margin:8px 0; font-family:Georgia,"Yu Mincho",serif; font-size:25px; }
+.dn-reduced-income-grid strong { display:block; margin:8px 0; font-family:inherit; font-size:25px; }
 .dn-reduced-income-grid p { margin:0; color:#6d6556; font-size:11px; line-height:1.65; }
 .dn-funding-actions { margin-top:28px; border-top:1px solid var(--line); }
 .dn-funding-actions ol { margin:0; padding-left:22px; color:#3e514c; font-size:14px; line-height:1.85; }
@@ -114,7 +114,7 @@ th:nth-child(2),td:nth-child(2) { text-align:left; }
 .dn-schedule-plans { padding:28px 30px 0; border-right:1px solid var(--ink); border-left:1px solid var(--ink); background:var(--surface); }
 .dn-plan-switch-copy { display:grid; grid-template-columns:minmax(240px,.8fr) 1.4fr; column-gap:48px; align-items:end; }
 .dn-plan-switch-copy .dn-section-no { grid-column:1 / -1; }
-.dn-plan-switch-copy h3 { margin:0; font-family:Georgia,"Yu Mincho",serif; font-size:24px; line-height:1.3; }
+.dn-plan-switch-copy h3 { margin:0; font-family:inherit; font-size:24px; line-height:1.3; }
 .dn-plan-switch-copy>p:last-child { margin:0; color:#3e514c; font-size:13px; line-height:1.8; }
 .dn-plan-tabs { display:grid; grid-template-columns:repeat(3,1fr); margin-top:24px; border:1px solid var(--ink); }
 .dn-plan-tab { min-height:54px; padding:10px 14px; border:0; border-right:1px solid var(--ink); border-radius:0; background:var(--surface); color:var(--ink); font-size:13px; font-weight:850; cursor:pointer; }
@@ -126,7 +126,7 @@ th:nth-child(2),td:nth-child(2) { text-align:left; }
 .dn-plan-summary>div { padding:17px 18px; border-right:1px solid var(--line); }
 .dn-plan-summary>div:last-child { border-right:0; }
 .dn-plan-summary span { display:block; color:var(--muted); font-size:10px; font-weight:800; }
-.dn-plan-summary strong { display:block; margin-top:7px; font-family:Georgia,"Yu Mincho",serif; font-size:19px; }
+.dn-plan-summary strong { display:block; margin-top:7px; font-family:inherit; font-size:19px; }
 .dn-plan-note { margin:0; padding:17px 18px 22px; border-right:1px solid var(--line); border-bottom:1px solid var(--ink); border-left:1px solid var(--line); color:#435750; font-size:12px; line-height:1.75; }
 .dn-download { min-height:42px; padding:0 16px; border:1px solid var(--ink); border-radius:0; background:transparent; color:var(--ink); font-size:13px; font-weight:850; cursor:pointer; }
 .dn-download:hover { background:var(--ink); color:#fff; }
@@ -144,7 +144,7 @@ th:nth-child(2),td:nth-child(2) { text-align:left; }
 .dn-doc-intro { max-width:800px; margin:26px 0 40px; color:var(--muted); line-height:1.9; }
 .dn-doc-grid { display:grid; grid-template-columns:1fr 1fr; gap:48px 54px; }
 .dn-doc-grid section { border-top:1px solid var(--line); padding-top:18px; }
-.dn-doc-grid h3 { margin:0 0 18px; font-family:Georgia,"Yu Mincho",serif; font-size:20px; }
+.dn-doc-grid h3 { margin:0 0 18px; font-family:inherit; font-size:20px; }
 .dn-doc-grid p,.dn-closing { margin:0; color:#3e514c; font-size:14px; line-height:1.95; }
 .dn-debts { display:grid; grid-template-columns:1fr auto; margin:18px 0; border-top:1px solid var(--line); }
 .dn-debts dt,.dn-debts dd { margin:0; padding:9px 0; border-bottom:1px solid var(--line); font-family:inherit; font-size:13px; }
@@ -294,7 +294,7 @@ html { -webkit-text-size-adjust:100%; text-size-adjust:100%; }
   .dn-table-wrap td { padding:0; border:0; font-size:12px; white-space:normal; text-align:left; width:auto; }
   .dn-table-wrap td:nth-child(1) { grid-area:no; align-self:start; color:var(--muted); font-size:10px; font-weight:800; text-align:center; }
   .dn-table-wrap td:nth-child(2) { grid-area:date; font-weight:750; }
-  .dn-table-wrap td:nth-child(3) { grid-area:amount; font-family:Georgia,"Yu Mincho",serif; font-size:15px; font-weight:750; text-align:right; }
+  .dn-table-wrap td:nth-child(3) { grid-area:amount; font-family:inherit; font-size:15px; font-weight:750; text-align:right; }
   .dn-table-wrap td:nth-child(4) { grid-area:total; color:var(--muted); font-size:10px; }
   .dn-table-wrap td:nth-child(4)::before { content:"累計 "; }
   .dn-table-wrap td:nth-child(5) { grid-area:state; text-align:right; }
@@ -339,3 +339,8 @@ html { -webkit-text-size-adjust:100%; text-size-adjust:100%; }
 @media (max-width:360px) {
   .dn-readonly { display:none; }
 }
+
+/* ---- 書体: 全体をゴシックに統一 ----
+   見出しは字詰め(palt)で締め、金額・日付は等幅数字で桁をそろえる。 */
+h1,h2,h3,h4,td,.dn-balance>strong,.dn-next>strong,.dn-next>b,dd,.dn-income-metrics strong,.dn-cashflow strong,.dn-plan-summary strong,.dn-reduced-income-grid strong { font-feature-settings:"palt"; font-weight:700; }
+.dn-balance>strong { font-weight:800; letter-spacing:-.01em; }
