@@ -211,65 +211,97 @@ html { -webkit-text-size-adjust:100%; text-size-adjust:100%; }
   .dn-plan-tab[aria-selected="true"]:hover { background:var(--green); }
 }
 @media (max-width:760px) {
-  .dn-header { padding:env(safe-area-inset-top) max(16px,env(safe-area-inset-right)) 0 max(16px,env(safe-area-inset-left)); height:calc(60px + env(safe-area-inset-top)); }
-  .dn-shell { width:auto; margin:0 max(14px,env(safe-area-inset-right)) 0 max(14px,env(safe-area-inset-left)); padding:30px 0 calc(48px + env(safe-area-inset-bottom)); }
-  .dn-intro { margin-bottom:26px; }
-  .dn-intro h1 { font-size:34px; }
-  .dn-lead { font-size:14px; line-height:1.7; }
-  .dn-balance>strong { font-size:clamp(40px,13vw,60px); white-space:nowrap; }
-  .dn-next>strong { font-size:clamp(21px,6.4vw,28px); }
-  .dn-next>b { font-size:28px; margin:8px 0 16px; }
-  /* 2列の数値は日付が途中で割れないよう少し小さくし、年と月日の間でだけ折り返す */
-  .dn-facts dl>div { padding:16px 14px; }
-  dd { font-size:18px; line-height:1.35; word-break:keep-all; overflow-wrap:anywhere; }
-  dt { font-size:12px; }
-  .dn-section { margin-top:44px; }
-  .dn-section-head { display:block; padding-bottom:14px; }
-  .dn-section-head>span { display:block; margin-top:8px; }
-  .dn-section h2,.dn-pdf-copy h2 { font-size:26px; line-height:1.3; text-wrap:balance; }
-  .dn-section-no,.dn-eyebrow { font-size:11px; }
-  .dn-funding-intro,.dn-doc-intro { font-size:14px; line-height:1.85; margin:20px 0; }
-  .dn-income-metrics>div,.dn-cashflow>div,.dn-plan-summary>div { padding:14px; }
-  .dn-income-metrics span,.dn-cashflow span,.dn-plan-summary span { font-size:12px; min-height:0; }
-  .dn-income-metrics strong { font-size:22px; }
-  .dn-cashflow strong,.dn-plan-summary strong { font-size:18px; }
-  .dn-budget-grid dt,.dn-budget-grid dd,.dn-debts dt,.dn-debts dd { font-size:14px; padding:11px 0; }
-  .dn-reduced-income { padding:20px 16px; gap:18px; }
-  .dn-reduced-income-grid article:last-child { border-right:0; }
-  .dn-reduced-income-grid p { font-size:12px; }
-  .dn-funding-actions ol { font-size:14px; }
-  .dn-plan-switch-copy h3 { font-size:21px; }
+  .dn-header { padding:env(safe-area-inset-top) max(14px,env(safe-area-inset-right)) 0 max(14px,env(safe-area-inset-left)); height:calc(52px + env(safe-area-inset-top)); }
+  .dn-brand { gap:9px; }
+  .dn-brand-mark { width:30px; height:30px; font-size:14px; }
+  .dn-brand strong { font-size:15px; }
+  .dn-brand small { font-size:8px; }
+  .dn-readonly { padding:4px 7px; font-size:10px; }
+  .dn-shell { width:auto; margin:0 max(12px,env(safe-area-inset-right)) 0 max(12px,env(safe-area-inset-left)); padding:20px 0 calc(36px + env(safe-area-inset-bottom)); }
+  .dn-intro { margin-bottom:16px; }
+  .dn-intro h1 { font-size:26px; }
+  .dn-eyebrow,.dn-section-no { margin-bottom:6px; font-size:10px; letter-spacing:.12em; }
+  .dn-lead { margin-top:8px; font-size:12px; line-height:1.6; }
+  .dn-updated { margin-top:8px; padding:0; font-size:11px; }
+  .dn-balance,.dn-next { padding:16px 16px; }
+  .dn-balance>p,.dn-next>p { margin-bottom:8px; font-size:11px; }
+  .dn-balance>strong { font-size:clamp(32px,10vw,42px); white-space:nowrap; }
+  .dn-progress { margin:14px 0 8px; height:4px; }
+  .dn-balance-meta { font-size:11px; }
+  .dn-next>strong { font-size:18px; }
+  .dn-next>b { font-size:22px; margin:4px 0 8px; }
+  .dn-facts { margin-top:10px; }
+  .dn-facts dl>div { padding:10px 12px; }
+  /* 2列の数値は日付が途中で割れないよう、年と月日の間でだけ折り返す */
+  dd { margin-top:4px; font-size:15px; line-height:1.3; word-break:keep-all; overflow-wrap:anywhere; }
+  dt { font-size:11px; }
+  .dn-pdf-download { gap:12px; margin-top:10px; padding:14px 14px; border-left-width:4px; }
+  .dn-pdf-meta { margin-top:8px; font-size:10px; }
+  .dn-section { margin-top:28px; }
+  .dn-section-head { display:block; padding-bottom:8px; }
+  .dn-section-head>span { display:block; margin-top:4px; font-size:11px; }
+  .dn-section h2,.dn-pdf-copy h2 { font-size:20px; line-height:1.3; text-wrap:balance; }
+  .dn-pdf-copy>p:not(.dn-section-no) { margin-top:6px; font-size:12px; line-height:1.6; }
   .dn-shell h3 { text-wrap:balance; }
-  .dn-plan-tab { min-height:50px; font-size:14px; }
-  .dn-plan-note { font-size:13px; }
-  .dn-download { min-height:48px; }
-  .dn-document { padding:0 16px 24px; }
-  .dn-doc-grid p,.dn-closing { font-size:14px; line-height:1.85; }
-  .dn-pledge { padding:18px !important; }
-  .dn-submitted,.dn-footer { font-size:12px; }
+  .dn-funding-intro,.dn-doc-intro { margin:12px 0; font-size:12px; line-height:1.7; }
+  .dn-income-metrics>div,.dn-cashflow>div,.dn-plan-summary>div { padding:9px 10px; }
+  .dn-income-metrics span,.dn-cashflow span,.dn-plan-summary span { min-height:0; font-size:10px; }
+  .dn-income-metrics strong,.dn-cashflow strong,.dn-plan-summary strong { margin-top:3px; font-size:15px; }
+  .dn-budget-grid { gap:14px; margin-top:14px; }
+  .dn-budget-grid h3,.dn-funding-actions h3 { margin:10px 0 6px; font-size:15px; }
+  .dn-budget-grid dt,.dn-budget-grid dd,.dn-debts dt,.dn-debts dd { padding:6px 0; font-size:12px; }
+  .dn-budget-grid section>p { padding:8px 0; font-size:12px; }
+  .dn-cashflow,.dn-special-expense,.dn-reduced-income,.dn-funding-actions { margin-top:14px; }
+  .dn-special-expense { gap:4px; padding:10px 12px; font-size:12px; }
+  .dn-special-expense p { font-size:12px; line-height:1.6; }
+  .dn-reduced-income { gap:10px; padding:12px; }
+  .dn-reduced-income h3 { margin-bottom:4px; font-size:15px; }
+  .dn-reduced-income>div>p:last-child { font-size:12px; line-height:1.6; }
+  .dn-reduced-income-grid { padding-top:10px; }
+  .dn-reduced-income-grid article { padding:0 10px; }
+  .dn-reduced-income-grid article:last-child { border-right:0; }
+  .dn-reduced-income-grid strong { margin:3px 0; font-size:17px; }
+  .dn-reduced-income-grid h4,.dn-reduced-income-grid p { font-size:10px; }
+  .dn-funding-actions ol { padding-left:18px; font-size:12px; line-height:1.65; }
+  .dn-funding-actions li+li { margin-top:3px; }
+  .dn-schedule-plans { padding:14px 12px 0; }
+  .dn-plan-switch-copy { gap:4px; }
+  .dn-plan-switch-copy h3 { font-size:16px; }
+  .dn-plan-switch-copy>p:last-child { font-size:11px; line-height:1.6; }
+  .dn-plan-tabs { margin-top:10px; }
+  .dn-plan-tab { min-height:40px; padding:6px 10px; font-size:12px; }
+  .dn-plan-note { padding:9px 10px 11px; font-size:11px; line-height:1.6; }
+  .dn-download { min-height:44px; font-size:12px; }
+  .dn-document { padding:0 12px 16px; }
+  .dn-document .dn-section-head { padding-top:18px; }
+  .dn-doc-grid { gap:18px; }
+  .dn-doc-grid section { padding-top:10px; }
+  .dn-doc-grid h3 { margin-bottom:8px; font-size:15px; }
+  .dn-doc-grid p,.dn-closing { font-size:12px; line-height:1.7; }
+  .dn-promises { gap:10px; }
+  .dn-promises h4 { margin-bottom:3px; font-size:12px; }
+  .dn-pledge { padding:12px !important; }
+  .dn-closing { margin-top:18px; padding-top:12px; }
+  .dn-submitted { margin-top:12px; font-size:11px; }
+  .dn-footer { margin-top:16px; padding-top:10px; font-size:10px; }
+  .dn-state { padding:3px 6px; font-size:10px; }
 
-  /* 返済スケジュール: 横スクロールの表をやめ、1回分ずつのカードにする */
+  /* 返済スケジュール: 横スクロールの表をやめ、1回分を2行のカードにする */
   .dn-table-wrap { overflow:visible; }
   .dn-table-wrap table { min-width:0; }
   .dn-table-wrap thead { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); }
-  .dn-table-wrap tbody tr { display:grid; grid-template-columns:30px minmax(0,1fr) auto; grid-template-areas:"no date state" "no amount total"; align-items:center; gap:6px 10px; padding:14px 14px; border-bottom:1px solid var(--line); }
-  .dn-table-wrap td { padding:0; border:0; font-size:14px; white-space:normal; text-align:left; width:auto; }
-  .dn-table-wrap td:nth-child(1) { grid-area:no; align-self:start; padding-top:2px; color:var(--muted); font-size:12px; font-weight:800; text-align:center; }
+  .dn-table-wrap tbody tr { display:grid; grid-template-columns:20px minmax(0,1fr) auto; grid-template-areas:"no date amount" "no total state"; align-items:center; gap:2px 8px; padding:8px 10px; border-bottom:1px solid var(--line); }
+  .dn-table-wrap td { padding:0; border:0; font-size:12px; white-space:normal; text-align:left; width:auto; }
+  .dn-table-wrap td:nth-child(1) { grid-area:no; align-self:start; color:var(--muted); font-size:10px; font-weight:800; text-align:center; }
   .dn-table-wrap td:nth-child(2) { grid-area:date; font-weight:750; }
-  .dn-table-wrap td:nth-child(3) { grid-area:amount; font-family:Georgia,"Yu Mincho",serif; font-size:20px; font-weight:750; }
-  .dn-table-wrap td:nth-child(4) { grid-area:total; color:var(--muted); font-size:12px; text-align:right; }
+  .dn-table-wrap td:nth-child(3) { grid-area:amount; font-family:Georgia,"Yu Mincho",serif; font-size:15px; font-weight:750; text-align:right; }
+  .dn-table-wrap td:nth-child(4) { grid-area:total; color:var(--muted); font-size:10px; }
   .dn-table-wrap td:nth-child(4)::before { content:"累計 "; }
   .dn-table-wrap td:nth-child(5) { grid-area:state; text-align:right; }
-  .dn-table-wrap td[colspan] { grid-column:1 / -1; grid-row:1; padding:4px 0; color:var(--muted); text-align:left; }
+  .dn-table-wrap td[colspan] { grid-column:1 / -1; grid-row:1; color:var(--muted); }
   .dn-table-wrap td[colspan]::before { content:none; }
 }
 @media (max-width:360px) {
-  .dn-intro h1 { font-size:30px; }
-  .dn-facts dl,.dn-income-metrics,.dn-plan-summary { grid-template-columns:1fr; }
-  .dn-facts dl>div,.dn-income-metrics>div,.dn-plan-summary>div { border-right:0 !important; }
-  .dn-plan-summary>div:nth-last-child(-n+2) { border-bottom:1px solid var(--line); }
-  .dn-plan-summary>div:last-child { border-bottom:0; }
-  .dn-reduced-income-grid { grid-template-columns:1fr; }
-  .dn-reduced-income-grid article { padding:12px 0; border-right:0; border-bottom:1px solid #d7c9a8; }
-  .dn-reduced-income-grid article:last-child { border-bottom:0; }
+  .dn-balance>strong { font-size:30px; }
+  dd { font-size:14px; }
 }
