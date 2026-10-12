@@ -371,3 +371,38 @@ h1,h2,h3,h4,td,dd,.dn-income-metrics strong,.dn-cashflow strong,.dn-plan-summary
   .dn-pdf-button { width:100%; min-height:44px; font-size:13px; }
   .dn-pdf-file { text-align:center; font-size:10px; }
 }
+
+/* ---- セクション単位のカード ----
+   各セクション（目次の1項目）は1枚のカードで囲む。カードの中では箱を重ねず、
+   太罫・細い仕切り線・左の色線だけで区切る。 */
+[data-content]>.dn-overview,[data-content]>.dn-pdf,[data-content]>.dn-section { margin-top:16px; padding:28px 32px; border:1px solid var(--line); background:var(--surface); }
+[data-content]>.dn-overview { margin-top:0; }
+[data-content]>.dn-section.dn-document { padding:28px 32px; border-top:1px solid var(--line); }
+.dn-document .dn-section-head { padding-top:0; }
+.dn-ov-facts { border-bottom:0; }
+.dn-ov-facts>div { padding-bottom:4px; }
+.dn-schedule-plans { padding:20px 0 0; border:0; background:transparent; }
+.dn-plan-summary,.dn-plan-note { border-right:0; border-left:0; }
+.dn-plan-summary>div:first-child,.dn-plan-note { padding-left:0; }
+.dn-table-wrap { background:transparent; }
+.dn-income-metrics { border:0; border-top:1px solid var(--line); border-bottom:1px solid var(--line); background:transparent; }
+.dn-income-metrics>div:first-child { padding-left:0; }
+.dn-cashflow { border:0; border-top:1px solid var(--line); border-bottom:1px solid var(--line); }
+.dn-cashflow>div:first-child { padding-left:0; }
+.dn-special-expense,.dn-reduced-income { padding:4px 0 4px 16px; border:0; border-left:3px solid #a8823b; background:transparent; }
+.dn-special-expense { border-left-color:var(--green); }
+.dn-pledge { border-color:var(--line) !important; border-left:3px solid var(--ink) !important; }
+@media (max-width:760px) {
+  [data-content]>.dn-overview,[data-content]>.dn-pdf,[data-content]>.dn-section,[data-content]>.dn-section.dn-document { margin-top:10px; padding:14px 12px; }
+  [data-content]>.dn-overview { margin-top:0; }
+  .dn-document .dn-section-head { padding-top:0; }
+  .dn-schedule-plans { padding:12px 0 0; }
+  /* 返済スケジュールのカード行は、カードの内側いっぱいまで線を伸ばす */
+  .dn-table-wrap { margin:0 -12px -14px; }
+  .dn-table-wrap tbody tr:last-child { border-bottom:0; }
+  .dn-income-metrics>div:nth-child(odd),.dn-cashflow>div:nth-child(odd) { padding-left:0; }
+  .dn-plan-summary>div:nth-child(odd) { padding-left:0; }
+  .dn-cashflow>div.is-emphasis { margin:0 -12px; padding-left:12px; }
+  .dn-special-expense,.dn-reduced-income { padding:2px 0 2px 12px; }
+  .dn-reduced-income-grid article:first-child { padding-left:0; }
+}
