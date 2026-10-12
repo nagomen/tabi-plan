@@ -1,6 +1,6 @@
 // 02 返済原資と月次収支計画。プラス（収入）とマイナス（支出）を色・符号・左右の列で分け、
-// 最後に「手取り − 支出 ＝ 余力 − 返済 ＝ 返済後の余力」の計算式で結論を示す。
-import type { BudgetItem, DebtDocument } from "./normalize";
+// 最後に「手取り − 支出 ＝ 返済前に残るお金 − 返済 ＝ 返済後に残るお金」の計算式で結論を示す。
+import type { BudgetItem, DebtDocument, RepaymentScenario } from "./normalize";
 
 const yen = new Intl.NumberFormat("ja-JP", { style: "currency", currency: "JPY", maximumFractionDigits: 0 });
 const MINUS = "−";
@@ -33,6 +33,78 @@ function range(selector: string, minimum: number, maximum: number, sign: Sign = 
     dash.textContent = "〜";
     target.append(dash, money(maximum, sign));
   }
+}
+
+/** 残るお金。マイナスは「¥3,000 不足」と赤字で、プラスは「+¥53,000」と緑で示す。 */
+function leftover(value: number): HTMLSpanElement {
+  const node = document.createElement("span");
+  node.className = `dn-money ${value < 0 ? "is-negative" : "is-positive"}`;
+  node.textContent = value < 0 ? `${yen.format(Math.abs(value))} 不足` : `${value > 0 ? "+" : ""}${yen.format(value)}`;
+  return node;
+}
+
+function leftoverRange(target: HTMLElement, minimum: number, maximum: number): void {
+  target.replaceChildren(leftover(minimum));
+  if (minimum !== maximum) {
+    const dash = document.createElement("span");
+    dash.className = "dn-range-dash";
+    dash.textContent = "〜";
+    target.append(dash, leftover(maximum));
+  }
+}
+
+interface RepaymentPeriod {
+  months: string[];
+  amount: number;
+}
+
+/**
+ * 返済額が同じ月をまとめた期間。完済月だけ端数が小さくなる最終回は、
+ * 独立した期間として出すと「毎月の返済」と誤読されるので除く。
+ */
+export function repaymentPeriods(schedule: RepaymentScenario["schedule"]): RepaymentPeriod[] {
+  const periods: RepaymentPeriod[] = [];
+  for (const item of [...schedule].sort((a, b) => a.due_date.localeCompare(b.due_date))) {
+    if (item.amount_yen <= 0) continue;
+    const month = item.due_date.slice(0, 7);
+    const last = periods.at(-1);
+    if (last && last.amount === item.amount_yen) last.months.push(month);
+    else periods.push({ months: [month], amount: item.amount_yen });
+  }
+  const final = periods.at(-1);
+  const previous = periods.at(-2);
+  if (final && previous && final.months.length === 1 && final.amount < previous.amount) periods.pop();
+  return periods;
+}
+
+function monthLabel(months: string[], isLast: boolean): string {
+  const numbers = months.map((month) => Number(month.slice(5, 7)));
+  if (isLast) return `${numbers[0]}月以降`;
+  if (numbers.length === 1) return `${numbers[0]}月`;
+  if (numbers.length === 2) return `${numbers[0]}・${numbers[1]}月`;
+  return `${numbers[0]}〜${numbers.at(-1)}月`;
+}
+
+/** 進路別プランの「返済後に残るお金」。返済額が変わるルートは期間ごとに分けて計算する。 */
+export function renderScenarioLeftover(target: HTMLElement, scenario: RepaymentScenario): void {
+  const periods = repaymentPeriods(scenario.schedule);
+  const expenses = scenario.monthly_expenses_yen;
+  if (periods.length <= 1) {
+    const amount = periods[0]?.amount ?? scenario.monthly_repayment_yen;
+    leftoverRange(target, scenario.net_income_min_yen - expenses - amount, scenario.net_income_yen - expenses - amount);
+    return;
+  }
+  target.replaceChildren();
+  periods.forEach((period, index) => {
+    const row = document.createElement("span");
+    row.className = "dn-leftover-period";
+    const label = document.createElement("small");
+    label.textContent = monthLabel(period.months, index === periods.length - 1);
+    const values = document.createElement("span");
+    leftoverRange(values, scenario.net_income_min_yen - expenses - period.amount, scenario.net_income_yen - expenses - period.amount);
+    row.append(label, values);
+    target.append(row);
+  });
 }
 
 function setMoney(selector: string, value: number, sign: Sign): void {
@@ -76,7 +148,7 @@ const SEGMENTS = [
   { key: "fixed", label: "固定費" },
   { key: "variable", label: "変動費" },
   { key: "repayment", label: "返済" },
-  { key: "buffer", label: "残る余力" },
+  { key: "buffer", label: "残るお金" },
 ] as const;
 
 /** 手取りを100%とした横棒。支出＋返済が手取りを超える月は、超えた分を「不足」として斜線で示す。 */
@@ -196,9 +268,9 @@ export function renderFundingPlan(documentData: DebtDocument): void {
 
   range("[data-cashflow-income]", income.estimated_net_income_min_yen, income.estimated_net_income_yen, "plus");
   setMoney("[data-cashflow-expenses]", expenses.monthly_total_yen, "minus");
-  range("[data-available]", funding.monthly_available_min_yen, funding.monthly_available_yen);
+  leftoverRange(one<HTMLElement>("[data-available]"), funding.monthly_available_min_yen, funding.monthly_available_yen);
   setMoney("[data-monthly-repayment]", funding.monthly_repayment_yen, "minus");
-  range("[data-monthly-buffer]", funding.monthly_buffer_min_yen, funding.monthly_buffer_yen);
+  leftoverRange(one<HTMLElement>("[data-monthly-buffer]"), funding.monthly_buffer_min_yen, funding.monthly_buffer_yen);
   renderFlowChart(documentData);
 
   one<HTMLElement>("[data-special-expense]").textContent = expenses.special_expense_note;
