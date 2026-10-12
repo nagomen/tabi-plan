@@ -349,3 +349,11 @@ test("返済の状態は heroicon と文字の組み合わせで表示する", (
   assert.match(viewer, /function paintState[\s\S]*icon\(state\.icon/);
   assert.doesNotMatch(viewer, /nextStatus\.textContent\s*=/);
 });
+
+test("収支セクション下部の旅行予定・収入減・実行計画はそれぞれカードで囲む", () => {
+  const html = readFileSync(new URL("../debt/index.html", import.meta.url), "utf8");
+  for (const block of ["dn-special-expense", "dn-reduced-income", "dn-funding-actions"]) {
+    assert.match(html, new RegExp(`class="${block} dn-subcard"`));
+  }
+  for (const name of ["paperAirplane", "calendarDays", "listBullet"]) assert.match(html, new RegExp(`data-ic="${name}"`));
+});
