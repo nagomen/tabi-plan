@@ -205,3 +205,21 @@ test("返済共有ページはヘッダーのメニューから各セクショ�
   assert.match(nav, /closest\("\[hidden\]"\)/);
   assert.match(viewer, /initDebtNav\(\)/);
 });
+
+test("冒頭の返済計画は heroicon と仕切り線で組み、描画用の目印を保つ", () => {
+  const html = readFileSync(new URL("../debt/index.html", import.meta.url), "utf8");
+  const css = readFileSync(new URL("../src/debt/style.css", import.meta.url), "utf8");
+  const main = readFileSync(new URL("../src/debt/main.ts", import.meta.url), "utf8");
+  const overview = html.match(/<section class="dn-overview"[\s\S]*?<\/section>/)?.[0] || "";
+  assert.ok(overview);
+  for (const hook of ["data-remaining", "data-progress", "data-progress-label", "data-count-label", "data-next-date",
+    "data-next-amount", "data-next-status", "data-principal", "data-interest", "data-total", "data-completion", "data-updated"]) {
+    assert.match(overview, new RegExp(hook));
+  }
+  for (const name of ["banknotes", "calendarDays", "currencyYen", "receiptPercent", "calculator", "flag", "clock"]) {
+    assert.match(overview, new RegExp(`data-ic="${name}"`));
+  }
+  assert.match(main, /fillIcons\(\)/);
+  // 旧デザインの箱（塗りつぶしの残高カード）を残さない
+  assert.doesNotMatch(css, /\.dn-summary|\.dn-balance/);
+});

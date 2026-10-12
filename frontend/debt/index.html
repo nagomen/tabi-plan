@@ -51,36 +51,38 @@
   </noscript>
 
   <div data-content hidden>
-    <div class="dn-intro">
-      <div>
-        <p class="dn-eyebrow">REPAYMENT PLAN / 2026–2027</p>
-        <h1>返済計画</h1>
-        <p class="dn-lead">個人情報を表示しない、閲覧専用の返済記録です。</p>
-      </div>
-      <p class="dn-updated">最終更新 <time data-updated></time></p>
-    </div>
+    <section class="dn-overview" id="status" aria-labelledby="dn-overview-title" data-nav="返済状況">
+      <header class="dn-ov-head">
+        <div>
+          <p class="dn-eyebrow">REPAYMENT PLAN / 2026–2027</p>
+          <h1 id="dn-overview-title">返済計画</h1>
+          <p class="dn-ov-lead">個人情報を表示しない、閲覧専用の返済記録です。</p>
+        </div>
+        <p class="dn-ov-updated"><span data-ic="clock"></span>最終更新 <time data-updated></time></p>
+      </header>
 
-    <section class="dn-summary" id="status" aria-label="返済状況" data-nav="返済状況">
-      <div class="dn-balance">
-        <p>残りの返済額</p>
-        <strong data-remaining></strong>
-        <div class="dn-progress" aria-hidden="true"><span data-progress></span></div>
-        <div class="dn-balance-meta"><span data-progress-label></span><span data-count-label></span></div>
+      <div class="dn-ov-main">
+        <div class="dn-ov-balance">
+          <p class="dn-ov-label"><span data-ic="banknotes"></span>残りの返済額</p>
+          <strong class="dn-ov-amount" data-remaining></strong>
+          <div class="dn-ov-progress" aria-hidden="true"><span data-progress></span></div>
+          <p class="dn-ov-meta"><span><span data-ic="checkCircle"></span><span data-progress-label></span></span><span data-count-label></span></p>
+        </div>
+        <div class="dn-ov-next">
+          <p class="dn-ov-label"><span data-ic="calendarDays"></span>次回の返済</p>
+          <div class="dn-ov-next-body">
+            <strong class="dn-ov-next-date" data-next-date></strong>
+            <b class="dn-ov-next-amount" data-next-amount></b>
+          </div>
+          <span data-next-status></span>
+        </div>
       </div>
-      <div class="dn-next">
-        <p>次回の返済</p>
-        <strong data-next-date></strong>
-        <b data-next-amount></b>
-        <span data-next-status></span>
-      </div>
-    </section>
 
-    <section class="dn-facts" aria-label="借入条件">
-      <dl>
-        <div><dt>借入元金</dt><dd data-principal></dd></div>
-        <div><dt>利息</dt><dd data-interest></dd></div>
-        <div><dt>返済総額</dt><dd data-total></dd></div>
-        <div><dt>完済予定</dt><dd data-completion></dd></div>
+      <dl class="dn-ov-facts" aria-label="借入条件">
+        <div><dt><span data-ic="currencyYen"></span>借入元金</dt><dd data-principal></dd></div>
+        <div><dt><span data-ic="receiptPercent"></span>利息</dt><dd data-interest></dd></div>
+        <div><dt><span data-ic="calculator"></span>返済総額</dt><dd data-total></dd></div>
+        <div><dt><span data-ic="flag"></span>完済予定</dt><dd data-completion></dd></div>
       </dl>
     </section>
 
