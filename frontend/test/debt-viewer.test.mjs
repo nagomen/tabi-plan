@@ -29,3 +29,101 @@ test("返済共有ページは返済原資と月次収支の内訳を表示す�
     assert.match(viewer, new RegExp(field));
   }
 });
+
+// ---- エラー処理: 通信・応答・データ形式 ----
+import fs from "node:fs";
+import vm from "node:vm";
+import ts from "typescript";
+
+function loadModule(relativePath, stubs = {}) {
+  const source = fs.readFileSync(new URL(relativePath, import.meta.url), "utf8");
+  const javascript = ts.transpileModule(source, {
+    compilerOptions: { target: ts.ScriptTarget.ES2020, module: ts.ModuleKind.CommonJS },
+  }).outputText;
+  const module = { exports: {} };
+  vm.runInNewContext(javascript, { module, exports: module.exports, require: (id) => stubs[id] || {} });
+  return module.exports;
+}
+
+const api = loadModule("../src/debt/api.ts");
+const { normalizePlan, normalizePdf } = loadModule("../src/debt/normalize.ts", { "./api": api });
+
+test("HTMLのプロキシエラーやレート制限も日本語で説明し、再試行可否を返す", () => {
+  const gateway = api.errorFromResponse(502, "<html>Bad Gateway</html>", null);
+  assert.equal(gateway.retryable, true);
+  assert.match(gateway.message, /サーバー/);
+
+  const limited = api.errorFromResponse(429, JSON.stringify({ message: "試行回数が上限に達しました。", retryable: true, retry_after: 42 }), "10");
+  assert.equal(limited.retryable, true);
+  assert.equal(limited.retryAfter, 42);
+  assert.equal(limited.message, "試行回数が上限に達しました。");
+
+  const headerOnly = api.errorFromResponse(429, "", "15");
+  assert.equal(headerOnly.retryAfter, 15);
+
+  const missing = api.errorFromResponse(404, JSON.stringify({ error: "not_found", message: "この共有リンクは無効か、公開が終了しています。", retryable: false }), null);
+  assert.equal(missing.retryable, false);
+  assert.equal(missing.title, "共有リンクを確認できませんでした");
+
+  const corrupted = api.errorFromResponse(500, JSON.stringify({ error: "data_corrupted", message: "壊れています", retryable: false, request_id: "abc123" }), null);
+  assert.equal(corrupted.requestId, "abc123");
+  assert.equal(corrupted.retryable, false);
+});
+
+test("オフライン・タイムアウト・接続失敗をそれぞれ区別して案内する", () => {
+  assert.match(api.errorFromNetwork({ name: "TimeoutError" }, true).message, /時間内に応答/);
+  assert.match(api.errorFromNetwork({ name: "AbortError" }, true).message, /時間内に応答/);
+  assert.match(api.errorFromNetwork(new TypeError("Failed to fetch"), false).message, /インターネットに接続されていません/);
+  const network = api.errorFromNetwork(new TypeError("Failed to fetch"), true);
+  assert.match(network.message, /接続できませんでした/);
+  assert.equal(network.retryable, true);
+});
+
+test("返済データの欠損は既定値で埋め、返済予定が読めないときは表示エラーにする", () => {
+  const plan = normalizePlan({
+    total_yen: "120000",
+    paid_yen: null,
+    schedule: [
+      { number: 2, due_date: "2027-01-21", amount_yen: "60000" },
+      { number: 1, due_date: "2026-12-21", amount_yen: 60000, paid_at: "2026-12-20" },
+    ],
+    document: { promises: "配列ではない", existing_debts: [{ creditor: "A", amount_yen: "1000" }, null], repayment_scenarios: [{ schedule: [{ due_date: "不明" }] }] },
+  });
+  assert.equal(plan.total_yen, 120000);
+  assert.equal(plan.paid_yen, 0);
+  assert.deepEqual(plan.schedule.map((item) => item.due_date), ["2026-12-21", "2027-01-21"]);
+  assert.equal(plan.schedule[1].paid_at, null);
+  assert.equal(plan.borrower_name, "");
+  assert.equal(plan.updated_at, "");
+  assert.equal(plan.document.promises.length, 0);
+  assert.equal(plan.document.existing_debts.length, 1);
+  assert.equal(plan.document.existing_debts[0].amount_yen, 1000);
+  assert.equal(plan.document.repayment_scenarios[0].schedule.length, 0);
+  assert.equal(plan.document.income_plan, undefined);
+
+  for (const bad of [null, "text", [], { schedule: "x" }, { schedule: [{ due_date: "来月" }] }, { schedule: [null] }]) {
+    assert.throws(() => normalizePlan(bad), (error) => error.name === "DebtViewerError" && /形式/.test(error.message));
+  }
+});
+
+test("PDF応答は base64 とファイル名を検査する", () => {
+  const pdf = normalizePdf({ filename: "計画:書/最終\u0007.pdf", data_base64: "JVBE\nRi0x" });
+  assert.equal(pdf.filename, "計画_書_最終.pdf");
+  assert.equal(pdf.data_base64, "JVBERi0x");
+  assert.equal(pdf.mime_type, "application/pdf");
+  for (const bad of [null, {}, { data_base64: "" }, { data_base64: "!!!not-base64" }]) {
+    assert.throws(() => normalizePdf(bad), (error) => error.name === "DebtViewerError");
+  }
+});
+
+test("返済共有画面はエラー表示・再試行・二重描画防止の仕組みを持つ", () => {
+  const html = readFileSync(new URL("../debt/index.html", import.meta.url), "utf8");
+  const viewer = readFileSync(new URL("../src/debt/viewer.ts", import.meta.url), "utf8");
+  for (const marker of ["data-error-title", "data-error-reference", "data-error-retry", "<noscript>"]) {
+    assert.match(html, new RegExp(marker));
+  }
+  assert.match(viewer, /replaceChildren\(\)/);
+  assert.match(viewer, /download\.onclick\s*=/);
+  assert.match(viewer, /hashchange/);
+  assert.doesNotMatch(viewer, /addEventListener\("click"/);
+});

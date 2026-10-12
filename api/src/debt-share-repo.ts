@@ -1,5 +1,5 @@
 import { firstRow, pool } from "./db.js";
-import { NotFound } from "./errors.js";
+import { DataIntegrityError, NotFound } from "./errors.js";
 import { debtShareTokenHash, isDebtShareToken } from "./debt-share-token.js";
 
 export interface DebtInstallment {
@@ -20,25 +20,91 @@ export interface DebtDocument {
   closing_note: string;
 }
 
-interface DebtRow {
+export interface DebtRow {
   borrower_name: string;
   creditor_name: string;
-  principal_yen: number;
-  interest_yen: number;
-  total_yen: number;
-  paid_yen: number;
-  schedule_json: string | DebtInstallment[];
-  document_json: string | DebtDocument;
-  updated_at: string;
+  principal_yen: number | string;
+  interest_yen: number | string;
+  total_yen: number | string;
+  paid_yen: number | string;
+  schedule_json: unknown;
+  document_json: unknown;
+  updated_at: Date | string | null;
 }
+
+const BROKEN_DATA = "返済計画のデータを読み取れませんでした。お手数ですが、問い合わせ番号を添えて送信者へお知らせください。";
+const DATE = /^\d{4}-\d{2}-\d{2}/;
 
 function inaccessible(): never {
   // 存在・失効・形式不正を区別せず、共有リンクの状態を推測させない。
   throw new NotFound("この共有リンクは無効か、公開が終了しています。");
 }
 
-function parsed<T>(value: string | T): T {
-  return typeof value === "string" ? JSON.parse(value) as T : value;
+function broken(detail: string): never {
+  throw new DataIntegrityError(`${BROKEN_DATA}（${detail}）`);
+}
+
+/** JSON列は mysql2 の設定次第で文字列・Buffer・解析済みのどれでも届く。 */
+function parsed(value: unknown, column: string): unknown {
+  if (value === null || value === undefined) broken(`${column} が空です`);
+  if (typeof value !== "string" && !Buffer.isBuffer(value)) return value;
+  try {
+    return JSON.parse(value.toString());
+  } catch {
+    return broken(`${column} がJSONではありません`);
+  }
+}
+
+function amount(value: unknown, column: string): number {
+  const number = Number(value ?? 0);
+  if (!Number.isFinite(number) || number < 0) broken(`${column} が不正な金額です`);
+  return Math.round(number);
+}
+
+function schedule(value: unknown): DebtInstallment[] {
+  const list = parsed(value, "schedule_json");
+  if (!Array.isArray(list)) broken("schedule_json が配列ではありません");
+  return list.map((raw, index) => {
+    const item = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+    const dueDate = typeof item.due_date === "string" ? item.due_date : "";
+    if (!DATE.test(dueDate)) broken(`返済予定${index + 1}件目の期日が不正です`);
+    const paidAt = item.paid_at;
+    return {
+      number: Number.isInteger(item.number) ? Number(item.number) : index + 1,
+      due_date: dueDate,
+      amount_yen: amount(item.amount_yen, `返済予定${index + 1}件目`),
+      paid_at: typeof paidAt === "string" && paidAt ? paidAt : null,
+    };
+  });
+}
+
+function documentObject(value: unknown): Record<string, unknown> {
+  const document = parsed(value, "document_json");
+  if (!document || typeof document !== "object" || Array.isArray(document)) {
+    broken("document_json がオブジェクトではありません");
+  }
+  return document as Record<string, unknown>;
+}
+
+function isoTimestamp(value: DebtRow["updated_at"]): string {
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? "" : value.toISOString();
+  return typeof value === "string" ? value : "";
+}
+
+/** DB行を共有画面へ返す形へ整える。壊れた行は 500(data_corrupted) にして、画面を半端に描かせない。 */
+export function toSharedDebt(row: DebtRow): Record<string, unknown> {
+  const total = amount(row.total_yen, "total_yen");
+  return {
+    borrower_name: String(row.borrower_name ?? ""),
+    creditor_name: String(row.creditor_name ?? ""),
+    principal_yen: amount(row.principal_yen, "principal_yen"),
+    interest_yen: amount(row.interest_yen, "interest_yen"),
+    total_yen: total,
+    paid_yen: amount(row.paid_yen, "paid_yen"),
+    schedule: schedule(row.schedule_json),
+    document: documentObject(row.document_json),
+    updated_at: isoTimestamp(row.updated_at),
+  };
 }
 
 async function debtRow(token: string): Promise<DebtRow> {
@@ -60,20 +126,7 @@ async function debtRow(token: string): Promise<DebtRow> {
 }
 
 export async function loadSharedDebt(token: string): Promise<Record<string, unknown>> {
-  const row = await debtRow(token);
-  const schedule = parsed<DebtInstallment[]>(row.schedule_json);
-  const document = parsed<DebtDocument>(row.document_json);
-  return {
-    borrower_name: row.borrower_name,
-    creditor_name: row.creditor_name,
-    principal_yen: Number(row.principal_yen),
-    interest_yen: Number(row.interest_yen),
-    total_yen: Number(row.total_yen),
-    paid_yen: Number(row.paid_yen),
-    schedule,
-    document,
-    updated_at: row.updated_at,
-  };
+  return toSharedDebt(await debtRow(token));
 }
 
 export async function loadSharedDebtPdf(token: string): Promise<{
@@ -82,7 +135,7 @@ export async function loadSharedDebtPdf(token: string): Promise<{
   data_base64: string;
 }> {
   if (!isDebtShareToken(token)) inaccessible();
-  const row = await firstRow<{ document_pdf: Buffer; pdf_filename: string }>(
+  const row = await firstRow<{ document_pdf: Buffer | null; pdf_filename: string | null }>(
     pool,
     `SELECT p.document_pdf, p.pdf_filename
        FROM debt_share_links l
@@ -93,7 +146,9 @@ export async function loadSharedDebtPdf(token: string): Promise<{
       LIMIT 1`,
     [debtShareTokenHash(token)],
   );
-  if (!row?.document_pdf?.length) inaccessible();
+  if (!row) inaccessible();
+  // 有効なリンクを持つ人には、PDFだけ未登録であることを伝えてよい。
+  if (!row.document_pdf?.length) throw new NotFound("原本PDFはまだ登録されていません。送信者へお問い合わせください。");
   return {
     filename: row.pdf_filename || "repayment-plan.pdf",
     mime_type: "application/pdf",

@@ -6,6 +6,9 @@ export class NotFound extends Error {}
 
 export class ExchangeRateUnavailable extends Error {}
 
+/** DBに保存済みのデータが想定の形をしていない。再試行では直らないので管理者対応へ回す。 */
+export class DataIntegrityError extends Error {}
+
 export class VersionConflict extends Error {
   constructor(message: string, readonly currentVersion = 0) {
     super(message);
@@ -93,6 +96,18 @@ export function describeError(error: unknown, requestId: string): { status: numb
         retryable: true,
         retry_after: 30,
         action: "retry_later",
+      },
+    };
+  }
+  if (error instanceof DataIntegrityError) {
+    return {
+      status: 500,
+      body: {
+        error: "data_corrupted",
+        message,
+        retryable: false,
+        action: "contact_support",
+        request_id: requestId,
       },
     };
   }
