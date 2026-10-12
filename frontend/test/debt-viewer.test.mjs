@@ -181,7 +181,7 @@ test("返済共有画面はエラー表示・再試行・二重描画防止の�
   for (const marker of ["data-error-title", "data-error-reference", "data-error-retry", "<noscript>"]) {
     assert.match(html, new RegExp(marker));
   }
-  for (const marker of ["dn-pdf-download", "data-download-label", "全4ページ", "個人情報非表示", "保存・印刷対応"]) {
+  for (const marker of ["class=\"dn-pdf\"", "data-ic=\"arrowDownTray\"", "data-download-label", "全4ページ", "個人情報非表示", "保存・印刷対応"]) {
     assert.match(html, new RegExp(marker));
   }
   assert.match(viewer, /replaceChildren\(\)/);

@@ -32,13 +32,6 @@ button { font:inherit; }
 .dn-eyebrow,.dn-section-no { margin:0 0 12px; color:var(--green); font-size:11px; font-weight:900; letter-spacing:.16em; }
 dt { color:var(--muted); font-size:12px; font-weight:750; }
 dd { margin:8px 0 0; font-family:inherit; font-size:21px; font-weight:750; }
-.dn-pdf-download { display:grid; grid-template-columns:minmax(0,1fr) minmax(280px,340px); align-items:center; gap:36px; margin-top:18px; padding:26px 28px; border:1px solid var(--ink); border-left:6px solid var(--accent); background:var(--ink); color:#fff; }
-.dn-pdf-copy .dn-section-no { margin-bottom:8px; color:#b8d2c9; }
-.dn-pdf-copy h2 { margin:0; font-family:inherit; font-size:clamp(23px,3vw,31px); line-height:1.25; }
-.dn-pdf-copy>p:not(.dn-section-no) { margin:10px 0 0; color:rgba(255,255,255,.76); font-size:13px; line-height:1.75; }
-.dn-pdf-meta { display:flex; flex-wrap:wrap; gap:8px 18px; margin-top:15px; color:#fff; font-size:11px; font-weight:800; }
-.dn-pdf-meta span { display:inline-flex; align-items:center; gap:7px; }
-.dn-pdf-meta span::before { content:""; width:5px; height:5px; background:var(--accent); }
 .dn-section { margin-top:64px; }
 .dn-section-head { display:flex; align-items:end; justify-content:space-between; gap:20px; padding-bottom:18px; border-bottom:2px solid var(--ink); }
 .dn-section-no { margin-bottom:5px; }
@@ -113,13 +106,6 @@ th:nth-child(2),td:nth-child(2) { text-align:left; }
 .dn-download:hover { background:var(--ink); color:#fff; }
 .dn-download:focus-visible { outline:3px solid var(--accent); outline-offset:3px; }
 .dn-download:disabled { opacity:.62; cursor:wait; }
-.dn-download-primary { display:grid; grid-template-columns:42px minmax(0,1fr); align-items:center; gap:14px; min-height:78px; padding:14px 18px; border-color:var(--accent); background:var(--accent); color:#fff; text-align:left; box-shadow:0 8px 24px rgba(0,0,0,.16); }
-.dn-download-primary:hover { border-color:#fff; background:#fff; color:var(--ink); }
-.dn-download-primary:disabled { background:#b95e50; color:#fff; }
-.dn-download-icon { display:grid; place-items:center; width:42px; height:42px; border:1px solid currentColor; font-size:24px; line-height:1; }
-.dn-download-copy strong,.dn-download-copy small { display:block; }
-.dn-download-copy strong { font-size:15px; line-height:1.35; }
-.dn-download-copy small { margin-top:4px; overflow:hidden; font-size:10px; font-weight:650; opacity:.72; text-overflow:ellipsis; white-space:nowrap; }
 .dn-document { padding:0 38px 38px; border:1px solid var(--line); border-top:0; background:var(--surface); }
 .dn-document .dn-section-head { padding-top:38px; }
 .dn-doc-intro { max-width:800px; margin:26px 0 40px; color:var(--muted); line-height:1.9; }
@@ -141,7 +127,6 @@ th:nth-child(2),td:nth-child(2) { text-align:left; }
 @media (max-width:760px) {
   .dn-header { height:66px; padding:0 16px; }
   .dn-shell { width:calc(100% - 28px); padding:38px 0 56px; }
-  .dn-pdf-download { grid-template-columns:1fr; gap:22px; padding:24px 20px; }
   .dn-doc-grid { grid-template-columns:1fr; gap:34px; }
   .dn-income-metrics { grid-template-columns:1fr 1fr; }
   .dn-income-metrics>div { border-bottom:1px solid var(--line); }
@@ -195,13 +180,10 @@ html { -webkit-text-size-adjust:100%; text-size-adjust:100%; }
   /* 2列の数値は日付が途中で割れないよう、年と月日の間でだけ折り返す */
   dd { margin-top:4px; font-size:15px; line-height:1.3; word-break:keep-all; overflow-wrap:anywhere; }
   dt { font-size:11px; }
-  .dn-pdf-download { gap:12px; margin-top:10px; padding:14px 14px; border-left-width:4px; }
-  .dn-pdf-meta { margin-top:8px; font-size:10px; }
   .dn-section { margin-top:28px; }
   .dn-section-head { display:block; padding-bottom:8px; }
   .dn-section-head>span { display:block; margin-top:4px; font-size:11px; }
-  .dn-section h2,.dn-pdf-copy h2 { font-size:20px; line-height:1.3; text-wrap:balance; }
-  .dn-pdf-copy>p:not(.dn-section-no) { margin-top:6px; font-size:12px; line-height:1.6; }
+  .dn-section h2 { font-size:20px; line-height:1.3; text-wrap:balance; }
   .dn-shell h3 { text-wrap:balance; }
   .dn-funding-intro,.dn-doc-intro { margin:12px 0; font-size:12px; line-height:1.7; }
   .dn-income-metrics>div,.dn-cashflow>div,.dn-plan-summary>div { padding:9px 10px; }
@@ -358,4 +340,34 @@ h1,h2,h3,h4,td,dd,.dn-income-metrics strong,.dn-cashflow strong,.dn-plan-summary
 }
 @media (max-width:360px) {
   .dn-ov-amount { font-size:30px; }
+}
+
+/* ---- 計画書PDF: 冒頭の台帳に続く1行。塗りや影は使わず罫線で区切る ---- */
+.dn-overview { margin-bottom:0; }
+.dn-pdf { display:grid; grid-template-columns:auto minmax(0,1fr) auto; align-items:center; gap:16px 24px; padding:22px 0; border-bottom:1px solid var(--line); }
+.dn-pdf-mark { font-size:30px; align-self:start; }
+.dn-pdf-eyebrow { margin:0 0 4px; color:var(--green); font-size:10px; font-weight:900; letter-spacing:.16em; }
+.dn-pdf h2 { margin:0; font-size:20px; line-height:1.35; }
+.dn-pdf-desc { margin:4px 0 0; color:var(--muted); font-size:13px; line-height:1.7; }
+.dn-pdf-meta { display:flex; flex-wrap:wrap; margin:8px 0 0; padding:0; list-style:none; color:#3e514c; font-size:11px; font-weight:700; }
+.dn-pdf-meta li+li { margin-left:10px; padding-left:10px; border-left:1px solid var(--line); }
+.dn-pdf-action { display:grid; justify-items:end; gap:6px; }
+.dn-pdf-button { display:inline-flex; align-items:center; justify-content:center; gap:8px; min-height:44px; padding:0 18px; border:1px solid var(--ink); border-radius:0; background:var(--ink); color:#fff; font-size:13px; font-weight:800; cursor:pointer; }
+.dn-pdf-button .dn-ic { color:inherit; font-size:17px; }
+.dn-pdf-button:focus-visible { outline:3px solid var(--accent); outline-offset:3px; }
+.dn-pdf-button:disabled { opacity:.6; cursor:wait; }
+.dn-pdf-file { color:var(--muted); font-size:11px; }
+@media (hover:hover) {
+  .dn-pdf-button:hover { border-color:var(--green); background:var(--green); }
+}
+@media (max-width:760px) {
+  .dn-pdf { grid-template-columns:auto minmax(0,1fr); gap:10px 12px; padding:14px 0; }
+  .dn-pdf-mark { font-size:22px; }
+  .dn-pdf h2 { font-size:16px; }
+  .dn-pdf-desc { font-size:12px; line-height:1.6; }
+  .dn-pdf-meta { margin-top:6px; font-size:10px; }
+  .dn-pdf-meta li+li { margin-left:8px; padding-left:8px; }
+  .dn-pdf-action { grid-column:1 / -1; justify-items:stretch; gap:4px; }
+  .dn-pdf-button { width:100%; min-height:44px; font-size:13px; }
+  .dn-pdf-file { text-align:center; font-size:10px; }
 }
