@@ -25,9 +25,18 @@
 
   <section class="dn-error" data-error hidden>
     <p class="dn-eyebrow">LINK UNAVAILABLE</p>
-    <h1>共有リンクを確認できませんでした</h1>
+    <h1 data-error-title>共有リンクを確認できませんでした</h1>
     <p data-error-message>URLが途中で切れていないか、送信者に確認してください。</p>
+    <p class="dn-error-reference" data-error-reference hidden></p>
+    <button class="dn-download dn-retry" type="button" data-error-retry hidden>もう一度読み込む</button>
   </section>
+  <noscript>
+    <section class="dn-error">
+      <p class="dn-eyebrow">JAVASCRIPT REQUIRED</p>
+      <h1>JavaScriptを有効にしてください</h1>
+      <p>返済計画の表示にはJavaScriptが必要です。ブラウザの設定で有効にしてから開き直してください。</p>
+    </section>
+  </noscript>
 
   <div data-content hidden>
     <div class="dn-intro">
@@ -105,15 +114,32 @@
         <div class="is-emphasis"><span>返済後の予備費</span><strong data-monthly-buffer></strong></div>
       </div>
       <aside class="dn-special-expense"><strong>10月の一時的支出</strong><p data-special-expense></p></aside>
+      <section class="dn-reduced-income" data-reduced-income-panel hidden>
+        <div>
+          <p class="dn-section-no">TEMPORARY INCOME CHANGE</p>
+          <h3>12月・1月の収入減と返済猶予</h3>
+          <p>官庁訪問に伴い収入が下がる2か月は、生活費を優先して返済額を0円とします。返済は2月21日に再開します。</p>
+        </div>
+        <div class="dn-reduced-income-grid" data-reduced-income></div>
+      </section>
       <div class="dn-funding-actions">
         <h3>返済資金を確保するための実行計画</h3>
         <ol data-funding-actions></ol>
       </div>
     </section>
 
+    <section class="dn-section dn-scenarios" data-scenarios-panel hidden>
+      <div class="dn-section-head">
+        <div><p class="dn-section-no">03</p><h2>4月以降の進路別返済プラン</h2></div>
+        <span>3つの IF</span>
+      </div>
+      <p class="dn-scenario-intro">2027年3月末までに進路を確定し、4月21日以降は実際の手取りに合わせて次のいずれかへ切り替えます。支出予算は月17万円で統一しています。</p>
+      <div class="dn-scenario-grid" data-repayment-scenarios></div>
+    </section>
+
     <section class="dn-section dn-document">
       <div class="dn-section-head">
-        <div><p class="dn-section-no">03</p><h2>借入・返済計画書</h2></div>
+        <div><p class="dn-section-no">04</p><h2>借入・返済計画書</h2></div>
         <button class="dn-download" type="button" data-download>原本PDFをダウンロード</button>
       </div>
       <p class="dn-doc-intro">現在の債務を整理し、責任を持って返済するための計画書です。原本の内容を画面上でも確認できます。</p>
