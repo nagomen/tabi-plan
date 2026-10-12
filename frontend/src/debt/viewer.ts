@@ -9,6 +9,10 @@ const yen = new Intl.NumberFormat("ja-JP", { style: "currency", currency: "JPY",
 const weekday = ["日", "月", "火", "水", "木", "金", "土"];
 const TOKEN = /^[A-Za-z0-9_-]{43}$/;
 
+function yenRange(minimum: number, maximum: number): string {
+  return minimum === maximum ? yen.format(maximum) : `${yen.format(minimum)}〜${yen.format(maximum)}`;
+}
+
 function one<T extends Element>(selector: string): T {
   const node = document.querySelector<T>(selector);
   // HTMLとJSの版がずれた（古いキャッシュ）ときに起きる。利用者には再読み込みを案内する。
@@ -157,9 +161,9 @@ function renderPlanSwitch(plan: DebtPlan): void {
       button.setAttribute("aria-selected", String(active));
       button.tabIndex = active ? 0 : -1;
     }
-    setText("[data-selected-income]", yen.format(scenario.net_income_yen));
-    setText("[data-selected-repayment]", yen.format(scenario.monthly_repayment_yen));
-    setText("[data-selected-buffer]", yen.format(scenario.monthly_buffer_yen));
+    setText("[data-selected-income]", yenRange(scenario.net_income_min_yen, scenario.net_income_yen));
+    setText("[data-selected-repayment]", scenario.repayment_summary || yen.format(scenario.monthly_repayment_yen));
+    setText("[data-selected-buffer]", yenRange(scenario.monthly_buffer_min_yen, scenario.monthly_buffer_yen));
     setText("[data-selected-completion]", displayDate(scenario.completion_date));
     setText("[data-selected-note]", scenario.note);
     renderScheduleOverview(scheduleForScenario(plan, scenario));
@@ -212,18 +216,18 @@ function renderFundingPlan(documentData: DebtDocument): void {
 
   setText("[data-funding-intro]", income.description);
   setText("[data-hourly-wage]", yen.format(income.hourly_wage_yen));
-  setText("[data-monthly-hours]", `${income.monthly_hours_cap}時間`);
-  setText("[data-gross-income]", yen.format(income.gross_income_yen));
-  setText("[data-net-income]", yen.format(income.estimated_net_income_yen));
+  setText("[data-monthly-hours]", `${income.monthly_hours_min}〜${income.monthly_hours_cap}時間`);
+  setText("[data-gross-income]", yenRange(income.gross_income_min_yen, income.gross_income_yen));
+  setText("[data-net-income]", yenRange(income.estimated_net_income_min_yen, income.estimated_net_income_yen));
   renderBudgetItems("[data-fixed-expenses]", expenses.fixed_items);
   renderBudgetItems("[data-variable-expenses]", expenses.variable_items);
   setText("[data-fixed-total]", yen.format(expenses.fixed_total_yen));
   setText("[data-variable-total]", yen.format(expenses.variable_total_yen));
-  setText("[data-cashflow-income]", yen.format(income.estimated_net_income_yen));
+  setText("[data-cashflow-income]", yenRange(income.estimated_net_income_min_yen, income.estimated_net_income_yen));
   setText("[data-monthly-expenses]", `− ${yen.format(expenses.monthly_total_yen)}`);
-  setText("[data-available]", yen.format(funding.monthly_available_yen));
+  setText("[data-available]", yenRange(funding.monthly_available_min_yen, funding.monthly_available_yen));
   setText("[data-monthly-repayment]", `− ${yen.format(funding.monthly_repayment_yen)}`);
-  setText("[data-monthly-buffer]", yen.format(funding.monthly_buffer_yen));
+  setText("[data-monthly-buffer]", yenRange(funding.monthly_buffer_min_yen, funding.monthly_buffer_yen));
   setText("[data-special-expense]", expenses.special_expense_note);
 
   const reducedMonths = income.reduced_income_months;

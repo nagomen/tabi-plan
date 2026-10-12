@@ -165,6 +165,45 @@ test("返済データの欠損は既定値で埋め、返済予定が読めな�
   }
 });
 
+test("月収と返済後余力は下限から上限までの幅を保持する", () => {
+  const plan = normalizePlan({
+    schedule: [{ due_date: "2026-11-21", amount_yen: 10000 }],
+    document: {
+      income_plan: {
+        hourly_wage_yen: 3000,
+        monthly_hours_min: 60,
+        monthly_hours_cap: 80,
+        gross_income_min_yen: 180000,
+        gross_income_yen: 240000,
+        estimated_net_income_min_yen: 169000,
+        estimated_net_income_yen: 225000,
+      },
+      funding_plan: {
+        monthly_available_min_yen: -13000,
+        monthly_available_yen: 43000,
+        monthly_repayment_yen: 10000,
+        monthly_buffer_min_yen: -23000,
+        monthly_buffer_yen: 33000,
+      },
+      repayment_scenarios: [{
+        id: "repeat-year",
+        net_income_min_yen: 169000,
+        net_income_yen: 225000,
+        monthly_repayment_yen: 20000,
+        repayment_summary: "1万円→2万円→3万円",
+        monthly_buffer_min_yen: -33000,
+        monthly_buffer_yen: 23000,
+        schedule: [{ due_date: "2027-04-21", amount_yen: 10000 }],
+      }],
+    },
+  });
+  assert.equal(plan.document.income_plan?.monthly_hours_min, 60);
+  assert.equal(plan.document.income_plan?.estimated_net_income_min_yen, 169000);
+  assert.equal(plan.document.funding_plan?.monthly_buffer_min_yen, -23000);
+  assert.equal(plan.document.repayment_scenarios[0].repayment_summary, "1万円→2万円→3万円");
+  assert.equal(plan.document.repayment_scenarios[0].monthly_buffer_min_yen, -33000);
+});
+
 test("PDF応答は base64 とファイル名を検査する", () => {
   const pdf = normalizePdf({ filename: "計画:書/最終\u0007.pdf", data_base64: "JVBE\nRi0x" });
   assert.equal(pdf.filename, "計画_書_最終.pdf");

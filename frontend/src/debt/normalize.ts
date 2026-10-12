@@ -16,8 +16,11 @@ export interface BudgetItem {
 
 export interface IncomePlan {
   hourly_wage_yen: number;
+  monthly_hours_min: number;
   monthly_hours_cap: number;
+  gross_income_min_yen: number;
   gross_income_yen: number;
+  estimated_net_income_min_yen: number;
   estimated_net_income_yen: number;
   description: string;
   reduced_income_months: Array<{ label: string; net_income_yen: number; note: string }>;
@@ -33,8 +36,10 @@ export interface ExpensePlan {
 }
 
 export interface FundingPlan {
+  monthly_available_min_yen: number;
   monthly_available_yen: number;
   monthly_repayment_yen: number;
+  monthly_buffer_min_yen: number;
   monthly_buffer_yen: number;
   actions: string[];
 }
@@ -42,9 +47,12 @@ export interface FundingPlan {
 export interface RepaymentScenario {
   id: string;
   title: string;
+  net_income_min_yen: number;
   net_income_yen: number;
   monthly_expenses_yen: number;
   monthly_repayment_yen: number;
+  repayment_summary: string;
+  monthly_buffer_min_yen: number;
   monthly_buffer_yen: number;
   completion_date: string;
   note: string;
@@ -133,11 +141,17 @@ function budget(value: unknown, privateNames: Array<[string, string]>): BudgetIt
 function incomePlan(value: unknown, privateNames: Array<[string, string]>): IncomePlan | undefined {
   const raw = obj(value);
   if (!raw) return undefined;
+  const monthlyHoursCap = yen(raw.monthly_hours_cap);
+  const grossIncome = yen(raw.gross_income_yen);
+  const estimatedNetIncome = yen(raw.estimated_net_income_yen);
   return {
     hourly_wage_yen: yen(raw.hourly_wage_yen),
-    monthly_hours_cap: yen(raw.monthly_hours_cap),
-    gross_income_yen: yen(raw.gross_income_yen),
-    estimated_net_income_yen: yen(raw.estimated_net_income_yen),
+    monthly_hours_min: raw.monthly_hours_min === undefined ? monthlyHoursCap : yen(raw.monthly_hours_min),
+    monthly_hours_cap: monthlyHoursCap,
+    gross_income_min_yen: raw.gross_income_min_yen === undefined ? grossIncome : yen(raw.gross_income_min_yen),
+    gross_income_yen: grossIncome,
+    estimated_net_income_min_yen: raw.estimated_net_income_min_yen === undefined ? estimatedNetIncome : yen(raw.estimated_net_income_min_yen),
+    estimated_net_income_yen: estimatedNetIncome,
     description: publicText(raw.description, privateNames),
     reduced_income_months: list(raw.reduced_income_months, (item) => ({
       label: publicText(item.label, privateNames), net_income_yen: yen(item.net_income_yen), note: publicText(item.note, privateNames),
@@ -161,29 +175,40 @@ function expensePlan(value: unknown, privateNames: Array<[string, string]>): Exp
 function fundingPlan(value: unknown, privateNames: Array<[string, string]>): FundingPlan | undefined {
   const raw = obj(value);
   if (!raw) return undefined;
+  const monthlyAvailable = yen(raw.monthly_available_yen);
+  const monthlyBuffer = yen(raw.monthly_buffer_yen);
   return {
-    monthly_available_yen: yen(raw.monthly_available_yen),
+    monthly_available_min_yen: raw.monthly_available_min_yen === undefined ? monthlyAvailable : yen(raw.monthly_available_min_yen),
+    monthly_available_yen: monthlyAvailable,
     monthly_repayment_yen: yen(raw.monthly_repayment_yen),
-    monthly_buffer_yen: yen(raw.monthly_buffer_yen),
+    monthly_buffer_min_yen: raw.monthly_buffer_min_yen === undefined ? monthlyBuffer : yen(raw.monthly_buffer_min_yen),
+    monthly_buffer_yen: monthlyBuffer,
     actions: Array.isArray(raw.actions) ? raw.actions.map((item) => publicText(item, privateNames)).filter(Boolean) : [],
   };
 }
 
 function scenarios(value: unknown, privateNames: Array<[string, string]>): RepaymentScenario[] {
-  return list(value, (item, index) => ({
-    id: text(item.id) || `scenario-${index + 1}`,
-    title: publicText(item.title, privateNames),
-    net_income_yen: yen(item.net_income_yen),
-    monthly_expenses_yen: yen(item.monthly_expenses_yen),
-    monthly_repayment_yen: yen(item.monthly_repayment_yen),
-    monthly_buffer_yen: yen(item.monthly_buffer_yen),
-    completion_date: text(item.completion_date),
-    note: publicText(item.note, privateNames),
-    schedule: list(item.schedule, (row) => {
-      const due = text(row.due_date);
-      return DATE.test(due) ? { due_date: due, amount_yen: yen(row.amount_yen) } : undefined;
-    }),
-  }));
+  return list(value, (item, index) => {
+    const netIncome = yen(item.net_income_yen);
+    const monthlyBuffer = yen(item.monthly_buffer_yen);
+    return {
+      id: text(item.id) || `scenario-${index + 1}`,
+      title: publicText(item.title, privateNames),
+      net_income_min_yen: item.net_income_min_yen === undefined ? netIncome : yen(item.net_income_min_yen),
+      net_income_yen: netIncome,
+      monthly_expenses_yen: yen(item.monthly_expenses_yen),
+      monthly_repayment_yen: yen(item.monthly_repayment_yen),
+      repayment_summary: publicText(item.repayment_summary, privateNames),
+      monthly_buffer_min_yen: item.monthly_buffer_min_yen === undefined ? monthlyBuffer : yen(item.monthly_buffer_min_yen),
+      monthly_buffer_yen: monthlyBuffer,
+      completion_date: text(item.completion_date),
+      note: publicText(item.note, privateNames),
+      schedule: list(item.schedule, (row) => {
+        const due = text(row.due_date);
+        return DATE.test(due) ? { due_date: due, amount_yen: yen(row.amount_yen) } : undefined;
+      }),
+    };
+  });
 }
 
 function documentData(value: unknown, privateNames: Array<[string, string]>): DebtDocument {
