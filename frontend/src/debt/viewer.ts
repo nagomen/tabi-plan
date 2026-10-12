@@ -318,9 +318,15 @@ function base64Bytes(data: string): ArrayBuffer {
 
 async function downloadPdf(button: HTMLButtonElement, token: string): Promise<void> {
   if (button.disabled) return;
-  const original = button.textContent || "原本PDFをダウンロード";
+  const label = button.querySelector<HTMLElement>("[data-download-label]");
+  const original = label?.textContent || button.textContent || "原本PDFをダウンロード";
+  const setLabel = (value: string): void => {
+    if (label) label.textContent = value;
+    else button.textContent = value;
+  };
   button.disabled = true;
-  button.textContent = "PDFを準備中…";
+  button.setAttribute("aria-busy", "true");
+  setLabel("PDFを準備中…");
   try {
     const pdf = normalizePdf(await post("/api/debt/share/pdf", { token }));
     const blob = new Blob([base64Bytes(pdf.data_base64)], { type: pdf.mime_type });
@@ -341,7 +347,8 @@ async function downloadPdf(button: HTMLButtonElement, token: string): Promise<vo
     alert(`${problem.message}${problem.retryable && wait ? `\n${wait}もう一度お試しください。` : ""}`);
   } finally {
     button.disabled = false;
-    button.textContent = original;
+    button.removeAttribute("aria-busy");
+    setLabel(original);
   }
 }
 
