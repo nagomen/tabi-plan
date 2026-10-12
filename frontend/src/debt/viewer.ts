@@ -16,6 +16,27 @@ interface DebtDocument {
   monthly_income_yen: number;
   existing_debts: Array<{ creditor: string; amount_yen: number }>;
   difference_note: string;
+  income_plan?: {
+    hourly_wage_yen: number;
+    monthly_hours_cap: number;
+    gross_income_yen: number;
+    estimated_net_income_yen: number;
+    description: string;
+  };
+  expense_plan?: {
+    fixed_items: Array<{ label: string; amount_yen: number }>;
+    variable_items: Array<{ label: string; amount_yen: number }>;
+    fixed_total_yen: number;
+    variable_total_yen: number;
+    monthly_total_yen: number;
+    special_expense_note: string;
+  };
+  funding_plan?: {
+    monthly_available_yen: number;
+    monthly_repayment_yen: number;
+    monthly_buffer_yen: number;
+    actions: string[];
+  };
   promises: Array<{ title: string; body: string }>;
   collateral_note: string;
   gambling_pledge: string;
@@ -119,6 +140,48 @@ function renderSchedule(plan: DebtPlan): void {
   setText("[data-schedule-count]", `全${plan.schedule.length}回`);
 }
 
+function renderBudgetItems(selector: string, items: Array<{ label: string; amount_yen: number }>): void {
+  const list = one<HTMLElement>(selector);
+  for (const item of items) {
+    const term = document.createElement("dt");
+    term.textContent = item.label;
+    const detail = document.createElement("dd");
+    detail.textContent = yen.format(item.amount_yen);
+    list.append(term, detail);
+  }
+}
+
+function renderFundingPlan(documentData: DebtDocument): void {
+  const income = documentData.income_plan;
+  const expenses = documentData.expense_plan;
+  const funding = documentData.funding_plan;
+  if (!income || !expenses || !funding) return;
+
+  setText("[data-funding-intro]", income.description);
+  setText("[data-hourly-wage]", yen.format(income.hourly_wage_yen));
+  setText("[data-monthly-hours]", `${income.monthly_hours_cap}時間`);
+  setText("[data-gross-income]", yen.format(income.gross_income_yen));
+  setText("[data-net-income]", yen.format(income.estimated_net_income_yen));
+  renderBudgetItems("[data-fixed-expenses]", expenses.fixed_items);
+  renderBudgetItems("[data-variable-expenses]", expenses.variable_items);
+  setText("[data-fixed-total]", yen.format(expenses.fixed_total_yen));
+  setText("[data-variable-total]", yen.format(expenses.variable_total_yen));
+  setText("[data-cashflow-income]", yen.format(income.estimated_net_income_yen));
+  setText("[data-monthly-expenses]", `− ${yen.format(expenses.monthly_total_yen)}`);
+  setText("[data-available]", yen.format(funding.monthly_available_yen));
+  setText("[data-monthly-repayment]", `− ${yen.format(funding.monthly_repayment_yen)}`);
+  setText("[data-monthly-buffer]", yen.format(funding.monthly_buffer_yen));
+  setText("[data-special-expense]", expenses.special_expense_note);
+
+  const actions = one<HTMLOListElement>("[data-funding-actions]");
+  for (const action of funding.actions) {
+    const item = document.createElement("li");
+    item.textContent = action;
+    actions.append(item);
+  }
+  one<HTMLElement>("[data-funding-plan]").hidden = false;
+}
+
 function renderDocument(documentData: DebtDocument): void {
   setText("[data-income]", `現在の月収：約${yen.format(documentData.monthly_income_yen)}。`);
   const debts = one<HTMLElement>("[data-existing-debts]");
@@ -153,6 +216,7 @@ function renderDocument(documentData: DebtDocument): void {
   setText("[data-pledge]", documentData.gambling_pledge);
   setText("[data-closing]", documentData.closing_note);
   setText("[data-submitted]", displayDate(documentData.submitted_on));
+  renderFundingPlan(documentData);
 }
 
 function render(plan: DebtPlan, token: string): void {

@@ -6,3 +6,14 @@ test("返済共有ページはhidden属性をCSSのdisplay指定より優先す�
   const css = readFileSync(new URL("../src/debt/style.css", import.meta.url), "utf8");
   assert.match(css, /\[hidden\]\s*\{\s*display\s*:\s*none\s*!important\s*;?\s*\}/);
 });
+
+test("返済共有ページは返済原資と月次収支の内訳を表示する", () => {
+  const html = readFileSync(new URL("../debt/index.html", import.meta.url), "utf8");
+  const viewer = readFileSync(new URL("../src/debt/viewer.ts", import.meta.url), "utf8");
+  for (const marker of ["data-funding-plan", "data-fixed-expenses", "data-variable-expenses", "data-monthly-buffer"]) {
+    assert.match(html, new RegExp(marker));
+  }
+  for (const field of ["income_plan", "expense_plan", "funding_plan"]) {
+    assert.match(viewer, new RegExp(field));
+  }
+});

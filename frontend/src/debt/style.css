@@ -65,6 +65,34 @@ th:nth-child(2),td:nth-child(2) { text-align:left; }
 .dn-state.is-overdue { color:#a23a2d; background:#fbe9e6; }
 .dn-state.is-today { color:#8a5416; background:#fff1d7; }
 .dn-state.is-pending { color:var(--muted); background:#f1f3ef; }
+.dn-funding-intro { max-width:880px; margin:26px 0; color:#3e514c; font-size:15px; line-height:1.9; }
+.dn-income-metrics { display:grid; grid-template-columns:repeat(4,1fr); border:1px solid var(--line); background:var(--soft); }
+.dn-income-metrics>div { padding:20px; border-right:1px solid var(--line); }
+.dn-income-metrics>div:last-child { border-right:0; }
+.dn-income-metrics span { display:block; color:var(--muted); font-size:11px; font-weight:800; }
+.dn-income-metrics strong { display:block; margin-top:8px; font-family:Georgia,"Yu Mincho",serif; font-size:25px; }
+.dn-budget-grid { display:grid; grid-template-columns:1fr 1fr; gap:28px; margin-top:28px; }
+.dn-budget-grid section { border-top:1px solid var(--ink); }
+.dn-budget-grid h3,.dn-funding-actions h3 { margin:18px 0; font-family:Georgia,"Yu Mincho",serif; font-size:19px; }
+.dn-budget-grid dl { display:grid; grid-template-columns:1fr auto; margin:0; }
+.dn-budget-grid dt,.dn-budget-grid dd { margin:0; padding:10px 0; border-bottom:1px solid var(--line); font-family:inherit; font-size:13px; }
+.dn-budget-grid dd { text-align:right; font-weight:800; }
+.dn-budget-grid section>p { display:flex; justify-content:space-between; gap:16px; margin:0; padding:13px 0; background:var(--soft); font-size:13px; }
+.dn-budget-grid section>p span { padding-left:10px; }
+.dn-budget-grid section>p strong { padding-right:10px; }
+.dn-cashflow { display:grid; grid-template-columns:repeat(5,1fr); margin-top:28px; border:1px solid var(--line); }
+.dn-cashflow>div { padding:18px; border-right:1px solid var(--line); }
+.dn-cashflow>div:last-child { border-right:0; }
+.dn-cashflow span { display:block; min-height:30px; color:var(--muted); font-size:11px; font-weight:800; }
+.dn-cashflow strong { display:block; margin-top:7px; font-family:Georgia,"Yu Mincho",serif; font-size:19px; }
+.dn-cashflow .is-emphasis { background:var(--green); color:#fff; }
+.dn-cashflow .is-emphasis span { color:rgba(255,255,255,.72); }
+.dn-special-expense { display:grid; grid-template-columns:180px 1fr; gap:24px; margin-top:28px; padding:20px; border:1px solid var(--line); background:#f8f3e9; }
+.dn-special-expense strong { color:var(--green); }
+.dn-special-expense p { margin:0; color:#3e514c; font-size:13px; line-height:1.8; }
+.dn-funding-actions { margin-top:28px; border-top:1px solid var(--line); }
+.dn-funding-actions ol { margin:0; padding-left:22px; color:#3e514c; font-size:14px; line-height:1.85; }
+.dn-funding-actions li+li { margin-top:8px; }
 .dn-download { min-height:42px; padding:0 16px; border:1px solid var(--ink); border-radius:0; background:transparent; color:var(--ink); font-size:13px; font-weight:850; cursor:pointer; }
 .dn-download:hover { background:var(--ink); color:#fff; }
 .dn-download:disabled { opacity:.5; cursor:wait; }
@@ -98,6 +126,15 @@ th:nth-child(2),td:nth-child(2) { text-align:left; }
   .dn-facts dl>div { border-bottom:1px solid var(--line); }
   .dn-facts dl>div:nth-child(2) { border-right:0; }
   .dn-doc-grid { grid-template-columns:1fr; gap:34px; }
+  .dn-income-metrics { grid-template-columns:1fr 1fr; }
+  .dn-income-metrics>div { border-bottom:1px solid var(--line); }
+  .dn-income-metrics>div:nth-child(2) { border-right:0; }
+  .dn-budget-grid { grid-template-columns:1fr; }
+  .dn-cashflow { grid-template-columns:1fr 1fr; }
+  .dn-cashflow>div { border-bottom:1px solid var(--line); }
+  .dn-cashflow>div:nth-child(2n) { border-right:0; }
+  .dn-cashflow .is-emphasis { grid-column:1 / -1; border-right:0; }
+  .dn-special-expense { grid-template-columns:1fr; gap:8px; }
   .dn-document { padding:0 20px 28px; }
   .dn-section-head { align-items:flex-start; }
   .dn-document .dn-section-head { display:grid; }
