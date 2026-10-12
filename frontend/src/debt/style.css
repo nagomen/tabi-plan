@@ -509,3 +509,13 @@ h1,h2,h3,h4,td,dd,.dn-plan-summary strong,.dn-reduced-income-grid strong { font-
 @media (max-width:360px) {
   .dn-plan-summary [data-selected-buffer] .dn-leftover-period>span { font-size:11px; }
 }
+
+/* ---- 返済スケジュール: 主役は返済額。累計は補助情報として小さく薄く ---- */
+.dn-table-wrap td:nth-child(3) { color:var(--ink); font-size:18px; font-weight:800; font-feature-settings:"palt"; }
+.dn-table-wrap td:nth-child(4) { color:var(--muted); font-size:12px; font-weight:500; }
+.dn-table-wrap th:nth-child(3) { color:var(--ink); }
+.dn-table-wrap th:nth-child(4) { font-weight:600; }
+@media (max-width:760px) {
+  .dn-table-wrap td:nth-child(3) { font-size:17px; }
+  .dn-table-wrap td:nth-child(4) { font-size:10px; }
+}
