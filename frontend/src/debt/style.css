@@ -519,3 +519,16 @@ h1,h2,h3,h4,td,dd,.dn-plan-summary strong,.dn-reduced-income-grid strong { font-
   .dn-table-wrap td:nth-child(3) { font-size:17px; }
   .dn-table-wrap td:nth-child(4) { font-size:10px; }
 }
+
+/* ---- 返済の状態: 枠付きバッジをやめ、色付きの heroicon と文字で示す ---- */
+.dn-state { display:inline-flex; align-items:center; gap:4px; padding:0; border:0; background:transparent !important; font-size:12px; font-weight:800; line-height:1.2; white-space:nowrap; }
+.dn-state .hi { width:16px; height:16px; flex:none; }
+.dn-state.is-paid { color:var(--green); }
+.dn-state.is-overdue { color:#a23a2d; }
+.dn-state.is-today { color:#b0661a; }
+.dn-state.is-pending { color:var(--muted); }
+.dn-state.is-deferred { color:#8a6a2c; }
+@media (max-width:760px) {
+  .dn-state { gap:3px; padding:0; font-size:11px; }
+  .dn-state .hi { width:14px; height:14px; }
+}

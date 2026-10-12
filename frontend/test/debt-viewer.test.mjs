@@ -340,3 +340,12 @@ test("返済後に残るお金は「手取り − 支出 − 返済」を返済�
   assert.equal(169000 - 152000 - repeat[1].amount, -3000);
   assert.equal(169000 - 152000 - repeat[0].amount, 7000);
 });
+
+test("返済の状態は heroicon と文字の組み合わせで表示する", () => {
+  const viewer = readFileSync(new URL("../src/debt/viewer.ts", import.meta.url), "utf8");
+  for (const [label, name] of [["返済猶予", "pauseCircle"], ["返済済み", "checkCircle"], ["期日超過", "exclamationTriangle"], ["本日期日", "calendarDays"], ["予定", "clock"]]) {
+    assert.match(viewer, new RegExp(`label: "${label}"[^}]*icon: "${name}"`));
+  }
+  assert.match(viewer, /function paintState[\s\S]*icon\(state\.icon/);
+  assert.doesNotMatch(viewer, /nextStatus\.textContent\s*=/);
+});

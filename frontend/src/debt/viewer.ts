@@ -1,3 +1,4 @@
+import { icon, type IconName } from "../shared/icons";
 import { DebtViewerError, post } from "./api";
 import { renderFundingPlan, renderScenarioLeftover } from "./funding";
 import { initDebtNav } from "./nav";
@@ -54,12 +55,27 @@ function todayInJapan(): string {
   return `${values.year}-${values.month}-${values.day}`;
 }
 
-function statusFor(item: Installment, today: string): { label: string; className: string } {
-  if (item.amount_yen === 0) return { label: "返済猶予", className: "is-deferred" };
-  if (item.paid_at) return { label: "返済済み", className: "is-paid" };
-  if (item.due_date < today) return { label: "期日超過", className: "is-overdue" };
-  if (item.due_date === today) return { label: "本日期日", className: "is-today" };
-  return { label: "予定", className: "is-pending" };
+interface PaymentState {
+  label: string;
+  className: string;
+  icon: IconName;
+}
+
+function statusFor(item: Installment, today: string): PaymentState {
+  if (item.amount_yen === 0) return { label: "返済猶予", className: "is-deferred", icon: "pauseCircle" };
+  if (item.paid_at) return { label: "返済済み", className: "is-paid", icon: "checkCircle" };
+  if (item.due_date < today) return { label: "期日超過", className: "is-overdue", icon: "exclamationTriangle" };
+  if (item.due_date === today) return { label: "本日期日", className: "is-today", icon: "calendarDays" };
+  return { label: "予定", className: "is-pending", icon: "clock" };
+}
+
+/** 状態は heroicon と文字で示す（アイコンだけだと意味を取り違えやすいので文字も残す）。 */
+function paintState(node: HTMLElement, state: PaymentState): void {
+  node.className = `dn-state ${state.className}`;
+  node.innerHTML = icon(state.icon, { strokeWidth: 1.8 });
+  const label = document.createElement("span");
+  label.textContent = state.label;
+  node.append(label);
 }
 
 function renderSchedule(schedule: Installment[]): void {
@@ -80,8 +96,7 @@ function renderSchedule(schedule: Installment[]): void {
     }
     const stateCell = document.createElement("td");
     const badge = document.createElement("span");
-    badge.className = `dn-state ${status.className}`;
-    badge.textContent = status.label;
+    paintState(badge, status);
     stateCell.append(badge);
     row.append(stateCell);
     tbody.append(row);
@@ -131,19 +146,15 @@ function renderScheduleOverview(schedule: Installment[]): void {
   if (next) {
     setText("[data-next-date]", displayDate(next.due_date));
     setText("[data-next-amount]", yen.format(next.amount_yen));
-    const status = statusFor(next, todayInJapan());
-    nextStatus.textContent = status.label;
-    nextStatus.className = `dn-state ${status.className}`;
+    paintState(nextStatus, statusFor(next, todayInJapan()));
   } else if (!payments.length) {
     setText("[data-next-date]", "未定");
     setText("[data-next-amount]", "—");
-    nextStatus.textContent = "返済予定未登録";
-    nextStatus.className = "dn-state is-pending";
+    paintState(nextStatus, { label: "返済予定未登録", className: "is-pending", icon: "clock" });
   } else {
     setText("[data-next-date]", "完済");
     setText("[data-next-amount]", yen.format(0));
-    nextStatus.textContent = "すべて返済済み";
-    nextStatus.className = "dn-state is-paid";
+    paintState(nextStatus, { label: "すべて返済済み", className: "is-paid", icon: "checkCircle" });
   }
   renderSchedule(schedule);
 }
