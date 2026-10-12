@@ -182,11 +182,16 @@ test("収支計画が無い計画では収支セクションを描かない", ()
   assert.equal(render(FundingSection, { documentData: normalizePlan({ schedule: [], document: {} }).document }), "");
 });
 
-test("計画書は既存債務の合計と誓約を示す", () => {
+test("計画書は債務→約束→担保・誓約→結びの順に、カードと罫線で示す", () => {
   const { DocumentSection } = load("../src/debt/components/DocumentSection.tsx");
   const markup = render(DocumentSection, { documentData: samplePlan().document });
-  assert.match(markup, /合計<\/dt><dd class="is-total">[^<]*200,000/);
-  assert.match(markup, /ギャンブルをしない誓約/);
+  assert.match(markup, /class="is-total"><dt>債務の合計<\/dt><dd>[^<]*200,000/);
+  assert.match(markup, /現在の月収<\/span><strong>約[^<]*180,000/);
+  assert.match(markup, /<span class="dn-pd-no">01<\/span>/);
+  for (const name of ["dn-pd-debts", "dn-pd-promises", "dn-pd-collateral", "dn-pd-pledge"]) assert.match(markup, new RegExp(`dn-subcard ${name}`));
+  const order = ["借入希望額・現在の債務", "返済に関するお願いと約束", "担保について", "ギャンブルをしない誓約", "責任を持って返済します"].map((text) => markup.indexOf(text));
+  assert.ok(order.every((index, i) => index > 0 && (i === 0 || index > order[i - 1])), `順序: ${order}`);
+  assert.match(markup, /<figure class="dn-pd-closing"><blockquote>/);
 });
 
 test("目次は各セクションへのリンクを持ち、債務者リンクでは見出しが変わる", () => {

@@ -88,26 +88,11 @@ th:nth-child(2),td:nth-child(2) { text-align:left; }
 .dn-download:disabled { opacity:.62; cursor:wait; }
 .dn-document { padding:0 38px 38px; border:1px solid var(--line); border-top:0; background:var(--surface); }
 .dn-document .dn-section-head { padding-top:38px; }
-.dn-doc-intro { max-width:800px; margin:26px 0 40px; color:var(--muted); line-height:1.9; }
-.dn-doc-grid { display:grid; grid-template-columns:1fr 1fr; gap:48px 54px; }
-.dn-doc-grid section { border-top:1px solid var(--line); padding-top:18px; }
-.dn-doc-grid h3 { margin:0 0 18px; font-family:inherit; font-size:20px; }
-.dn-doc-grid p,.dn-closing { margin:0; color:#3e514c; font-size:14px; line-height:1.95; }
-.dn-debts { display:grid; grid-template-columns:1fr auto; margin:18px 0; border-top:1px solid var(--line); }
-.dn-debts dt,.dn-debts dd { margin:0; padding:9px 0; border-bottom:1px solid var(--line); font-family:inherit; font-size:13px; }
-.dn-debts dd { text-align:right; font-weight:750; }
-.dn-debts .is-total { color:var(--ink); font-weight:900; }
-.dn-promises { display:grid; gap:20px; }
-.dn-promises h4 { margin:0 0 7px; font-size:13px; }
-.dn-pledge { padding:22px !important; border:1px solid var(--ink) !important; }
-.dn-closing { margin-top:42px; padding-top:24px; border-top:1px solid var(--line); }
-.dn-submitted { margin:28px 0 0; color:var(--muted); font-size:12px; text-align:right; }
 .dn-footer { display:flex; justify-content:space-between; gap:30px; margin-top:28px; padding-top:18px; border-top:1px solid var(--line); color:var(--muted); font-size:11px; line-height:1.7; }
 .dn-footer p { max-width:540px; margin:0; }
 @media (max-width:760px) {
   .dn-header { height:66px; padding:0 16px; }
   .dn-shell { width:calc(100% - 28px); padding:38px 0 56px; }
-  .dn-doc-grid { grid-template-columns:1fr; gap:34px; }
   .dn-special-expense { grid-template-columns:1fr; gap:8px; }
   .dn-reduced-income { grid-template-columns:1fr; }
   .dn-reduced-income-grid { border-top:1px solid #d7c9a8; border-left:0; padding-top:18px; }
@@ -133,7 +118,7 @@ th:nth-child(2),td:nth-child(2) { text-align:left; }
    上の 760px ブロックは段組みの切り替え。ここでは片手で読む前提の
    文字サイズ・余白・表のカード化・ノッチ回避をまとめる。 */
 html { -webkit-text-size-adjust:100%; text-size-adjust:100%; }
-.dn-shell,.dn-section,.dn-doc-grid p,.dn-promises p { overflow-wrap:anywhere; }
+.dn-shell,.dn-section { overflow-wrap:anywhere; }
 @media (hover:none) {
   /* タップ後に hover 色が残り、押したままに見えるのを防ぐ */
   .dn-download:hover { background:transparent; color:var(--ink); }
@@ -157,12 +142,11 @@ html { -webkit-text-size-adjust:100%; text-size-adjust:100%; }
   .dn-section-head>span { display:block; margin-top:4px; font-size:11px; }
   .dn-section h2 { font-size:20px; line-height:1.3; text-wrap:balance; }
   .dn-shell h3 { text-wrap:balance; }
-  .dn-funding-intro,.dn-doc-intro { margin:12px 0; font-size:12px; line-height:1.7; }
+  .dn-funding-intro { margin:12px 0; font-size:12px; line-height:1.7; }
   .dn-plan-summary>div { padding:9px 10px; }
   .dn-plan-summary span { min-height:0; font-size:10px; }
   .dn-plan-summary strong { margin-top:3px; font-size:15px; }
   .dn-funding-actions h3 { margin:10px 0 6px; font-size:15px; }
-  .dn-debts dt,.dn-debts dd { padding:6px 0; font-size:12px; }
   .dn-special-expense,.dn-reduced-income,.dn-funding-actions { margin-top:14px; }
   .dn-special-expense { gap:4px; padding:10px 12px; font-size:12px; }
   .dn-special-expense p { font-size:12px; line-height:1.6; }
@@ -186,15 +170,6 @@ html { -webkit-text-size-adjust:100%; text-size-adjust:100%; }
   .dn-download { min-height:44px; font-size:12px; }
   .dn-document { padding:0 12px 16px; }
   .dn-document .dn-section-head { padding-top:18px; }
-  .dn-doc-grid { gap:18px; }
-  .dn-doc-grid section { padding-top:10px; }
-  .dn-doc-grid h3 { margin-bottom:8px; font-size:15px; }
-  .dn-doc-grid p,.dn-closing { font-size:12px; line-height:1.7; }
-  .dn-promises { gap:10px; }
-  .dn-promises h4 { margin-bottom:3px; font-size:12px; }
-  .dn-pledge { padding:12px !important; }
-  .dn-closing { margin-top:18px; padding-top:12px; }
-  .dn-submitted { margin-top:12px; font-size:11px; }
   .dn-footer { margin-top:16px; padding-top:10px; font-size:10px; }
   .dn-state { padding:3px 6px; font-size:10px; }
 
@@ -369,7 +344,6 @@ h1,h2,h3,h4,td,dd,.dn-plan-summary strong,.dn-reduced-income-grid strong { font-
 .dn-table-wrap { background:transparent; }
 .dn-special-expense,.dn-reduced-income { padding:4px 0 4px 16px; border:0; border-left:3px solid #a8823b; background:transparent; }
 .dn-special-expense { border-left-color:var(--green); }
-.dn-pledge { border-color:var(--line) !important; border-left:3px solid var(--ink) !important; }
 @media (max-width:760px) {
   [data-content]>.dn-overview,[data-content]>.dn-pdf,[data-content]>.dn-section,[data-content]>.dn-section.dn-document { margin-top:10px; padding:14px 12px; }
   [data-content]>.dn-overview { margin-top:0; }
@@ -562,3 +536,66 @@ h1,h2,h3,h4,td,dd,.dn-plan-summary strong,.dn-reduced-income-grid strong { font-
 
 /* React 版: 状態アイコンは span で包まれるので、行内に並べる */
 .dn-state-ic { display:inline-flex; }
+
+/* ---- 03 借入・返済計画書: 書類として読める順に、カードと罫線で組む ---- */
+.dn-pd-date { display:inline-flex; align-items:center; gap:6px; }
+.dn-pd-intro { max-width:820px; margin:14px 0 0; color:var(--muted); font-size:14px; line-height:1.8; }
+.dn-document .dn-subcard { margin-top:16px; padding:18px 20px; border:1px solid var(--line); border-left:3px solid var(--green); background:#fbfaf5; }
+.dn-document .dn-subcard h3 { display:flex; align-items:center; gap:7px; margin:0 0 12px; font-size:17px; }
+.dn-document .dn-subcard h3 .dn-ic { color:var(--green); font-size:18px; }
+.dn-document .dn-subcard p { margin:0; color:#3e514c; font-size:14px; line-height:1.85; }
+
+.dn-pd-debts-body { display:grid; grid-template-columns:minmax(180px,.7fr) minmax(0,1.3fr); gap:28px; align-items:start; }
+.dn-pd-income { display:grid; gap:4px; padding:12px 0; border-top:2px solid var(--ink); border-bottom:1px solid var(--line); }
+.dn-pd-income span { color:var(--muted); font-size:11px; font-weight:800; }
+.dn-document .dn-pd-income strong { color:var(--ink); font-size:24px; font-weight:800; font-feature-settings:"palt"; }
+.dn-pd-ledger { margin:0; border-top:2px solid var(--ink); }
+.dn-pd-ledger>div { display:flex; justify-content:space-between; gap:12px; padding:9px 0; border-bottom:1px solid var(--line); }
+.dn-pd-ledger dt { color:#3e514c; font-size:13px; font-weight:600; }
+.dn-pd-ledger dd { margin:0; font-size:14px; font-weight:700; font-feature-settings:"palt"; }
+.dn-pd-ledger>div.is-total { border-top:1px solid var(--ink); border-bottom:2px solid var(--ink); }
+.dn-pd-ledger>div.is-total dt { color:var(--ink); font-weight:800; }
+.dn-pd-ledger>div.is-total dd { font-size:17px; font-weight:800; }
+.dn-document .dn-pd-note { margin-top:12px; color:var(--muted); font-size:13px; }
+
+.dn-pd-promises ol { margin:0; padding:0; list-style:none; }
+.dn-pd-promises li { display:grid; grid-template-columns:36px minmax(0,1fr); gap:12px; padding:12px 0; border-top:1px solid var(--line); }
+.dn-pd-promises li:first-child { padding-top:4px; border-top:0; }
+.dn-pd-no { color:var(--green); font-size:18px; font-weight:800; line-height:1.4; font-feature-settings:"tnum"; }
+.dn-pd-promises h4 { margin:0 0 3px; color:var(--ink); font-size:14px; }
+
+.dn-pd-pair { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+.dn-pd-pair .dn-subcard { margin-top:16px; }
+.dn-document .dn-pd-collateral { border-left-color:var(--muted); }
+.dn-document .dn-pd-collateral h3 .dn-ic { color:var(--muted); }
+.dn-document .dn-pd-pledge { border-left-color:var(--ink); background:#f4f1e8; }
+.dn-document .dn-pd-pledge h3 .dn-ic { color:var(--ink); }
+.dn-document .dn-pd-pledge p { color:var(--ink); font-weight:700; }
+
+.dn-pd-closing { margin:22px 0 0; padding:18px 0 0; border-top:2px solid var(--ink); }
+.dn-pd-closing blockquote { margin:0; padding-left:16px; border-left:3px solid var(--line); }
+.dn-pd-closing blockquote p { margin:0; color:var(--ink); font-size:15px; font-weight:600; line-height:1.9; }
+.dn-pd-closing figcaption { margin-top:12px; color:var(--muted); font-size:12px; text-align:right; }
+
+@media (max-width:760px) {
+  .dn-pd-intro { margin-top:10px; font-size:12px; line-height:1.7; }
+  .dn-document .dn-subcard { margin-top:10px; padding:12px; }
+  .dn-document .dn-subcard h3 { margin-bottom:8px; font-size:15px; }
+  .dn-document .dn-subcard p { font-size:12px; line-height:1.7; }
+  .dn-pd-debts-body { grid-template-columns:1fr; gap:10px; }
+  .dn-pd-income { grid-template-columns:1fr auto; align-items:baseline; padding:8px 0; }
+  .dn-document .dn-pd-income strong { font-size:18px; }
+  .dn-pd-ledger>div { padding:7px 0; }
+  .dn-pd-ledger dt,.dn-pd-ledger dd { font-size:12px; }
+  .dn-pd-ledger>div.is-total dd { font-size:15px; }
+  .dn-document .dn-pd-note { font-size:12px; }
+  .dn-pd-promises li { grid-template-columns:26px minmax(0,1fr); gap:8px; padding:9px 0; }
+  .dn-pd-no { font-size:14px; }
+  .dn-pd-promises h4 { font-size:13px; }
+  .dn-pd-pair { grid-template-columns:1fr; gap:0; }
+  .dn-pd-pair .dn-subcard { margin-top:10px; }
+  .dn-pd-closing { margin-top:14px; padding-top:12px; }
+  .dn-pd-closing blockquote { padding-left:12px; }
+  .dn-pd-closing blockquote p { font-size:13px; line-height:1.8; }
+  .dn-pd-closing figcaption { margin-top:8px; font-size:11px; }
+}
