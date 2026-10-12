@@ -190,3 +190,18 @@ test("返済共有画面はエラー表示・再試行・二重描画防止の�
   assert.match(viewer, /hashchange/);
   assert.doesNotMatch(viewer, /addEventListener\("click"/);
 });
+
+test("返済共有ページはヘッダーのメニューから各セクションへ移動できる", () => {
+  const html = readFileSync(new URL("../debt/index.html", import.meta.url), "utf8");
+  const nav = readFileSync(new URL("../src/debt/nav.ts", import.meta.url), "utf8");
+  const viewer = readFileSync(new URL("../src/debt/viewer.ts", import.meta.url), "utf8");
+  assert.match(html, /data-menu-toggle[^>]*aria-controls="dn-menu"|aria-controls="dn-menu"[^>]*data-menu-toggle/);
+  for (const id of ["status", "pdf", "schedule", "funding", "document"]) {
+    assert.match(html, new RegExp(`id="${id}"[^>]*data-nav=`));
+  }
+  // ハッシュには共有トークンが入っているので、目次のリンクで書き換えない
+  assert.match(nav, /preventDefault\(\)/);
+  assert.match(nav, /scrollIntoView/);
+  assert.match(nav, /closest\("\[hidden\]"\)/);
+  assert.match(viewer, /initDebtNav\(\)/);
+});

@@ -14,7 +14,16 @@
     <span class="dn-brand-mark" aria-hidden="true">返</span>
     <span><strong>返す日</strong><small>PAYBACK NOTE</small></span>
   </a>
-  <span class="dn-readonly">閲覧専用</span>
+  <div class="dn-header-actions">
+    <span class="dn-readonly">閲覧専用</span>
+    <button class="dn-menu-button" type="button" aria-expanded="false" aria-controls="dn-menu" data-menu-toggle hidden>
+      <span class="dn-menu-icon" aria-hidden="true"><i></i><i></i><i></i></span>
+      <span class="dn-menu-label">メニュー</span>
+    </button>
+  </div>
+  <nav class="dn-menu" id="dn-menu" aria-label="ページ内の目次" data-menu hidden>
+    <ol data-menu-list></ol>
+  </nav>
 </header>
 
 <main class="dn-shell">
@@ -48,7 +57,7 @@
       <p class="dn-updated">最終更新 <time data-updated></time></p>
     </div>
 
-    <section class="dn-summary" aria-label="返済状況">
+    <section class="dn-summary" id="status" aria-label="返済状況" data-nav="返済状況">
       <div class="dn-balance">
         <p>残りの返済額</p>
         <strong data-remaining></strong>
@@ -72,7 +81,7 @@
       </dl>
     </section>
 
-    <aside class="dn-pdf-download" aria-labelledby="dn-pdf-download-title">
+    <aside class="dn-pdf-download" id="pdf" aria-labelledby="dn-pdf-download-title" data-nav="計画書PDF">
       <div class="dn-pdf-copy">
         <p class="dn-section-no">DOCUMENT / PDF</p>
         <h2 id="dn-pdf-download-title">返済計画書をPDFで確認</h2>
@@ -90,7 +99,7 @@
       </button>
     </aside>
 
-    <section class="dn-section">
+    <section class="dn-section" id="schedule" data-nav="毎月の返済スケジュール" data-nav-no="01">
       <div class="dn-section-head"><div><p class="dn-section-no">01</p><h2>毎月の返済スケジュール</h2></div><span data-schedule-count></span></div>
       <div class="dn-schedule-plans" data-schedule-plans hidden>
         <div class="dn-plan-switch-copy">
@@ -115,7 +124,7 @@
       </div>
     </section>
 
-    <section class="dn-section dn-funding" data-funding-plan hidden>
+    <section class="dn-section dn-funding" id="funding" data-funding-plan data-nav="返済原資と月次収支計画" data-nav-no="02" hidden>
       <div class="dn-section-head">
         <div><p class="dn-section-no">02</p><h2>返済原資と月次収支計画</h2></div>
         <span>毎月の返済可能性</span>
@@ -161,7 +170,7 @@
       </div>
     </section>
 
-    <section class="dn-section dn-document">
+    <section class="dn-section dn-document" id="document" data-nav="借入・返済計画書" data-nav-no="03">
       <div class="dn-section-head">
         <div><p class="dn-section-no">03</p><h2>借入・返済計画書</h2></div>
         <span>画面でも内容を確認できます</span>

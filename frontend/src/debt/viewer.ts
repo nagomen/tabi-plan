@@ -1,4 +1,5 @@
 import { DebtViewerError, post } from "./api";
+import { initDebtNav } from "./nav";
 import {
   normalizePdf, normalizePlan,
   type DebtDocument, type DebtPlan, type Installment, type RepaymentScenario,
@@ -431,6 +432,8 @@ export async function initDebtViewer(): Promise<void> {
     const plan = normalizePlan(await post("/api/debt/share", { token }));
     render(plan, token);
     one<HTMLElement>("[data-content]").hidden = false;
+    // 目次は表示中のセクションから作るので、本文を出したあとに組み立てる。
+    initDebtNav();
   } catch (error) {
     document.querySelector<HTMLElement>("[data-content]")?.setAttribute("hidden", "");
     showError(describe(error, "返済計画の表示中に問題が発生しました。"));
