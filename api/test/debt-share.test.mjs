@@ -57,6 +57,23 @@ test("返済共有の行は文字列の金額・Buffer の JSON・Date を画面
   assert.equal(shared.updated_at, "2026-10-10T01:02:03.000Z");
 });
 
+test("公開返済APIは当事者名・債権者名・メールアドレスを返さない", () => {
+  const row = validRow();
+  row.borrower_name = "公開しない借主名";
+  row.creditor_name = "公開しない貸主名";
+  row.document_json = JSON.stringify({
+    existing_debts: [{ creditor: "第三者の氏名", amount_yen: 1000 }],
+    collateral_note: "公開しない貸主名へ連絡する",
+    closing_note: "contact@example.com",
+  });
+  const shared = toSharedDebt(row);
+  const serialized = JSON.stringify(shared);
+  assert.equal("borrower_name" in shared, false);
+  assert.equal("creditor_name" in shared, false);
+  assert.doesNotMatch(serialized, /公開しない借主名|公開しない貸主名|第三者の氏名|contact@example\.com/);
+  assert.equal(shared.document.existing_debts[0].creditor, "既存債務 1");
+});
+
 test("壊れた返済データは途中まで返さず data_corrupted(500) にする", () => {
   const cases = [
     { schedule_json: "{壊れたJSON" },

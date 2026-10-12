@@ -86,6 +86,34 @@ function documentObject(value: unknown): Record<string, unknown> {
   return document as Record<string, unknown>;
 }
 
+const EMAIL = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
+
+function publicText(value: string, privateNames: Array<[string, string]>): string {
+  let result = value.replace(EMAIL, "［非公開］");
+  for (const [name, replacement] of privateNames) {
+    if (name) result = result.split(name).join(replacement);
+  }
+  return result;
+}
+
+function publicValue(value: unknown, privateNames: Array<[string, string]>): unknown {
+  if (typeof value === "string") return publicText(value, privateNames);
+  if (Array.isArray(value)) return value.map((item) => publicValue(item, privateNames));
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, publicValue(item, privateNames)]));
+}
+
+function publicDocument(value: unknown, privateNames: Array<[string, string]>): Record<string, unknown> {
+  const document = publicValue(documentObject(value), privateNames) as Record<string, unknown>;
+  if (Array.isArray(document.existing_debts)) {
+    document.existing_debts = document.existing_debts.map((value, index) => {
+      const debt = value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+      return { ...debt, creditor: `既存債務 ${index + 1}` };
+    });
+  }
+  return document;
+}
+
 function isoTimestamp(value: DebtRow["updated_at"]): string {
   if (value instanceof Date) return Number.isNaN(value.getTime()) ? "" : value.toISOString();
   return typeof value === "string" ? value : "";
@@ -94,15 +122,17 @@ function isoTimestamp(value: DebtRow["updated_at"]): string {
 /** DB行を共有画面へ返す形へ整える。壊れた行は 500(data_corrupted) にして、画面を半端に描かせない。 */
 export function toSharedDebt(row: DebtRow): Record<string, unknown> {
   const total = amount(row.total_yen, "total_yen");
+  const privateNames: Array<[string, string]> = [
+    [String(row.borrower_name ?? ""), "借主"],
+    [String(row.creditor_name ?? ""), "貸主"],
+  ];
   return {
-    borrower_name: String(row.borrower_name ?? ""),
-    creditor_name: String(row.creditor_name ?? ""),
     principal_yen: amount(row.principal_yen, "principal_yen"),
     interest_yen: amount(row.interest_yen, "interest_yen"),
     total_yen: total,
     paid_yen: amount(row.paid_yen, "paid_yen"),
     schedule: schedule(row.schedule_json),
-    document: documentObject(row.document_json),
+    document: publicDocument(row.document_json, privateNames),
     updated_at: isoTimestamp(row.updated_at),
   };
 }

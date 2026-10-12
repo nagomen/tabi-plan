@@ -19,6 +19,17 @@ test("返済共有ページは収入減と進路別の返済シナリオを表�
   assert.match(viewer, /返済猶予/);
 });
 
+test("公開返済ページは氏名やメールアドレスを表示しない", () => {
+  const html = readFileSync(new URL("../debt/index.html", import.meta.url), "utf8");
+  const viewer = readFileSync(new URL("../src/debt/viewer.ts", import.meta.url), "utf8");
+  const normalize = readFileSync(new URL("../src/debt/normalize.ts", import.meta.url), "utf8");
+  assert.doesNotMatch(html, /data-borrower|data-creditor/);
+  assert.doesNotMatch(viewer, /\[data-borrower\]|\[data-creditor\]/);
+  assert.match(html, /氏名・メールアドレスは表示されません/);
+  assert.match(normalize, /既存債務/);
+  assert.match(normalize, /EMAIL/);
+});
+
 test("返済共有ページは返済原資と月次収支の内訳を表示する", () => {
   const html = readFileSync(new URL("../debt/index.html", import.meta.url), "utf8");
   const viewer = readFileSync(new URL("../src/debt/viewer.ts", import.meta.url), "utf8");

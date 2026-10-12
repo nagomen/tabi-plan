@@ -296,8 +296,6 @@ function render(plan: DebtPlan, token: string): void {
   const paid = paymentSchedule.filter((item) => Boolean(item.paid_at)).length;
   const next = paymentSchedule.find((item) => !item.paid_at);
   const progress = plan.total_yen ? Math.min(100, Math.round(plan.paid_yen / plan.total_yen * 100)) : 0;
-  setText("[data-borrower]", plan.borrower_name);
-  setText("[data-creditor]", plan.creditor_name);
   setText("[data-remaining]", yen.format(remaining));
   setText("[data-progress-label]", `${progress}% 返済済み`);
   setText("[data-count-label]", `残り ${paymentSchedule.length - paid}回`);

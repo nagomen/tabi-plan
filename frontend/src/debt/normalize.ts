@@ -87,6 +87,7 @@ export interface DebtPdf {
 type Obj = Record<string, unknown>;
 
 const DATE = /^\d{4}-\d{2}-\d{2}/;
+const EMAIL = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
 
 function broken(): never {
   throw new DebtViewerError(
@@ -103,6 +104,14 @@ function text(value: unknown): string {
   return typeof value === "string" ? value : typeof value === "number" && Number.isFinite(value) ? String(value) : "";
 }
 
+function publicText(value: unknown, privateNames: Array<[string, string]>): string {
+  let result = text(value).replace(EMAIL, "［非公開］");
+  for (const [name, replacement] of privateNames) {
+    if (name) result = result.split(name).join(replacement);
+  }
+  return result;
+}
+
 function yen(value: unknown): number {
   const number = typeof value === "string" && value.trim() ? Number(value) : value;
   return typeof number === "number" && Number.isFinite(number) ? Math.round(number) : 0;
@@ -117,11 +126,11 @@ function list<T>(value: unknown, map: (item: Obj, index: number) => T | undefine
   });
 }
 
-function budget(value: unknown): BudgetItem[] {
-  return list(value, (item) => ({ label: text(item.label), amount_yen: yen(item.amount_yen) }));
+function budget(value: unknown, privateNames: Array<[string, string]>): BudgetItem[] {
+  return list(value, (item) => ({ label: publicText(item.label, privateNames), amount_yen: yen(item.amount_yen) }));
 }
 
-function incomePlan(value: unknown): IncomePlan | undefined {
+function incomePlan(value: unknown, privateNames: Array<[string, string]>): IncomePlan | undefined {
   const raw = obj(value);
   if (!raw) return undefined;
   return {
@@ -129,47 +138,47 @@ function incomePlan(value: unknown): IncomePlan | undefined {
     monthly_hours_cap: yen(raw.monthly_hours_cap),
     gross_income_yen: yen(raw.gross_income_yen),
     estimated_net_income_yen: yen(raw.estimated_net_income_yen),
-    description: text(raw.description),
+    description: publicText(raw.description, privateNames),
     reduced_income_months: list(raw.reduced_income_months, (item) => ({
-      label: text(item.label), net_income_yen: yen(item.net_income_yen), note: text(item.note),
+      label: publicText(item.label, privateNames), net_income_yen: yen(item.net_income_yen), note: publicText(item.note, privateNames),
     })),
   };
 }
 
-function expensePlan(value: unknown): ExpensePlan | undefined {
+function expensePlan(value: unknown, privateNames: Array<[string, string]>): ExpensePlan | undefined {
   const raw = obj(value);
   if (!raw) return undefined;
   return {
-    fixed_items: budget(raw.fixed_items),
-    variable_items: budget(raw.variable_items),
+    fixed_items: budget(raw.fixed_items, privateNames),
+    variable_items: budget(raw.variable_items, privateNames),
     fixed_total_yen: yen(raw.fixed_total_yen),
     variable_total_yen: yen(raw.variable_total_yen),
     monthly_total_yen: yen(raw.monthly_total_yen),
-    special_expense_note: text(raw.special_expense_note),
+    special_expense_note: publicText(raw.special_expense_note, privateNames),
   };
 }
 
-function fundingPlan(value: unknown): FundingPlan | undefined {
+function fundingPlan(value: unknown, privateNames: Array<[string, string]>): FundingPlan | undefined {
   const raw = obj(value);
   if (!raw) return undefined;
   return {
     monthly_available_yen: yen(raw.monthly_available_yen),
     monthly_repayment_yen: yen(raw.monthly_repayment_yen),
     monthly_buffer_yen: yen(raw.monthly_buffer_yen),
-    actions: Array.isArray(raw.actions) ? raw.actions.map(text).filter(Boolean) : [],
+    actions: Array.isArray(raw.actions) ? raw.actions.map((item) => publicText(item, privateNames)).filter(Boolean) : [],
   };
 }
 
-function scenarios(value: unknown): RepaymentScenario[] {
+function scenarios(value: unknown, privateNames: Array<[string, string]>): RepaymentScenario[] {
   return list(value, (item, index) => ({
     id: text(item.id) || `scenario-${index + 1}`,
-    title: text(item.title),
+    title: publicText(item.title, privateNames),
     net_income_yen: yen(item.net_income_yen),
     monthly_expenses_yen: yen(item.monthly_expenses_yen),
     monthly_repayment_yen: yen(item.monthly_repayment_yen),
     monthly_buffer_yen: yen(item.monthly_buffer_yen),
     completion_date: text(item.completion_date),
-    note: text(item.note),
+    note: publicText(item.note, privateNames),
     schedule: list(item.schedule, (row) => {
       const due = text(row.due_date);
       return DATE.test(due) ? { due_date: due, amount_yen: yen(row.amount_yen) } : undefined;
@@ -177,21 +186,21 @@ function scenarios(value: unknown): RepaymentScenario[] {
   }));
 }
 
-function documentData(value: unknown): DebtDocument {
+function documentData(value: unknown, privateNames: Array<[string, string]>): DebtDocument {
   const raw = obj(value) || {};
   return {
     submitted_on: text(raw.submitted_on),
     monthly_income_yen: yen(raw.monthly_income_yen),
-    existing_debts: list(raw.existing_debts, (item) => ({ creditor: text(item.creditor), amount_yen: yen(item.amount_yen) })),
-    difference_note: text(raw.difference_note),
-    income_plan: incomePlan(raw.income_plan),
-    expense_plan: expensePlan(raw.expense_plan),
-    funding_plan: fundingPlan(raw.funding_plan),
-    repayment_scenarios: scenarios(raw.repayment_scenarios),
-    promises: list(raw.promises, (item) => ({ title: text(item.title), body: text(item.body) })),
-    collateral_note: text(raw.collateral_note),
-    gambling_pledge: text(raw.gambling_pledge),
-    closing_note: text(raw.closing_note),
+    existing_debts: list(raw.existing_debts, (item, index) => ({ creditor: `既存債務 ${index + 1}`, amount_yen: yen(item.amount_yen) })),
+    difference_note: publicText(raw.difference_note, privateNames),
+    income_plan: incomePlan(raw.income_plan, privateNames),
+    expense_plan: expensePlan(raw.expense_plan, privateNames),
+    funding_plan: fundingPlan(raw.funding_plan, privateNames),
+    repayment_scenarios: scenarios(raw.repayment_scenarios, privateNames),
+    promises: list(raw.promises, (item) => ({ title: publicText(item.title, privateNames), body: publicText(item.body, privateNames) })),
+    collateral_note: publicText(raw.collateral_note, privateNames),
+    gambling_pledge: publicText(raw.gambling_pledge, privateNames),
+    closing_note: publicText(raw.closing_note, privateNames),
   };
 }
 
@@ -217,15 +226,18 @@ function installments(value: unknown): Installment[] {
 export function normalizePlan(value: unknown): DebtPlan {
   const raw = obj(value);
   if (!raw) broken();
+  const borrowerName = text(raw.borrower_name);
+  const creditorName = text(raw.creditor_name);
+  const privateNames: Array<[string, string]> = [[borrowerName, "借主"], [creditorName, "貸主"]];
   return {
-    borrower_name: text(raw.borrower_name),
-    creditor_name: text(raw.creditor_name),
+    borrower_name: "",
+    creditor_name: "",
     principal_yen: Math.max(0, yen(raw.principal_yen)),
     interest_yen: Math.max(0, yen(raw.interest_yen)),
     total_yen: Math.max(0, yen(raw.total_yen)),
     paid_yen: Math.max(0, yen(raw.paid_yen)),
     schedule: installments(raw.schedule),
-    document: documentData(raw.document),
+    document: documentData(raw.document, privateNames),
     updated_at: text(raw.updated_at),
   };
 }
