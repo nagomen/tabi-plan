@@ -9,7 +9,9 @@ test("返済共有ページはhidden属性をCSSのdisplay指定より優先す�
 
 test("返済共有ページは返済表の中で進路別プランを切り替える", () => {
   const html = readFileSync(new URL("../debt/index.html", import.meta.url), "utf8");
-  const viewer = readFileSync(new URL("../src/debt/viewer.ts", import.meta.url), "utf8");
+  // 収支の描画は funding.ts に分けたので、両方をまとめて検査する
+  const viewer = readFileSync(new URL("../src/debt/viewer.ts", import.meta.url), "utf8")
+    + readFileSync(new URL("../src/debt/funding.ts", import.meta.url), "utf8");
   for (const marker of ["data-reduced-income-panel", "data-schedule-plans", "data-plan-tabs", "data-selected-repayment", "data-selected-completion"]) {
     assert.match(html, new RegExp(marker));
   }
@@ -35,7 +37,9 @@ test("公開返済ページは氏名やメールアドレスを表示しない",
 
 test("返済共有ページは返済原資と月次収支の内訳を表示する", () => {
   const html = readFileSync(new URL("../debt/index.html", import.meta.url), "utf8");
-  const viewer = readFileSync(new URL("../src/debt/viewer.ts", import.meta.url), "utf8");
+  // 収支の描画は funding.ts に分けたので、両方をまとめて検査する
+  const viewer = readFileSync(new URL("../src/debt/viewer.ts", import.meta.url), "utf8")
+    + readFileSync(new URL("../src/debt/funding.ts", import.meta.url), "utf8");
   for (const marker of ["data-funding-plan", "data-fixed-expenses", "data-variable-expenses", "data-monthly-buffer"]) {
     assert.match(html, new RegExp(marker));
   }
@@ -290,4 +294,21 @@ test("冒頭の返済計画は heroicon と仕切り線で組み、描画用の�
   assert.match(main, /fillIcons\(\)/);
   // 旧デザインの箱（塗りつぶしの残高カード）を残さない
   assert.doesNotMatch(css, /\.dn-summary|\.dn-balance/);
+});
+
+test("収支セクションは収入(＋)と支出(−)を列・符号・色で分け、計算式で結論を示す", () => {
+  const html = readFileSync(new URL("../debt/index.html", import.meta.url), "utf8");
+  const funding = readFileSync(new URL("../src/debt/funding.ts", import.meta.url), "utf8");
+  const viewer = readFileSync(new URL("../src/debt/viewer.ts", import.meta.url), "utf8");
+  assert.match(html, /dn-flow-col is-plus[\s\S]*data-ic="plusCircle"/);
+  assert.match(html, /dn-flow-col is-minus[\s\S]*data-ic="minusCircle"/);
+  for (const hook of ["data-flow-bars", "data-flow-legend", "data-cashflow-income", "data-cashflow-expenses", "data-available", "data-monthly-repayment", "data-monthly-buffer"]) {
+    assert.match(html, new RegExp(hook));
+  }
+  // 交通費支給などの差し引きは支出を減らす＝プラスとして表示する
+  assert.match(funding, /deduction_items\.map\([\s\S]*Math\.abs[\s\S]*"plus"/);
+  // 手取りを超える月は不足として示す
+  assert.match(funding, /dn-flow-shortage/);
+  assert.match(viewer, /from "\.\/funding"/);
+  assert.doesNotMatch(viewer, /function renderFundingPlan/);
 });

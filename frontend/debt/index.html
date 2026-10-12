@@ -135,37 +135,47 @@
         <span>毎月の返済可能性</span>
       </div>
       <p class="dn-funding-intro" data-funding-intro></p>
-      <div class="dn-income-metrics">
-        <div><span>時給</span><strong data-hourly-wage></strong></div>
-        <div><span>勤務時間の幅</span><strong data-monthly-hours></strong></div>
-        <div><span>額面収入の幅</span><strong data-gross-income></strong></div>
-        <div><span>手取りの幅</span><strong data-net-income></strong></div>
+      <div class="dn-flow-chart">
+        <div class="dn-flow-chart-head"><h3>手取りの使い道</h3><span>1か月あたり</span></div>
+        <div class="dn-flow-bars" data-flow-bars></div>
+        <ul class="dn-flow-legend" data-flow-legend></ul>
       </div>
-      <div class="dn-budget-grid">
-        <section>
-          <h3>固定費</h3>
-          <dl data-fixed-expenses></dl>
-          <p><span>固定費合計</span><strong data-fixed-total></strong></p>
+
+      <div class="dn-flow-ledger">
+        <section class="dn-flow-col is-plus" aria-labelledby="dn-flow-income-title">
+          <h3 id="dn-flow-income-title"><span data-ic="plusCircle"></span>収入<em>プラス</em></h3>
+          <dl class="dn-flow-rows">
+            <div><dt>時給</dt><dd data-hourly-wage></dd></div>
+            <div><dt>勤務時間</dt><dd data-monthly-hours></dd></div>
+            <div><dt>額面収入</dt><dd data-gross-income></dd></div>
+          </dl>
+          <p class="dn-flow-total"><span>手取り</span><strong data-net-income></strong></p>
         </section>
-        <section>
-          <h3>変動費</h3>
-          <dl data-variable-expenses></dl>
-          <div class="dn-expense-group" data-living-cost-group hidden>
-            <div class="dn-expense-group-head"><strong data-living-cost-label></strong><span data-living-cost-subtotal></span></div>
-            <dl data-living-cost-items></dl>
-            <dl class="dn-expense-deductions" data-living-cost-deductions></dl>
-            <p><span>差引負担額</span><strong data-living-cost-total></strong></p>
+        <section class="dn-flow-col is-minus" aria-labelledby="dn-flow-expense-title">
+          <h3 id="dn-flow-expense-title"><span data-ic="minusCircle"></span>支出<em>マイナス</em></h3>
+          <h4>固定費</h4>
+          <dl class="dn-flow-rows" data-fixed-expenses></dl>
+          <p class="dn-flow-subtotal"><span>固定費 計</span><strong data-fixed-total></strong></p>
+          <h4>変動費</h4>
+          <dl class="dn-flow-rows" data-variable-expenses></dl>
+          <div class="dn-flow-group" data-living-cost-group hidden>
+            <p class="dn-flow-group-head"><span data-living-cost-label></span><span data-living-cost-subtotal></span></p>
+            <dl class="dn-flow-rows is-nested" data-living-cost-items></dl>
+            <dl class="dn-flow-rows is-nested" data-living-cost-deductions></dl>
+            <p class="dn-flow-group-total"><span>差引負担額</span><strong data-living-cost-total></strong></p>
           </div>
-          <p><span>変動費合計</span><strong data-variable-total></strong></p>
+          <p class="dn-flow-subtotal"><span>変動費 計</span><strong data-variable-total></strong></p>
+          <p class="dn-flow-total"><span>支出合計</span><strong data-monthly-expenses></strong></p>
         </section>
       </div>
-      <div class="dn-cashflow">
-        <div><span>想定手取りの幅</span><strong data-cashflow-income></strong></div>
-        <div><span>月の支出予算</span><strong data-monthly-expenses></strong></div>
-        <div><span>返済前余力の幅</span><strong data-available></strong></div>
-        <div><span>毎月の返済</span><strong data-monthly-repayment></strong></div>
-        <div class="is-emphasis"><span>返済後余力の幅</span><strong data-monthly-buffer></strong></div>
-      </div>
+
+      <ol class="dn-flow-equation" aria-label="毎月の収支計算">
+        <li class="is-plus"><span>手取り</span><strong data-cashflow-income></strong></li>
+        <li class="is-minus"><span>支出合計</span><strong data-cashflow-expenses></strong></li>
+        <li class="is-result"><span>返済前の余力</span><strong data-available></strong></li>
+        <li class="is-minus"><span>毎月の返済</span><strong data-monthly-repayment></strong></li>
+        <li class="is-final"><span>返済後の余力</span><strong data-monthly-buffer></strong></li>
+      </ol>
       <aside class="dn-special-expense"><strong>旅行予定と必要資金</strong><p data-special-expense></p></aside>
       <section class="dn-reduced-income" data-reduced-income-panel hidden>
         <div>

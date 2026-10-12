@@ -1,4 +1,5 @@
 import { DebtViewerError, post } from "./api";
+import { renderFundingPlan } from "./funding";
 import { initDebtNav } from "./nav";
 import {
   normalizePdf, normalizePlan,
@@ -194,84 +195,6 @@ function renderPlanSwitch(plan: DebtPlan): void {
   });
   one<HTMLElement>("[data-schedule-plans]").hidden = false;
   select(scenarios.find((scenario) => scenario.id === "repeat-year") || scenarios[0]);
-}
-
-function renderBudgetItems(selector: string, items: Array<{ label: string; amount_yen: number }>): void {
-  const list = one<HTMLElement>(selector);
-  list.replaceChildren();
-  for (const item of items) {
-    const term = document.createElement("dt");
-    term.textContent = item.label;
-    const detail = document.createElement("dd");
-    detail.textContent = yen.format(item.amount_yen);
-    list.append(term, detail);
-  }
-}
-
-function renderLivingCostGroup(expenses: DebtDocument["expense_plan"]): void {
-  const group = expenses?.living_cost_group;
-  const panel = one<HTMLElement>("[data-living-cost-group]");
-  if (!group) {
-    panel.hidden = true;
-    return;
-  }
-  setText("[data-living-cost-label]", group.label);
-  setText("[data-living-cost-subtotal]", `小計 ${yen.format(group.subtotal_yen)}`);
-  setText("[data-living-cost-total]", yen.format(group.total_yen));
-  renderBudgetItems("[data-living-cost-items]", group.items);
-  renderBudgetItems("[data-living-cost-deductions]", group.deduction_items);
-  panel.hidden = false;
-}
-
-function renderFundingPlan(documentData: DebtDocument): void {
-  const income = documentData.income_plan;
-  const expenses = documentData.expense_plan;
-  const funding = documentData.funding_plan;
-  if (!income || !expenses || !funding) return;
-
-  setText("[data-funding-intro]", income.description);
-  setText("[data-hourly-wage]", yen.format(income.hourly_wage_yen));
-  setText("[data-monthly-hours]", `${income.monthly_hours_min}〜${income.monthly_hours_cap}時間`);
-  setText("[data-gross-income]", yenRange(income.gross_income_min_yen, income.gross_income_yen));
-  setText("[data-net-income]", yenRange(income.estimated_net_income_min_yen, income.estimated_net_income_yen));
-  renderBudgetItems("[data-fixed-expenses]", expenses.fixed_items);
-  renderBudgetItems("[data-variable-expenses]", expenses.variable_items);
-  renderLivingCostGroup(expenses);
-  setText("[data-fixed-total]", yen.format(expenses.fixed_total_yen));
-  setText("[data-variable-total]", yen.format(expenses.variable_total_yen));
-  setText("[data-cashflow-income]", yenRange(income.estimated_net_income_min_yen, income.estimated_net_income_yen));
-  setText("[data-monthly-expenses]", `− ${yen.format(expenses.monthly_total_yen)}`);
-  setText("[data-available]", yenRange(funding.monthly_available_min_yen, funding.monthly_available_yen));
-  setText("[data-monthly-repayment]", `− ${yen.format(funding.monthly_repayment_yen)}`);
-  setText("[data-monthly-buffer]", yenRange(funding.monthly_buffer_min_yen, funding.monthly_buffer_yen));
-  setText("[data-special-expense]", expenses.special_expense_note);
-
-  const reducedMonths = income.reduced_income_months;
-  if (reducedMonths.length) {
-    const reducedIncome = one<HTMLElement>("[data-reduced-income]");
-    reducedIncome.replaceChildren();
-    for (const month of reducedMonths) {
-      const item = document.createElement("article");
-      const heading = document.createElement("h4");
-      heading.textContent = month.label;
-      const amount = document.createElement("strong");
-      amount.textContent = yen.format(month.net_income_yen);
-      const note = document.createElement("p");
-      note.textContent = month.note;
-      item.append(heading, amount, note);
-      reducedIncome.append(item);
-    }
-    one<HTMLElement>("[data-reduced-income-panel]").hidden = false;
-  }
-
-  const actions = one<HTMLOListElement>("[data-funding-actions]");
-  actions.replaceChildren();
-  for (const action of funding.actions) {
-    const item = document.createElement("li");
-    item.textContent = action;
-    actions.append(item);
-  }
-  one<HTMLElement>("[data-funding-plan]").hidden = false;
 }
 
 function renderDocument(documentData: DebtDocument): void {

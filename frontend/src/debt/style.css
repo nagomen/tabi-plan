@@ -50,34 +50,7 @@ th:nth-child(2),td:nth-child(2) { text-align:left; }
 .dn-state.is-pending { color:var(--muted); background:#f1f3ef; }
 .dn-state.is-deferred { color:#6f5524; background:#f5ecd8; }
 .dn-funding-intro { max-width:880px; margin:26px 0; color:#3e514c; font-size:15px; line-height:1.9; }
-.dn-income-metrics { display:grid; grid-template-columns:repeat(4,1fr); border:1px solid var(--line); background:var(--soft); }
-.dn-income-metrics>div { padding:20px; border-right:1px solid var(--line); }
-.dn-income-metrics>div:last-child { border-right:0; }
-.dn-income-metrics span { display:block; color:var(--muted); font-size:11px; font-weight:800; }
-.dn-income-metrics strong { display:block; margin-top:8px; font-family:inherit; font-size:25px; }
-.dn-budget-grid { display:grid; grid-template-columns:1fr 1fr; gap:28px; margin-top:28px; }
-.dn-budget-grid section { border-top:1px solid var(--ink); }
-.dn-budget-grid h3,.dn-funding-actions h3 { margin:18px 0; font-family:inherit; font-size:19px; }
-.dn-budget-grid dl { display:grid; grid-template-columns:1fr auto; margin:0; }
-.dn-budget-grid dt,.dn-budget-grid dd { margin:0; padding:10px 0; border-bottom:1px solid var(--line); font-family:inherit; font-size:13px; }
-.dn-budget-grid dd { text-align:right; font-weight:800; }
-.dn-budget-grid section>p { display:flex; justify-content:space-between; gap:16px; margin:0; padding:13px 0; background:var(--soft); font-size:13px; }
-.dn-budget-grid section>p span { padding-left:10px; }
-.dn-budget-grid section>p strong { padding-right:10px; }
-.dn-expense-group { margin:14px 0; border:1px solid var(--line); background:#f8faf8; }
-.dn-expense-group-head { display:flex; justify-content:space-between; gap:12px; padding:12px; border-bottom:1px solid var(--line); color:var(--ink); font-size:13px; }
-.dn-expense-group-head span { color:var(--muted); font-size:12px; }
-.dn-expense-group dl { padding:0 12px; }
-.dn-expense-group dt,.dn-expense-group dd { font-size:12px; }
-.dn-expense-group .dn-expense-deductions dt,.dn-expense-group .dn-expense-deductions dd { color:#14614f; font-weight:800; }
-.dn-expense-group>p { display:flex; justify-content:space-between; gap:12px; margin:0; padding:11px 12px; border-top:1px solid var(--line); background:#edf4ef; font-size:12px; }
-.dn-cashflow { display:grid; grid-template-columns:repeat(5,1fr); margin-top:28px; border:1px solid var(--line); }
-.dn-cashflow>div { padding:18px; border-right:1px solid var(--line); }
-.dn-cashflow>div:last-child { border-right:0; }
-.dn-cashflow span { display:block; min-height:30px; color:var(--muted); font-size:11px; font-weight:800; }
-.dn-cashflow strong { display:block; margin-top:7px; font-family:inherit; font-size:19px; }
-.dn-cashflow .is-emphasis { background:var(--green); color:#fff; }
-.dn-cashflow .is-emphasis span { color:rgba(255,255,255,.72); }
+.dn-funding-actions h3 { margin:18px 0; font-family:inherit; font-size:19px; }
 .dn-special-expense { display:grid; grid-template-columns:180px 1fr; gap:24px; margin-top:28px; padding:20px; border:1px solid var(--line); background:#f8f3e9; }
 .dn-special-expense strong { color:var(--green); }
 .dn-special-expense p { margin:0; color:#3e514c; font-size:13px; line-height:1.8; }
@@ -135,14 +108,6 @@ th:nth-child(2),td:nth-child(2) { text-align:left; }
   .dn-header { height:66px; padding:0 16px; }
   .dn-shell { width:calc(100% - 28px); padding:38px 0 56px; }
   .dn-doc-grid { grid-template-columns:1fr; gap:34px; }
-  .dn-income-metrics { grid-template-columns:1fr 1fr; }
-  .dn-income-metrics>div { border-bottom:1px solid var(--line); }
-  .dn-income-metrics>div:nth-child(2) { border-right:0; }
-  .dn-budget-grid { grid-template-columns:1fr; }
-  .dn-cashflow { grid-template-columns:1fr 1fr; }
-  .dn-cashflow>div { border-bottom:1px solid var(--line); }
-  .dn-cashflow>div:nth-child(2n) { border-right:0; }
-  .dn-cashflow .is-emphasis { grid-column:1 / -1; border-right:0; }
   .dn-special-expense { grid-template-columns:1fr; gap:8px; }
   .dn-reduced-income { grid-template-columns:1fr; }
   .dn-reduced-income-grid { border-top:1px solid #d7c9a8; border-left:0; padding-top:18px; }
@@ -193,14 +158,12 @@ html { -webkit-text-size-adjust:100%; text-size-adjust:100%; }
   .dn-section h2 { font-size:20px; line-height:1.3; text-wrap:balance; }
   .dn-shell h3 { text-wrap:balance; }
   .dn-funding-intro,.dn-doc-intro { margin:12px 0; font-size:12px; line-height:1.7; }
-  .dn-income-metrics>div,.dn-cashflow>div,.dn-plan-summary>div { padding:9px 10px; }
-  .dn-income-metrics span,.dn-cashflow span,.dn-plan-summary span { min-height:0; font-size:10px; }
-  .dn-income-metrics strong,.dn-cashflow strong,.dn-plan-summary strong { margin-top:3px; font-size:15px; }
-  .dn-budget-grid { gap:14px; margin-top:14px; }
-  .dn-budget-grid h3,.dn-funding-actions h3 { margin:10px 0 6px; font-size:15px; }
-  .dn-budget-grid dt,.dn-budget-grid dd,.dn-debts dt,.dn-debts dd { padding:6px 0; font-size:12px; }
-  .dn-budget-grid section>p { padding:8px 0; font-size:12px; }
-  .dn-cashflow,.dn-special-expense,.dn-reduced-income,.dn-funding-actions { margin-top:14px; }
+  .dn-plan-summary>div { padding:9px 10px; }
+  .dn-plan-summary span { min-height:0; font-size:10px; }
+  .dn-plan-summary strong { margin-top:3px; font-size:15px; }
+  .dn-funding-actions h3 { margin:10px 0 6px; font-size:15px; }
+  .dn-debts dt,.dn-debts dd { padding:6px 0; font-size:12px; }
+  .dn-special-expense,.dn-reduced-income,.dn-funding-actions { margin-top:14px; }
   .dn-special-expense { gap:4px; padding:10px 12px; font-size:12px; }
   .dn-special-expense p { font-size:12px; line-height:1.6; }
   .dn-reduced-income { gap:10px; padding:12px; }
@@ -290,7 +253,7 @@ html { -webkit-text-size-adjust:100%; text-size-adjust:100%; }
 
 /* ---- 書体: 全体をゴシックに統一 ----
    見出しは字詰め(palt)で締め、金額・日付は等幅数字で桁をそろえる。 */
-h1,h2,h3,h4,td,dd,.dn-income-metrics strong,.dn-cashflow strong,.dn-plan-summary strong,.dn-reduced-income-grid strong { font-feature-settings:"palt"; font-weight:700; }
+h1,h2,h3,h4,td,dd,.dn-plan-summary strong,.dn-reduced-income-grid strong { font-feature-settings:"palt"; font-weight:700; }
 
 /* ---- 冒頭の返済計画: 箱を重ねず、太罫と細い仕切り線で組む ---- */
 .dn-ic { display:inline-flex; flex:none; color:var(--green); }
@@ -392,10 +355,6 @@ h1,h2,h3,h4,td,dd,.dn-income-metrics strong,.dn-cashflow strong,.dn-plan-summary
 .dn-plan-summary,.dn-plan-note { border-right:0; border-left:0; }
 .dn-plan-summary>div:first-child,.dn-plan-note { padding-left:0; }
 .dn-table-wrap { background:transparent; }
-.dn-income-metrics { border:0; border-top:1px solid var(--line); border-bottom:1px solid var(--line); background:transparent; }
-.dn-income-metrics>div:first-child { padding-left:0; }
-.dn-cashflow { border:0; border-top:1px solid var(--line); border-bottom:1px solid var(--line); }
-.dn-cashflow>div:first-child { padding-left:0; }
 .dn-special-expense,.dn-reduced-income { padding:4px 0 4px 16px; border:0; border-left:3px solid #a8823b; background:transparent; }
 .dn-special-expense { border-left-color:var(--green); }
 .dn-pledge { border-color:var(--line) !important; border-left:3px solid var(--ink) !important; }
@@ -407,9 +366,110 @@ h1,h2,h3,h4,td,dd,.dn-income-metrics strong,.dn-cashflow strong,.dn-plan-summary
   /* 返済スケジュールのカード行は、カードの内側いっぱいまで線を伸ばす */
   .dn-table-wrap { margin:0 -12px -14px; }
   .dn-table-wrap tbody tr:last-child { border-bottom:0; }
-  .dn-income-metrics>div:nth-child(odd),.dn-cashflow>div:nth-child(odd) { padding-left:0; }
   .dn-plan-summary>div:nth-child(odd) { padding-left:0; }
-  .dn-cashflow>div.is-emphasis { margin:0 -12px; padding-left:12px; }
   .dn-special-expense,.dn-reduced-income { padding:2px 0 2px 12px; }
   .dn-reduced-income-grid article:first-child { padding-left:0; }
+}
+
+/* ---- 02 収支: プラス（緑）とマイナス（赤）を色・符号・列で分ける ---- */
+.dn-funding { --plus:#17664f; --minus:#a8392b; --seg-fixed:#2f5c52; --seg-variable:#8fb5a8; --seg-repayment:var(--accent); --seg-buffer:#cfe6d8; }
+.dn-money { font-feature-settings:"palt"; white-space:nowrap; }
+.dn-money.is-positive { color:var(--plus); }
+.dn-money.is-negative { color:var(--minus); }
+.dn-range-dash { margin:0 .2em; color:var(--muted); font-weight:500; }
+
+.dn-flow-chart { margin-top:18px; padding:18px 0 16px; border-top:1px solid var(--line); border-bottom:1px solid var(--line); }
+.dn-flow-chart-head { display:flex; align-items:baseline; justify-content:space-between; gap:12px; margin-bottom:12px; }
+.dn-flow-chart-head h3 { margin:0; font-size:16px; }
+.dn-flow-chart-head span { color:var(--muted); font-size:11px; font-weight:700; }
+.dn-flow-bars { display:grid; gap:14px; }
+.dn-flow-bar-head { display:flex; justify-content:space-between; gap:12px; margin:0 0 6px; font-size:12px; font-weight:700; color:#3e514c; }
+.dn-flow-bar-head strong.is-positive { color:var(--plus); }
+.dn-flow-bar-head strong.is-negative { color:var(--minus); }
+.dn-flow-bar { position:relative; display:flex; height:22px; background:#eef1ee; }
+.dn-flow-seg { height:100%; }
+.dn-flow-seg+.dn-flow-seg { box-shadow:inset 1px 0 rgba(255,255,255,.75); }
+.dn-flow-seg.is-fixed,.dn-flow-legend i.is-fixed { background:var(--seg-fixed); }
+.dn-flow-seg.is-variable,.dn-flow-legend i.is-variable { background:var(--seg-variable); }
+.dn-flow-seg.is-repayment,.dn-flow-legend i.is-repayment { background:var(--seg-repayment); }
+.dn-flow-seg.is-buffer,.dn-flow-legend i.is-buffer { background:var(--seg-buffer); }
+.dn-flow-shortage,.dn-flow-legend i.is-shortage { background:repeating-linear-gradient(135deg,rgba(168,57,43,.85) 0 4px,rgba(168,57,43,.25) 4px 8px); }
+.dn-flow-shortage { position:absolute; top:0; bottom:0; }
+.dn-flow-marker { position:absolute; top:-4px; bottom:-4px; width:2px; margin-left:-1px; background:var(--ink); }
+.dn-flow-legend { display:flex; flex-wrap:wrap; gap:6px 18px; margin:12px 0 0; padding:0; list-style:none; font-size:12px; color:#3e514c; }
+.dn-flow-legend li { display:inline-flex; align-items:center; gap:6px; }
+.dn-flow-legend i { width:10px; height:10px; flex:none; }
+.dn-flow-legend b { font-weight:800; color:var(--ink); font-feature-settings:"palt"; }
+
+.dn-flow-ledger { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.3fr); margin-top:18px; border-bottom:1px solid var(--line); }
+.dn-flow-col { padding:0 0 16px; }
+.dn-flow-col.is-plus { padding-right:28px; border-right:1px solid var(--line); }
+.dn-flow-col.is-minus { padding-left:28px; }
+.dn-flow-col h3 { display:flex; align-items:center; gap:7px; margin:0 0 6px; padding-bottom:8px; border-bottom:2px solid currentColor; font-size:16px; }
+.dn-flow-col.is-plus h3 { color:var(--plus); }
+.dn-flow-col.is-minus h3 { color:var(--minus); }
+.dn-flow-col h3 .dn-ic { color:inherit; font-size:19px; }
+.dn-flow-col h3 em { margin-left:auto; font-size:10px; font-style:normal; font-weight:800; letter-spacing:.12em; opacity:.8; }
+.dn-flow-col h4 { margin:12px 0 2px; color:var(--muted); font-size:11px; font-weight:800; letter-spacing:.06em; }
+.dn-flow-rows { margin:0; }
+.dn-flow-rows>div { display:flex; justify-content:space-between; gap:12px; padding:6px 0; border-bottom:1px solid var(--line); font-size:13px; }
+.dn-flow-rows dt { color:#3e514c; font-size:13px; font-weight:600; }
+.dn-flow-rows dd { margin:0; font-size:13px; font-weight:700; text-align:right; }
+.dn-flow-rows.is-nested>div { padding-left:12px; font-size:12px; }
+.dn-flow-rows.is-nested dt,.dn-flow-rows.is-nested dd { font-size:12px; }
+.dn-flow-group { margin:6px 0 0; padding-left:10px; border-left:2px solid var(--line); }
+.dn-flow-group-head,.dn-flow-group-total { display:flex; justify-content:space-between; gap:12px; margin:0; padding:6px 0; font-size:12px; font-weight:700; }
+.dn-flow-group-head { color:#3e514c; border-bottom:1px solid var(--line); }
+.dn-flow-group-total { color:var(--ink); }
+.dn-flow-subtotal { display:flex; justify-content:space-between; gap:12px; margin:0; padding:7px 0; color:#3e514c; font-size:12px; font-weight:800; }
+.dn-flow-total { display:flex; align-items:baseline; justify-content:space-between; gap:12px; margin:10px 0 0; padding-top:10px; border-top:2px solid var(--ink); font-size:13px; font-weight:800; }
+.dn-flow-total strong { font-size:20px; }
+
+.dn-flow-equation { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); margin:18px 0 0; padding:0; list-style:none; border-bottom:2px solid var(--ink); }
+.dn-flow-equation li { position:relative; padding:12px 14px 14px 28px; border-left:1px solid var(--line); }
+.dn-flow-equation li:first-child { padding-left:0; border-left:0; }
+.dn-flow-equation li::before { position:absolute; top:10px; left:8px; color:var(--muted); font-size:16px; font-weight:800; }
+.dn-flow-equation li.is-minus::before { content:"−"; color:var(--minus); }
+.dn-flow-equation li.is-result::before,.dn-flow-equation li.is-final::before { content:"＝"; }
+.dn-flow-equation li>span { display:block; color:var(--muted); font-size:11px; font-weight:800; }
+.dn-flow-equation strong { display:block; margin-top:4px; font-size:16px; line-height:1.35; }
+.dn-flow-equation li.is-final { background:#eef6f1; }
+.dn-flow-equation li.is-final strong { font-size:18px; }
+
+@media (max-width:760px) {
+  .dn-flow-chart { margin-top:12px; padding:12px 0; }
+  .dn-flow-chart-head h3 { font-size:14px; }
+  .dn-flow-bar-head { font-size:11px; }
+  .dn-flow-bar { height:18px; }
+  .dn-flow-legend { gap:4px 12px; font-size:11px; }
+  .dn-flow-ledger { grid-template-columns:1fr; margin-top:12px; border-bottom:0; }
+  .dn-flow-col.is-plus { padding-right:0; border-right:0; }
+  .dn-flow-col.is-minus { padding-left:0; }
+  .dn-flow-col h3 { font-size:14px; }
+  .dn-flow-rows>div,.dn-flow-rows dt,.dn-flow-rows dd { font-size:12px; }
+  .dn-flow-rows>div { padding:5px 0; }
+  .dn-flow-total strong { font-size:17px; }
+  /* 計算式は縦の計算書きにする（演算子を左端に揃える） */
+  .dn-flow-equation { grid-template-columns:1fr; margin-top:4px; border-top:2px solid var(--ink); }
+  .dn-flow-equation li,.dn-flow-equation li:first-child { display:flex; align-items:baseline; justify-content:space-between; gap:12px; padding:8px 0 8px 22px; border-left:0; border-top:1px solid var(--line); }
+  .dn-flow-equation li:first-child { border-top:0; }
+  .dn-flow-equation li::before { top:7px; left:2px; font-size:14px; }
+  .dn-flow-equation li.is-result,.dn-flow-equation li.is-final { border-top:1px solid var(--ink); }
+  .dn-flow-equation li>span { font-size:12px; }
+  .dn-flow-equation strong { margin:0; font-size:14px; text-align:right; }
+  .dn-flow-equation li.is-final { margin:0 -12px; padding-right:12px; padding-left:34px; }
+  .dn-flow-equation li.is-final::before { left:14px; }
+  .dn-flow-equation li.is-final strong { font-size:16px; }
+}
+/* 幅のある金額（最小〜最大）は途中で折り返さない */
+.dn-flow-equation strong,.dn-flow-total strong { white-space:nowrap; }
+.dn-flow-equation strong { font-size:15px; letter-spacing:-.01em; }
+.dn-flow-equation li.is-final strong { font-size:16px; }
+@media (max-width:760px) {
+  .dn-flow-equation strong { font-size:14px; }
+  .dn-flow-equation li.is-final strong { font-size:15px; }
+}
+@media (max-width:360px) {
+  .dn-flow-equation strong,.dn-flow-equation li.is-final strong { font-size:12px; }
+  .dn-flow-total strong { font-size:15px; }
 }
