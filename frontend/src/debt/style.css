@@ -662,3 +662,31 @@ h1,h2,h3,h4,td,dd,.dn-plan-summary strong,.dn-reduced-income-grid strong { font-
 .dn-travel-table tbody th small.dn-travel-year { margin:0 0 1px; font-weight:700; }
 .dn-travel-table tbody th { font-size:15px; }
 @media (max-width:760px) { .dn-travel-table tbody th { font-size:14px; } }
+
+/* ---- 印刷・PDF: 共有ページそのものを計画書PDFとして出力する ---- */
+.dn-print-only { display:none; }
+@media print {
+  @page { size:A4; margin:12mm 10mm; }
+  html,body { background:#fff !important; }
+  .dn-header,.dn-menu,.dn-pdf,.dn-payment-action,.dn-plan-tabs,.dn-retry,.dn-footer { display:none !important; }
+  .dn-shell { width:auto; margin:0; padding:0; }
+  [data-content]>.dn-overview,[data-content]>.dn-section { margin-top:10px; box-shadow:none; }
+  .dn-print-only { display:block; }
+  .dn-scenario-print { margin-top:14px; }
+  .dn-scenario-print table { width:100%; min-width:0; border-collapse:collapse; }
+  .dn-scenario-print caption { padding-bottom:6px; color:var(--muted); font-size:11px; font-weight:800; text-align:left; }
+  .dn-scenario-print th,.dn-scenario-print td { padding:6px 8px; border-bottom:1px solid var(--line); font-size:12px; text-align:left; white-space:normal; }
+  .dn-scenario-print thead th { color:var(--muted); font-size:10px; border-bottom:1px solid var(--ink); }
+  .dn-scenario-print .dn-leftover-period { display:flex; gap:6px; }
+  .dn-scenario-print .dn-leftover-period small { color:var(--muted); font-size:10px; }
+  /* 表・カード・行の途中でページを分けない */
+  .dn-subcard,.dn-ov-main,.dn-ov-facts,.dn-flow-chart,.dn-flow-equation,.dn-plan-summary,.dn-scenario-print,.dn-pd-pair,.dn-pd-closing,tr { break-inside:avoid; }
+  .dn-section-head,h2,h3 { break-after:avoid; }
+  .dn-flow-seg,.dn-flow-shortage,.dn-ov-progress span,.dn-flow-legend i,.dn-plan-tab[aria-selected="true"],.dn-flow-equation li.is-final { print-color-adjust:exact; -webkit-print-color-adjust:exact; }
+}
+@media print {
+  .dn-scenario-print th:first-child { width:22%; white-space:nowrap; }
+  /* 長いカード（約束の一覧・収支の内訳）はページをまたいでよい。空白ページを作らない */
+  .dn-subcard.dn-pd-promises,.dn-flow-ledger { break-inside:auto; }
+  .dn-pd-promises li,.dn-flow-rows>div { break-inside:avoid; }
+}

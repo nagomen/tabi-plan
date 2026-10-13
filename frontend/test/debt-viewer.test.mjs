@@ -168,7 +168,8 @@ test("返済スケジュールは返済額を主役に、状態を heroicon と�
   assert.match(markup, /4・5月/);
   assert.match(markup, /6月以降/);
   assert.match(markup, /3,000 不足/);
-  assert.equal((markup.match(/<tr>/g) || []).length - 1, schedule.length);
+  const table = markup.slice(markup.indexOf("dn-table-wrap"));
+  assert.equal((table.match(/<tr>/g) || []).length - 1, schedule.length);
 });
 
 test("収支は収入(＋)と支出(−)を分け、交通費支給はプラス、不足は「不足」で示す", () => {
@@ -229,7 +230,8 @@ test("PDF の導線は罫線の1行で、ボタンを持つ", () => {
   const markup = render(PdfCard, { token: "x", manage: false });
   assert.match(markup, /class="dn-pdf"/);
   assert.match(markup, /PDFをダウンロード/);
-  for (const text of ["全4ページ", "個人情報非表示", "保存・印刷対応"]) assert.match(markup, new RegExp(text));
+  for (const text of ["A4・印刷用", "個人情報非表示", "画面と同じ最新の内容"]) assert.match(markup, new RegExp(text));
+  assert.doesNotMatch(markup, /全\dページ/);
 });
 
 test("読み込みエラーは問い合わせ番号と、待ち時間付きの再試行ボタンを出す", () => {
@@ -495,4 +497,16 @@ test("旅行予定のカードは必要額・期限・見込みと月ごとの�
   // 構造化データが無い計画は従来の文章で示す
   const legacy = render(TravelCard, { documentData: { ...plan.document, travel_plan: undefined }, schedule: plan.schedule });
   assert.match(legacy, /北京旅行を予定しています/);
+});
+
+test("印刷（PDF）では画面専用の部分を隠し、進路別プランを表で並べる", () => {
+  const css = readFileSync(new URL("../src/debt/style.css", import.meta.url), "utf8");
+  assert.match(css, /@media print \{[\s\S]*\.dn-header,\.dn-menu,\.dn-pdf,\.dn-payment-action,\.dn-plan-tabs/);
+  const { ScheduleSection } = load("../src/debt/components/ScheduleSection.tsx");
+  const plan = samplePlan();
+  const scenarios = plan.document.repayment_scenarios;
+  const selected = defaultScenario(scenarios);
+  const markup = render(ScheduleSection, { scenarios, selected, onSelect() {}, schedule: scheduleForScenario(plan, selected) });
+  assert.match(markup, /dn-print-only dn-scenario-print/);
+  for (const scenario of scenarios) assert.match(markup, new RegExp(`<th scope="row">${scenario.title}</th>`));
 });

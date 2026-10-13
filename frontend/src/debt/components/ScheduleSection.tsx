@@ -80,6 +80,31 @@ function PlanSwitch({ scenarios, selected, onSelect }: Required<Pick<ScheduleSec
   );
 }
 
+/** 印刷（PDF）用: 画面ではタブで1つずつ見る進路を、表で並べて比べられるようにする。 */
+function ScenarioPrintTable({ scenarios, selected }: { scenarios: RepaymentScenario[]; selected: RepaymentScenario }) {
+  return (
+    <div className="dn-print-only dn-scenario-print">
+      <table>
+        <caption>4月以降の進路別返済プラン（下の返済表は「{selected.title}」の場合）</caption>
+        <thead><tr><th>進路</th><th>想定手取り</th><th>毎月の返済</th><th>返済後に残るお金</th><th>完済予定</th></tr></thead>
+        <tbody>
+          {scenarios.map((scenario) => (
+            <tr key={scenario.id}>
+              <th scope="row">{scenario.title}</th>
+              <td>{yenRange(scenario.net_income_min_yen, scenario.net_income_yen)}</td>
+              <td>{scenario.repayment_summary || yen.format(scenario.monthly_repayment_yen)}</td>
+              <td>{scenarioLeftover(scenario).map((row) => (
+                <span key={row.label} className="dn-leftover-period">{row.label && <small>{row.label}</small>}<span><LeftoverRange minimum={row.minimum} maximum={row.maximum} /></span></span>
+              ))}</td>
+              <td>{displayDate(scenario.completion_date)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 export function ScheduleSection({ scenarios, selected, onSelect, schedule }: ScheduleSectionProps) {
   const today = todayInJapan();
   const paymentCount = schedule.filter((item) => item.amount_yen > 0).length;
@@ -93,6 +118,7 @@ export function ScheduleSection({ scenarios, selected, onSelect, schedule }: Sch
         <span>{deferredCount ? `全${paymentCount}回返済・${deferredCount}か月猶予` : `全${paymentCount}回`}</span>
       </div>
       {selected && scenarios.length > 0 && <PlanSwitch scenarios={scenarios} selected={selected} onSelect={onSelect} />}
+      {selected && scenarios.length > 0 && <ScenarioPrintTable scenarios={scenarios} selected={selected} />}
       <div className="dn-table-wrap">
         <table>
           <thead><tr><th>回</th><th>返済期日</th><th>返済額</th><th>累計</th><th>状態</th></tr></thead>

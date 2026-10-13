@@ -28,9 +28,9 @@ export function PdfCard({ token, manage }: { token: string; manage: boolean }) {
       <div className="dn-pdf-copy">
         <p className="dn-pdf-eyebrow">DOCUMENT / PDF</p>
         <h2 id="dn-pdf-title">返済計画書（PDF）</h2>
-        <p className="dn-pdf-desc">借入条件、毎月の返済予定、収支計画、進路別プランを4ページにまとめています。</p>
+        <p className="dn-pdf-desc">この画面と同じ内容（借入条件、毎月の返済予定、進路別プラン、収支計画、計画書）をA4にまとめています。</p>
         <ul className="dn-pdf-meta" aria-label="PDFの内容">
-          <li>全4ページ</li><li>個人情報非表示</li><li>保存・印刷対応</li>
+          <li>A4・印刷用</li><li>個人情報非表示</li><li>画面と同じ最新の内容</li>
         </ul>
       </div>
       <div className="dn-pdf-action">
