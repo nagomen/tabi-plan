@@ -86,7 +86,7 @@ export function App({ initialHash }: { initialHash: string }) {
             {manage && <PaymentAction plan={state.plan} token={state.access.token} onUpdated={onUpdated} />}
             <PdfCard token={state.access.token} manage={manage} />
             <ScheduleSection scenarios={scenarios} selected={selected} onSelect={(scenario) => setScenarioId(scenario.id)} schedule={schedule} />
-            <FundingSection documentData={state.plan.document} />
+            <FundingSection documentData={state.plan.document} schedule={state.plan.schedule} />
             <DocumentSection documentData={state.plan.document} />
             <footer className="dn-footer">
               <p>このページは共有リンクを知っている人だけが閲覧できます。リンクを第三者へ転送しないでください。</p>

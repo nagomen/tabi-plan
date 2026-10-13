@@ -599,3 +599,66 @@ h1,h2,h3,h4,td,dd,.dn-plan-summary strong,.dn-reduced-income-grid strong { font-
   .dn-pd-closing blockquote p { font-size:13px; line-height:1.8; }
   .dn-pd-closing figcaption { margin-top:8px; font-size:11px; }
 }
+
+/* ---- 旅行予定と必要資金: 目標・期限・見込み → 月ごとの積立 → 約束 ---- */
+.dn-travel { display:block; }
+.dn-travel-head { display:flex; align-items:baseline; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+.dn-travel-head strong { display:flex; align-items:center; gap:7px; color:var(--green); font-size:17px; }
+.dn-travel-head span { color:var(--muted); font-size:12px; font-weight:800; }
+.dn-travel-keys { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); margin:14px 0 0; border-top:2px solid var(--ink); border-bottom:1px solid var(--line); }
+.dn-travel-keys>div { padding:10px 14px; border-left:1px solid var(--line); }
+.dn-travel-keys>div:first-child { padding-left:0; border-left:0; }
+.dn-travel-keys dt { color:var(--muted); font-size:11px; font-weight:800; }
+.dn-travel-keys dd { display:flex; flex-wrap:wrap; align-items:center; gap:4px 10px; margin:4px 0 0; color:var(--ink); font-size:18px; font-weight:800; font-feature-settings:"palt"; }
+.dn-travel-verdict { display:inline-flex; align-items:center; gap:4px; font-size:12px; font-weight:800; }
+.dn-travel-verdict.is-ok { color:var(--plus); }
+.dn-travel-verdict.is-short { color:var(--minus); }
+.dn-travel-verdict .hi { width:15px; height:15px; }
+.dn-travel-table { width:100%; min-width:0; margin-top:12px; border-collapse:collapse; }
+.dn-travel-table caption { padding-bottom:6px; color:var(--muted); font-size:11px; font-weight:800; text-align:left; }
+.dn-travel-table th,.dn-travel-table td { padding:8px 10px; border-bottom:1px solid var(--line); font-size:13px; text-align:right; white-space:nowrap; }
+.dn-travel-table thead th { color:var(--muted); font-size:11px; font-weight:800; border-bottom:1px solid var(--ink); }
+.dn-travel-table th:first-child { padding-left:0; text-align:left; }
+.dn-travel-table tbody th { color:var(--ink); font-weight:800; }
+.dn-travel-table tbody th small { display:block; margin-top:1px; color:var(--muted); font-size:10px; font-weight:600; }
+.dn-travel-hours { margin-right:10px; color:#3e514c; font-size:12px; font-weight:700; }
+.dn-travel-table td .dn-money { font-size:15px; font-weight:800; }
+.dn-travel-table tfoot th,.dn-travel-table tfoot td { border-top:2px solid var(--ink); border-bottom:2px solid var(--ink); font-weight:800; }
+.dn-travel-table tfoot .dn-money { font-size:17px; }
+.dn-travel-formula { margin:6px 0 0 !important; color:var(--muted) !important; font-size:11px !important; }
+.dn-travel-rules { display:grid; gap:4px; margin:12px 0 0; padding:10px 12px; list-style:none; border:1px solid var(--line); background:var(--surface); }
+.dn-travel-rules li { display:flex; align-items:flex-start; gap:6px; color:var(--ink); font-size:13px; font-weight:700; line-height:1.6; }
+.dn-travel-rules .hi { width:15px; height:15px; margin-top:3px; color:#a8392b; }
+.dn-travel-basis { margin:8px 0 0 !important; color:var(--muted) !important; font-size:12px !important; }
+@media (max-width:760px) {
+  .dn-travel-head strong { font-size:15px; }
+  .dn-travel-keys { grid-template-columns:1fr 1fr; }
+  .dn-travel-keys>div { padding:8px 10px; }
+  .dn-travel-keys>div:nth-child(odd) { padding-left:0; border-left:0; }
+  .dn-travel-keys>div:nth-child(3) { grid-column:1 / -1; border-top:1px solid var(--line); }
+  .dn-travel-keys dd { font-size:15px; }
+  .dn-travel-table th,.dn-travel-table td { padding:7px 4px; font-size:12px; }
+  .dn-travel-table td { white-space:normal; }
+  .dn-travel-hours { display:block; margin:0; font-size:11px; }
+  .dn-travel-table td .dn-money { font-size:13px; }
+  .dn-travel-table tfoot .dn-money { font-size:14px; }
+  .dn-travel-rules li { font-size:12px; }
+}
+.dn-travel-table thead small { margin-left:2px; font-size:10px; font-weight:700; }
+@media (max-width:760px) {
+  /* 3列を画面幅に収める: 月の列を固定幅にし、見出しは金額と「を貯める」を2行に分ける */
+  .dn-travel-table { table-layout:fixed; }
+  .dn-travel-table th:first-child { width:34%; }
+  .dn-travel-table th,.dn-travel-table td { white-space:normal; overflow-wrap:anywhere; }
+  .dn-travel-table thead small { display:block; margin:0; }
+  .dn-travel-table tbody th { font-size:12px; }
+}
+@media (max-width:360px) {
+  .dn-travel-table th:first-child { width:30%; }
+  .dn-travel-table td .dn-money { font-size:12px; }
+  .dn-travel-table tfoot .dn-money { font-size:13px; }
+  .dn-travel-keys dd { font-size:14px; }
+}
+.dn-travel-table tbody th small.dn-travel-year { margin:0 0 1px; font-weight:700; }
+.dn-travel-table tbody th { font-size:15px; }
+@media (max-width:760px) { .dn-travel-table tbody th { font-size:14px; } }

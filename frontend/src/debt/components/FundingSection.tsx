@@ -1,8 +1,9 @@
 import { monthNames, yen } from "../format";
 import { flowChart, SEGMENTS, type FlowChart } from "../flow";
-import type { BudgetItem, DebtDocument } from "../normalize";
+import type { BudgetItem, DebtDocument, Installment } from "../normalize";
 import { Icon } from "./Icon";
 import { LeftoverRange, Money, MoneyRange, type Sign } from "./Money";
+import { TravelCard } from "./TravelCard";
 
 function Rows({ items, sign, nested = false }: { items: BudgetItem[]; sign: Sign; nested?: boolean }) {
   return (
@@ -61,7 +62,7 @@ function FlowBars({ chart, bufferMin, bufferMax }: { chart: FlowChart; bufferMin
 }
 
 /** 02 返済原資と月次収支計画。収入（＋・緑）と支出（−・赤）を左右に分け、最後に計算式で結論を示す。 */
-export function FundingSection({ documentData }: { documentData: DebtDocument }) {
+export function FundingSection({ documentData, schedule }: { documentData: DebtDocument; schedule: Installment[] }) {
   const income = documentData.income_plan;
   const expenses = documentData.expense_plan;
   const funding = documentData.funding_plan;
@@ -119,7 +120,7 @@ export function FundingSection({ documentData }: { documentData: DebtDocument })
         <li className="is-final"><span>返済後に残るお金</span><strong><LeftoverRange minimum={funding.monthly_buffer_min_yen} maximum={funding.monthly_buffer_yen} /></strong></li>
       </ol>
 
-      <aside className="dn-special-expense dn-subcard"><strong><Icon name="paperAirplane" />旅行予定と必要資金</strong><p>{expenses.special_expense_note}</p></aside>
+      <TravelCard documentData={documentData} schedule={schedule} />
       {income.reduced_income_months.length > 0 && (
         <section className="dn-reduced-income dn-subcard">
           <div>

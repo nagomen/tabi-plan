@@ -40,6 +40,7 @@ const { normalizePlan, normalizePdf } = load("../src/debt/normalize.ts");
 const { scheduleForScenario, repaymentPeriods, scenarioLeftover, statusFor, defaultScenario } = load("../src/debt/schedule.ts");
 const { accessFromFragment } = load("../src/debt/access.ts");
 const { flowChart } = load("../src/debt/flow.ts");
+const { netFromHours, travelSavings } = load("../src/debt/travel.ts");
 
 /** 実データと同じ形の計画（留年ルートを含む3つの進路、交通費支給の差し引き、収入減の月）。 */
 function samplePlan() {
@@ -69,6 +70,12 @@ function samplePlan() {
         fixed_total_yen: 32700, variable_total_yen: 128000, monthly_total_yen: 160700, special_expense_note: "2027年1月に北京旅行を予定しています。",
       },
       funding_plan: { monthly_available_min_yen: 8300, monthly_available_yen: 64300, monthly_repayment_yen: 10000, monthly_buffer_min_yen: -1700, monthly_buffer_yen: 54300, actions: ["給与受取後に最初に確保します。"] },
+      travel_plan: {
+        title: "北京旅行", travel_month: "2027-01", deadline: "2027-01-31", budget_min_yen: 80000, budget_max_yen: 100000,
+        basis_note: "計画上は80,000〜100,000円で見ます。", tax_free_limit_yen: 200000, taxed_net_ratio: 0.9375,
+        months: [{ month: "2026-10", hours_min: 66, hours_max: 74 }, { month: "2026-11", hours_min: 66, hours_max: 74 }, { month: "2026-12", hours_min: 60, hours_max: 60 }, { month: "2027-01", hours_min: 60, hours_max: 60 }],
+        rules: ["1月末までに確保できなければ予約しません。"],
+      },
       repayment_scenarios: [
         { id: "accenture", title: "アクセンチュアルート", net_income_yen: 350000, net_income_min_yen: 350000, monthly_expenses_yen: 152000, monthly_repayment_yen: 60000, completion_date: "2027-07-21", schedule: months([["2027-04", 60000], ["2027-05", 60000], ["2027-06", 60000], ["2027-07", 10000]]) },
         { id: "repeat-year", title: "留年ルート", net_income_yen: 225000, net_income_min_yen: 169000, monthly_expenses_yen: 152000, monthly_repayment_yen: 20000, repayment_summary: "4・5月：10,000円／6月以降：20,000円", completion_date: "2028-02-21", note: "6月からは20,000円を返済します。", schedule: months([["2027-04", 10000], ["2027-05", 10000], ["2027-06", 20000], ["2027-07", 20000], ["2028-01", 20000], ["2028-02", 10000]]) },
@@ -166,7 +173,7 @@ test("返済スケジュールは返済額を主役に、状態を heroicon と�
 
 test("収支は収入(＋)と支出(−)を分け、交通費支給はプラス、不足は「不足」で示す", () => {
   const { FundingSection } = load("../src/debt/components/FundingSection.tsx");
-  const markup = render(FundingSection, { documentData: samplePlan().document });
+  const markup = render(FundingSection, { documentData: samplePlan().document, schedule: samplePlan().schedule });
   assert.match(markup, /dn-flow-col is-plus/);
   assert.match(markup, /dn-flow-col is-minus/);
   assert.match(markup, /会社からの交通費支給<\/dt><dd><span class="dn-money is-positive">\+/);
@@ -179,7 +186,7 @@ test("収支は収入(＋)と支出(−)を分け、交通費支給はプラス�
 
 test("収支計画が無い計画では収支セクションを描かない", () => {
   const { FundingSection } = load("../src/debt/components/FundingSection.tsx");
-  assert.equal(render(FundingSection, { documentData: normalizePlan({ schedule: [], document: {} }).document }), "");
+  assert.equal(render(FundingSection, { documentData: normalizePlan({ schedule: [], document: {} }).document, schedule: [] }), "");
 });
 
 test("計画書は債務→約束→担保・誓約→結びの順に、カードと罫線で示す", () => {
@@ -455,8 +462,37 @@ test("最低勤務の月のカードは、見出しの月を保存データか�
   const { monthNames } = load("../src/debt/format.ts");
   assert.equal(monthNames(["2026年12月", "2027年1月"]), "12月・1月");
   assert.equal(monthNames([]), "該当月");
-  const markup = render(FundingSection, { documentData: samplePlan().document });
+  const markup = render(FundingSection, { documentData: samplePlan().document, schedule: samplePlan().schedule });
   assert.match(markup, /12月は最低勤務で少額返済/);
   const source = readFileSync(new URL("../src/debt/components/FundingSection.tsx", import.meta.url), "utf8");
   assert.doesNotMatch(source, /6月21日|各1万円|収入減と少額返済/);
+});
+
+test("旅行資金は勤務時間から手取りを出し、その月の支出と返済を引いて積み上げる", () => {
+  const plan = samplePlan();
+  const rule = { tax_free_limit_yen: 200000, taxed_net_ratio: 0.9375 };
+  assert.equal(netFromHours(66, 3000, rule), 198000); // 20万円以下は税引きなし
+  assert.equal(netFromHours(74, 3000, rule), 208125); // 20万円超は93.75%
+  // 返済予定は11月から。10月は返済なし、11〜1月は各1万円
+  const savings = travelSavings(plan.document, [...plan.schedule.filter((item) => item.due_date >= "2026-11"), { number: 0, due_date: "2026-10-01", amount_yen: 0, paid_at: null }]);
+  const byMonth = Object.fromEntries(savings.months.map((item) => [item.month, item]));
+  assert.equal(byMonth["2026-10"].repayment, 0);
+  assert.equal(byMonth["2026-10"].low.saving, 198000 - 160700);
+  assert.equal(byMonth["2026-11"].low.saving, 198000 - 160700 - 20000);
+  assert.equal(byMonth["2026-12"].low.saving, 180000 - 160700 - 10000);
+  assert.equal(savings.totalLow, 37300 + 17300 + 9300 + 9300);
+  assert.equal(savings.reachesLow, savings.totalLow >= 80000);
+});
+
+test("旅行予定のカードは必要額・期限・見込みと月ごとの勤務時間を分けて示す", () => {
+  const { TravelCard } = load("../src/debt/components/TravelCard.tsx");
+  const plan = samplePlan();
+  const markup = render(TravelCard, { documentData: plan.document, schedule: plan.schedule });
+  for (const text of ["必要な旅行費", "貯める期限", "期限までに貯まる見込み", "2027年1月31日", "66時間", "74時間", "を貯める", "1月末までに確保できなければ予約しません"]) {
+    assert.match(markup, new RegExp(text));
+  }
+  assert.match(markup, /<tfoot>[\s\S]*合計/);
+  // 構造化データが無い計画は従来の文章で示す
+  const legacy = render(TravelCard, { documentData: { ...plan.document, travel_plan: undefined }, schedule: plan.schedule });
+  assert.match(legacy, /北京旅行を予定しています/);
 });

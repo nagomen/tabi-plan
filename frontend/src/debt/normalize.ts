@@ -68,6 +68,31 @@ export interface RepaymentScenario {
   schedule: Array<{ due_date: string; amount_yen: number }>;
 }
 
+export interface TravelMonth {
+  /** YYYY-MM */
+  month: string;
+  /** 少ない目標額（budget_min_yen）を貯める場合の勤務時間 */
+  hours_min: number;
+  /** 多い目標額（budget_max_yen）を貯める場合の勤務時間 */
+  hours_max: number;
+}
+
+export interface TravelPlan {
+  title: string;
+  /** YYYY-MM */
+  travel_month: string;
+  /** YYYY-MM-DD。この日までに手元資金として確保する。 */
+  deadline: string;
+  budget_min_yen: number;
+  budget_max_yen: number;
+  basis_note: string;
+  /** 額面がこの額を超える月は taxed_net_ratio を掛けて手取りにする。0 なら税引きしない。 */
+  tax_free_limit_yen: number;
+  taxed_net_ratio: number;
+  months: TravelMonth[];
+  rules: string[];
+}
+
 export interface DebtDocument {
   submitted_on: string;
   monthly_income_yen: number;
@@ -77,6 +102,7 @@ export interface DebtDocument {
   expense_plan?: ExpensePlan;
   funding_plan?: FundingPlan;
   repayment_scenarios: RepaymentScenario[];
+  travel_plan?: TravelPlan;
   promises: Array<{ title: string; body: string }>;
   collateral_note: string;
   gambling_pledge: string;
@@ -228,6 +254,33 @@ function scenarios(value: unknown, privateNames: Array<[string, string]>): Repay
   });
 }
 
+const MONTH = /^\d{4}-\d{2}$/;
+
+function travelPlan(value: unknown, privateNames: Array<[string, string]>): TravelPlan | undefined {
+  const raw = obj(value);
+  if (!raw) return undefined;
+  const months = list(raw.months, (item) => {
+    const month = text(item.month);
+    return MONTH.test(month)
+      ? { month, hours_min: Math.max(0, yen(item.hours_min)), hours_max: Math.max(0, yen(item.hours_max ?? item.hours_min)) }
+      : undefined;
+  });
+  if (!months.length) return undefined;
+  const ratio = Number(raw.taxed_net_ratio);
+  return {
+    title: publicText(raw.title, privateNames),
+    travel_month: MONTH.test(text(raw.travel_month)) ? text(raw.travel_month) : "",
+    deadline: DATE.test(text(raw.deadline)) ? text(raw.deadline) : "",
+    budget_min_yen: Math.max(0, yen(raw.budget_min_yen)),
+    budget_max_yen: Math.max(0, yen(raw.budget_max_yen ?? raw.budget_min_yen)),
+    basis_note: publicText(raw.basis_note, privateNames),
+    tax_free_limit_yen: Math.max(0, yen(raw.tax_free_limit_yen)),
+    taxed_net_ratio: Number.isFinite(ratio) && ratio > 0 && ratio <= 1 ? ratio : 1,
+    months,
+    rules: Array.isArray(raw.rules) ? raw.rules.map((rule) => publicText(rule, privateNames)).filter(Boolean) : [],
+  };
+}
+
 function documentData(value: unknown, privateNames: Array<[string, string]>): DebtDocument {
   const raw = obj(value) || {};
   return {
@@ -239,6 +292,7 @@ function documentData(value: unknown, privateNames: Array<[string, string]>): De
     expense_plan: expensePlan(raw.expense_plan, privateNames),
     funding_plan: fundingPlan(raw.funding_plan, privateNames),
     repayment_scenarios: scenarios(raw.repayment_scenarios, privateNames),
+    travel_plan: travelPlan(raw.travel_plan, privateNames),
     promises: list(raw.promises, (item) => ({ title: publicText(item.title, privateNames), body: publicText(item.body, privateNames) })),
     collateral_note: publicText(raw.collateral_note, privateNames),
     gambling_pledge: publicText(raw.gambling_pledge, privateNames),
